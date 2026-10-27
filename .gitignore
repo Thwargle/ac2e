@@ -1,0 +1,90 @@
+# Unreal build products and machine-local editor state
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+Build/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+.vs/
+.idea/
+.vscode/
+*.xcodeproj
+*.xcworkspace
+
+# Rust, Python, packaging and diagnostics
+target/
+dist/
+bin/
+obj/
+__pycache__/
+*.py[cod]
+*.dmp
+*.pcap
+*.pcapng
+*.jsonl
+*.log
+*.pdb
+*.exe
+*.dll
+*.target
+*.modules
+
+# AC2 runtime materials are generated from source by the launcher.
+/Unreal/Content/AC2/Materials/
+/UpgradeLog*.htm
+
+# Ad-hoc validation/capture output outside the usual Saved directory.
+/Automation/
+/Validation/
+/Captures/
+/Testing/
+
+# AC2 reference inputs and generated outputs; not distributable game content.
+/References/Pyrealium/
+/Tools/Rust/
+/Tools/Pyrealium/
+/Network/Bridge/target/
+/AC2E/target/
+__pycache__/
+/Asheron's Call 2 - Legions/
+/decompiled-*.zip
+
+# Retail archives and reverse-engineering inputs are local, never published.
+*.dat
+*.sdat
+*.zip
+*.7z
+*.rar
+*.iso
+decompile/
+decompiled/
+research/
+captures/
+
+# Accounts, character saves, credentials and private host configuration
+data/
+*.journal
+*.lock
+!Cargo.lock
+.env
+.env.*
+*.env
+!*.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.credentials.json
+
+# Local agent/editor metadata
+.codex/
+.agents/
+.claude/
+.cursor/
+Thumbs.db
+.DS_Store

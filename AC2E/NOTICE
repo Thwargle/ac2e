@@ -1,0 +1,27 @@
+Pyrealium
+Copyright (C) 2026 Vanquish
+
+Original project code is licensed under the GNU Affero General Public License,
+version 3 only (SPDX: AGPL-3.0-only). See LICENSE and LICENSING.md.
+This offer also includes earlier original project code and documentation owned
+by the copyright holder, including their pre-change commits and releases.
+Existing permissions already granted for historical releases remain valid.
+
+This program is distributed without any warranty, including the implied
+warranties of merchantability or fitness for a particular purpose.
+
+Third-party components retain their own copyright and license notices.
+Dependency versions and retained notices are listed in LICENSES/third-party/README.md.
+The game client, game assets, DAT archives, packet captures and independently
+owned reference materials are not relicensed by this notice. Their respective
+owners retain their rights.
+
+LICENSES/MIT-legacy.txt records the project's previous MIT license for historical
+versions. Its presence does not offer the current project under a second license.
+
+AC2E modifications (2026): Unreal/Legions compatibility, starter combat and
+content rules, authenticated hosting, source export, and project build/launch
+helpers. Derived from Pyrealium commit
+7c2e856840b04302d1c78f057dcf8094326472a4.
+Modified server source: https://github.com/Thwargle/ac2e/tree/main/AC2E
+The original native-client launcher is not included in this Unreal project.
