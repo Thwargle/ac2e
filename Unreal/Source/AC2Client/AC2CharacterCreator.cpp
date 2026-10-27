@@ -803,7 +803,37 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         Button(TEXT("EnterButton"),false);BuildCreatorLayout();
         if(CreatorLayout.Find(TEXT("EnterButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Enter hover feedback missing"));
     }
-    if(Step==13) {if(!Button(TEXT("EnterButton")) || Mode->Network->IsSelection())return Fail(TEXT("Enter click did not request world entry"));}
+    // Submit the real creator's DAT choices. Pre-seeding characters with bridge
+    // commands hid an incorrect start_area taken from the preview holding point.
+    if(Step==13) {if(!Button(TEXT("CreateButton")) || Screen!=EScreen::Create)return Fail(TEXT("Create button failed"));}
+    if(Step==14)
+    {
+        const int32 Index=Mode->CharacterCatalog.Avatars.IndexOfByPredicate([](const auto& A){return A.Race==1 && A.Sex==4096;});
+        if(Index==INDEX_NONE || !Lineup.IsValid() || !Lineup->Ready)return Fail(TEXT("Creation lineup unavailable"));
+        const FVector2D Point=Lineup->AvatarPoint(Index);
+        if(Lineup->PickAvatar(Point)!=Index)return Fail(TEXT("Human avatar not pickable"));
+        const auto R=CreatorLayout.Bounds(TEXT("AvatarSelectionViewport"));
+        if(!LocalPointer(FVector2D(R.Min)+Point*FVector2D(R.Size()),true) || CreationStep!=1 || Race!=1 || Sex!=4096)
+            return Fail(TEXT("Mouse did not select Human male for creation"));
+    }
+    if(Step==15)
+    {
+        const int32 Before=Appearance.FindRef(4);
+        if(!PreviewReady() || !Button(TEXT("SkinToneRightButton")) || Appearance.FindRef(4)!=Before+1)
+            return Fail(TEXT("Native skin-tone choice did not update"));
+    }
+    if(Step==16) {if(!Button(TEXT("NextButton")) || CreationStep!=2)return Fail(TEXT("Creator Next did not open naming"));}
+    if(Step==17)
+    {
+        if(!NameEntry)return Fail(TEXT("Native name entry missing"));
+        NameEntry->SetText(TEXT(""));
+        const auto& G=NameEntry->GetCachedGeometry();
+        if(!Pointer(G.LocalToAbsolute(G.GetLocalSize()*.5),true) || !NameEntry->HasKeyboardFocus())return Fail(TEXT("Name entry mouse focus failed"));
+        auto& App=FSlateApplication::Get();
+        for(TCHAR C:FString(TEXT("Created Hero")))App.ProcessKeyCharEvent(FCharacterEvent(C,FModifierKeysState(),0,false));
+        if(DraftName!=TEXT("Created Hero"))return Fail(TEXT("Native name entry did not update creation request"));
+    }
+    if(Step==18) {if(!Button(TEXT("EnterButton")) || Mode->Network->IsSelection())return Fail(TEXT("Create confirmation did not submit to server"));}
     UE_LOG(LogTemp,Display,TEXT("AC2 selection pointer smoke step %d passed"),Step);
     return true;
 }

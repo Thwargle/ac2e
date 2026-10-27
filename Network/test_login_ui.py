@@ -77,9 +77,15 @@ def main():
         # Restore the known combat test start before handing the account to the UI.
         peer.send('move',cell=spawn['cell'],position=spawn['position'],heading=0,motion=[0,0,0]);time.sleep(.3)
         peer.send('logout',id=character);peer.wait('selection');peer.close();peer=None
-        ui_login();password=None
+        ui_login()
+        # The UI-created character must survive a new authenticated session.
+        login=post('login');peer=Peer()
+        peer.send('connect',host=login['game_host'],port=login['game_port'],account=login['account'],ticket=login['ticket']);login=None
+        created=peer.wait('characters')['characters']
+        assert any(c['name']=='Created Hero' for c in created),created
+        peer.close();peer=None;password=None
         report={'result':'PASS','checks':['first sign-in creates account through mouse-driven UI','repeat password login through in-client WinHTTP form','short-password feedback','wrong-password feedback and successful retry','centered button captions and stable message layout','mouse hover, pressed state and click routing','character names painted in native list','native carousel and 3D selection','options and credits','delete cancellation','create and cancel buttons','enter selected character before environment',
-            'native character deletion','lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}
+            'mouse-driven native avatar selection, appearance and naming','UI creation accepted and persisted across login','native character deletion','lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}
         if env.get('AC2_GAMEPLAY_SMOKE')=='1':report['checks']+=['server inventory equip acknowledgement','animated held weapon socket','native magic attack graph','global clothing/face appearance','shirt removal changes rendered mesh/material fingerprint','shirt re-equip restores rendered fingerprint','native spell impact particle accepted']
         (directory/'result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
     finally:

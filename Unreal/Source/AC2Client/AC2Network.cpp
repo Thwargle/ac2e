@@ -319,7 +319,9 @@ void FAC2Network::Create(const FString &Name, const FAC2AvatarChoice &A, float H
     J->SetStringField(TEXT("name"), Name);
     J->SetNumberField(TEXT("race"), A.Race);
     J->SetNumberField(TEXT("sex"), A.Sex);
-    J->SetNumberField(TEXT("start_area"), A.Location);
+    // gmCharGenResult::Clear / GetStartingPosition: zero asks the server for the
+    // race/class default. HoldingLocation belongs only to the preview UIScene.
+    J->SetNumberField(TEXT("start_area"), 0);
     TArray<TSharedPtr<FJsonValue>> Values;
     auto Add = [&](uint32 Key, float Value) {
         Values.Add(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{
@@ -680,9 +682,11 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             Phase = TEXT("selection");
             Enter(S(C, TEXT("id")));
         }
-        else
+        else {
             SetStatus(TEXT("selection"), FString::Printf(TEXT("Character creation rejected (%d)"),
                                                          int32(N(J, TEXT("response")))));
+            if(Smoke){UE_LOG(LogTemp,Error,TEXT("AC2 network smoke: server rejected creation"));FPlatformMisc::RequestExitWithStatus(false,1);}
+        }
         return;
     }
     if (Event == TEXT("deleted"))
@@ -1055,7 +1059,7 @@ void FAC2Network::Tick(float Delta)
                 {UE_LOG(LogTemp,Error,TEXT("Selection pointer smoke step %d: %s"),SelectionSmokeStep,*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
                 FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/FString::Printf(TEXT("Screenshots/AC2Login-selection-%02d.png"),SelectionSmokeStep),true,false);
                 Started=0;
-                if(++SelectionSmokeStep<=13)return;
+                if(++SelectionSmokeStep<=18)return;
                 SmokeEntered=true;
                 return;
             }

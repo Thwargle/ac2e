@@ -184,7 +184,7 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         return false;
     for (const auto &A : Catalog.Avatars)
     {
-        const auto *At = Scene.Locations.Find(A.Location);
+        const auto *At = Scene.Locations.Find(A.HoldingLocation);
         if (!At)
             return false;
         auto *Root = NewObject<USceneComponent>(this);

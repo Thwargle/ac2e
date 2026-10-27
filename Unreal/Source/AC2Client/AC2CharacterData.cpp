@@ -499,7 +499,7 @@ bool FAC2CharacterCatalog::Open(const FString &Directory, FString &Error)
             for (auto &A : Avatars)
                 if (Name.Equals((A.Sex == 4096 ? TEXT("Male") : TEXT("Female")) + RaceName(A.Race),
                                 ESearchCase::IgnoreCase))
-                    A.Location = Key;
+                    A.HoldingLocation = Key;
         }
         if (!Names.End())
             return false;

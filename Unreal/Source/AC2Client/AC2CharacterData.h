@@ -10,7 +10,9 @@ FString AC2ReadUIString(FAC2DatArchive &Local, uint32 Table, uint32 Key, const F
 // Native CharGenMatrixData (70000390). These are data choices, not server-side character rules.
 struct FAC2AvatarChoice
 {
-    uint32 Race = 1, Sex = 4096, Physics = 0, Appearance = 0, Location = 0;
+    uint32 Race = 1, Sex = 4096, Physics = 0, Appearance = 0;
+    // Position in the creation scene, not a starting area in the server world.
+    uint32 HoldingLocation = 0;
     TArray<float> Heights, Builds;
     TMap<uint32, TArray<FAC2AppearanceKey>> Choices;
     TMap<uint32, FString> Labels;
