@@ -28,6 +28,7 @@ pub struct Config {
     pub training_kit: bool,
     pub lifestones: bool,
     pub portals: bool,
+    pub map_travel: bool,
     pub content: Option<PathBuf>,
     pub encounters: Option<PathBuf>,
 }
@@ -354,6 +355,29 @@ fn use_portal(
     let updates = scene
         .update(character, prepared.motion.position_stamp, &prepared.update)
         .map_err(other)?;
+    peer.motion = Some(prepared.motion);
+    peer.target = None;
+    peer.last_world_use_ms = Some(now_ms);
+    peer.queue_ordered_batch(events)?;
+    Ok(updates)
+}
+fn map_travel_character(
+    peer: &mut Peer, character: u64, destination: Placement, store: &mut Store,
+    scene: &mut crate::scene::Scene, encounters: &mut Option<crate::encounters::Encounters>,
+    bootstrap: &mut Option<crate::bootstrap::Bootstrap>, now_ms: u64,
+) -> io::Result<Vec<crate::scene::Delivery>> {
+    if peer.combat || !store.characters[&character].progression.alive() {
+        return Err(invalid("Leave combat before map travel; the character must be alive."));
+    }
+    if peer.last_world_use_ms.is_some_and(|last| now_ms.saturating_sub(last) < 5000) {
+        return Err(invalid("Wait a few seconds before traveling again."));
+    }
+    let prepared = prepare_forced_move(peer, character, destination, scene, bootstrap)?;
+    let events = vec![prepared.wire, script::chat("Map travel accepted.", 1).map_err(other)?];
+    peer.validate_scene_batch(&events)?;
+    store.relocate(&peer.session.account, character, destination)?;
+    if let Some(runtime) = encounters { runtime.stop(character); }
+    let updates = scene.update(character, prepared.motion.position_stamp, &prepared.update).map_err(other)?;
     peer.motion = Some(prepared.motion);
     peer.target = None;
     peer.last_world_use_ms = Some(now_ms);
@@ -1630,6 +1654,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             "account must have 1-32 ASCII letters, digits or underscores",
         ));
     }
+    if config.map_travel && (!config.bind.ip().is_loopback() || !config.initialize_ui || config.game_data.is_none()) {
+        return Err(invalid("--test-map-travel requires a loopback server with DAT world/UI enabled."));
+    }
+    let mut map_landscape = if config.map_travel {
+        println!("Local testing: double-click map travel enabled.");
+        Some(crate::map_travel::Landscape::load(config.game_data.as_deref().unwrap())?)
+    } else { None };
     let mut store = Store::open(&config.data)?;
     let mut bootstrap = config
         .game_data
@@ -3651,6 +3682,21 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     }
                                                     let words =
                                                         text.split_whitespace().collect::<Vec<_>>();
+                                                    if words.first().is_some_and(|word| word.eq_ignore_ascii_case("@maptravel")) {
+                                                        peer.last_chat_ms = Some(now_ms);
+                                                        let result = (|| -> io::Result<Vec<crate::scene::Delivery>> {
+                                                            let landscape = map_landscape.as_mut().ok_or_else(|| invalid("Map travel is disabled on this server."))?;
+                                                            let land = crate::map_travel::point(&words)?;
+                                                            let heading = scene.player_placement(character).ok_or_else(|| invalid("Player is not ready."))?.heading;
+                                                            let destination = landscape.destination(land, heading)?;
+                                                            map_travel_character(peer, character, destination, &mut store, &mut scene, &mut encounters, &mut bootstrap, now_ms)
+                                                        })();
+                                                        match result {
+                                                            Ok(updates) => deliveries.extend(updates),
+                                                            Err(error) => replies.extend(peer.send_event(&script::chat(&error.to_string(), 1).map_err(other)?, now)?),
+                                                        }
+                                                        return Ok(replies);
+                                                    }
                                                     if words.first().is_some_and(|word| {
                                                         word.eq_ignore_ascii_case("@craft")
                                                     }) {
@@ -4430,6 +4476,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     .map_err(other)?
                                                     .into(),
                                             });
+                                        }
+                                        if first && config.map_travel {
+                                            peer.queue_ordered_batch(vec![script::chat(crate::map_travel::CAPABILITY, 1).map_err(other)?])?;
                                         }
                                         if first && config.initialize_ui {
                                             for packet in

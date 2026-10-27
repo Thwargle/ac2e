@@ -47,6 +47,7 @@ class FAC2Network
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
     bool Dead = false, Combat = false;
+    bool MapTravelEnabled = false;
     bool IsWorld() const
     {
         return Phase == TEXT("world");
@@ -110,6 +111,8 @@ class FAC2Network
     bool SmokeSelection=false;
     int32 SelectionSmokeStep=0;
     int32 CombatSmokeStep=0;
+    int32 MapTravelSmokeStep=0;
+    double MapTravelSmokeNext=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;
     int32 PlayedEffects=0;
     int32 SmokeParticles=0;

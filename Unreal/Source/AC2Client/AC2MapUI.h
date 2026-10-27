@@ -12,6 +12,7 @@ class FAC2MapUI
     void Move(FVector2D Point);
     bool Press(FVector2D Point, bool Right, bool Shift);
     bool Release(FVector2D Point, bool Right, bool Shift);
+    bool DoubleClick(FVector2D Point);
     bool Wheel(FVector2D Point, float Delta);
     void Close()
     {
@@ -20,6 +21,7 @@ class FAC2MapUI
         Dragging = false;
         OverviewDragging = false;
         Native.Pressed = 0;
+        LastClickLand.Reset();
     }
     bool Validate(FString &Error) const;
     bool SmokeStep(int32 Step, FString &Error);
@@ -37,6 +39,9 @@ class FAC2MapUI
     FVector2D Origin = FVector2D(321, 195), Extent = FVector2D(1720, 1720);
     FVector2D MacroOrigin, MacroExtent, LastLand = FVector2D(692, 828), PlayerPixel;
     FVector2D Mouse = FVector2D(-1, -1), PressPoint, DragOrigin;
+    TOptional<FVector2D> LastClickLand;
+    FVector2D LastClickPoint;
+    double LastClickTime = 0;
     bool Ready = false, Detail = false, Follow = false, Coords = true, PlayerVisible = false;
     bool Dragging = false, Moved = false;
     bool OverviewDragging = false;

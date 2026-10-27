@@ -56,6 +56,14 @@ it preserves the old marker and never deletes characters or account records.
 Use offline exploration or connect to an AC2E/Pyrealium server. See the guides for
 account setup, hosting, supported gameplay, and remaining implementation limits.
 
+Open the native world map with **M** and double-click a point to travel there for
+testing. Single-click zoom, dragging, map notes and radar targeting still work.
+This works offline and with the default local `start-ac2e.bat` server. Local map
+travel requires a living character out of combat and has a five-second cooldown.
+Use `-DisableMapTravel` to turn it off; public binds never enable it. The old
+F1 explorer help, F2 world/weather and F3 effect-browser overlays are removed,
+as is the R test-spawn shortcut. Developer console commands remain available.
+
 ## Build and verify
 
 ```powershell
@@ -87,6 +95,10 @@ python .\Network\test_armor.py
 python .\Network\test_shelter.py
 python .\Network\test_login_ui.py --gameplay
 python .\Network\test_server_launcher.py
+python .\Network\test_map_travel.py
+python .\Network\test_map_travel.py --disabled
+python .\Network\test_map_travel.py --render
+.\Launch-AC2.ps1 -MapSmoke -SkipBuild
 ```
 
 Pass `-Python 'path\to\python.exe'` to the build/server scripts if Python is not

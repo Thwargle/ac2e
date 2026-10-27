@@ -195,6 +195,33 @@ bool AAC2GameMode::LoadBlock(uint32 Block)
     UE_LOG(LogTemp, Display, TEXT("AC2 travel requested: %04X"), Block);
     return true;
 }
+bool AAC2GameMode::TravelToMap(FVector2D Land)
+{
+    if (!InWorld() || !bReady) { Notice = TEXT("Enter the world before using map travel."); return false; }
+    FVector Point(Land.X * 2000., Land.Y * 2000., 0);
+    uint32 Block;
+    if (!AC2::WorldBlock(Point, Block)) { Notice = TEXT("That point is outside the world."); return false; }
+    if (Network)
+    {
+        if (!Network->MapTravelEnabled) { Notice = TEXT("Map travel is available offline or on a local AC2E testing server."); return false; }
+        Network->Chat(FString::Printf(TEXT("@maptravel %.5f %.5f"), Land.X, Land.Y));
+        Notice = TEXT("Requesting map travel...");
+        return true;
+    }
+    FString Error;
+    if (!Stream->Destination(Block, Point, Error)) { Notice = Error; return false; }
+    // Destination verifies the block and supplies a height hint. Preserve the clicked XY.
+    Destination = FVector(Land.X * 2000., Land.Y * 2000., Point.Z);
+    PendingCell = InteriorBlock = 0;
+    Stream->SetInteriorCell(0);
+    bTeleport = bWaiting = true;
+    StreamFocus = Destination;
+    Notice = TEXT("Traveling...");
+    PositionViewer(GetWorld()->GetFirstPlayerController());
+    if (auto* PC = Cast<AAC2PlayerController>(GetWorld()->GetFirstPlayerController()))
+        PC->SetCursor(bMap);
+    return true;
+}
 void AAC2GameMode::PositionViewer(APlayerController *PC)
 {
     if (!PC || !PC->GetPawn() || !bReady)
@@ -331,11 +358,13 @@ void AAC2GameMode::Tick(float Delta)
             else if(!InteriorBlock && AC2::WorldBlock(P->GetActorLocation(),Cell))Network->SetCell((Cell<<16)|1);
         }
         if (!Network->HasPlayerPose) return;
-        if (Network->NeedsPlacement && !NetworkTravel)
+        if (Network->NeedsPlacement && (!NetworkTravel || !Network->Feet.Equals(Destination, .01)))
         {
             FString Error;
             if (!Stream->Destination(Network->Cell >> 16, Destination, Error))
             { Notice=Error; return; }
+            // A second map request can replace an obstructed arrival while loading.
+            Destination = Network->Feet;
             NetworkTravel=true; bWaiting=true; bTeleport=false; PendingCell=0;
             InteriorBlock=(Network->Cell & 65535)>=256 ? Network->Cell>>16 : 0;
             Stream->SetInteriorCell(Network->Cell);
@@ -612,18 +641,18 @@ void AAC2GameMode::SmokeTick(float Delta)
         }
         UE_LOG(LogTemp, Display, TEXT("AC2 world smoke: walking floor, uploaded grass and native sky PASS"));
         auto *HUD = Cast<AAC2HUD>(PC->GetHUD());
-        if (!HUD || !HUD->HasNativeArt())
+        if (!HUD || !HUD->GameUI)
         {
             FinishSmoke(false, TEXT("Native HUD art unavailable"));
             return;
         }
-        HUD->NotifyHitBoxClick(TEXT("Map"));
+        HUD->GameUI->ToggleMap();
         if (!bMap)
         {
             FinishSmoke(false, TEXT("HUD action dispatch failed"));
             return;
         }
-        HUD->NotifyHitBoxClick(TEXT("Map"));
+        HUD->GameUI->ToggleMap();
         TargetNext();
         if (!Target)
         {
@@ -640,7 +669,6 @@ void AAC2GameMode::SmokeTick(float Delta)
         }
         CastBurst();
         Rain(1);
-        bHelp = false;
         FScreenshotRequest::RequestScreenshot(
             FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Screenshots/AC2Player.png")), true, false);
         SmokeStart = P->GetActorLocation();
@@ -895,8 +923,6 @@ void AAC2GameMode::SmokeTick(float Delta)
         const FVector Fire = Sources[0].Frame.GetLocation();
         P->SetActorLocation(Fire + FVector(-600, -600, 250));
         PC->SetControlRotation((Fire - P->GetActorLocation()).Rotation());
-        bHelp = false;
-        bWorldPanel = true;
         if (auto *Controller = Cast<AAC2PlayerController>(PC))
             Controller->SetCursor(true);
         SmokeStage = 18;
@@ -930,7 +956,6 @@ void AAC2GameMode::SmokeTick(float Delta)
             LogTemp, Display,
             TEXT("AC2 world smoke: native HUD actions, scenery startup FX PASS (%d systems / %d particles)"),
             Effects->SourceCount(), Effects->NativeCount());
-        bWorldPanel = false;
         SmokeStage = 22;
         StageTime = 0;
     }
@@ -984,11 +1009,8 @@ void AAC2GameMode::SmokeTick(float Delta)
     }
     else if (SmokeStage == 19 && StageTime > 2)
     {
-        bWorldPanel = false;
-        bFXPanel = true;
         PreviewEffect = 0x39000000;
-        if (auto *HUD = Cast<AAC2HUD>(PC->GetHUD()))
-            HUD->NotifyHitBoxClick(TEXT("PreviewCast"));
+        CastBurst(PreviewEffect);
         SmokeStage = 20;
         StageTime = 0;
     }
@@ -1118,10 +1140,6 @@ void AAC2GameMode::SpawnMob(uint32 Visual)
     UE_LOG(LogTemp, Display, TEXT("AC2 population: %s at %s owner=%04X"), *Mob->DisplayName, *Pos.ToString(),
            InteriorBlock);
 }
-FString AAC2GameMode::NextCreatureName() const
-{
-    return AC2CreaturePreviews[CreatureIndex % UE_ARRAY_COUNT(AC2CreaturePreviews)].Name;
-}
 void AAC2GameMode::TargetNext()
 {
     if(Network) { Network->TargetNext(); return; }
@@ -1240,11 +1258,6 @@ void AAC2PlayerController::AC2Spawn(const FString &V)
             M->Notice = TEXT("AC2Spawn: Drudge, Shreth, Reedshark, Beetle, Banderling or 8-digit visual ID");
     }
 }
-void AAC2PlayerController::Help()
-{
-    if (auto *M = GetWorld()->GetAuthGameMode<AAC2GameMode>())
-        M->bHelp = !M->bHelp;
-}
 void AAC2PlayerController::AC2Recall(){if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>())M->Recall();}
 void AAC2PlayerController::Map()
 {
@@ -1303,20 +1316,11 @@ void AAC2PlayerController::UseTarget()
 }
 void AAC2PlayerController::MissileSkill()
 {
-    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) { if(M->Network) M->Network->StarterSkill(1); else Weather(); }
-}
-void AAC2PlayerController::Weather()
-{
-    AC2Weather(-1);
-}
-void AAC2PlayerController::Spawn()
-{
-    AC2Spawn(TEXT(""));
+    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) { if(M->Network) M->Network->StarterSkill(1); }
 }
 void AAC2PlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
-    InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AAC2PlayerController::Help);
     InputComponent->BindKey(EKeys::M, IE_Pressed, this, &AAC2PlayerController::Map);
     InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AAC2PlayerController::Select);
     InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
@@ -1326,11 +1330,8 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &AAC2PlayerController::CombatMode);
     InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AAC2PlayerController::UseTarget);
     InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &AAC2PlayerController::AC2Recall);
-    InputComponent->BindKey(EKeys::R, IE_Pressed, this, &AAC2PlayerController::Spawn);
     InputComponent->BindKey(EKeys::LeftAlt, IE_Pressed, this, &AAC2PlayerController::Cursor);
     InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AAC2PlayerController::CloseUI);
-    InputComponent->BindKey(EKeys::F2, IE_Pressed, this, &AAC2PlayerController::WorldPanel);
-    InputComponent->BindKey(EKeys::F3, IE_Pressed, this, &AAC2PlayerController::FXPanel);
     InputComponent->BindKey(EKeys::I, IE_Pressed, this, &AAC2PlayerController::Inventory);
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &AAC2PlayerController::CharacterStats);
     InputComponent->BindKey(EKeys::F4, IE_Pressed, this, &AAC2PlayerController::CharacterSelect);
@@ -1376,7 +1377,7 @@ void AAC2PlayerController::CloseUI()
             return;
         }
     if (auto *M = GetWorld()->GetAuthGameMode<AAC2GameMode>())
-        M->bWorldPanel = M->bFXPanel = M->bHelp = M->bMap = false;
+        M->bMap = false;
     if(auto* H=Cast<AAC2HUD>(GetHUD()))if(H->GameUI)H->GameUI->ToggleOptions();
 }
 void AAC2PlayerController::Chat()
@@ -1414,34 +1415,6 @@ void AAC2PlayerController::CharacterSelect()
             H->CharacterUI->Open(SAC2CharacterUI::EScreen::Select);
     }
 }
-void AAC2PlayerController::WorldPanel()
-{
-    if (auto *M = GetWorld()->GetAuthGameMode<AAC2GameMode>())
-    {
-        M->bWorldPanel = !M->bWorldPanel;
-        M->bFXPanel = false;
-        SetCursor(M->bWorldPanel);
-    }
-}
-void AAC2PlayerController::FXPanel()
-{
-    if (auto *M = GetWorld()->GetAuthGameMode<AAC2GameMode>())
-    {
-        M->bFXPanel = !M->bFXPanel;
-        M->bWorldPanel = false;
-        SetCursor(M->bFXPanel);
-    }
-}
-FString AAC2GameMode::WeatherStatus() const
-{
-    if (!Sky)
-        return TEXT("Loading sky...");
-    auto K = Sky->Lighting();
-    return FString::Printf(TEXT("%02d:%02d   |   Sky %08X\nRain %.0f%% (%s)   |   Wind %.1f, %.1f"),
-                           int32(Sky->Hour()), int32(FMath::Frac(Sky->Hour()) * 60), Sky->DayId(),
-                           (Sky->RainOverride >= 0 ? Sky->RainOverride : K.Rain) * 100,
-                           Sky->RainOverride >= 0 ? TEXT("override") : TEXT("native"), K.WindX, K.WindY);
-}
 void AAC2GameMode::UIAction(FName Action)
 {
     if(Action==TEXT("Recall")){Recall();return;}
@@ -1449,10 +1422,8 @@ void AAC2GameMode::UIAction(FName Action)
         Attack();
     else if (Action == TEXT("Target"))
         TargetNext();
-    else if (Action == TEXT("Cast") || Action == TEXT("PreviewCast"))
+    else if (Action == TEXT("Cast"))
         CastBurst(PreviewEffect);
-    else if (Action == TEXT("Spawn") || Action == TEXT("SpawnWorld"))
-        SpawnMob();
     else if (Action == TEXT("Inventory") || Action == TEXT("Stats") || Action == TEXT("Characters"))
     {
         if (auto *PC = Cast<AAC2PlayerController>(GetWorld()->GetFirstPlayerController()))
@@ -1468,57 +1439,5 @@ void AAC2GameMode::UIAction(FName Action)
     else if (Action == TEXT("Map"))
     {
         if (auto *PC = Cast<AAC2PlayerController>(GetWorld()->GetFirstPlayerController())) PC->Map();
-    }
-    else if (Action == TEXT("Help"))
-        bHelp = !bHelp;
-    else if (Action == TEXT("Weather"))
-    {
-        bWorldPanel = !bWorldPanel;
-        bFXPanel = false;
-    }
-    else if (Action == TEXT("Effects"))
-    {
-        bFXPanel = !bFXPanel;
-        bWorldPanel = false;
-    }
-    else if (Action == TEXT("Day"))
-        Weather(-1);
-    else if (Action == TEXT("Earlier") && Sky)
-        SetHour(Sky->Hour() - 2);
-    else if (Action == TEXT("Later") && Sky)
-        SetHour(Sky->Hour() + 2);
-    else if (Action == TEXT("NativeRain"))
-    {
-        Rain(-1);
-        Notice = TEXT("Rain follows the native sky keys");
-    }
-    else if (Action == TEXT("Dry"))
-    {
-        Rain(0);
-        Notice = TEXT("Rain override: clear");
-    }
-    else if (Action == TEXT("Rain"))
-    {
-        Rain(1);
-        Notice = TEXT("Rain override: heavy");
-    }
-    else if (Action == TEXT("Mountains"))
-        LoadBlock(0x5667);
-    else if (Action == TEXT("Campfire"))
-        LoadBlock(0xc654);
-    else if (Action == TEXT("Coast"))
-        LoadBlock(0x5561);
-    else if (Action == TEXT("Dungeon"))
-        LoadCell(0x59600110);
-    else if (Action == TEXT("PrevFX") || Action == TEXT("NextFX"))
-    {
-        const uint32 Choices[] = {0x39000000, 0x39000001, 0x39000002, 0x39000003,
-                                  0x39000006, 0x39000008, 0x39000009, 0x3900000a};
-        int32 Index = 0;
-        for (int32 I = 0; I < UE_ARRAY_COUNT(Choices); ++I)
-            if (Choices[I] == PreviewEffect)
-                Index = I;
-        PreviewEffect = Choices[(Index + (Action == TEXT("NextFX") ? 1 : 7)) % 8];
-        Notice = FString::Printf(TEXT("Selected native effect %08X"), PreviewEffect);
     }
 }

@@ -42,6 +42,24 @@ For external hosting, put the loopback account backend behind a TLS reverse prox
 
 The account backend serves `/source.zip` with the source used to build this modified server, preserving the AGPL source offer. Build after changing source; do not point the offer at unmodified upstream. `export_source.py` packages the current server source, docs, dependency lockfile, and build/launch helpers using explicit source directories. It works in this monorepo and in an unpacked source download, and excludes game DATs, account state and journals.
 
+## Local map testing
+
+The default loopback launcher enables `--test-map-travel true`. The native Unreal
+world map sends `@maptravel LAND_X LAND_Y` on a double-click only after receiving
+the server's private `[AC2E:map-travel-v1]` capability. Land coordinates cover
+`[0, 2040)` on each axis. The server decodes height samples and triangle diagonals
+from LandscapeDefs / CLandBlockData, rejects absent ground, cave openings and
+unwalkable slopes, persists the move and replicates it through normal visibility.
+The client waits for streamed collision and checks capsule clearance at arrival.
+The minimap and illustrated continent-overview windows retain their existing
+selection and viewing functions; travel uses the georeferenced world/detail map.
+
+Travel requires a living character out of combat and has a five-second cooldown.
+It does not grant tutorial progress. `-DisableMapTravel` disables it in the
+launcher. The raw server defaults to disabled, and rejects the feature on a
+non-loopback bind. Existing Pyrealium servers without this capability retain
+normal gameplay travel. This is a testing extension, not a retail feature.
+
 ## Implementation notes
 
 ### Shelter continuation, armor and effects

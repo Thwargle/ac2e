@@ -195,6 +195,7 @@ void FAC2Network::ClearWorld()
     TargetId.Reset();
     HasPlayerPose = NeedsPlacement = false;
     Dead = Combat = false;
+    MapTravelEnabled = false;
     if(auto P=Pawn(Mode)){P->ResetMotionParameters();P->SetDead(false);P->SetHeld(true);}
 }
 uint32 FAC2Network::Visual(const FString &Id) const
@@ -797,6 +798,11 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     if (Event == TEXT("chat"))
     {
         auto Text = StringInfo(O(J, TEXT("text"))), Speaker = StringInfo(O(J, TEXT("speaker")));
+        if (Speaker.IsEmpty() && Text == TEXT("[AC2E:map-travel-v1]"))
+        {
+            MapTravelEnabled = true;
+            return;
+        }
         if (!Speaker.IsEmpty())
             Text = Speaker + TEXT(": ") + Text;
         if (auto H = HUD(Mode))
@@ -1147,6 +1153,40 @@ void FAC2Network::Tick(float Delta)
             }
             SmokeEntered = true;
             Enter(Mode->Characters.Characters[0].Id);
+        }
+        if (FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MAP_TRAVEL_SMOKE")) == TEXT("1"))
+        {
+            auto Finish = [&](bool OK, const FString& Error) {
+                UE_LOG(LogTemp, Display, TEXT("AC2 map network smoke %s: %s"), OK ? TEXT("PASS") : TEXT("FAIL"), *Error);
+                FFileHelper::SaveStringToFile(OK ? TEXT("PASS") : TEXT("FAIL: ") + Error,
+                    *(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                Smoke = false;
+                FPlatformMisc::RequestExitWithStatus(false, OK ? 0 : 1);
+            };
+            if (Time > 140) { Finish(false, TEXT("Timed out waiting for map travel")); return; }
+            if (!IsWorld() || !P || !MapTravelEnabled || NeedsPlacement || P->IsHeld() || Time < MapTravelSmokeNext) return;
+            auto H = HUD(Mode);
+            if (!H || !H->GameUI) return;
+            FString Error;
+            bool OK = true;
+            switch (MapTravelSmokeStep)
+            {
+            case 0: H->GameUI->ToggleMap(); break;
+            case 1: OK = H->GameUI->MapSmokeStep(9, Error); break;
+            case 2: OK = H->GameUI->MapSmokeStep(10, Error); break;
+            case 3: OK = H->GameUI->MapSmokeStep(11, Error); break;
+            case 4:
+                OK = (Cell >> 16) == 0x5667 && FVector::DistSquared2D(P->GetActorLocation(), FVector(1384500,1657000,0)) < FMath::Square(500.) &&
+                     P->GetCharacterMovement()->IsMovingOnGround();
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Map-network-travel.png"), true, false);
+                if (!OK) Error = TEXT("Server map travel did not release the pawn on the clicked terrain");
+                break;
+            case 5: Finish(true, TEXT("Native map input, server destination, streamed collision and grounded player")); return;
+            }
+            if (!OK) { Finish(false, Error); return; }
+            ++MapTravelSmokeStep;
+            MapTravelSmokeNext = Time + (MapTravelSmokeStep == 3 ? .1 : 2.);
+            return;
         }
         if (IsWorld() && !SmokeChat)
         {

@@ -11,6 +11,7 @@ param(
     [string]$GameHost='127.0.0.1',
     [switch]$ExternalAccounts,
     [switch]$DevelopmentLogin,
+    [switch]$DisableMapTravel,
     [string]$Content='',
     [string]$Python='',
     [switch]$SkipBuild,
@@ -81,6 +82,8 @@ $env:AC2E_PUBLIC_ORIGIN=$PublicOrigin
 $env:PYREALIUM_UNREAL_LEGIONS_DATA='1'
 $serverArgs=@('serve','--bind',"${Bind}:$Port",'--account',$Account,'--data',$DataDirectory,'--game-data',$DatDirectory,
     '--content',$Content,'--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','true')
+# Local testing convenience only: never enable map relocation on a public bind.
+if([Net.IPAddress]::IsLoopback($ip) -and !$DisableMapTravel){$serverArgs+=@('--test-map-travel','true')}
 if(!$DevelopmentLogin){$serverArgs+=@('--auth-data',$AuthDirectory)}
 $accounts=$null
 try {

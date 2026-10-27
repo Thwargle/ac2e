@@ -24,6 +24,7 @@ pub mod legacy;
 pub mod licensing;
 pub mod merchants;
 pub mod movement;
+pub mod map_travel;
 pub mod player_transaction;
 pub mod portals;
 pub mod preferences;

@@ -23,6 +23,7 @@ class AAC2GameMode : public AGameModeBase
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     virtual void RestartPlayer(AController *NewPlayer) override;
     bool LoadBlock(uint32 Block);
+    bool TravelToMap(FVector2D Land);
     void ToggleFlight();
     void SetHour(float Hour);
     void LoadCell(uint32 Id);
@@ -33,15 +34,13 @@ class AAC2GameMode : public AGameModeBase
             Sky->RainOverride = FMath::Clamp(Amount, -1.f, 1.f);
     }
     void SpawnMob(uint32 Visual = 0);
-    FString NextCreatureName() const;
     void TargetNext();
     void Attack();
     bool InCombat() const;
     void SetCombat(bool Enabled);
     void CastBurst(uint32 Id = 0x39000003);
-    bool bHelp = false, bMap = false, bIndoors = false, bWorldPanel = false, bFXPanel = false;
+    bool bMap = false, bIndoors = false;
     uint32 PreviewEffect = 0x39000003;
-    FString WeatherStatus() const;
     float MapHour() const { return Sky ? Sky->Hour() : 12.f; }
     void UIAction(FName Action);
     bool PlaceCharacter();
@@ -127,7 +126,6 @@ class AAC2PlayerController : public APlayerController
     UFUNCTION(Exec) void AC2Spawn(const FString &Visual);
     UFUNCTION(Exec) void AC2Recall();
     virtual void SetupInputComponent() override;
-    void Help();
     void Map();
     void Select();
     void SelectUnderCursor();
@@ -136,13 +134,9 @@ class AAC2PlayerController : public APlayerController
     void CombatMode();
     void UseTarget();
     void MissileSkill();
-    void Weather();
-    void Spawn();
     void Cursor();
     void CloseUI();
     void Chat();
-    void WorldPanel();
-    void FXPanel();
     void Inventory();
     void CharacterStats();
     void CharacterSelect();
@@ -156,27 +150,7 @@ class AAC2HUD : public AHUD
     virtual void DrawHUD() override;
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
-    virtual void NotifyHitBoxClick(FName BoxName) override;
-    virtual void NotifyHitBoxBeginCursorOver(FName BoxName) override;
-    virtual void NotifyHitBoxEndCursorOver(FName BoxName) override;
     void InitializeCharacterUI();
     TSharedPtr<class SAC2CharacterUI> CharacterUI;
     TSharedPtr<class SAC2GameUI> GameUI;
-    bool HasNativeArt() const
-    {
-        return ArtReady;
-    }
-
-  private:
-    TUniquePtr<FAC2AssetLibrary> UIAssets;
-    TSharedPtr<class FAC2Fonts> Fonts;
-    TMap<uint32, class UTexture2D *> Art;
-    FName Hover;
-    bool ArtReady = false;
-    float UIScale = 1;
-    void Text(const FString &Value, float X, float Y, FLinearColor Color, float Size = 1);
-    void Rect(FLinearColor Color, float X, float Y, float W, float H);
-    void Picture(uint32 Id, float X, float Y, float W, float H, FLinearColor Tint = FLinearColor::White);
-    void Panel(const FString &Title, float X, float Y, float W, float H);
-    void Button(FName Action, const FString &Label, float X, float Y, float W, float H, uint32 Icon = 0);
 };

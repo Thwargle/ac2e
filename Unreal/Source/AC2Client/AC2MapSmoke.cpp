@@ -1,4 +1,6 @@
 #include "AC2GameMode.h"
+#include "AC2Explorer.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "AC2CharacterUI.h"
 #include "AC2GameUI.h"
 #include "Engine/World.h"
@@ -75,6 +77,23 @@ void AAC2GameMode::MapSmokeTick(float Delta)
         Capture(TEXT("AC2Map-interior.png"));
         break;
     case 10:
+        OK = HUD->GameUI->MapSmokeStep(9, Error);
+        break;
+    case 11:
+        OK = HUD->GameUI->MapSmokeStep(10, Error);
+        break;
+    case 12:
+        OK = HUD->GameUI->MapSmokeStep(11, Error);
+        break;
+    case 13:
+        if (auto* Pawn = Cast<AAC2Explorer>(PC->GetPawn()))
+            OK = !Pawn->IsHeld() && Pawn->GetCharacterMovement()->IsMovingOnGround() &&
+                 FVector::DistSquared2D(Pawn->GetActorLocation(), FVector(1384500, 1657000, 0)) < FMath::Square(2000.);
+        else OK = false;
+        if (!OK) Error = TEXT("Map double-click failed to land near the original clicked point");
+        Capture(TEXT("AC2Map-travel.png"));
+        break;
+    case 14:
         PC->CloseUI();
         OK = !bMap && !PC->bShowMouseCursor && !PC->IsMoveInputIgnored();
         Finish(OK, OK ? TEXT("") : TEXT("Closing maps did not restore world input"));
@@ -87,5 +106,5 @@ void AAC2GameMode::MapSmokeTick(float Delta)
     }
     UE_LOG(LogTemp, Display, TEXT("AC2 map smoke stage %d complete"), MapStage);
     ++MapStage;
-    MapNext = MapTime + 2;
+    MapNext = MapTime + (MapStage == 12 ? .1f : 2.f);
 }

@@ -45,7 +45,7 @@ fn usage() {
         "Offline inventory commands (server must be stopped):\n  inventory-list --character-id N\n  inventory-grant --character-id N --game-data PATH --id DEFINITION_HEX --visual-did VISUAL_HEX [--quantity N --stack-limit N --equipment-mask HEX --slot N]\n  inventory-move --character-id N --item-id IID --source-slot N --slot N\n  inventory-equip --character-id N --item-id IID --equipment-mask HEX\n  inventory-unequip --character-id N --item-id IID\n  inventory-split --character-id N --item-id IID --quantity N [--slot N]\n  inventory-consume --character-id N --item-id IID --quantity N\nAll accept --account local --data PATH. These manage stored state; native item replication remains unfinished.\n"
     );
     println!(
-        "Pyrealium - AC2 build 7148 emulator\n\n  pyrealium serve [--bind 127.0.0.1:9000] [--account local] [--data data] [--seconds N] [--visual-did HEX] [--game-data PATH] [--initialize-ui true]\n  pyrealium stop [--data data]\n  pyrealium character-create --account local --name Explorer [--data data]\n  pyrealium character-create-human --account local --name Explorer [--data data]\n  pyrealium character-list --account local [--data data]\n  pyrealium character-restore --account local --character-id 1 [--data data]\n  pyrealium legacy-inspect --landblocks PATH --id 0299FFFF\n  pyrealium legacy-validate --landblocks PATH\n\nLocal developer authentication only (native auth type 1). Optional DAT world bootstrap is experimental. Character list/restore commands require the server to be stopped. Terrain commands inspect extracted data; they do not establish gameplay compatibility."
+        "Pyrealium - AC2 build 7148 emulator\n\n  pyrealium serve [--bind 127.0.0.1:9000] [--account local] [--data data] [--seconds N] [--visual-did HEX] [--game-data PATH] [--initialize-ui true] [--test-map-travel true (loopback only)]\n  pyrealium stop [--data data]\n  pyrealium character-create --account local --name Explorer [--data data]\n  pyrealium character-create-human --account local --name Explorer [--data data]\n  pyrealium character-list --account local [--data data]\n  pyrealium character-restore --account local --character-id 1 [--data data]\n  pyrealium legacy-inspect --landblocks PATH --id 0299FFFF\n  pyrealium legacy-validate --landblocks PATH\n\nLocal developer authentication only (native auth type 1). Optional DAT world bootstrap is experimental. Character list/restore commands require the server to be stopped. Terrain commands inspect extracted data; they do not establish gameplay compatibility."
     );
 }
 
@@ -89,6 +89,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut training_kit = None;
     let mut lifestones = None;
     let mut portals = None;
+    let mut map_travel = false;
     let mut item_id = None;
     let mut slot = None;
     let mut source_slot = None;
@@ -126,6 +127,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "--training-kit" => training_kit = Some(value.parse::<bool>()?),
             "--lifestones" => lifestones = Some(value.parse::<bool>()?),
             "--portals" => portals = Some(value.parse::<bool>()?),
+            "--test-map-travel" => map_travel = value.parse::<bool>()?,
             "--item-id" => {
                 item_id = Some(if let Some(hex) = value.strip_prefix("0x") {
                     u64::from_str_radix(hex, 16)?
@@ -404,6 +406,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     training_kit,
                     lifestones,
                     portals,
+                    map_travel,
                     content,
                     encounters,
                 };

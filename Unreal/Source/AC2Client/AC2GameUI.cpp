@@ -470,6 +470,11 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
 FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if (E.GetEffectingButton() == EKeys::LeftMouseButton && MapUI.DoubleClick(Mouse))
+    {
+        MapCaptured = false;
+        return FReply::Handled().ReleaseMouseCapture();
+    }
     if (MapUI.Press(Mouse, E.GetEffectingButton() == EKeys::RightMouseButton, E.IsShiftDown()))
     {
         MapCaptured = true;

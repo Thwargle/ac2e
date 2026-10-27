@@ -349,6 +349,7 @@ void FAC2MapUI::Move(FVector2D Point)
 }
 bool FAC2MapUI::Press(FVector2D Point, bool Right, bool Shift)
 {
+    LastClickLand.Reset();
     Move(Point);
     if (!Contains(Point))
         return false;
@@ -396,6 +397,10 @@ bool FAC2MapUI::Release(FVector2D Point, bool Right, bool Shift)
         return true;
     if (Inside(MapRect, Point))
     {
+        // Remember the pre-zoom projection for the second click of a double-click.
+        LastClickLand = FAC2MapData::Unproject(Point, Origin, Extent, MapRect);
+        LastClickPoint = Point;
+        LastClickTime = FPlatformTime::Seconds();
         for (const auto &Marker : Markers)
             if (FVector2D::Distance(Marker.Point, Point) < 7)
             {
@@ -439,8 +444,23 @@ bool FAC2MapUI::Release(FVector2D Point, bool Right, bool Shift)
     }
     return true;
 }
+bool FAC2MapUI::DoubleClick(FVector2D Point)
+{
+    if (!Mode || !Mode->bMap || !Inside(MapRect, Point) || Inside(OverviewRect, Point) || ButtonAt(Point))
+        return false;
+    // A short drag or a click on another control must not turn into travel.
+    if (!LastClickLand.IsSet() || FPlatformTime::Seconds() - LastClickTime >= 1 ||
+        FVector2D::Distance(Point, LastClickPoint) >= 8)
+        return false;
+    const FVector2D Land = LastClickLand.GetValue();
+    Close();
+    Follow = false;
+    Mode->TravelToMap(Land);
+    return true;
+}
 bool FAC2MapUI::Wheel(FVector2D Point, float Delta)
 {
+    LastClickLand.Reset();
     if (Inside(OverviewRect, Point))
         return true;
     if (const auto *N = Native.Find(0x04c3d25a); N && Inside(N->Clip, Point))
@@ -519,7 +539,7 @@ void FAC2MapUI::Activate(uint32 Id, bool Shift)
         Origin = FAC2MapData::DetailOrigin(Origin + Extent / 2 + Pan * (Shift ? 3 : 9));
     }
     if (Id == 0x802e6b0c || Id == T(TEXT("OverviewMapHelpButton")))
-        Mode->Notice = TEXT("Map: click or wheel up to zoom; drag or arrows to pan; right-click/wheel down "
+        Mode->Notice = TEXT("Map: double-click to travel (offline/local AC2E testing); click or wheel up to zoom; drag or arrows to pan; right-click/wheel down "
                             "for world map; click your marker to follow. Alt enables radar selection.");
 }
 bool FAC2MapUI::Validate(FString &Error) const
@@ -590,6 +610,11 @@ bool FAC2MapUI::SmokeStep(int32 Step, FString &Error)
         Press(P, false, false);
         Move(P + FVector2D(20, 10));
         Release(P + FVector2D(20, 10), false, false);
+        if (DoubleClick(P + FVector2D(20, 10)))
+        {
+            Error = TEXT("A map drag was interpreted as travel");
+            return false;
+        }
         if (Origin.Equals(Before) || Follow)
         {
             Error = TEXT("Detail drag did not pan/unlock");
@@ -671,6 +696,39 @@ bool FAC2MapUI::SmokeStep(int32 Step, FString &Error)
         bool Before = Coords;
         if (!Click(T(TEXT("CoordBoxButton"))) || Coords == Before)
             return false;
+        return true;
+    }
+    if (Step == 9)
+    {
+        Close();
+        Macro();
+        return true;
+    }
+    if (Step == 10 || Step == 11)
+    {
+        auto* PC = Mode->GetWorld()->GetFirstPlayerController();
+        auto* HUD = PC ? Cast<AAC2HUD>(PC->GetHUD()) : nullptr;
+        if (!HUD || !HUD->GameUI) return false;
+        const FVector2D Target(692.25, 828.5);
+        const FVector2D Pixel = Step == 10 ? FAC2MapData::Project(Target, Origin, Extent, MapRect) : LastClickPoint;
+        const auto& G = HUD->GameUI->GetCachedGeometry();
+        const FVector2D Absolute = G.LocalToAbsolute(Pixel / G.GetAccumulatedLayoutTransform().GetScale());
+        const FPointerEvent Down(0, Absolute, Absolute, {EKeys::LeftMouseButton}, EKeys::LeftMouseButton, 0, FModifierKeysState());
+        const FPointerEvent Up(0, Absolute, Absolute, {}, EKeys::LeftMouseButton, 0, FModifierKeysState());
+        if (Step == 10)
+        {
+            HUD->GameUI->OnMouseButtonDown(G, Down);
+            HUD->GameUI->OnMouseButtonUp(G, Up);
+            if (!Detail || !LastClickLand.IsSet() || !LastClickLand->Equals(Target, .001))
+            { Error = TEXT("First map click lost its original world projection"); return false; }
+        }
+        else
+        {
+            if (!Detail || !LastClickLand.IsSet() || !LastClickLand->Equals(Target, .001))
+            { Error = TEXT("Map zoom discarded the pending double-click destination"); return false; }
+            if (!HUD->GameUI->OnMouseButtonDoubleClick(G, Down).IsEventHandled()) return false;
+            HUD->GameUI->OnMouseButtonUp(G, Up);
+        }
         return true;
     }
     if (Step == 8)

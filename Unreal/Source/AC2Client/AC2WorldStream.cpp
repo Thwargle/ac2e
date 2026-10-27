@@ -324,6 +324,10 @@ bool FAC2WorldStream::LandingPosition(const FVector &Preferred, FVector &Positio
     });
     const auto *PC = Impl->World->GetFirstPlayerController();
     const AActor *Player = PC ? PC->GetPawn() : nullptr;
+    // Prefer the exact click, then nearby triangles if slope or scenery obstructs the capsule.
+    double Height;
+    if (GroundAt(Preferred + FVector(0, 0, 10000000), Height))
+        Points.Insert(FVector(Preferred.X, Preferred.Y, Height), 0);
     for (const FVector &P : Points)
     {
         if (B.Water.Present && B.Water.Height * 100 > P.Z + 130)

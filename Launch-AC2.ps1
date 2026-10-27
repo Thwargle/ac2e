@@ -161,7 +161,7 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     }
     if($ControllerSmoke){Write-Output 'AC2 frontend/controller smoke passed. Screenshots: Unreal/Saved/Screenshots/AC2Controller-*.'}
     elseif($NetworkSmoke -or $LoginSmoke){Write-Output 'AC2 network render smoke passed: server character, world objects, chat, combat, loot and native inventory/vitals.'}
-    elseif ($MapSmoke) { Write-Output 'AC2 map smoke passed: DAT world/detail/continent maps, pan, player marker, radar targeting, coordinate toggle, interior handling and input restoration.' }
+    elseif ($MapSmoke) { Write-Output 'AC2 map smoke passed: DAT world/detail/continent maps, pan, player marker, radar targeting, coordinate toggle, interior handling, double-click travel and input restoration.' }
     elseif ($PortraitSmoke) { Write-Output 'AC2 portrait smoke passed: all ten avatars at height/build extremes, head/body framing, rotation and grounded feet. Screenshots: Unreal/Saved/Screenshots/AC2Portrait-*.' }
     elseif ($UISmoke) {
         Write-Output 'AC2 UI smoke passed: ten native avatars, stable appearance camera, DAT fonts, eye FX, vitals, local chat, inventory, stats, persistence and input restoration.'

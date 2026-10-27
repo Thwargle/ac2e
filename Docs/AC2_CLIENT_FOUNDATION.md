@@ -405,7 +405,7 @@ human body surface loads at 1024x1024; portal-only 4100034D remains a valid
 and wrap mode. All texture references in the five audited blocks selected highres
 records. The original highres.dat contains 4,353 Surface records. Terrain atlases
 are 2048x2048 and use parallel sampling/mip generation; full native terrain detail,
-road and bump composition remains pending. F1 reports highres selection and grass.
+road and bump composition remains pending. The old F1 diagnostics overlay has since been removed; extraction diagnostics remain in the log.
 
 World FX no longer wait for scenery uploads to finish. Terrain-specific FX nodes,
 per-part startup FX and inherited part FX fields are retained; child overrides
@@ -466,8 +466,8 @@ the masked pass. Existing particle and scenery transparency remains separate.
 The launcher creates the twelfth shader template and records template version 3.
 
 Drudge (1F000036), Shreth (1F00061B), Reedshark (1F0004A9), Beetle (1F000031) and
-Banderling (1F000075) are available through R, the F2 spawn button, or named
-`AC2Spawn` commands. Their IDs come from the native NPC templates' PhysObj property
+Banderling (1F000075) are available through named `AC2Spawn` console commands.
+The former R shortcut and F2 test panel have since been removed. Their IDs come from the native NPC templates' PhysObj property
 chains, recorded in AC2CreatureCatalog.h. Outdoor travel attempts all five and
 interior travel attempts the first three. Body bounds determine capsule dimensions
 and foot offset, then the existing safe-floor search validates placement.
