@@ -25,6 +25,7 @@ class AAC2Explorer : public ACharacter
     uint32 AvatarAppearanceFingerprint() const {return Model?Model->AppearanceFingerprint():0;}
     void StopBehavior(uint32 Behavior=0);
     void SetNativeMode(uint32 Mode);
+    uint32 GetNativeMode() const { return NativeMode; }
     void SetMotionParameter(const FString& Parameter,double Value);
     void ResetMotionParameters();
     void SetDead(bool Dead);

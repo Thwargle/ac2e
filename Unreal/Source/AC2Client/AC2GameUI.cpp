@@ -82,7 +82,7 @@ void SAC2GameUI::Construct(const FArguments &Args)
         return PC && PC->bShowMouseCursor ? EVisibility::Visible : EVisibility::HitTestInvisible;
     }));
     Log.Add(EAC2ChatType::System, TEXT("Welcome to Dereth. Enter opens local chat; /help lists commands."));
-    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Server chat: /say, /me, /tell Name, message. T: target; 1: attack; 2: use. /stop ends combat.") : TEXT("Offline world: messages stay in this session."));
+    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Z: combat/peace. Alt: cursor, click a creature or T: target. 1: attack; 2: magic; 3: missile; E: use. /stop ends combat.") : TEXT("Offline world: messages stay in this session."));
     if (Frontend) RestoreOptions();
     Rebuild();
 }
@@ -122,6 +122,7 @@ void SAC2GameUI::Bind(const TCHAR *Control, FName Action)
 {
     if (const auto *N = Native.Find(Control))
     {
+        if(N->State==Token(TEXT("ghosted")))return;
         Buttons.Add(Control, SlateRect(N->Clip));
         ButtonActions.Add(Control, Action);
     }
@@ -167,6 +168,11 @@ void SAC2GameUI::Rebuild()
     }
     Show(TEXT("HealthText"), HealthNumbers);
     Show(TEXT("VigorText"), VigorNumbers);
+    // gmShortcutUI::CheckAttackButtons: keep both native buttons, ghost the
+    // unavailable action, and update from the server's acknowledged attack state.
+    const bool Combat=Mode->InCombat();
+    Native.States.Add(Token(TEXT("StartAttackButton")),Token(Combat?TEXT("ghosted"):TEXT("normal")));
+    Native.States.Add(Token(TEXT("StopAttackButton")),Token(Combat?TEXT("normal"):TEXT("ghosted")));
     const auto *P = Mode->Characters.Active();
     const float MaxHealth=Mode->Network ? Mode->Network->MaxHealth : 100, MaxVigor=Mode->Network ? Mode->Network->MaxVigor : 100;
     SetText(TEXT("HealthText"), FString::Printf(TEXT("%.0f / %.0f"), P ? P->Health : 0,MaxHealth));
@@ -200,8 +206,10 @@ void SAC2GameUI::Rebuild()
     Bind(TEXT("ExaminationCloseButton"), TEXT("Stats"));
     Bind(TEXT("NavigationButton"), TEXT("Map"));
     Bind(TEXT("OptionButton"), TEXT("Options"));
-    Bind(TEXT("StartAttackButton"), TEXT("Strike"));
+    Bind(TEXT("StartAttackButton"), TEXT("StartAttack"));
     Bind(TEXT("StopAttackButton"), TEXT("StopAttack"));
+    Hints.Add(TEXT("StartAttackButton"),TEXT("Enter combat (Z). Select a creature to attack."));
+    Hints.Add(TEXT("StopAttackButton"),TEXT("Return to peace (Z)."));
     Bind(TEXT("SkillButton"), TEXT("Skills"));
     Bind(TEXT("SocialButton"), TEXT("Social"));
     Bind(TEXT("QuestButton"), TEXT("Quests"));
@@ -415,6 +423,7 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
     if (E.GetEffectingButton() == EKeys::LeftMouseButton)
+    {
         for (const auto &B : Buttons)
             if (Inside(B.Value, Mouse))
             {
@@ -422,6 +431,17 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
                 Native.Pressed = Native.Hovered;
                 return FReply::Handled().CaptureMouse(SharedThis(this));
             }
+        // Blank parts of native panels still own the pointer. Outside them, the
+        // rendered world is selectable even though network models have no collision.
+        for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
+            TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel")})
+            if(Inside(SlateRect(Native.Bounds(Panel)),Mouse))
+            {UE_LOG(LogTemp,Verbose,TEXT("AC2 pointer captured by %s"),Panel);return FReply::Handled();}
+        auto* PC=Controller(Mode);
+        FVector Origin,Direction;
+        if(PC && Mode->Network && PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction) &&
+            Mode->Network->SelectWorldRay(Origin,Direction))return FReply::Handled();
+    }
     return FReply::Unhandled();
 }
 FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
@@ -520,11 +540,9 @@ void SAC2GameUI::Action(FName Name)
     }
     if (Editing)
         EndChat();
-    if (Name == TEXT("StopAttack"))
+    if (Name == TEXT("StartAttack") || Name == TEXT("StopAttack"))
     {
-        if(Mode->Network)Mode->Network->Chat(TEXT("/stop"));
-        if(!Mode->Network)if(auto* P=Cast<AAC2Explorer>(Controller(Mode)->GetPawn()))P->SetNativeMode(AC2Motion::Peace);
-        Mode->Target = nullptr;
+        Mode->SetCombat(Name==TEXT("StartAttack"));
         return;
     }
     if (Name == TEXT("Skills") || Name == TEXT("Quests") || Name == TEXT("Social"))

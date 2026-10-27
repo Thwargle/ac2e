@@ -36,6 +36,8 @@ class AAC2GameMode : public AGameModeBase
     FString NextCreatureName() const;
     void TargetNext();
     void Attack();
+    bool InCombat() const;
+    void SetCombat(bool Enabled);
     void CastBurst(uint32 Id = 0x39000003);
     bool bHelp = false, bMap = false, bIndoors = false, bWorldPanel = false, bFXPanel = false;
     uint32 PreviewEffect = 0x39000003;
@@ -128,6 +130,7 @@ class AAC2PlayerController : public APlayerController
     void Help();
     void Map();
     void Select();
+    void SelectUnderCursor();
     void Attack();
     void Burst();
     void CombatMode();

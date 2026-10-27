@@ -3568,6 +3568,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                                     now,
                                                                 )?,
                                                             );
+                                                            // A rejected target stops attacking. Publish the
+                                                            // matching pose as well as the private HUD state,
+                                                            // including to observers and late scene snapshots.
+                                                            if config.initialize_ui {
+                                                                deliveries.extend(training_combat_visual(
+                                                                    peer, character, &store, &mut scene,
+                                                                    false, false, false,
+                                                                )?);
+                                                            }
                                                             return Ok(replies);
                                                         }
                                                     } else if let Some(runtime) = &mut encounters {

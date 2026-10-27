@@ -16,6 +16,10 @@
 #include "HAL/PlatformMisc.h"
 #include "HAL/FileManager.h"
 #include "UnrealClient.h"
+#include "Camera/CameraComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "ProceduralMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 
 namespace
 {
@@ -431,12 +435,18 @@ void FAC2Network::TargetNext()
     if (!P)
         return;
     for (auto &E : Objects)
-        if (E.Key != PlayerId && !E.Value->Missile && E.Value->Actor.IsValid() &&
-            FVector::Dist(E.Value->Goal, P->GetActorLocation()) < 15000)
+        if (Targetable(E.Key, *E.Value))
             Ids.Add(E.Key);
-    Ids.Sort();
+    Ids.Sort([&](const FString& A,const FString& B){
+        const double DA=FVector::DistSquared(Objects[A]->Actor->GetActorLocation(),P->GetActorLocation());
+        const double DB=FVector::DistSquared(Objects[B]->Actor->GetActorLocation(),P->GetActorLocation());
+        return DA==DB?A<B:DA<DB;
+    });
     if (Ids.IsEmpty())
+    {
+        Mode->Notice=TEXT("No visible targets nearby.");
         return;
+    }
     SelectTarget(Ids[(Ids.Find(TargetId) + 1) % Ids.Num()]);
 }
 TArray<FAC2Network::FRadarContact> FAC2Network::RadarContacts() const
@@ -447,20 +457,78 @@ TArray<FAC2Network::FRadarContact> FAC2Network::RadarContacts() const
     for (const auto &E : Objects)
     {
         const auto &O = *E.Value;
-        if (E.Key == PlayerId || O.Missile || !O.Placed || !O.Actor.IsValid() || !O.Cell) continue;
+        if (!Targetable(E.Key,O)) continue;
         if (((O.Cell & 0xffff) >= 0x100) != Indoors || (Indoors && (O.Cell >> 16) != (Cell >> 16))) continue;
         Result.Add({E.Key, O.Name, O.Actor});
     }
     Result.Sort([](const auto &A, const auto &B) { return A.Id < B.Id; });
     return Result;
 }
+bool FAC2Network::Targetable(const FString &Id, const FObject &O) const
+{
+    const auto* P=Pawn(Mode);
+    return IsWorld() && Id!=PlayerId && O.Placed && O.Parent.IsEmpty() && !O.Missile &&
+        O.Actor.IsValid() && !O.Actor->IsHidden() && O.Cell && Mode->CellVisible(O.Cell) && P &&
+        FVector::DistSquared(O.Actor->GetActorLocation(),P->GetActorLocation())<=FMath::Square(15000.);
+}
+bool FAC2Network::SelectWorldRay(const FVector &Origin, const FVector &Direction)
+{
+    const FString Id=WorldTargetAtRay(Origin,Direction);
+    if(Id.IsEmpty())return false;
+    SelectTarget(Id);return true;
+}
+FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Direction) const
+{
+    if(!IsWorld())return FString();
+    const FVector End=Origin+Direction.GetSafeNormal()*15000.;
+    // Network models have no movement collision. Bounds are only a broad phase:
+    // large lifestones and animated limbs overlap other actors' screen rectangles.
+    // Pick the current rendered triangles, bounded by dungeon/scenery collision.
+    FHitResult Wall;
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2Target),true,Pawn(Mode));
+    double Limit=1;
+    if(Mode->GetWorld()->LineTraceSingleByObjectType(Wall,Origin,End,
+        FCollisionObjectQueryParams(ECC_WorldStatic),Query)) Limit=Wall.Time;
+    FString Best;
+    for(const auto& E:Objects)
+    {
+        if(!Targetable(E.Key,*E.Value))continue;
+        const FBox Bounds=E.Value->Actor->GetComponentsBoundingBox(true);
+        FVector Hit,Normal;float HitTime=0;
+        if(!Bounds.IsValid || !FMath::LineExtentBoxIntersection(Bounds,Origin,End,FVector::ZeroVector,Hit,Normal,HitTime) || HitTime>=Limit)continue;
+        TInlineComponentArray<UProceduralMeshComponent*> Meshes(E.Value->Actor.Get());
+        for(auto* Mesh:Meshes)
+        {
+            if(!Mesh->IsVisible() || Mesh->bHiddenInGame)continue;
+            const FTransform Transform=Mesh->GetComponentTransform();
+            const FVector LocalStart=Transform.InverseTransformPosition(Origin);
+            const FVector LocalEnd=Transform.InverseTransformPosition(End);
+            const FVector Delta=LocalEnd-LocalStart;
+            if(Delta.IsNearlyZero())continue;
+            for(int32 Section=0;Section<Mesh->GetNumSections();++Section)
+            {
+                const auto* Part=Mesh->GetProcMeshSection(Section);
+                if(!Part || !Part->bSectionVisible)continue;
+                // Glows, halos and spell billboards can span neighbouring actors;
+                // they are visual effects, not the object's selectable surface.
+                const auto* Material=Mesh->GetMaterial(Section);
+                if(Material && Material->GetBlendMode()!=BLEND_Opaque && Material->GetBlendMode()!=BLEND_Masked)continue;
+                for(int32 I=0;I+2<Part->ProcIndexBuffer.Num();I+=3)
+                    if(FMath::SegmentTriangleIntersection(LocalStart,LocalStart+Delta*Limit,
+                        Part->ProcVertexBuffer[Part->ProcIndexBuffer[I]].Position,
+                        Part->ProcVertexBuffer[Part->ProcIndexBuffer[I+1]].Position,
+                        Part->ProcVertexBuffer[Part->ProcIndexBuffer[I+2]].Position,Hit,Normal))
+                    {Limit=FVector::DotProduct(Hit-LocalStart,Delta)/Delta.SizeSquared();Best=E.Key;}
+            }
+        }
+    }
+    return Best;
+}
 void FAC2Network::SelectTarget(const FString &Id)
 {
     if (!IsWorld() || Id == PlayerId) return;
     const auto *Object = Objects.Find(Id);
-    auto *Player = Pawn(Mode);
-    if (!Object || (*Object)->Missile || !(*Object)->Actor.IsValid() || !Player ||
-        FVector::DistSquared((*Object)->Actor->GetActorLocation(), Player->GetActorLocation()) > FMath::Square(15000.)) return;
+    if (!Object || !Targetable(Id,**Object)) return;
     TargetId = Id;
     auto J = Command(TEXT("target"));
     J->SetStringField(TEXT("id"), TargetId);
@@ -469,7 +537,14 @@ void FAC2Network::SelectTarget(const FString &Id)
 }
 void FAC2Network::Attack()
 {
-    if (IsWorld() && !TargetId.IsEmpty())
+    if(!IsWorld())return;
+    if(Dead){Mode->Notice=TEXT("You cannot attack while dead. Home recalls to safety.");return;}
+    const auto* Target=Objects.Find(TargetId);
+    if(!Target || !Targetable(TargetId,**Target))
+    {
+        Mode->Notice=TEXT("Select a creature first: Alt shows the cursor, click a creature or press T, then press 1 to attack.");
+        return;
+    }
     {
         auto J = Command(TEXT("attack"));
         J->SetStringField(TEXT("id"), TargetId);
@@ -561,7 +636,12 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
 void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
-    if (Event == TEXT("combat")) { Combat = J->GetBoolField(TEXT("enabled")); return; }
+    if (Event == TEXT("combat"))
+    {
+        Combat = J->GetBoolField(TEXT("enabled"));
+        Mode->Notice=Combat?TEXT("Combat stance"):TEXT("Peace stance");
+        return;
+    }
     if(Event==TEXT("missile"))
     {
         auto Found=Objects.Find(Id);if(!Found || (*Found)->Instance!=int32(N(J,TEXT("instance"))) || Id==PlayerId)return;
@@ -840,6 +920,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             if ((*E)->Actor.IsValid())
                 (*E)->Actor->Destroy();
             Objects.Remove(Id);
+            if(TargetId==Id)TargetId.Reset();
         }
         if (auto P = Mode->Characters.Active())
             P->Items.RemoveAll([&](const FAC2InventoryItem &I) { return I.NetworkId == Id; });
@@ -1096,14 +1177,41 @@ void FAC2Network::Tick(float Delta)
                 if(!SmokeEquipped){UseItem(Staff);SmokeEquipped=true;Started=0;return;}
                 if(!Profile->Items[Staff].Equipped || !SmokeHeld || Appearance(PlayerId).IsEmpty())return;
             }
+            if(CombatSmokeStep<8)
+            {
+                FString Error;auto H=HUD(Mode);
+                if(!H || !H->GameUI || !H->GameUI->SmokeCombatInput(CombatSmokeStep,Error))
+                {UE_LOG(LogTemp,Error,TEXT("AC2 combat input smoke: %s"),*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
+                ++CombatSmokeStep;Started=0;return;
+            }
             for (auto &E : Objects)
                 if (E.Value->Entity == 0x470007d1 && FVector::Dist(E.Value->Goal, Feet) < 300)
                 {
+                    if(CombatSmokeStep==8)
+                    {
+                        if(auto* PC=Cast<AAC2PlayerController>(P->GetController()))
+                        {
+                            PC->SetCursor(true);
+                            // Frame above the foreground lifestone; clicking through its
+                            // opaque base would correctly select the stone instead.
+                            P->Boom->SetRelativeLocation(P->Boom->GetRelativeLocation()+FVector(0,0,300));
+                            PC->SetControlRotation((E.Value->Actor->GetComponentsBoundingBox(true).GetCenter()-P->Boom->GetComponentLocation()).Rotation());
+                        }
+                        ++CombatSmokeStep;Started=0;return;
+                    }
                     FString RadarError;
+                    if(auto H=HUD(Mode); !H || !H->GameUI || !H->GameUI->SmokeWorldTarget(E.Key,RadarError))
+                    {
+                        UE_LOG(LogTemp,Error,TEXT("AC2 combat pointer smoke: %s"),*RadarError);
+                        FFileHelper::SaveStringToFile(TEXT("FAIL: ")+RadarError,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Combat-pointer-failed.png"),true,false);
+                        Smoke=false;SmokeFinish=Time+2;return;
+                    }
                     if (auto H = HUD(Mode); H && H->GameUI)
                         SmokeRadar = H->GameUI->SmokeNetworkRadar(E.Key, RadarError);
                     if (!SmokeRadar) { UE_LOG(LogTemp, Error, TEXT("AC2 network radar smoke: %s"), *RadarError); continue; }
-                    if(VerifyEquipment)StarterSkill(2);else Attack();
+                    if(VerifyEquipment)StarterSkill(2);
+                    else if(auto H=HUD(Mode);H && H->GameUI)H->GameUI->SmokeCombatInput(8,RadarError);
                     SmokeAttacked = true;
                     FScreenshotRequest::RequestScreenshot(
                         FPaths::ProjectSavedDir() / TEXT("Screenshots/AC2Network-world.png"), true, false);

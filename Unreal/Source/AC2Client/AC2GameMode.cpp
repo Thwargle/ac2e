@@ -1268,7 +1268,34 @@ void AAC2PlayerController::Burst()
 }
 void AAC2PlayerController::CombatMode()
 {
-    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) if(M->Network) M->Network->SetCombat(!M->Network->Combat);
+    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) M->SetCombat(!M->InCombat());
+}
+bool AAC2GameMode::InCombat() const
+{
+    if(Network) return Network->Combat;
+    auto* PC=GetWorld()->GetFirstPlayerController();
+    auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
+    return P && !P->IsDead() && P->GetNativeMode()!=AC2Motion::Peace;
+}
+void AAC2GameMode::SetCombat(bool Enabled)
+{
+    if(!InWorld())return;
+    if(Network){Network->SetCombat(Enabled);return;}
+    auto* PC=GetWorld()->GetFirstPlayerController();
+    if(auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr; P && !P->IsDead())
+    {
+        P->StopBehavior();
+        P->SetNativeMode(Enabled?AC2Motion::Unarmed:AC2Motion::Peace);
+        Notice=Enabled?TEXT("Combat stance"):TEXT("Peace stance");
+    }
+}
+void AAC2PlayerController::SelectUnderCursor()
+{
+    auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>();
+    if(!M || !M->InWorld() || !bShowMouseCursor)return;
+    FVector Origin, Direction;
+    if(M->Network && DeprojectMousePositionToWorld(Origin,Direction))
+        M->Network->SelectWorldRay(Origin,Direction);
 }
 void AAC2PlayerController::UseTarget()
 {
@@ -1292,6 +1319,7 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::F1, IE_Pressed, this, &AAC2PlayerController::Help);
     InputComponent->BindKey(EKeys::M, IE_Pressed, this, &AAC2PlayerController::Map);
     InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AAC2PlayerController::Select);
+    InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
     InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AAC2PlayerController::Attack);
     InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AAC2PlayerController::Burst);
     InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AAC2PlayerController::MissileSkill);

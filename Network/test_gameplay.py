@@ -91,6 +91,19 @@ def main():
         assert until(b,obs,'visual',lambda e:e['id']==a.id)['visual']==original
         result['armor_local_remote_and_late_observer']=True
         time.sleep(.15)
+        # Failed attacks must return both the HUD and replicated model to peace.
+        # Previously attacking a lifestone stopped combat but left the fighting pose.
+        start=len(a.events);obs=len(b.events)
+        a.send('target',id='0');a.send('combat',enabled=True)
+        until(a,start,'combat',lambda e:e['enabled'])
+        until(b,obs,'mode',lambda e:e['id']==a.id and e['mode']==0x4100000f)
+        stone=next(e for e in a.events if e.get('event')=='object' and e.get('entity')==0x470007de)
+        start=len(a.events);obs=len(b.events)
+        a.send('attack',id=stone['id'])
+        until(a,start,'combat',lambda e:not e['enabled'])
+        until(a,start,'mode',lambda e:e['id']==a.id and e['mode']==0x40000001)
+        until(b,obs,'mode',lambda e:e['id']==a.id and e['mode']==0x40000001)
+        result['rejected_attack_restores_local_and_remote_peace']=True
         def equip(item,mode):
             start=len(a.events); obs=len(b.events)
             a.send('equip',id=item['id'],location=0x40,slot=bag.index(item['id']))

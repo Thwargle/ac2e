@@ -63,29 +63,35 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
            !P->Camera->PostProcessSettings.bOverride_MotionBlurAmount || P->Camera->PostProcessSettings.MotionBlurAmount!=0)
         {Finish(TEXT("Temporal AA or motion blur enabled for CPU-skinned models"));return;}
         UE_LOG(LogTemp,Display,TEXT("AC2 render: spatial FXAA, motion blur off, DAT sunlight direction PASS"));
+        if(!H->GameUI->SmokeCombatInput(0,Error)){Finish(Error);return;}
         PC->SetControlRotation(FRotator(-8,P->GetActorRotation().Yaw+160,0));
         P->GetCharacterMovement()->bUseControllerDesiredRotation=false;
         P->Boom->bDoCollisionTest=false;
         P->Boom->TargetArmLength=460;
         Capture(TEXT("AC2Controller-standing.png"));break;
     case 3:
+        if(!H->GameUI->SmokeCombatInput(1,Error)){Finish(Error);return;}
         SmokeStart=P->GetActorLocation();
         if(Mobs.Num()<3) for(int32 I=0;I<3;++I) SpawnMob();
         P->SetRunning(true);
         break;
     case 4:
+        if(!H->GameUI->SmokeCombatInput(2,Error)){Finish(Error);return;}
         if(FVector::Dist2D(SmokeStart,P->GetActorLocation())<60){Finish(TEXT("Ground movement did not advance"));return;}
         if(!P->AuditAttachments(Error)){Finish(Error);return;}
         Capture(TEXT("AC2Controller-running.png"));
         break; // Keep velocity through the screenshot's render frame.
     case 5:
+        if(!H->GameUI->SmokeCombatInput(3,Error)){Finish(Error);return;}
         P->SetRunning(false);P->GetCharacterMovement()->StopMovementImmediately();
         if(!P->PlayBehavior(AC2Motion::Jump)){Finish(TEXT("Native jump animation missing"));return;}
         P->Jump();ControllerNext=ControllerTime+.2f;++ControllerStage;return;
     case 6:
+        if(!H->GameUI->SmokeCombatInput(4,Error)){Finish(Error);return;}
         if(!P->GetCharacterMovement()->IsFalling()){Finish(TEXT("Jump did not enter air"));return;}
         Capture(TEXT("AC2Controller-jumping.png"));break;
     case 7:
+        if(InCombat() || P->GetNativeMode()!=AC2Motion::Peace){Finish(TEXT("Offline Z did not restore peace"));return;}
         if(!P->PlayBehavior(AC2Motion::Attack,AC2Motion::Unarmed)){Finish(TEXT("Native attack animation missing"));return;}
         ControllerNext=ControllerTime+.2f;++ControllerStage;return;
     case 8:Capture(TEXT("AC2Controller-attack.png"));break;

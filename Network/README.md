@@ -27,6 +27,13 @@ The game opens its account/password form before loading any environment. Enter t
 
 WASD/Shift/Space move. Enter opens server chat (`/say`, `/me`, `/tell Name, message`). T cycles nearby server objects; Z toggles combat/peace; 1 requests repeated attacks. The equipped weapon selects the native melee, missile or magic stance. 2 uses the racial starter magic skill and 3 uses the missile skill; equip a matching weapon first. `/cast <hex skill ID>` sends a learned active skill request; unsupported skills are rejected by the server. `/stop` ends combat. E or `/use` uses the selected world object, including mentors, portals and lifestone binding. Home or `/recall` requests native lifestone recall; a dead character requests resurrection. I opens the native inventory; double-click an item to use/equip it (unequip the current hand item before replacing it). C displays server stats. F4 or Escape → Leave World logs out to character selection. Escape on selection disconnects to sign-in. `/loot` sends the native loot-container request when supported by the connected server.
 
+Alt shows the cursor: click a visible creature in the world to select it, then
+press 1 to attack. World picking respects walls and excludes hidden cells, held
+weapons and inventory objects. The native start/stop buttons enter combat/peace
+even without a target; their ghosted states follow server acknowledgements. Z
+also toggles the offline sandbox's unarmed stance. An attack without a selected
+target shows guidance in the world log.
+
 Server characters, positions, visuals, appearance aspects, actor visibility, inventory, health/vigor, levels, XP and gold update from server events. Remote actors interpolate server movement and use native locomotion animation. Client collision and prediction are retained for local movement. NPC test spawning, flight and arbitrary map teleports are disabled online. Inventory changes wait for acknowledgement; no network profile is written to the offline character file.
 
 The AC2E initial ruleset tests **automatic loot grants** on supported mob kills. It does not yet supply a complete retail corpse-looting window, every combat animation, every merchant/quest/social panel, terrain-authoritative server collision or anti-cheat parity. Static recovered placements and authored encounter behavior are distinct; seeing an NPC does not mean its full original script has been implemented.
@@ -57,6 +64,15 @@ directory. Set `AC2_DAT_DIRECTORY` to use a retail installation outside this
 checkout; no pre-existing `Saved` files are needed.
 
 `Network/test_gameplay.py` uses two real UDP clients on 19320/19321 to exercise weapon equip/unequip, combat modes, rejected wrong-weapon casting, melee/magic/missile attacks, creature pursuit and shared locations, incoming damage, kills, the starter reward, portal visibility removal and recall. It also tests player death/resurrection and journal replay of equipment and quest completion. `Network/test_login_ui.py --gameplay` additionally renders Unreal with a server-equipped staff and checks native magic animation playback, animated attachment and global appearance alongside the existing login/selection/inventory tests. Both use disposable stores under `Saved/AC2NetworkTests`.
+
+The login UI test also drives the native combat buttons through Slate's hit-test
+grid and sends Z/1 through viewport keyboard input. It checks server stance,
+model mode, disabled button states, chat input isolation/restoration, world
+mouse selection, and server-confirmed attacks, damage, death and loot.
+`Network/test_combat_ui.py` runs these combat checks independently of account
+creation on isolated ports 19486/19487; `--gameplay` adds equipped-staff combat.
+The two-client gameplay test also checks that a rejected attack restores peace
+on both the player's model and the observing client.
 
 The Unreal server profile sends compact native inventory profiles because the pinned bridge decoder does not yet support the optional embedded native VisualDesc in full inventory graphs. Authoritative object visuals still travel in CreateObject. The original-client server profile retains full graphs; servers sending those full inventory graphs to this bridge still need decoder support.
 

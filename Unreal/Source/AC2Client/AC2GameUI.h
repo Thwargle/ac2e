@@ -51,6 +51,8 @@ class SAC2GameUI : public SCompoundWidget
     bool OptionsClosePoint(FVector2D &Point) const;
     bool MapSmokeStep(int32 Step, FString &Error) { return MapUI.SmokeStep(Step, Error); }
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
+    bool SmokeCombatInput(int32 Step, FString &Error);
+    bool SmokeWorldTarget(const FString &Id, FString &Error);
     bool ClosePanels();
     bool InventoryOpen() const
     {

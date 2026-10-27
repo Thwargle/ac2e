@@ -35,6 +35,8 @@ class FAC2Network
     };
     TArray<FRadarContact> RadarContacts() const;
     void SelectTarget(const FString &Id);
+    bool SelectWorldRay(const FVector &Origin, const FVector &Direction);
+    FString WorldTargetAtRay(const FVector &Origin, const FVector &Direction) const;
     void Attack();
     void SetCombat(bool Enabled);
     void CastSkill(uint32 Skill);
@@ -107,6 +109,7 @@ class FAC2Network
     bool SmokeRadar = false;
     bool SmokeSelection=false;
     int32 SelectionSmokeStep=0;
+    int32 CombatSmokeStep=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;
     int32 PlayedEffects=0;
     int32 SmokeParticles=0;
@@ -115,6 +118,7 @@ class FAC2Network
     TMap<FString, uint32> WornSlots;
     void Handle(const TSharedPtr<FJsonObject> &Event);
     void ClearWorld();
+    bool Targetable(const FString &Id, const FObject &Object) const;
     void SetStatus(const FString &State, const FString &Text);
     void ApplyVisual(FObject &Object, const TSharedPtr<FJsonObject> &Visual, bool Player);
     void AddCharacter(const TSharedPtr<FJsonObject> &Character);
