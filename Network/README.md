@@ -31,14 +31,18 @@ Server characters, positions, visuals, appearance aspects, actor visibility, inv
 
 The AC2E initial ruleset tests **automatic loot grants** on supported mob kills. It does not yet supply a complete retail corpse-looting window, every combat animation, every merchant/quest/social panel, terrain-authoritative server collision or anti-cheat parity. Static recovered placements and authored encounter behavior are distinct; seeing an NPC does not mean its full original script has been implemented.
 
-The Legions profile grants the DAT-validated racial starter clothes and three weapons once per character. Equipment acknowledgments update the native inventory, and held models follow the player's or remote character's animated holding location. Starter clothing changes rebuild the native avatar appearance, preserving face/body traits and colours, and replicate to existing and later observers. Selection and re-entry restore saved equipment. Human and Lugian kits include shirts, pants and boots; Tumeroks have shirts and pants. Other armor definitions still require validated appearance profiles. Starter attack IDs and animation modes come from DAT enum mappers; damage, vigor cost, range and timing are explicit development rules. Magic resolves direct server damage with native animation and DAT impact particles; full projectile/cast, sound/light effects and spellbook parity remain incomplete.
+The Legions profile grants DAT-validated racial starter clothes and three weapons once per character. Equipment acknowledgments update native inventory, and held models follow animated holding locations. Clothing changes rebuild the native avatar appearance while preserving face/body traits and colours; current observers, later arrivals, selection and re-entry receive the saved result. Seven additional armor definitions support Human/Lugian torso, legs and feet and a Tumerok torso, including sex-specific appearance tables and server armor values. Unequip the current piece before wearing its replacement. Additional training Drudges drop these profiles after the relevant quest item has been collected; this is an authored loot policy.
+
+Starter attack IDs and animation modes come from DAT tables; damage, vigor cost, range and timing remain development rules. The client runs native animation FX triggers and timed 0x57 FX scripts, plays particle variants and temporary effect models, and retains target references. The bridge forwards InitializeMissile and moving PhysicsDesc snapshots; the client handles fixed-point, object-target and untargeted flight, arrival and trail cleanup. These presentation paths never apply damage. AC2E still resolves starter magic attacks directly, without retail missile creation or flight-delayed damage. Native ballistic parameters, sound/light/streak effects and full spellbook parity remain incomplete.
 
 The supported human dungeon circuit is: equip a weapon, defeat three Idol Spawn, use the mentor for the reward, bind the lifestone, use the training gateway to the outdoor hub, then recall. This verifies the **authored AC2E starter circuit**, not the recovered retail tutorial's full quest chain. Starter Idol pursuit is server-owned, limited to its current cell, with an 18m leash; this is not cross-cell pathfinding or line-of-sight collision. Both current observers and later arrivals receive its authoritative pose; respawn returns it to the original placement.
 
 Separately, the Shelter Guard/Lieutenant/Sentry introduction and training-stone
 text use native DAT StringInfo references, with per-character durable progress.
-`@quest shelter` reports its status. Tool/glyph turn-ins and the Menhir stages
-remain unfinished; see the AC2E guide for recovered versus reconstructed placements.
+`@quest shelter` reports its status. The continuation covers Digger/tool/Scout,
+Sentinel/glyph/portal, Advance Scout and a reconstructed Menhir completion step.
+Item consumption, rewards and glyph travel use durable atomic transactions.
+See the AC2E guide for reconstructed placements and remaining retail gaps.
 
 ## Build and verify
 
@@ -68,6 +72,14 @@ through two UDP clients. `test_gameplay.py` additionally checks appearance for a
 late observer and Shelter introduction order/restart persistence. The rendered
 login test types through focused Slate fields, verifies visible shirt removal and
 replacement, and captures emitted native spell particles.
+
+`test_shelter.py` uses two UDP clients on 19360/19361 to complete the tool/glyph/
+Vault path, reject remote or incorrect targets, verify all three Human armor
+updates on both peers, and replay completion and travel after restart. Rust tests
+also reject a full backpack without consuming the tool or appending a journal
+entry, and validate all seven armor profiles for both sexes. Unreal DAT tests
+cover the armor metadata, native animation triggers, timed FX scripts and missile
+movement without overshoot.
 
 `Launch-AC2.ps1 -Online -Server 127.0.0.1 -Port 9000 -SkipBuild -NetworkSmoke` runs the Unreal render acceptance test against a **test server with an existing human character**. It sends chat, attacks a nearby authored training mob, receives loot, captures the native world/inventory and exits. Use isolated server data: this test intentionally changes its character's progress.
 

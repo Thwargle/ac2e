@@ -5,10 +5,13 @@ Rust server derived from Pyrealium. The client is in `Unreal/`, and the server i
 in `AC2E/`. This is an experimental implementation, with offline exploration and
 native multiplayer; it is not yet complete retail emulation.
 
-Recent multiplayer support includes visible equip/unequip for all racial starter
-shirts, pants and boots, appearance updates for nearby players and later arrivals,
-and DAT-backed native spell impact particles. Other armor profiles and complete
-projectile/cast presentation remain in development.
+The Shelter sequence now includes the digging-tool exchange, Scout potion rewards,
+Menhir Glyph travel and an authored Vault completion step. Seven additional DAT
+armor profiles join the racial starter clothes, with saved appearance replicated
+to other players. The client reads native animation FX triggers, timed FX scripts,
+temporary effect models and incoming missile flight. AC2E still resolves its
+starter magic attacks directly; retail projectile creation, full spell FX and the
+Menhir history/cinematic remain unfinished. See `AC2E/AC2E-README.md` for scope.
 
 ## First checkout
 
@@ -75,6 +78,7 @@ python .\Network\test_network.py
 python .\Network\test_auth.py
 python .\Network\test_gameplay.py
 python .\Network\test_armor.py
+python .\Network\test_shelter.py
 python .\Network\test_login_ui.py --gameplay
 python .\Network\test_server_launcher.py
 ```

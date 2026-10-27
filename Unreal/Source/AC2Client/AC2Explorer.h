@@ -18,7 +18,8 @@ class AAC2Explorer : public ACharacter
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     bool ApplyAvatar(uint32 Physics, float Height, float Build, const FAC2Appearance &Appearance = {});
     bool PlayBehavior(uint32 Behavior,uint32 Mode=0,float Rate=1,bool Hold=false);
-    bool PlayEffect(uint32 Effect,float Strength=1) {return Model && Model->PlayEffect(Effect,Strength);}
+    bool PlayEffect(uint32 Effect,float Strength=1,USceneComponent* Target=nullptr) {return Model && Model->PlayEffect(Effect,Strength,Target);}
+    bool PlayEffectScript(uint32 Script) {return Model && Model->PlayEffectScript(Script);}
     void StopEffect(uint32 Effect) {if(Model)Model->StopEffect(Effect);}
     int32 EffectParticleCount() const {return Model?Model->EffectParticleCount():0;}
     uint32 AvatarAppearanceFingerprint() const {return Model?Model->AppearanceFingerprint():0;}

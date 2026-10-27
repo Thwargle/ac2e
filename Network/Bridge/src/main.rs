@@ -85,6 +85,7 @@ fn use_item(user: u64, item: u64, target: u64) -> ClientEvent {
     if let PackedEntry::Heap { object, .. } = &mut reference.entries[0] {
         object.tags[2] = 0x84;
         object.tags[6] = 0x84;
+        if target!=0 {object.tags[9]=0x84;}
     }
     ClientEvent::Interp { function: 0x82160016,
         arguments: pack_values(&[PackValue::Reference(reference)]), encrypted: false }

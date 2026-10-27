@@ -209,14 +209,18 @@ impl Content {
             .get_mut(&id)
             .filter(|object| object.active)
             .ok_or_else(|| invalid("inactive creature presentation"))?;
-        // Do not apply this behavior table to unrelated observed creatures.
-        if object.entity != crate::quests::TARGET_ENTITY
-            || object.spawn.get(16..20) != Some(0x1f0003d1u32.to_le_bytes().as_slice())
-        {
+        // Idol and the two Shelter Drudges use native behavior table 44000018.
+        // Keep unrelated observed creatures out of this validated presentation set.
+        let expected_visual=match object.entity {
+            crate::quests::TARGET_ENTITY=>0x1f0003d1u32,
+            crate::shelter::DIGGER|crate::shelter::SENTINEL=>0x1f000036,
+            _=>return Ok(Vec::new()),
+        };
+        if object.spawn.get(16..20) != Some(expected_visual.to_le_bytes().as_slice()) {
             return Ok(Vec::new());
         }
         if object.spawn.get(20..24) != Some(0x8082u32.to_le_bytes().as_slice()) {
-            return Err(invalid("unsupported Idol physics presentation"));
+            return Err(invalid("unsupported creature physics presentation"));
         }
         let (stamp, mode, events) =
             crate::combat_visual::idol(id, object.instance, object.visual_stamp, action)
@@ -278,7 +282,7 @@ impl Content {
         Arc::make_mut(&mut object.spawn)[24..26].copy_from_slice(&object.instance.to_le_bytes());
         object.visual_stamp = 0;
         Arc::make_mut(&mut object.spawn)[26..28].copy_from_slice(&0u16.to_le_bytes());
-        if object.entity == crate::quests::TARGET_ENTITY
+        if matches!(object.entity,crate::quests::TARGET_ENTITY|crate::shelter::DIGGER|crate::shelter::SENTINEL)
             && object.spawn.get(20..24) == Some(0x8082u32.to_le_bytes().as_slice())
         {
             Arc::make_mut(&mut object.spawn)[28..32]

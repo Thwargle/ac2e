@@ -110,11 +110,14 @@ pub fn basic_attack(owner: u64, instance: u16, stamp: u16) -> Result<Vec<u8>, Wo
     weapon_attack(owner, instance, stamp, ONE_HAND)
 }
 pub fn weapon_attack(owner: u64, instance: u16, stamp: u16, mode: u32) -> Result<Vec<u8>, WorldError> {
+    attack_behavior(owner,instance,stamp,match mode {MAGIC=>MAGIC_AUTO,MISSILE|BOULDER=>MISSILE_AUTO,_=>MELEE_AUTO})
+}
+pub fn attack_behavior(owner:u64,instance:u16,stamp:u16,behavior:u32)->Result<Vec<u8>,WorldError> {
     let mut wire = prefix(DO_STORY, owner, instance, stamp)?;
     wire.extend(0x26u32.to_le_bytes()); // Attacker, behavior, basic-attack flag.
     wire.extend(owner.to_le_bytes());
     wire.extend(0x601u32.to_le_bytes()); // Behavior, propagate, send-event.
-    wire.extend(match mode { MAGIC => MAGIC_AUTO, MISSILE | BOULDER => MISSILE_AUTO, _ => MELEE_AUTO }.to_le_bytes());
+    wire.extend(behavior.to_le_bytes());
     wire.extend(1u32.to_le_bytes()); // Propagate to the held weapon.
     wire.extend(0u32.to_le_bytes()); // No interpreted completion callback.
     wire.extend(0u32.to_le_bytes()); // No duplicated damage hooks.

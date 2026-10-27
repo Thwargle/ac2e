@@ -501,7 +501,8 @@ impl Encounters {
             let account = character.account.clone();
             let previous = character.progression.clone();
             let previous_quests = character.quests.clone();
-            let loot = if killed && self.training_loot {
+            let quest_drop=crate::shelter::drop(&character.quests,&character.inventory,actor.entity);
+            let loot = if killed && (self.training_loot || quest_drop.is_some()) {
                 character
                     .inventory
                     .free_slot()
@@ -510,7 +511,7 @@ impl Encounters {
                         store
                             .next_item_id()
                             .ok()
-                            .map(|id| crate::item_services::potion(id, slot))
+                            .map(|id| quest_drop.and_then(|d|crate::shelter::item(d,id,slot)).or_else(||matches!(actor.entity,crate::shelter::DIGGER|crate::shelter::SENTINEL).then(||crate::apparel::drop(&character.inventory,character.creation.as_ref().map_or(1,|r|r.race),id,slot)).flatten()).unwrap_or_else(||crate::item_services::potion(id, slot)))
                     })
                     .and_then(|item| {
                         scene
@@ -539,7 +540,10 @@ impl Encounters {
             } else {
                 store.progression_batch(&account, player, &commands)?;
             }
-            if killed && self.training_loot && loot.is_none() {
+            if killed && quest_drop.is_some() && loot.is_none() {
+                events.push(Event::Note{player,text:"Quest item not collected: free a backpack slot and defeat another Drudge.".into()});
+            }
+            if killed && self.training_loot && quest_drop.is_none() && loot.is_none() {
                 events.push(Event::Note {player,text:"No training potion was granted: make room in your bag. XP, gold and quest credit are saved.".into()});
             }
             if store.characters[&player].quests != previous_quests {
@@ -584,7 +588,7 @@ impl Encounters {
                         actor.rule.xp, actor.rule.gold
                     ),
                 });
-                if actor.entity == crate::quests::TARGET_ENTITY {
+                if matches!(actor.entity,crate::quests::TARGET_ENTITY|crate::shelter::DIGGER|crate::shelter::SENTINEL) {
                     events.push(Event::IdolVisual(
                         attack.target,
                         crate::combat_visual::IdolAction::Death,
@@ -697,7 +701,7 @@ impl Encounters {
             let previous = store.characters[&target].progression.clone();
             // ArmorRating from Pyreal_DB_Insert_PlayerLevelData.sql. At least 1
             // damage remains so a hit is still a hit.
-            let armor = previous.level().armor;
+            let armor = previous.level().armor.saturating_add(crate::apparel::armor(&store.characters[&target].inventory,store.characters[&target].creation.as_ref().map_or(1,|r|r.race)));
             let dealt = actor.rule.damage.saturating_sub(armor).max(1);
             store.progression_command(&account, target, Command::Damage(dealt))?;
             actor.next_attack = now.saturating_add(actor.rule.interval);

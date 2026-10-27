@@ -72,8 +72,20 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             "name":o.weenie.name.as_ref().map(string),"parent":o.physics.parent.map(|p|p.0.to_string()),"holding":o.physics.parent.map(|p|p.1),
             "container":o.weenie.container.map(|p|p.to_string()),"wielder":o.weenie.wielder.map(|p|p.to_string())});
             let mut out=vec![object];
+            // Late observers receive an already moving missile in PhysicsDesc,
+            // without a second InitializeMissile event.
+            if o.physics.bitfield & 0x80000 != 0 {
+                if let (Some(p),Some(velocity))=(o.physics.position,o.physics.velocity) {
+                    let mut offset=o.physics.target_position.unwrap_or(Position{cell:0,origin:[0.;3],rotation:[1.,0.,0.,0.]});
+                    if o.physics.target.unwrap_or(0)!=0 {offset.origin=o.physics.target_offset.unwrap_or([0.;3]);}
+                    out.push(json!({"event":"missile","id":o.id.to_string(),"instance":o.physics.instance_stamp,
+                        "placement":position(&p),"velocity":velocity,"target":o.physics.target.unwrap_or(0).to_string(),
+                        "offset":position(&offset),"initialized":o.physics.target.is_some() || o.physics.target_position.is_some()}));
+                }
+            }
             if let Some(mode)=o.physics.mode {out.push(json!({"event":"mode","id":o.id.to_string(),"instance":o.physics.instance_stamp,"mode":mode}));}
             for p in &o.physics.behaviors {out.push(behavior(o.id,o.physics.instance_stamp,p));}
+            for (fx,scalar,target) in &o.physics.fx {out.push(json!({"event":"fx","id":o.id.to_string(),"instance":o.physics.instance_stamp,"fx":fx,"strength":scalar,"target":target.to_string()}));}
             for (name,value) in [("velocity",o.physics.velocity_scale),("jump",o.physics.jump_scale)] {
                 if let Some(value)=value {out.push(json!({"event":"motion","id":o.id.to_string(),"instance":o.physics.instance_stamp,"parameter":name,"value":value}));}
             }
@@ -87,7 +99,10 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             json!({"event":"remove","id":o.id.to_string(),"instance":o.instance})
         }
         ServerEvent::Object(o) => match o.action {
+            ObjectAction::InitializeMissile {position:p,velocity,target} => json!({"event":"missile","id":o.sender.id.to_string(),"instance":o.sender.instance,
+                "placement":position(&p),"velocity":velocity,"target":target.target.to_string(),"offset":position(&target.offset),"target_velocity":target.velocity,"initialized":target.initialized!=0}),
             ObjectAction::DoFx {fx,scalar} => json!({"event":"fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx,"strength":scalar}),
+            ObjectAction::DoFxScript(script) => json!({"event":"fx_script","id":o.sender.id.to_string(),"instance":o.sender.instance,"script":script}),
             ObjectAction::DoTargettedFx {fx,scalar,target} => json!({"event":"fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx,"strength":scalar,"target":target.to_string()}),
             ObjectAction::StopFx(fx) => json!({"event":"stop_fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx}),
             ObjectAction::DoMode(mode) | ObjectAction::SetMode(mode) => {
@@ -295,6 +310,17 @@ mod tests {
             region: 1,
         });
         assert_eq!(v[0]["id"], "9313444029402382339");
+    }
+    #[test]
+    fn native_missiles_keep_target_offsets_velocity_and_instance() {
+        let p=Position{cell:0x02990109,origin:[1.,2.,3.],rotation:[1.,0.,0.,0.]};
+        let v=convert(object(ObjectAction::InitializeMissile{position:p,velocity:[10.,0.,0.],target:Box::new(ac2_net::protocol::TargetPosition{target:0x8140000000030043,offset:p,velocity:[0.,1.,0.],initialized:1})}));
+        assert_eq!(v[0]["event"],"missile");assert_eq!(v[0]["target"],0x8140000000030043u64.to_string());
+        assert_eq!(v[0]["velocity"][0],10.);assert_eq!(v[0]["offset"]["position"][2],3.);assert_eq!(v[0]["initialized"],true);
+        let v=convert(ServerEvent::CreateObject(Box::new(CreateObject{id:21,visual:VisualDesc::default(),weenie:WeenieDesc::default(),
+            physics:PhysicsDesc{bitfield:0x80000,instance_stamp:3,position:Some(p),velocity:Some([10.,0.,0.]),target:Some(22),target_offset:Some([0.,0.,1.]),..Default::default()}})));
+        assert_eq!(v[0]["event"],"object");assert_eq!(v[1]["event"],"missile");assert_eq!(v[1]["offset"]["position"][2],1.);
+        assert_eq!(v[1]["instance"],3);assert_eq!(v[1]["target"],"22");
     }
     #[test]
     fn native_position_is_cell_local_and_heading_clockwise() {

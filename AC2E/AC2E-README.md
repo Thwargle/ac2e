@@ -19,7 +19,7 @@ services use this recovery path.
 
 ## Initial gameplay ruleset
 
-The default server loads 15,116 DAT-compatible placements from the retained population and authored starter content. Twenty-two rows reference assets absent from this Legions installation and are excluded with a report next to the generated TSV. Seven inactive authored portal test fixtures are also excluded; four compatible lifestone fixtures are enabled along with the server's native binding/recall handlers. Recovered world placements are retained. Static NPC/portal placements do not imply complete NPC scripting.
+The default server loads 15,132 DAT-compatible placements from the retained population and authored starter content. Twenty-two rows reference assets absent from this Legions installation and are excluded with a report next to the generated TSV. The authored portal routes and four compatible lifestone fixtures are enabled along with the server's native binding/recall handlers. Recovered world placements are retained. Static NPC/portal placements do not imply complete NPC scripting.
 
 The authored starter encounter supports targeting, range-checked melee/missile/magic attacks, learned racial starter skills, retaliation, health/vigor, mob death/despawn/respawn, XP, gold and automatic potion loot. Rewards and loot commit together before publication and survive logout/restart. The Legions profile validates and grants racial starter gear independently of the obsolete merchant/crafting catalog. Starter weapons can be equipped and their native modes/animations are broadcast to nearby players. The normal launcher enables validated portal routes, lifestones, and the three-Idol combat quest. The human starter circuit can be completed through its reward, outdoor exit and recall; it is authored development content, not full retail tutorial parity. Merchant/crafting lessons remain disabled because their catalog references absent records. Native loot-container protocol requests are forwarded by the client, but retail corpse generation/looting and complete quest/merchant behavior remain separate work. PvP, full original AI, server terrain collision and complete anti-cheat enforcement are not implemented by this integration.
 
@@ -44,34 +44,77 @@ The account backend serves `/source.zip` with the source used to build this modi
 
 ## Implementation notes
 
-### Armor, effects and Shelter introduction
+### Shelter continuation, armor and effects
 
-The racial starter shirt, pants and boots can be equipped or removed from the
-inventory. AC2E composes the avatar's native VisualDesc from saved clothing slots
-and character-creation traits, sends it to the owner and nearby players, and
-updates the spawn snapshot for later arrivals. Selection and re-entry use the
-same saved equipment. Other armor appearances still require validated profiles.
+The Shelter Guard, Lieutenant, Sentry, Scout and Advance Scout use native DAT
+StringInfo dialogue. Training stones show their original text. `@quest shelter`
+reports the ordered per-character progress. After the introductions:
 
-The Unreal bridge forwards native DoFX/StopFX messages. PSDesc bursts attach to
-the model's DAT bone or holding location and honor local/world particle space.
-Mind Lash's impact particles are verified in the rendered client. Cast enum IDs
-exist, but the basic Mind Lash cast ID has no FX-table node in these Legions
-DATs; projectile, sound, light and complete cast presentation are unfinished.
+1. Defeat a Drudge Digger and collect the Imbued Digging Tool.
+2. Speak to the Shelter Scout within four metres, out of combat. The tool is
+   consumed once; the Scout grants the three native tutorial potions and 40 XP.
+   The inventory must have room for all three rewards after consuming the tool.
+3. Defeat a Drudge Sentinel for the Menhir Glyph. Select the gateway and use the
+   glyph in the backpack while nearby. Its consumption and Vault placement are
+   saved together. An unrelated or distant target cannot consume it.
+4. Speak to the Advance Scout in the Vault, then use the shard for the authored
+   completion step and 65 XP. The exit portal leads to the outdoor starter hub.
 
-The Shelter Guard, Lieutenant and Sentry now use the original localized DAT
-dialogue with ordered, durable introduction progress (`q5` records). The ten
-training-stone types display their original instructions. `@quest shelter`
-reports progress. The starter instance mirrors the Guard and Lieutenant from
-the observed 0298 instance: cells 0108 and 0109 match 0299 byte-for-byte after
-their identity word. The new placement IIDs are reconstructed. No Sentry or
-training-stone coordinates were recovered, so this patch does not invent them
-in the normal world; the integration test uses explicitly marked fixtures.
+These exchanges use versioned `s1` journal entries, recomputed from a canonical
+plan on replay. They preserve inventory, progression and travel across restart.
+Introductions retain the earlier `q5` records. Failed or repeated exchanges grant
+nothing. The glyph gateway can be reused after unlocking it, allowing return
+after death or recall without requiring another consumable glyph.
 
-This is not the complete retail tutorial. Imbued Digging Tool and Menhir Glyph
-turn-ins, Scout rewards, the Menhir portal/shard, and the remaining original
-placements still need implementation. The separate Training Grounds combat,
-binding and exit circuit remains available; completing it does not complete
-Rescue the Shelter Hold.
+Placement provenance matters: the Guard/Lieutenant mirror the observed 0298
+training instance; its corresponding cells match 0299 after the identity word.
+The Advance Scout at 03f40154 is an observed placement. The new Sentry, Scout,
+two Drudges, gateways and shard use explicitly authored coordinates in
+`training-world.tsv`, not recovered retail spawn locations. The shard currently
+uses the installed Master Osteth Menhir asset and an authored completion rule;
+the original Menhir history/cinematic has not been reconstructed. Scout potion
+items are real DAT definitions, but their reflect, regeneration and speed buffs
+are not yet executable. XP, deterministic drops and encounter timing are AC2E
+development policy. The separate three-Idol Training Grounds circuit remains.
+
+Seven additional armor profiles are validated against the installed entity,
+qualities and physical records: Human 47001951/1952/1954, Lugian
+4700195E/195F/1960, and Tumerok 47001968. They supply torso/legs/feet for Human
+and Lugian and a torso for Tumerok. Native race/sex selectors choose appearance
+tables; worn pieces contribute their DAT armor values to development damage
+mitigation. Once the relevant Shelter quest drop is owned, additional Digger or
+Sentinel kills grant missing race-compatible profiles. This deterministic loot
+policy is not an original retail loot table. Unequip the existing slot first.
+
+Starter and additional armor use saved full VisualDesc updates for the owner,
+nearby players, late observers, selection and re-entry. Character creation traits
+remain intact. No debug command grants arbitrary item definitions.
+
+The client now decodes native AnimInfo FX triggers and 0x57 timed FX scripts,
+including simultaneous start/stop events. FX nodes can create native temporary
+models with their own behavior and target FX. Particle variants, bone/holding
+attachments, initial attachment frames and static effect roots are supported.
+Detached particle emitters retain their birth frame while attached emitters follow
+the animated socket. Projectile models face along the full flight direction.
+Native InitializeMissile and moving PhysicsDesc snapshots preserve target,
+offset, velocity and instance. The renderer handles fixed-point, object-target
+and untargeted flight, bounded lifetime and trail cleanup; missiles are excluded
+from selectable world contacts. Server health changes remain authoritative.
+
+This does not finish every retail spell effect. AC2E's starter magic still uses
+direct server damage rather than generating retail missiles with delayed hits.
+Native ballistic parameters, scripted missile creation, target cloning, sound/light/streak FX
+and the rest of the spell catalog need further work. Human/Lugian starter casts
+now select Magic_Nuke1 and Tumerok Flash selects Magic_Harm1 from their native
+skill records; normal magic auto-attacks keep Magic_Auto1.
+
+`Network/test_shelter.py` verifies the complete implemented continuation with two
+UDP clients, including three additional armor appearances and server restart.
+`Network/test_armor.py` covers the starter wardrobe on all six supported bodies.
+The Unreal DAT suite checks added armor metadata, native animation FX triggers,
+timed FX scripts and missile movement; the rendered login/combat test captures
+native impact particles and appearance changes. These checks do not establish
+full retail quest or spell parity.
 
 - The opt-in `PYREALIUM_UNREAL_LEGIONS_DATA=1` profile recognizes the supplied Legions state fingerprints. It does not modify DAT bytes or claim compatibility with the original 7148 client VM. Unreal decodes wire data and does not execute the merchant/group/allegiance WLIB packages whose retail layouts differ.
 - Skill metadata (1,927 resolved definitions; 186 unresolved) and 30 advancement curves were regenerated with the existing strict DAT readers. Unsupported records remain unsupported. Server metadata validation remains active for supported skills, inventory and loot.

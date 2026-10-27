@@ -216,6 +216,9 @@ impl Body {
         self.visual_desc_worn(physical, 0x1a)
     }
     pub fn visual_desc_worn(&self, physical: &[(u32, u32)], worn: u16) -> Result<Vec<u8>, WorldError> {
+        self.visual_desc_equipped(physical,worn,&[])
+    }
+    pub fn visual_desc_equipped(&self, physical: &[(u32,u32)],worn:u16,equipped:&[(u32,u32,f32)])->Result<Vec<u8>,WorldError> {
         let mut values = std::collections::BTreeMap::new();
         for &(key, bits) in physical {
             let value = f32::from_bits(bits);
@@ -246,6 +249,7 @@ impl Body {
             }
             traits.insert(CLOTHING_WORN, if worn & slot != 0 {1.0} else {0.0});
         }
+        for &(aspect,key,value) in equipped {aspects.entry(aspect).or_default().insert(key,value);}
         aspects.retain(|_, traits| !traits.is_empty());
 
         let mut bytes = Vec::new();

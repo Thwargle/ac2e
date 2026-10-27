@@ -654,6 +654,7 @@ fn training_combat_visual(
     scene: &mut crate::scene::Scene,
     fighting: bool,
     swing: bool,
+    skill: bool,
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     let saved = &store.characters[&character];
     let mode = if fighting { crate::starter_gear::combat_mode(&saved.inventory) }
@@ -667,7 +668,10 @@ fn training_combat_visual(
         let (after, stamp) = next.next_visual(saved.instance).map_err(other)?;
         next = after;
         last_stamp = stamp;
-        events.push(crate::combat_visual::weapon_attack(character, saved.instance, stamp, mode).map_err(other)?);
+        let attack=if skill && mode==crate::combat_visual::MAGIC {
+            crate::combat_visual::attack_behavior(character,saved.instance,stamp,if saved.creation.as_ref().is_some_and(|r|r.race==4){0x410000bc}else{0x410000b9})
+        } else {crate::combat_visual::weapon_attack(character,saved.instance,stamp,mode)};
+        events.push(attack.map_err(other)?);
         if mode==crate::combat_visual::MAGIC {
             if let Some((fx,_))=saved.creation.as_ref().and_then(|r|crate::combat_visual::magic_effects(r.race)) {
                 let (after,stamp)=next.next_visual(saved.instance).map_err(other)?;next=after;last_stamp=stamp;
@@ -919,7 +923,7 @@ fn change_hand_item(
         .items()
         .find(|item| item.id == request.item)
         .ok_or_else(|| invalid("Item is not owned."))?;
-    let apparel = saved.creation.as_ref().and_then(|r| crate::starter_gear::apparel_slot(item,r.race));
+    let apparel = saved.creation.as_ref().and_then(|r| crate::starter_gear::apparel_slot(item,r.race).or_else(||crate::apparel::slot(item,r.race)));
     let hand = metadata
         .get(&item.definition)
         .and_then(|entry| *entry)
@@ -933,6 +937,9 @@ fn change_hand_item(
     }
     let equipped = !matches!(action, HandChange::Unequip { .. })
         && matches!(item.location, crate::inventory::Location::Bag(_));
+    if equipped && saved.inventory.items().any(|other|other.id!=item.id && other.location==crate::inventory::Location::Equipped(slot)) {
+        return Err(invalid("Unequip the item in that slot before equipping its replacement."));
+    }
     if let HandChange::Equip {
         slot: requested,
         source,
@@ -1014,7 +1021,7 @@ fn change_hand_item(
     if apparel.is_some() {
         let creation=saved.creation.as_ref().unwrap();
         let visual=crate::appearance::body(creation.race,creation.sex).unwrap()
-            .visual_desc_worn(&creation.physical_values,crate::starter_gear::worn_mask(&candidate,creation.race)).map_err(other)?;
+            .visual_desc_equipped(&creation.physical_values,crate::starter_gear::worn_mask(&candidate,creation.race),&crate::apparel::aspects(&candidate,creation.race,creation.sex)).map_err(other)?;
         let (next,stamp)=peer.emotes.next_visual(saved.instance).map_err(other)?;
         let appearance=crate::combat_visual::appearance(character,saved.instance,stamp,&visual).map_err(other)?;
         let old_instance=scene.inventory_instance(character,item.id).map_err(other)?;
@@ -1092,11 +1099,14 @@ fn item_service_transaction(
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     item_service_transaction_quest(peer, character, items, changes, completion, store, scene, metadata, false, false)
 }
-fn item_service_transaction_quest(
+fn item_service_transaction_quest(peer:&mut Peer,character:u64,items:&[crate::inventory::Command],changes:&[crate::progression::Command],completion:Vec<Vec<u8>>,store:&mut Store,scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,supplies:bool,practice:bool)->io::Result<Vec<crate::scene::Delivery>> {
+    item_service_transaction_profile(peer,character,items,changes,completion,store,scene,metadata,supplies,practice,None)
+}
+fn item_service_transaction_profile(
     peer: &mut Peer, character: u64,
     items: &[crate::inventory::Command], changes: &[crate::progression::Command],
     mut completion: Vec<Vec<u8>>, store: &mut Store, scene: &mut crate::scene::Scene,
-    metadata: &BTreeMap<u32, Option<crate::inventory_request::Metadata>>, supplies: bool, practice: bool,
+    metadata: &BTreeMap<u32, Option<crate::inventory_request::Metadata>>, supplies: bool, practice: bool, shelter:Option<crate::quests::Command>,
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     let saved = &store.characters[&character];
     if !scene.can_observe(character, character) || !saved.progression.alive() || peer.combat {
@@ -1108,22 +1118,22 @@ fn item_service_transaction_quest(
         .iter()
         .filter(|item| matches!(item, crate::inventory::Command::Grant(_)))
         .count()
-        > 1
+        > if shelter.is_some() {3} else {1}
     {
-        return Err(invalid("Item services support one output per transaction."));
+        return Err(invalid("Item service output limit exceeded."));
     }
     let first = items
         .iter()
         .any(|item| item.allocated_id().is_some())
         .then(|| store.next_item_id())
         .transpose()?;
-    let (bag, state) = crate::player_transaction::candidate(
+    let (bag, state) = if items.is_empty() && changes.is_empty() {(saved.inventory.clone(),saved.progression.clone())} else {crate::player_transaction::candidate(
         &saved.inventory,
         &saved.progression,
         items,
         changes,
         first,
-    )?;
+    )?};
     let mut events = Vec::new();
     let mut removed = Vec::new();
     let mut granted = Vec::new();
@@ -1178,8 +1188,15 @@ fn item_service_transaction_quest(
         events.extend(next.updates().map_err(other)?);
         events.push(script::chat(&next.potion_guidance(), 1).map_err(other)?);
     }
+    if let Some(command)=shelter {
+        let (expected_items,expected_changes,next)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
+        if crate::player_transaction::encode_items(items)!=crate::player_transaction::encode_items(&expected_items) || crate::player_transaction::encode_changes(changes)!=crate::player_transaction::encode_changes(&expected_changes) {return Err(invalid("Shelter exchange differs from canonical plan"));}
+        events.extend(next.updates().map_err(other)?);
+        events.push(script::chat(crate::shelter::guidance(next.shelter_phase()),1).map_err(other)?);
+    }
     peer.validate_scene_batch(&events)?;
-    store.player_transaction_quest(&peer.session.account, character, items, changes, supplies, practice)?;
+    if let Some(command)=shelter {store.shelter_exchange(&peer.session.account,character,command)?;}
+    else {store.player_transaction_quest(&peer.session.account, character, items, changes, supplies, practice)?;}
     for item in removed {
         scene.inventory_removed(character, item).map_err(other)?;
     }
@@ -1263,27 +1280,45 @@ fn group_publish(
 // Placements are discovered from the live scene, not a fixed list of IIDs.
 const TRAINING_MENTOR_ENTITY: u32 = crate::training_dialogue::MENTOR_ENTITY;
 
-fn use_shelter_guide(peer: &mut Peer, character: u64, target: u64, store: &mut Store,
-    scene: &crate::scene::Scene, now: u64) -> io::Result<()> {
-    if peer.combat || !store.characters[&character].progression.alive() {
-        return Err(invalid("Speak to the Shelter guides while alive and out of combat."));
-    }
+fn use_shelter_guide(peer:&mut Peer,character:u64,target:u64,store:&mut Store,
+    scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,now:u64)->io::Result<Vec<crate::scene::Delivery>> {
+    if peer.combat || !store.characters[&character].progression.alive() {return Err(invalid("Speak to the Shelter guides while alive and out of combat."));}
     let npc=scene.examination_content(character,target).ok_or_else(||invalid("Shelter guide is not visible."))?;
-    let (table,key,command)=crate::shelter::introduction(&store.characters[&character].quests,npc.entity)
-        .ok_or_else(||invalid("Unsupported Shelter guide."))?;
-    // Reuse authoritative visibility, same-cell and four-metre checks.
-    let mut events=vec![npc_use_completion(character,target,scene)?];
-    events.push(crate::shelter::text(table,key).map_err(other)?);
-    let next=match command {Some(c)=>store.characters[&character].quests.apply(&c).map_err(other)?,None=>store.characters[&character].quests.clone()};
-    if command.is_some() {events.extend(next.updates().map_err(other)?);}
-    if next.shelter_phase()==3 && npc.entity==crate::shelter::SENTRY {
-        events.push(script::chat(crate::shelter::guidance(3),1).map_err(other)?);
-    }
+    let saved=&store.characters[&character];
+    let (table,key,command)=if npc.entity==crate::shelter::SCOUT && saved.quests.shelter_phase()==3 && crate::shelter::owned(&saved.inventory,crate::shelter::TOOL).is_some() {
+        (0x2500164b,0x11ded2d4,Some(crate::quests::Command::ShelterTool))
+    } else {crate::shelter::introduction(&saved.quests,npc.entity).ok_or_else(||invalid("Complete the previous Shelter objective first."))?};
+    let mut events=vec![npc_use_completion(character,target,scene)?,crate::shelter::text(table,key).map_err(other)?];
     peer.admit_npc_dialogue(now)?;
+    if let Some(command)=command.filter(|c|crate::shelter::exchange(*c)) {
+        let (items,rewards,_)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
+        return item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command));
+    }
+    if let Some(c)=command {
+        let next=saved.quests.apply(&c).map_err(other)?;
+        events.extend(next.updates().map_err(other)?);
+        events.push(script::chat(crate::shelter::guidance(next.shelter_phase()),1).map_err(other)?);
+    }
     peer.validate_scene_batch(&events)?;
     if let Some(c)=command {store.quest_command(&peer.session.account,character,c)?;}
-    peer.queue_ordered_batch(events)?;
-    Ok(())
+    peer.queue_ordered_batch(events)?;Ok(Vec::new())
+}
+fn use_shelter_glyph(peer:&mut Peer,character:u64,item:u64,target:u64,store:&mut Store,
+    scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,
+    encounters:&mut Option<crate::encounters::Encounters>,bootstrap:&mut Option<crate::bootstrap::Bootstrap>,now:u64)->io::Result<Vec<crate::scene::Delivery>> {
+    if target!=crate::shelter::PORTAL || crate::shelter::owned(&store.characters[&character].inventory,crate::shelter::GLYPH)!=Some(item) {
+        return Err(invalid("Target the Menhir Portal, then use your Menhir Glyph."));
+    }
+    let completion=npc_use_completion(character,target,scene)?;
+    let prepared=prepare_forced_move(peer,character,crate::shelter::VAULT,scene,bootstrap)?;
+    let command=crate::quests::Command::ShelterGlyph;
+    let saved=&store.characters[&character];
+    let (items,rewards,_)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
+    let events=vec![completion,prepared.wire,script::private_call(script::COMBAT_STATE,&script::integer(0)).map_err(other)?];
+    let mut updates=item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command))?;
+    if let Some(runtime)=encounters {runtime.stop(character);}
+    updates.extend(scene.update(character,prepared.motion.position_stamp,&prepared.update).map_err(other)?);
+    peer.motion=Some(prepared.motion);peer.target=None;peer.last_world_use_ms=Some(now);Ok(updates)
 }
 
 fn npc_use_completion(
@@ -1658,6 +1693,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 // String tables live in the locale archive, not portal.dat.
                 let mut locale = crate::dat::Dat::open(directory.join("local_English.dat"))?;
                 locale.read(0x25000014)?;
+            }
+            if unreal_gameplay {
+                for (definition,metadata) in crate::shelter::validate(&mut portal)?.into_iter().chain(crate::apparel::validate(&mut portal)?) {inventory_metadata.insert(definition,Some(metadata));}
             }
             if starter_equipment {
                 for (definition, metadata) in crate::starter_gear::validate(&mut portal)? {
@@ -2700,7 +2738,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     peer.pending_skill = Some(request_id);
                                                     deliveries.extend(training_combat_visual(
                                                         peer, character, &store, &mut scene, true,
-                                                        false,
+                                                        false, false,
                                                     )?);
                                                     Ok(())
                                                 })(
@@ -2793,12 +2831,16 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             }
                                         }
                                         script::Request::UseObject(request) => {
+                                            if request.target!=0 && !(unreal_gameplay && store.characters[&character].inventory.items().any(|i|i.id==request.item && i.definition==crate::shelter::GLYPH)) {
+                                                return Err(invalid("Targeted use is only supported for your Menhir Glyph."));
+                                            }
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
                                             if unreal_gameplay && service_entity.is_some_and(crate::shelter::supported) {
                                                 if request.owner != character {return Err(invalid("Shelter use owner mismatch."));}
-                                                if let Err(error)=use_shelter_guide(peer,character,request.item,&mut store,&scene,now_ms) {
-                                                    replies.extend(peer.send_event(&script::chat(&error.to_string(),1).map_err(other)?,now)?);
+                                                match use_shelter_guide(peer,character,request.item,&mut store,&mut scene,&inventory_metadata,now_ms) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>replies.extend(peer.send_event(&script::chat(&error.to_string(),1).map_err(other)?,now)?),
                                                 }
                                                 return Ok(replies);
                                             }
@@ -2898,6 +2940,18 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         )?,
                                                     ),
                                                 }
+                                                return Ok(replies);
+                                            }
+                                            if unreal_gameplay && store.characters[&character].inventory.items().any(|i|i.id==request.item && i.definition==crate::shelter::GLYPH) {
+                                                if request.owner!=character {return Err(invalid("Glyph owner mismatch"));}
+                                                match use_shelter_glyph(peer,character,request.item,request.target,&mut store,&mut scene,&inventory_metadata,&mut encounters,&mut bootstrap,now_ms) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>replies.extend(peer.send_event(&script::chat(&error.to_string(),1).map_err(other)?,now)?),
+                                                }
+                                                return Ok(replies);
+                                            }
+                                            if request.item==crate::shelter::PORTAL && store.characters[&character].quests.shelter_phase()<5 {
+                                                replies.extend(peer.send_event(&script::chat("Target the Menhir Portal and use your Menhir Glyph from the backpack.",1).map_err(other)?,now)?);
                                                 return Ok(replies);
                                             }
                                             if let Some(route) = portal_routes.get(request.item) {
@@ -3083,6 +3137,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         peer,
                                                         character,
                                                         &crate::equipment::UseRequest {
+                                                            target:0,
                                                             owner: request.owner,
                                                             item: request.item,
                                                         },
@@ -3126,6 +3181,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                                 )
                                                             })?;
                                                     let item = crate::equipment::UseRequest {
+                                                        target:0,
                                                         owner: request.owner,
                                                         item: request.item,
                                                     };
@@ -3532,7 +3588,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             if config.initialize_ui {
                                                 deliveries.extend(training_combat_visual(
                                                     peer, character, &store, &mut scene, enabled,
-                                                    false,
+                                                    false, false,
                                                 )?);
                                             }
                                         }
@@ -4560,6 +4616,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                     crate::encounters::Event::Swing(player) => {
                         if let Some(addr) = active_characters.get(&player) {
                             if let Some(peer) = peers.get_mut(addr) {
+                                let casting=peer.pending_skill.is_some();
                                 if let Some(request_id) = peer.pending_skill.take() {
                                     updates.push(crate::scene::Delivery {
                                         recipient: player,
@@ -4569,7 +4626,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                     });
                                 }
                                 match training_combat_visual(
-                                    peer, player, &store, &mut scene, true, true,
+                                    peer, player, &store, &mut scene, true, true, casting,
                                 ) {
                                     Ok(deliveries) => updates.extend(deliveries),
                                     Err(error) => {
@@ -4611,7 +4668,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         updates.push(crate::scene::Delivery {
                             recipient: player,
                             data: script::chat(
-                                "Training reward: a health potion was placed in your bag.",
+                                match item.definition {crate::shelter::TOOL=>"Collected Imbued Digging Tool: return to the Shelter Scout.",crate::shelter::GLYPH=>"Collected Menhir Glyph: target the Menhir Portal and use the glyph.",crate::item_services::POTION_DEFINITION=>"Training reward: a health potion was placed in your bag.",_=>"Collected equipment: open your backpack to inspect and equip it."},
                                 1,
                             )
                             .map_err(other)?
@@ -4707,7 +4764,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 });
                             }
                             match training_combat_visual(
-                                peer, player, &store, &mut scene, false, false,
+                                peer, player, &store, &mut scene, false, false, false,
                             ) {
                                 Ok(deliveries) => updates.extend(deliveries),
                                 Err(_) => {

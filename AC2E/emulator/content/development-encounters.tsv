@@ -9,3 +9,6 @@ npc	470007d1	60	6	1500	3	30000	40	2
 npc	470012c0	80	8	1500	3	30000	60	3
 npc	47000fc4	100	10	1500	3	30000	80	4
 npc	470007a4	120	12	1500	3	30000	100	5
+# Shelter native levels/vitals: Digger 1/25, Sentinel 2/32. Remaining combat balance is authored.
+npc	4700158b	25	3	1800	3	30000	5	1
+npc	4700158c	32	4	1800	3	30000	10	1

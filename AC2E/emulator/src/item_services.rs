@@ -100,6 +100,7 @@ pub fn acquired(owner: u64, item: &Item, metadata: Metadata) -> Result<Vec<u8>, 
         // The nested inventory/picking.up.item.elog retains this exact full
         // acquisition shape with field 6 zero and DID tag 4 (item 470017f3).
         || (metadata.icon >> 24 != 0x20
+            && !(item.definition == crate::shelter::GLYPH && item.visual == 0x1f0001cf && metadata.physical == 0x4700026a && metadata.icon == 0)
             && !(item.definition == crate::crafting::CATALYST
                 && item.visual == 0x1f000234
                 && metadata.physical == 0x47000260

@@ -523,10 +523,11 @@ pub fn create_stationary_object_with_scale(
     // PhysicsDesc::StreamPack 00641530; ac2_omishan_allyhall.elog offsets 20..48.
     // Retained standing profiles for the portal, Idol Spawn and quartermaster
     // supply both the native mode and scale slider. Do not copy combat/death
-    // modes or assume every visual supports the same profile.
+    // modes or assume every visual supports the same profile. Shelter Drudges
+    // use the same validated 44000018 table and default 4000000A scale slider.
     let standing_appearance = matches!(
         object.parent_visual_did,
-        0x1f00031e | 0x1f0003d1 | 0x1f001941
+        0x1f00031e | 0x1f0003d1 | 0x1f001941 | 0x1f000036
     );
     // This mentor's DAT behavior table 44000018 has initial mode 40000001
     // (0067d000). PhysicsDesc's zero default would replace that initial mode.

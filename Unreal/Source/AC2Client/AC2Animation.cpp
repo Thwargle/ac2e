@@ -132,7 +132,24 @@ bool FAC2Animation::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
         }
         Tracks.Add(MoveTemp(T));
     }
-    return R.Good && !Tracks.IsEmpty();
+    // AnimAsset::StreamPackInternal appends AnimInfo: native FX triggers,
+    // weenie hooks, impulse triggers and hold-loop data (7160 006B4FA0).
+    if(R.Left()>=4 && R.Word())
+    {
+        N=R.Count(28,4096);
+        for(int32 I=0;I<N && R.Good;++I)
+        {
+            FEffect E;E.Id=R.Word();E.Phase=R.Float();E.Stop=R.Word()!=0;
+            E.Probability=R.Float();E.Intensity=R.Float();E.Variation=R.Float();E.Play=R.Word()!=0;
+            if(!FMath::IsFinite(E.Phase)||!FMath::IsFinite(E.Probability)||!FMath::IsFinite(E.Intensity)||!FMath::IsFinite(E.Variation))R.Good=false;
+            Effects.Add(E);
+        }
+        N=R.Count(20,4096);R.Take(int64(N)*20); // Server-owned attack hooks never apply damage locally.
+        N=R.Count(12,4096);
+        for(int32 I=0;I<N && R.Good;++I){if(!R.Word())R.Take(12);R.Take(8);}
+        R.Take(12); // hold flag, loop start/end
+    }
+    return R.End() && !Tracks.IsEmpty();
 }
 TArray<FTransform> FAC2Animation::Sample(float Time, const TArray<FTransform> &Rest) const
 {
@@ -151,6 +168,33 @@ float FAC2Animation::BoneWeight(int32 Bone, float Phase) const
 {
     return Tracks.IsValidIndex(Bone) ? SampleKeys(Tracks[Bone].Weight, FMath::Frac(Phase) * Period, 1.f)
                                      : 0.f;
+}
+TArray<FAC2Animation::FEffect> FAC2Animator::EffectsBetween(float From,float To,const FAC2AnimatorInput& Input) const
+{
+    TArray<FWeighted> Leaves;Gather(Root.Get(),Input,1,Leaves);
+    const FWeighted* Best=nullptr;
+    for(const auto& L:Leaves)if(L.Node->Clip && (!Best || L.Weight>Best->Weight))Best=&L;
+    TArray<FAC2Animation::FEffect> Out;
+    if(Best && To>From)for(const auto& E:Best->Node->Clip->Effects)
+        if((E.Phase>From || (From==0 && E.Phase==0)) && E.Phase<=To)Out.Add(E);
+    return Out;
+}
+bool FAC2FXScript::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
+{
+    // FxScript::StreamPack 7160 00628970: Trigger list, ImpulseTrigger list, period.
+    Effects.Reset();Period=0;FAC2AssetReader R(Bytes);
+    if(Id>>24!=0x57 || R.Word()!=Id)return false;
+    int32 N=R.Count(28,4096);
+    for(int32 I=0;I<N && R.Good;++I)
+    {
+        FAC2Animation::FEffect E;E.Id=R.Word();E.Phase=R.Float();E.Stop=R.Word()!=0;
+        E.Probability=R.Float();E.Intensity=R.Float();E.Variation=R.Float();E.Play=R.Word()!=0;
+        if(!FMath::IsFinite(E.Phase)||E.Phase<0||E.Phase>1||!FMath::IsFinite(E.Probability)||!FMath::IsFinite(E.Intensity)||!FMath::IsFinite(E.Variation))R.Good=false;
+        Effects.Add(E);
+    }
+    N=R.Count(12,4096);
+    for(int32 I=0;I<N && R.Good;++I){if(!R.Word())R.Take(12);R.Take(8);}
+    Period=R.Float();return R.End() && FMath::IsFinite(Period) && Period>0 && Period<=300;
 }
 TSharedPtr<FAC2Animation> FAC2Animation::Load(FAC2DatArchive &Portal, uint32 Map, uint32 Motion)
 {

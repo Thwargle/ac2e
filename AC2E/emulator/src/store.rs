@@ -520,7 +520,7 @@ impl Store {
         id: u64,
         command: crate::quests::Command,
     ) -> io::Result<bool> {
-        if matches!(command, crate::quests::Command::Kill(_) | crate::quests::Command::ClaimSupplies | crate::quests::Command::CraftedPotion | crate::quests::Command::BoundLifestone | crate::quests::Command::Travelled) {
+        if crate::shelter::exchange(command) || matches!(command, crate::quests::Command::Kill(_) | crate::quests::Command::ClaimSupplies | crate::quests::Command::CraftedPotion | crate::quests::Command::BoundLifestone | crate::quests::Command::Travelled) {
             return Err(invalid("quest completion requires its authoritative reward transaction"));
         }
         let character = self
@@ -547,6 +547,19 @@ impl Store {
         character.quests = quests;
         character.progression = progression;
         Ok(true)
+    }
+    /// One fsynced command includes inventory, rewards, quest and portal relocation.
+    pub fn shelter_exchange(&mut self,account:&str,id:u64,command:crate::quests::Command)->io::Result<()> {
+        let first=self.next_item_id()?;
+        let c=self.characters.get(&id).filter(|c|c.account==account && !c.deleted && c.progression.alive())
+            .ok_or_else(||invalid("Shelter exchange owner unavailable"))?;
+        let (items,changes,quests)=crate::shelter::plan(&c.quests,&c.inventory,command,first)?;
+        let (inventory,progression)=if items.is_empty() && changes.is_empty() {(c.inventory.clone(),c.progression.clone())}
+            else {crate::player_transaction::candidate(&c.inventory,&c.progression,&items,&changes,Some(first))?};
+        self.append_record(&format!("s1\t{id}\t{}\t{first}",command.encode()))?;
+        let c=self.characters.get_mut(&id).unwrap();c.inventory=inventory;c.progression=progression;c.quests=quests;
+        if command==crate::quests::Command::ShelterGlyph {self.positions.insert(id,crate::shelter::VAULT);self.positions_dirty=true;}
+        Ok(())
     }
     /// Persist the objective with the normal payout before publishing death.
     pub fn encounter_reward(
@@ -1394,6 +1407,21 @@ fn decode_journal_collect(
             character.progression = progression;
             continue;
         }
+        if fields.len()==4 && fields[0]=="s1" {
+            let id=fields[1].parse::<u64>().map_err(|_|invalid("Shelter owner"))?;
+            let command=crate::quests::Command::decode(fields[2]).map_err(io::Error::other)?;
+            let first=fields[3].parse::<u64>().map_err(|_|invalid("Shelter item identity"))?;
+            let expected=records.values().map(|c|c.inventory.high_water()).max().unwrap_or(crate::inventory::ITEM_NAMESPACE).checked_add(1).ok_or_else(||invalid("Item identity exhausted"))?;
+            if first!=expected {return Err(invalid("Shelter item sequence"));}
+            let c=records.get_mut(&id).filter(|c|!c.deleted && c.progression.alive()).ok_or_else(||invalid("Shelter owner unavailable"))?;
+            let (items,changes,quests)=crate::shelter::plan(&c.quests,&c.inventory,command,first)?;
+            if !items.is_empty() || !changes.is_empty() {
+                (c.inventory,c.progression)=crate::player_transaction::candidate(&c.inventory,&c.progression,&items,&changes,Some(first))?;
+            }
+            c.quests=quests;
+            if command==crate::quests::Command::ShelterGlyph {relocations.insert(id,(revision,crate::shelter::VAULT));}
+            continue;
+        }
         if fields.len() == 4 && fields[0] == "p3" {
             let id = fields[1].parse::<u64>().map_err(|_| invalid("Invalid travel lesson owner"))?;
             let portal = u64::from_str_radix(fields[2], 16).map_err(|_| invalid("Invalid training portal identity"))?;
@@ -1960,6 +1988,49 @@ fn decode_creation(name: &str, hex: &str) -> io::Result<CharacterCreationRequest
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shelter_exchanges_replay_without_duplicate_rewards_or_lost_travel() {
+        use crate::{quests::Command as Q,inventory::Command as I,shelter};
+        let dir=std::env::temp_dir().join(format!("ac2-shelter-{}",std::process::id()));
+        let final_state;
+        {
+            let mut s=Store::open(&dir).unwrap();let c=s.create_native("local",&request("Shelter Hero")).unwrap();
+            assert!(s.shelter_exchange("local",c.id,Q::ShelterComplete).is_err());
+            for q in [Q::ShelterGuard,Q::ShelterLieutenant,Q::ShelterSentry] {s.quest_command("local",c.id,q).unwrap();}
+            assert!(s.shelter_exchange("local",c.id,Q::ShelterTool).is_err());
+            let id=s.next_item_id().unwrap();s.inventory_command("local",c.id,I::Grant(shelter::item(shelter::TOOL,id,0).unwrap())).unwrap();
+            assert!(s.shelter_exchange("other",c.id,Q::ShelterTool).is_err());
+            s.shelter_exchange("local",c.id,Q::ShelterTool).unwrap();
+            assert!(s.shelter_exchange("local",c.id,Q::ShelterTool).is_err());
+            assert_eq!(s.characters[&c.id].inventory.items().count(),3);
+            let id=s.next_item_id().unwrap();s.inventory_command("local",c.id,I::Grant(shelter::item(shelter::GLYPH,id,3).unwrap())).unwrap();
+            s.shelter_exchange("local",c.id,Q::ShelterGlyph).unwrap();
+            assert_eq!(s.placement(c.id),Some(shelter::VAULT));
+            s.shelter_exchange("local",c.id,Q::ShelterAdvance).unwrap();s.shelter_exchange("local",c.id,Q::ShelterComplete).unwrap();
+            final_state=s.characters[&c.id].clone();
+            assert_eq!(final_state.quests.shelter_phase(),7);
+            assert!(s.shelter_exchange("local",c.id,Q::ShelterComplete).is_err());
+        }
+        {let s=Store::open(&dir).unwrap();assert_eq!(s.characters[&1],final_state);assert_eq!(s.placement(1),Some(shelter::VAULT));}
+        for file in ["characters.journal","positions.snapshot"] {let _=fs::remove_file(dir.join(file));}fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn shelter_full_bag_rejects_without_consuming_tool_or_advancing_quest() {
+        use crate::{quests::Command as Q,inventory::{Command as I,BAG_SLOTS},shelter};
+        let dir=std::env::temp_dir().join(format!("ac2-shelter-full-{}",std::process::id()));
+        {
+            let mut s=Store::open(&dir).unwrap();let c=s.create_native("local",&request("Full Pack")).unwrap();
+            for q in [Q::ShelterGuard,Q::ShelterLieutenant,Q::ShelterSentry] {s.quest_command("local",c.id,q).unwrap();}
+            for slot in 0..BAG_SLOTS {
+                let id=s.next_item_id().unwrap();
+                s.inventory_command("local",c.id,I::Grant(shelter::item(if slot==0 {shelter::TOOL}else{0x47001583},id,slot).unwrap())).unwrap();
+            }
+            let before=s.characters[&c.id].clone();let journal=fs::read(dir.join("characters.journal")).unwrap();
+            assert!(s.shelter_exchange("local",c.id,Q::ShelterTool).is_err());
+            assert_eq!(s.characters[&c.id],before);assert_eq!(fs::read(dir.join("characters.journal")).unwrap(),journal);
+        }
+        for file in ["characters.journal","positions.snapshot"] {let _=fs::remove_file(dir.join(file));}fs::remove_dir(dir).unwrap();
+    }
     #[test]
     fn deletion_restoration_keeps_identity_appearance_and_saved_placement() {
         let dir = std::env::temp_dir().join(format!("ac2-lifecycle-{}", std::process::id()));

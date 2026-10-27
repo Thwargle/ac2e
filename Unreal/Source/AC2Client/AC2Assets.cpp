@@ -93,6 +93,9 @@ struct FAC2FXNode
     TMap<uint32, TSharedPtr<FAC2FXNode>> Terrain;
     TArray<uint32> Descriptors;
     uint32 Holding = 0, Bone = 0;
+    uint32 Visual=0,Behavior=0,TargetFX=0,Script=0;
+    float Lifetime=0;
+    bool Parent=false,Retarget=false,FireAndForget=false;
     FVector Offset = FVector::ZeroVector;
     bool Water = false, RemoveRotation = false;
 };
@@ -271,13 +274,33 @@ struct FAC2AssetLibrary::FImpl
         uint32 Descriptor;
     };
     TArray<FAppearanceAttachment> AppearanceAttachments;
-    struct FNetworkEffect { FAppearanceAttachment Attachment; uint32 Effect; };
+    struct FNetworkEffect { FAppearanceAttachment Attachment; uint32 Effect; TWeakObjectPtr<USceneComponent> Target; FTransform BirthFrame; };
     TArray<FNetworkEffect> NetworkEffects;
+    struct FVisualEffect {FAppearanceAttachment Attachment;uint32 Effect=0;float Age=0,Life=2;TWeakObjectPtr<AActor> Actor;TSharedPtr<FAC2AssetLibrary> Model;TWeakObjectPtr<USceneComponent> Target;};
+    TArray<FVisualEffect> VisualEffects;
+    struct FScriptEffect {FAC2FXScript Script;float Phase=0;int32 Depth=0;};
+    TArray<FScriptEffect> ScriptEffects;
+    int32 EffectDepth=0;
     uint64 EffectSerial=0x8000000000000000ULL;
     uint32 ModelVisual=0;
     TMap<uint32, TArray<FAC2FXNode>> AppearanceEffects;
     TUniquePtr<FAC2Effects> AttachedEffects;
     TWeakObjectPtr<USceneComponent> ModelRoot;
+    FTransform EffectFrame(const FAC2FXNode& Node) const
+    {
+        FTransform At(Node.Offset*100);
+        for(const auto& G:Animated)
+        {
+            if(Node.Holding)
+            {const auto* S=G.Setup.Sockets.Find(Node.Holding);if(!S || !G.Bones.IsValidIndex(S->Bone))continue;
+                At=At*FTransform(S->Frame.ToMatrixWithScale()*G.Bones[S->Bone])*G.Frame;break;}
+            if(Node.Bone)
+            {int32 B=G.Setup.Names.IndexOfByKey(Node.Bone);if(!G.Bones.IsValidIndex(B))continue;At=At*FTransform(G.Bones[B])*G.Frame;break;}
+        }
+        if(ModelRoot.IsValid())At=At*ModelRoot->GetComponentTransform();
+        if(Node.RemoveRotation)At.SetRotation(FQuat::Identity);
+        return At;
+    }
     FString Directory;
     float PreviousAnimationTime = 0;
     int32 MovingPoseUpdates = 0;
@@ -1052,16 +1075,24 @@ struct FAC2AssetLibrary::FImpl
         Field(0x2000);
         Field(0x4000);
         Field(0x8000, 20);
-        for (uint64 Bit :
-             {0x10000ULL, 0x20000ULL, 0x40000ULL, 0x2000000000ULL, 0x80000ULL, 0x100000ULL, 0x200000ULL,
-              0x400000ULL, 0x800000ULL, 0x800000000ULL, 0x1000000ULL, 0x2000000ULL, 0x4000000ULL})
+        Field(0x10000);
+        if(Bits&0x20000)Node.Visual=R.Word();
+        if(Bits&0x40000)Node.Lifetime=R.Float();
+        Field(0x2000000000ULL);
+        if(Bits&0x80000)Node.Behavior=R.Word();
+        if(Bits&0x100000)Node.Parent=R.Word()!=0;
+        Field(0x200000);
+        if(Bits&0x400000)Node.Retarget=R.Word()!=0;
+        Field(0x800000);Field(0x800000000ULL);
+        if(Bits&0x1000000)Node.TargetFX=R.Word();
+        for (uint64 Bit : {0x2000000ULL, 0x4000000ULL})
             Field(Bit);
         if (Bits & 0x8000000)
         {
             const uint32 N = R.Word() & 65535;
             R.Take(int64(N) * 8);
         }
-        Field(0x10000000);
+        if(Bits&0x10000000)Node.FireAndForget=R.Word()!=0;
         if (Bits & 0x20000000)
             Node.Water = R.Word() != 0;
         Field(0x40000000);
@@ -1074,7 +1105,7 @@ struct FAC2AssetLibrary::FImpl
             R.Take(8);
         }
         Field(0x400000000ULL);
-        Field(0x1000000000ULL);
+        if(Bits&0x1000000000ULL)Node.Script=R.Word();
         if (Bits & 0x4000000000ULL)
             Node.RemoveRotation = R.Word() != 0;
         if (Bits & ~0xffffffffffULL)
@@ -1099,7 +1130,7 @@ struct FAC2AssetLibrary::FImpl
                     const uint32 Terrain = R.Word();
                     Node.Terrain.Add(Terrain, MakeShared<FAC2FXNode>(FXNode(R)));
                 }
-                if (!Node.Descriptors.IsEmpty() || !Node.Terrain.IsEmpty())
+                if (!Node.Descriptors.IsEmpty() || !Node.Terrain.IsEmpty() || Node.Visual || Node.TargetFX || Node.Script)
                     Nodes.Add(MoveTemp(Node));
             }
         }
@@ -2062,7 +2093,10 @@ struct FAC2AssetLibrary::FImpl
 FAC2AssetLibrary::FAC2AssetLibrary() : Impl(MakeUnique<FImpl>())
 {
 }
-FAC2AssetLibrary::~FAC2AssetLibrary() = default;
+FAC2AssetLibrary::~FAC2AssetLibrary()
+{
+    for(auto& E:Impl->VisualEffects){E.Model.Reset();if(E.Actor.IsValid())E.Actor->Destroy();}
+}
 bool FAC2AssetLibrary::ValidateGrassMaterials(int32 &Count)
 {
     Count = 0;
@@ -2265,11 +2299,12 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
 void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalViewer,
                                const FVector *LocalVelocity)
 {
+    TArray<FAC2Animation::FEffect> AnimationEffects;
+    const float PreviousActionTime=Impl->ActionTime;
     const float Delta = FMath::Clamp(Time - Impl->PreviousAnimationTime, 0.f, .2f);
     Impl->PreviousAnimationTime = Time;
     Impl->ActionTime+=Delta*Impl->ActionRate;
-    if(Impl->Action && !Impl->HoldAction && Impl->ActionTime>Impl->ActionDuration)
-        StopBehavior();
+    const bool ActionFinished=Impl->Action && !Impl->HoldAction && Impl->ActionTime>Impl->ActionDuration;
     for (auto &G : Impl->Animated)
     {
         if (LocalViewer && FVector::DistSquared(G.Frame.GetLocation(), *LocalViewer) > FMath::Square(12000.))
@@ -2321,6 +2356,7 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                 if(Period>.001f)
                 {
                     const float Phase=FMath::Min(Impl->ActionTime/Period,.99999f);
+                    if(G.Parent<0)AnimationEffects.Append(ActionGraph->EffectsBetween(PreviousActionTime/Period,FMath::Min(Impl->ActionTime/Period,1.f),G.Motion));
                     auto ActionPose=ActionGraph->Sample(Phase,G.Motion,Pose);
                     const float Weight=FMath::Min(1.f,Impl->ActionTime/.08f);
                     for(int32 I=0;I<Pose.Num();++I){FTransform Blend;Blend.Blend(Pose[I],ActionPose[I],Weight);Pose[I]=Blend;}
@@ -2375,6 +2411,29 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                 M.Component->UpdateMeshSection(J, V, N, D.UVs, TArray<FColor>(), TArray<FProcMeshTangent>());
         }
     }
+    if(ActionFinished)StopBehavior();
+    for(const auto& E:AnimationEffects)
+    {
+        if(E.Stop)StopEffect(E.Id);
+        if(E.Play && FMath::FRand()<=FMath::Clamp(E.Probability,0.f,1.f))PlayEffect(E.Id,FMath::Max(.01f,E.Intensity+FMath::FRandRange(-E.Variation,E.Variation)));
+    }
+    // Snapshot due events before dispatch: an FX node may schedule another script.
+    TArray<TPair<FAC2Animation::FEffect,int32>> ScriptTriggers;
+    for(int32 I=Impl->ScriptEffects.Num()-1;I>=0;--I)
+    {
+        auto& Track=Impl->ScriptEffects[I];const float From=Track.Phase;
+        Track.Phase=FMath::Min(1.f,From+Delta/Track.Script.Period);
+        if(Track.Phase>From)for(const auto& E:Track.Script.Effects)
+            if((E.Phase>From || (From==0 && E.Phase==0)) && E.Phase<=Track.Phase)ScriptTriggers.Add({E,Track.Depth+1});
+        if(Track.Phase>=1)Impl->ScriptEffects.RemoveAt(I);
+    }
+    for(const auto& Trigger:ScriptTriggers)
+    {
+        const auto& E=Trigger.Key;const int32 Depth=Impl->EffectDepth;Impl->EffectDepth=Trigger.Value;
+        if(E.Stop)StopEffect(E.Id);
+        if(E.Play && FMath::FRand()<=FMath::Clamp(E.Probability,0.f,1.f))PlayEffect(E.Id,FMath::Max(.01f,E.Intensity+FMath::FRandRange(-E.Variation,E.Variation)));
+        Impl->EffectDepth=Depth;
+    }
     if (Impl->AttachedEffects && Impl->ModelRoot.IsValid())
     {
         TArray<FAC2ParticleSource> Sources;
@@ -2403,14 +2462,10 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         for(int32 I=Impl->NetworkEffects.Num()-1;I>=0;--I)
         {
             const auto& A=Impl->NetworkEffects[I].Attachment;
-            const auto& G=Impl->Animated[A.Group];
-            FTransform At(A.Node.Offset*100);
-            if(const auto* Socket=G.Setup.Sockets.Find(A.Node.Holding))
-            {if(G.Bones.IsValidIndex(Socket->Bone))At=At*FTransform(Socket->Frame.ToMatrixWithScale()*G.Bones[Socket->Bone]);}
-            else if(A.Node.Bone)
-            {int32 Bone=G.Setup.Names.IndexOfByKey(A.Node.Bone);if(G.Bones.IsValidIndex(Bone))At=At*FTransform(G.Bones[Bone]);}
-            At=At*G.Frame*Impl->ModelRoot->GetComponentTransform();
-            if(A.Node.RemoveRotation)At.SetRotation(FQuat::Identity);
+            FTransform At=Impl->EffectFrame(A.Node);
+            // Native FireParticleFX leaves the emitter at its birth frame.
+            // Retarget means clone an FX target, not move the source to a victim.
+            if(A.Node.FireAndForget)At=Impl->NetworkEffects[I].BirthFrame;
             if(!Impl->AttachedEffects->MoveSource(A.Key,At))Impl->NetworkEffects.RemoveAt(I);
         }
         AActor *Owner = Impl->ModelRoot->GetOwner();
@@ -2424,10 +2479,30 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         Impl->AttachedEffects->Update(View.GetLocation(), View.GetUnitAxis(EAxis::Y),
                                       View.GetUnitAxis(EAxis::Z), Delta, 0, FVector::ZeroVector, true);
     }
+    for(int32 I=Impl->VisualEffects.Num()-1;I>=0;--I)
+    {
+        auto& E=Impl->VisualEffects[I];E.Age+=Delta;
+        if(!E.Actor.IsValid() || E.Age>=E.Life)
+        {E.Model.Reset();if(E.Actor.IsValid())E.Actor->Destroy();Impl->VisualEffects.RemoveAt(I);continue;}
+        if(E.Attachment.Node.Parent || E.Attachment.Node.Holding || E.Attachment.Node.Bone)
+        {
+            const auto& N=E.Attachment.Node;FTransform At=Impl->EffectFrame(N);
+            if(N.RemoveRotation)At.SetRotation(FQuat::Identity);
+            E.Actor->SetActorTransform(At);
+        }
+        E.Model->Animate(E.Age,0);E.Model->UpdateMaterials(E.Age);
+    }
 }
-bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength)
+bool FAC2AssetLibrary::PlayEffectScript(uint32 Script)
 {
-    if(!Impl->ModelRoot.IsValid() || !FMath::IsFinite(Strength) || Strength<=0 || Impl->NetworkEffects.Num()>=64)return false;
+    if(Impl->EffectDepth>=4 || Impl->ScriptEffects.Num()>=16)return false;
+    TArray<uint8> Bytes;FString Error;FAC2FXScript Decoded;
+    if(!Impl->Portal.Read(Script,Bytes,Error) || !Decoded.Decode(Script,Bytes))return false;
+    Impl->ScriptEffects.Add({MoveTemp(Decoded),0,Impl->EffectDepth});return true;
+}
+bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* Target)
+{
+    if(!Impl->ModelRoot.IsValid() || !FMath::IsFinite(Strength) || Strength<=0 || Impl->NetworkEffects.Num()>=64 || Impl->EffectDepth>=4)return false;
     FAC2DecodedVisual V;if(!Impl->Visual(Impl->ModelVisual,V))return false;
     TArray<FAC2FXNode> Nodes;
     auto Resolve=[&](const FAC2DecodedPart& Part){
@@ -2443,27 +2518,58 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength)
     for(const auto& Node:Nodes)
     {
         UE_LOG(LogTemp,Verbose,TEXT("AC2 FX node descriptor=%08X holding=%08X bone=%08X"),Node.Descriptors.IsEmpty()?0:Node.Descriptors[0],Node.Holding,Node.Bone);
-        if(Node.Descriptors.IsEmpty() || Impl->NetworkEffects.Num()>=64)continue;
+        if(Impl->NetworkEffects.Num()>=64)continue;
+        if(Node.Script)Played|=PlayEffectScript(Node.Script);
+        FTransform Source=Impl->EffectFrame(Node);
+        if(Node.RemoveRotation)Source.SetRotation(FQuat::Identity);
+        if(Node.Visual && Impl->VisualEffects.Num()<16)
+        {
+            auto* World=Impl->ModelRoot->GetWorld();auto* Actor=World->SpawnActor<AActor>();
+            auto* Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();Actor->SetActorTransform(Source);
+            auto Model=MakeShared<FAC2AssetLibrary>();FString Error;
+            Model->Impl->EffectDepth=Impl->EffectDepth+1;
+            if(Model->Open(Impl->Directory,Error) && Model->DrawModel(Node.Visual,Actor,Root))
+            {
+                if(Node.Behavior)Model->PlayBehavior(Node.Behavior);
+                if(Node.TargetFX)Model->PlayEffect(Node.TargetFX,Strength,Target);
+                const float Life=FMath::IsFinite(Node.Lifetime)&&Node.Lifetime>0?FMath::Clamp(Node.Lifetime,.05f,30.f):FMath::Clamp(Model->Impl->ActionDuration,.5f,5.f);
+                Impl->VisualEffects.Add({{-1,Node,0,0},Effect,0,Life,Actor,Model,Target});Played=true;
+            }
+            else Actor->Destroy();
+        }
+        if(Node.Descriptors.IsEmpty())continue;
+        // Root effects also belong to static projectile/effect models, which
+        // need no animation setup. Named sockets still require a matching rig.
+        int32 Group=INDEX_NONE;
         for(int32 I=0;I<Impl->Animated.Num();++I)
         {
             const auto& G=Impl->Animated[I];
             if((Node.Holding && !G.Setup.Sockets.Contains(Node.Holding)) || (Node.Bone && !G.Setup.Names.Contains(Node.Bone)) || (!Node.Holding && !Node.Bone && G.Parent>=0))continue;
-            const uint32 Descriptor=Node.Descriptors[0];if(Descriptor>>24!=0x39)break;
+            Group=I;break;
+        }
+        if(Group!=INDEX_NONE || (!Node.Holding && !Node.Bone))
+        {
+            const uint32 Descriptor=Node.Descriptors[FMath::RandRange(0,Node.Descriptors.Num()-1)];if(Descriptor>>24!=0x39)continue;
             const uint64 Key=++Impl->EffectSerial;
-            FAC2ParticleSource S;S.Key=Key;S.Descriptor=Descriptor;S.Frame=Impl->ModelRoot->GetComponentTransform();S.ParticleScale=FMath::Clamp(Strength,.01f,10.f)*V.ParticleScale;
+            FAC2ParticleSource S;S.Key=Key;S.Descriptor=Descriptor;S.Frame=Source;S.ParticleScale=FMath::Clamp(Strength,.01f,10.f)*V.ParticleScale;
             if(Impl->AttachedEffects->NativeBurst(S))
-            {Impl->NetworkEffects.Add({{I,Node,Key,Descriptor},Effect});Played=true;}
-            break;
+            {Impl->NetworkEffects.Add({{Group,Node,Key,Descriptor},Effect,Target,Source});Played=true;}
         }
     }
     return Played;
 }
 void FAC2AssetLibrary::StopEffect(uint32 Effect)
 {
+    for(int32 I=Impl->VisualEffects.Num()-1;I>=0;--I)if(Impl->VisualEffects[I].Effect==Effect)
+    {auto& E=Impl->VisualEffects[I];E.Model.Reset();if(E.Actor.IsValid())E.Actor->Destroy();Impl->VisualEffects.RemoveAt(I);}
     for(int32 I=Impl->NetworkEffects.Num()-1;I>=0;--I)if(Impl->NetworkEffects[I].Effect==Effect)
     {if(Impl->AttachedEffects)Impl->AttachedEffects->StopSource(Impl->NetworkEffects[I].Attachment.Key);Impl->NetworkEffects.RemoveAt(I);}
 }
-int32 FAC2AssetLibrary::EffectParticleCount() const {return Impl->AttachedEffects?Impl->AttachedEffects->Count():0;}
+int32 FAC2AssetLibrary::EffectParticleCount() const
+{
+    int32 Count=Impl->AttachedEffects?Impl->AttachedEffects->Count():0;
+    for(const auto& E:Impl->VisualEffects)if(E.Model)Count+=E.Model->EffectParticleCount();return Count;
+}
 bool FAC2AssetLibrary::PrepareBlock(const FString &Directory, const FAC2LandscapeDefs &Defs,
                                     const FAC2LandBlock &Land, const FAC2TerrainMesh &Mesh, FString &Error)
 {

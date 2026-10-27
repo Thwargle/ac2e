@@ -166,6 +166,7 @@ impl UnEquipRequest {
 pub struct UseRequest {
     pub owner: u64,
     pub item: u64,
+    pub target: u64,
 }
 impl UseRequest {
     pub fn decode(arguments: &[u8]) -> Result<Self, WorldError> {
@@ -199,21 +200,24 @@ impl UseRequest {
         for index in [1, 4, 15] {
             expected[index] = u32::MAX;
         }
-        for index in [2, 3, 6, 7] {
+        for index in [2, 3, 6, 7, 9, 10] {
             expected[index] = fields[index];
         }
         expected[8] = (-1f32).to_bits();
         expected[17] = 0x13c;
-        const TAGS: [u8; 20] = [
+        let mut tags: [u8; 20] = [
             1, 1, 0x84, 0xcd, 1, 2, 0x84, 0xcd, 3, 0x82, 0xcd, 2, 0x82, 0xcd, 2, 1, 2, 2, 2, 2,
         ];
-        if fields != expected || arguments[112..132] != TAGS
+        let target=u64::from(fields[9]) | (u64::from(fields[10])<<32);
+        if target==u64::MAX {return Err(WorldError::InvalidValue);}
+        if target!=0 {tags[9]=0x84;}
+        if fields != expected || arguments[112..132] != tags
             || word(132) != 0x44000100 || word(136) != 0 || word(140) != 0xffff006a
             // A localized display hint, never an authorization or execution input.
             || word(148) >> 24 != 0x25 || word(152) != 0 || word(156) != 0
         {
             return Err(WorldError::InvalidValue);
         }
-        Ok(Self { owner, item })
+        Ok(Self { owner, item, target })
     }
 }

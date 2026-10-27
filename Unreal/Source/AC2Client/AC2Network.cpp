@@ -1,4 +1,5 @@
 #include "AC2Network.h"
+#include "AC2Projectile.h"
 #include "AC2GameMode.h"
 #include "AC2CharacterUI.h"
 #include "AC2GameUI.h"
@@ -428,7 +429,7 @@ void FAC2Network::TargetNext()
     if (!P)
         return;
     for (auto &E : Objects)
-        if (E.Key != PlayerId && E.Value->Actor.IsValid() &&
+        if (E.Key != PlayerId && !E.Value->Missile && E.Value->Actor.IsValid() &&
             FVector::Dist(E.Value->Goal, P->GetActorLocation()) < 15000)
             Ids.Add(E.Key);
     Ids.Sort();
@@ -444,7 +445,7 @@ TArray<FAC2Network::FRadarContact> FAC2Network::RadarContacts() const
     for (const auto &E : Objects)
     {
         const auto &O = *E.Value;
-        if (E.Key == PlayerId || !O.Placed || !O.Actor.IsValid() || !O.Cell) continue;
+        if (E.Key == PlayerId || O.Missile || !O.Placed || !O.Actor.IsValid() || !O.Cell) continue;
         if (((O.Cell & 0xffff) >= 0x100) != Indoors || (Indoors && (O.Cell >> 16) != (Cell >> 16))) continue;
         Result.Add({E.Key, O.Name, O.Actor});
     }
@@ -456,7 +457,7 @@ void FAC2Network::SelectTarget(const FString &Id)
     if (!IsWorld() || Id == PlayerId) return;
     const auto *Object = Objects.Find(Id);
     auto *Player = Pawn(Mode);
-    if (!Object || !(*Object)->Actor.IsValid() || !Player ||
+    if (!Object || (*Object)->Missile || !(*Object)->Actor.IsValid() || !Player ||
         FVector::DistSquared((*Object)->Actor->GetActorLocation(), Player->GetActorLocation()) > FMath::Square(15000.)) return;
     TargetId = Id;
     auto J = Command(TEXT("target"));
@@ -533,8 +534,10 @@ void FAC2Network::UseItem(int32 Index)
     else
     {
         auto J = Command(TEXT("use"));
+        if(I.Definition==0x47001582 && (TargetId.IsEmpty() || TargetId==TEXT("0")))
+        {Mode->Notice=TEXT("Select the Menhir Portal, then use the glyph from your backpack.");return;}
         J->SetStringField(TEXT("item"), I.NetworkId);
-        J->SetStringField(TEXT("target"), TEXT("0")); // Owner is UsageDesc.user; native self-use has no target.
+        J->SetStringField(TEXT("target"), I.Definition==0x47001582 ? TargetId : TEXT("0"));
         Send(J);
     }
 }
@@ -557,6 +560,26 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
     if (Event == TEXT("combat")) { Combat = J->GetBoolField(TEXT("enabled")); return; }
+    if(Event==TEXT("missile"))
+    {
+        auto Found=Objects.Find(Id);if(!Found || (*Found)->Instance!=int32(N(J,TEXT("instance"))) || Id==PlayerId)return;
+        auto& O=**Found;auto Pose=J->GetObjectField(TEXT("placement"));auto Offset=J->GetObjectField(TEXT("offset"));
+        const uint32 CellId=N(Pose,TEXT("cell"));const FVector Goal=AC2::BlockOrigin(CellId>>16)+V(Pose,TEXT("position"))*100;
+        const FVector Velocity=V(J,TEXT("velocity"))*100,TargetOffset=V(Offset,TEXT("position"))*100;
+        if(!CellId || !AC2Projectile::Valid(Goal,Velocity,TargetOffset))return;
+        O.Cell=CellId;O.Goal=Goal;O.MissileVelocity=Velocity;O.MissileTarget=S(J,TEXT("target"));O.MissileOffset=TargetOffset;
+        O.MissilePoint=AC2::BlockOrigin(uint32(N(Offset,TEXT("cell")))>>16)+O.MissileOffset;
+        O.MissilePointKnown=J->GetBoolField(TEXT("initialized")) && O.MissileTarget==TEXT("0") && N(Offset,TEXT("cell"))!=0;
+        O.Missile=true;O.MissileFinished=false;O.MissileAge=0;
+        if(O.Actor.IsValid()){O.Actor->SetActorLocation(O.Goal);O.Actor->SetActorEnableCollision(false);}return;
+    }
+    if(Event==TEXT("fx_script"))
+    {
+        auto Found=Objects.Find(Id);if(!Found || (*Found)->Instance!=int32(N(J,TEXT("instance"))))return;
+        if(auto* Player=Id==PlayerId?Pawn(Mode):nullptr)Player->PlayEffectScript(N(J,TEXT("script")));
+        else if((*Found)->Model)(*Found)->Model->PlayEffectScript(N(J,TEXT("script")));
+        return;
+    }
     if(Event==TEXT("fx") || Event==TEXT("stop_fx"))
     {
         auto Found=Objects.Find(Id);if(!Found || (J->HasField(TEXT("instance")) && (*Found)->Instance!=int32(N(J,TEXT("instance")))))return;
@@ -567,9 +590,12 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             for(auto& Entry:Objects)if(Entry.Value->Parent==Id && Entry.Value->Model)Entry.Value->Model->StopEffect(Fx);
             return;
         }
-        bool Played=Player?Player->PlayEffect(Fx,N(J,TEXT("strength"),1)):(*Found)->Model && (*Found)->Model->PlayEffect(Fx,N(J,TEXT("strength"),1));
+        USceneComponent* Target=nullptr;const FString TargetIdValue=S(J,TEXT("target"));
+        if(TargetIdValue==PlayerId){if(auto P=Pawn(Mode))Target=P->GetRootComponent();}
+        else if(auto T=Objects.Find(TargetIdValue))if((*T)->Actor.IsValid())Target=(*T)->Actor->GetRootComponent();
+        bool Played=Player?Player->PlayEffect(Fx,N(J,TEXT("strength"),1),Target):(*Found)->Model && (*Found)->Model->PlayEffect(Fx,N(J,TEXT("strength"),1),Target);
         if(!Played)for(auto& Entry:Objects)if(Entry.Value->Parent==Id && Entry.Value->Model)
-            Played|=Entry.Value->Model->PlayEffect(Fx,N(J,TEXT("strength"),1));
+            Played|=Entry.Value->Model->PlayEffect(Fx,N(J,TEXT("strength"),1),Target);
         if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server FX %08X played=%d player=%d"),Fx,Played,Player!=nullptr);
         if(Played)++PlayedEffects;return;
     }
@@ -584,14 +610,14 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         if(Obj.Model)Obj.Model->SetAnimationState(AC2Motion::Ground,Obj.AnimMode);
         if(Event==TEXT("behavior"))
         {
-            const bool IsAttack=B==AC2Motion::Attack||B==AC2Motion::MeleeNormal||B==0x410000b0||B==0x410000e2;
+            const bool IsAttack=B==AC2Motion::Attack||B==AC2Motion::MeleeNormal||B==0x410000b0||B==0x410000b9||B==0x410000bc||B==0x410000e2;
             bool Hold=false;J->TryGetBoolField(TEXT("hold"),Hold);Hold|=B==AC2Motion::Death;
             const bool Played=Player?Player->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold):Obj.Model&&Obj.Model->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold);
             if(Played)
             {
                 ++PlayedBehaviors;if(B==AC2Motion::Death)++DeathBehaviors;
                 if(IsAttack){if(Player)++PlayerAttacks;else ++MobAttacks;}
-                if(Player && B==0x410000b0) {++MagicAttacks;if(Smoke)FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-cast.png"),true,false);}
+                if(Player && (B==0x410000b0||B==0x410000b9||B==0x410000bc)) {++MagicAttacks;if(Smoke)FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-cast.png"),true,false);}
             }
             else if(IsAttack)++FailedAttacks;
             if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server behavior %08X mode=%08X played=%d player=%d"),B,M,Played,Player!=nullptr);
@@ -806,6 +832,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     {
         if (auto E = Objects.Find(Id))
         {
+            if(J->HasField(TEXT("instance")) && (*E)->Instance!=int32(N(J,TEXT("instance"))))return;
             if ((*E)->Actor.IsValid())
                 (*E)->Actor->Destroy();
             Objects.Remove(Id);
@@ -827,6 +854,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         // Behavior/mode stamps are instance stamps. Retain the create stamp so
         // valid server actions are not compared against an uninitialized zero.
         Obj.Instance=int32(N(J,TEXT("instance")));
+        Obj.Missile=Obj.MissileFinished=Obj.MissilePointKnown=false;Obj.MissileAge=0;
         Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
         Obj.Entity = N(J, TEXT("entity"));
@@ -916,14 +944,29 @@ void FAC2Network::Tick(float Delta)
             auto &Obj = *E.Value;
             auto A = Obj.Actor.Get();
             FVector Old = A->GetActorLocation();
+            if(Obj.Missile && !Obj.MissileFinished)
+            {
+                Obj.MissileAge+=Delta;FVector Destination=Obj.MissilePoint;bool TargetKnown=Obj.MissilePointKnown;
+                if(Obj.MissileTarget==PlayerId && P)
+                {Destination=P->GetActorLocation()-FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight())+Obj.MissileOffset;TargetKnown=true;}
+                else if(auto Target=Objects.Find(Obj.MissileTarget))if((*Target)->Actor.IsValid())
+                {Destination=(*Target)->Actor->GetActorLocation()+Obj.MissileOffset;TargetKnown=true;}
+                bool Arrived=false;
+                const FVector Direction=TargetKnown?(Destination-Old).GetSafeNormal():Obj.MissileVelocity.GetSafeNormal();
+                Obj.Goal=AC2Projectile::Advance(Old,Obj.MissileVelocity,TargetKnown?&Destination:nullptr,Delta,Arrived);
+                if(!Direction.IsNearlyZero())A->SetActorRotation(AC2Projectile::Facing(Direction));
+                if(Arrived || Obj.MissileAge>15 || (Obj.MissileTarget!=TEXT("0") && !TargetKnown))Obj.MissileFinished=true;
+                if(Obj.MissileFinished)Obj.Model.Reset(); // Destroy detached trail emitters as well as hiding the mesh.
+            }
             FVector Next = FVector::DistSquared(Old, Obj.Goal) > FMath::Square(1000.)
                                ? Obj.Goal
                                : FMath::VInterpTo(Old, Obj.Goal, Delta, 12);
+            if(Obj.Missile)Next=Obj.Goal;
             A->SetActorLocation(Next);
-            A->SetActorRotation(
+            if(!Obj.Missile)A->SetActorRotation(
                 FMath::RInterpTo(A->GetActorRotation(), FRotator(0, Obj.Yaw - 90, 0), Delta, 12));
             const bool Visible =
-                P && FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
+                P && !Obj.MissileFinished && FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
             A->SetActorHiddenInGame(!Visible);
             if (Visible && Obj.Model)
             {

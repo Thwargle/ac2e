@@ -84,6 +84,10 @@ class FAC2Network
         TWeakObjectPtr<AActor> Actor;
         TUniquePtr<FAC2AssetLibrary> Model;
         bool Placed = false;
+        bool Missile=false,MissileFinished=false,MissilePointKnown=false;
+        FString MissileTarget;
+        FVector MissileVelocity=FVector::ZeroVector,MissileOffset=FVector::ZeroVector,MissilePoint=FVector::ZeroVector;
+        float MissileAge=0;
     };
     AAC2GameMode *Mode;
     FProcHandle Process;

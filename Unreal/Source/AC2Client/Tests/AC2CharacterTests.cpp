@@ -56,6 +56,12 @@ bool FAC2CharacterNativeTest::RunTest(const FString &)
     TestEqual(TEXT("native weapon damage value"), C.Items[0x47003858].Damage, 9);
     TestTrue(TEXT("native item localization"), !C.Items[0x47003858].Name.Contains(TEXT("wsl_")));
     TestEqual(TEXT("grammar suffix removed"), C.Items[0x47003858].Name, TEXT("Decrepit Short Sword"));
+    for(uint32 Id:{0x47001951u,0x47001952u,0x47001954u,0x4700195eu,0x4700195fu,0x47001960u,0x47001968u})
+    {
+        C.LoadNetworkItem(Dir,Id);const auto* Armor=C.Items.Find(Id);
+        TestTrue(FString::Printf(TEXT("Additional armor %08X has native name, slot and defense"),Id),
+            Armor && !Armor->Name.IsEmpty() && Armor->Preferred && Armor->HasArmor && Armor->Armor>0);
+    }
     FAC2DatArchive Portal;
     TArray<uint8> Bytes;
     TestTrue(TEXT("read source"), Portal.Open(FPaths::Combine(Dir, TEXT("portal.dat")), 1, Error) &&

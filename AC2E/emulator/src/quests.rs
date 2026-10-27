@@ -50,7 +50,7 @@ pub struct Book {
     supplies: Option<bool>,
     potion: u8, // 0 absent, 1 accepted, 2 crafted, 3 rewarded
     journey: u8, // 0 absent, 1 accepted, 2 bound, 3 travelled, 4 rewarded
-    shelter: u8, // 0 absent, 1 guard, 2 lieutenant, 3 sentry. Retail continuation pending.
+    shelter: u8, // ordered Shelter phases; see shelter::guidance
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -70,6 +70,7 @@ pub enum Command {
     ShelterGuard,
     ShelterLieutenant,
     ShelterSentry,
+    ShelterTool, ShelterGlyph, ShelterAdvance, ShelterComplete,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,6 +102,10 @@ impl QuestError {
 impl Command {
     pub fn encode(&self) -> String {
         match self {
+            Self::ShelterTool => "shelter.tool".into(),
+            Self::ShelterGlyph => "shelter.glyph".into(),
+            Self::ShelterAdvance => "shelter.advance".into(),
+            Self::ShelterComplete => "shelter.complete".into(),
             Self::ShelterGuard => "shelter.guard".into(),
             Self::ShelterLieutenant => "shelter.lieutenant".into(),
             Self::ShelterSentry => "shelter.sentry".into(),
@@ -115,6 +120,10 @@ impl Command {
     }
     pub fn decode(text: &str) -> Result<Self, QuestError> {
         match text {
+            "shelter.tool" => Ok(Self::ShelterTool),
+            "shelter.glyph" => Ok(Self::ShelterGlyph),
+            "shelter.advance" => Ok(Self::ShelterAdvance),
+            "shelter.complete" => Ok(Self::ShelterComplete),
             "shelter.guard" => Ok(Self::ShelterGuard),
             "shelter.lieutenant" => Ok(Self::ShelterLieutenant),
             "shelter.sentry" => Ok(Self::ShelterSentry),
@@ -176,6 +185,11 @@ impl Book {
         }
         let mut next = self.clone();
         match command {
+            Command::ShelterTool | Command::ShelterGlyph | Command::ShelterAdvance | Command::ShelterComplete => {
+                let previous=match command {Command::ShelterTool=>3,Command::ShelterGlyph=>4,Command::ShelterAdvance=>5,_=>6};
+                if self.shelter!=previous {return Err(QuestError::NotReady);}
+                next.shelter=previous+1;
+            }
             Command::ShelterGuard | Command::ShelterLieutenant | Command::ShelterSentry => {
                 let previous = match command {Command::ShelterGuard=>0,Command::ShelterLieutenant=>1,_=>2};
                 if self.shelter != previous {return Err(QuestError::NotReady);}
@@ -414,7 +428,7 @@ impl Book {
         let mut bytes=Vec::new(); word(&mut bytes,crate::shelter::JOURNAL);
         bytes.extend(world::literal_name("Rescue the Shelter Hold")?);
         bytes.extend(world::literal_name(crate::shelter::guidance(self.shelter))?);
-        word(&mut bytes,ICON); word(&mut bytes,UNDERWAY); word(&mut bytes,1);
+        word(&mut bytes,ICON); word(&mut bytes,if self.shelter==7 {COMPLETED} else {UNDERWAY}); word(&mut bytes,1);
         bytes.extend(world::literal_name(crate::shelter::guidance(self.shelter))?);
         word(&mut bytes,1); bytes.extend((-1.0f64).to_le_bytes()); bytes.extend((-1.0f64).to_le_bytes());
         word(&mut bytes,0); bytes.extend(0f64.to_le_bytes()); bytes.extend(0f64.to_le_bytes());

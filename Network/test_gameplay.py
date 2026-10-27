@@ -149,7 +149,7 @@ def main():
         unequip(sword);equip(staff,0x41000011)
         start=len(a.events);obs=len(b.events)
         a.send('skill',skill=0x60,target=ids[1]);until(a,start,'skill_finished')
-        until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000b0)
+        until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000b9)
         mob_pose=until(b,obs,'position',lambda e:e['id']==ids[1])
         until(a,start,'position',lambda e:e['id']==ids[1] and e['position']==mob_pose['position'])
         # Stop only the player's attack, keeping the hostile creature pursuing.
@@ -217,10 +217,10 @@ def main():
         until(p,0,'chat',lambda e:'Training combat complete' in str(e))
         time.sleep(.6) # Chat commands share the normal anti-flood interval.
         start=len(p.events);p.send('chat',text='@quest shelter',channel='say')
-        until(p,start,'chat',lambda e:"Sentry asks" in str(e))
+        until(p,start,'chat',lambda e:"Imbued Digging Tool" in str(e))
         result['restart_preserves_gear_and_quest']=True
         result['shelter_introduction_survives_restart']=True
-        result['scope']='Shelter introduction plus AC2E authored combat/binding/exit circuit; retail tool/glyph/Menhir stages remain unfinished'
+        result['scope']='Shelter introduction plus AC2E authored combat/binding/exit circuit; continuation tested separately by test_shelter.py'
         (data/'result.json').write_text(json.dumps(result,indent=2))
         print(json.dumps(result,indent=2));print(data)
     finally:

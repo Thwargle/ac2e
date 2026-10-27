@@ -16,6 +16,8 @@ struct FAC2Setup
 };
 struct FAC2Animation
 {
+    struct FEffect {uint32 Id=0; float Phase=0, Probability=1, Intensity=1, Variation=0; bool Stop=false,Play=true;};
+    TArray<FEffect> Effects;
     struct FTrack
     {
         TArray<TPair<float, FVector>> Scale, Offset;
@@ -28,6 +30,13 @@ struct FAC2Animation
     TArray<FTransform> Sample(float Time, const TArray<FTransform> &Rest) const;
     float BoneWeight(int32 Bone, float Phase) const;
     static TSharedPtr<FAC2Animation> Load(FAC2DatArchive &Portal, uint32 Map, uint32 Motion);
+};
+
+struct FAC2FXScript
+{
+    float Period=0;
+    TArray<FAC2Animation::FEffect> Effects;
+    bool Decode(uint32 Id,TConstArrayView<uint8> Bytes);
 };
 
 // Native locomotion sliders use metres/second in model axes (+Y forward).
@@ -50,6 +59,7 @@ class FAC2Animator
     TArray<FTransform> Sample(float Phase, const FAC2AnimatorInput &Input,
                               const TArray<FTransform> &Rest) const;
     TArray<uint32> ActiveClips(const FAC2AnimatorInput &Input) const;
+    TArray<FAC2Animation::FEffect> EffectsBetween(float From,float To,const FAC2AnimatorInput& Input) const;
 
   private:
     struct FAxis
