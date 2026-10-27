@@ -131,6 +131,27 @@ void AAC2Portrait::Tick(float Delta)
 {
     Super::Tick(Delta);
     Time += Delta;
+    if (!Arms.IsEmpty())
+    {
+        ArmTime = FMath::Min(1.5f, ArmTime + Delta);
+        for (int32 I = 0; I < Arms.Num(); ++I)
+            if (Arms[I].IsValid())
+                Arms[I]->SetRelativeRotation(FQuat::Slerp(ArmStart[I], ArmEnd[I], ArmTime / 1.5f));
+        if (ArmTime >= 1.5f && ArmCurrent != ArmTarget)
+        {
+            const int32 N = Arms.Num();
+            const bool Left = (ArmTarget - ArmCurrent + N) % N <= N / 2;
+            const int32 Next = (ArmCurrent + (Left ? 1 : N - 1)) % N;
+            for (int32 I = 0; I < N; ++I)
+            {
+                const float Angle = (I == ArmCurrent || I == Next ? 45.f : 270.f / (N - 2)) * (Left ? 1 : -1);
+                ArmStart[I] = Arms[I]->GetRelativeRotation().Quaternion();
+                ArmEnd[I] = FQuat(FVector::UpVector, FMath::DegreesToRadians(Angle)) * ArmStart[I];
+            }
+            ArmCurrent = Next;
+            ArmTime = 0;
+        }
+    }
     for (auto &Library : LineupModels)
         Library->Animate(Time, 0);
     if (Ready && Model)
@@ -206,7 +227,7 @@ int32 AAC2Portrait::PickAvatar(FVector2D Point) const
     double Distance = BIG_NUMBER;
     for (int32 I = 0; I < LineupBounds.Num(); ++I)
     {
-        const auto &B = LineupBounds[I];
+        const FBox B = Arms.IsValidIndex(I) ? LineupBounds[I].TransformBy(FigureFrames[I] * Arms[I]->GetRelativeTransform()) : LineupBounds[I];
         FBox2D Box(ForceInit);
         for (int32 C = 0; C < 8; ++C)
         {
@@ -214,7 +235,7 @@ int32 AAC2Portrait::PickAvatar(FVector2D Point) const
                 FVector(C & 1 ? B.Max.X : B.Min.X, C & 2 ? B.Max.Y : B.Min.Y, C & 4 ? B.Max.Z : B.Min.Z));
             if (P.X <= 1)
                 continue;
-            Box += FVector2D(.5 + P.Y / (2 * P.X * Tangent), .5 - P.Z / (2 * P.X * Tangent * 619 / 1024));
+            Box += FVector2D(.5 + P.Y / (2 * P.X * Tangent), .5 - P.Z / (2 * P.X * Tangent * Image->SizeY / Image->SizeX));
         }
         double D = View.TransformPosition(B.GetCenter()).X;
         if (Box.bIsValid && Box.IsInside(Point) && D < Distance)
@@ -224,4 +245,68 @@ int32 AAC2Portrait::PickAvatar(FVector2D Point) const
         }
     }
     return Best;
+}
+
+FVector2D AAC2Portrait::AvatarPoint(int32 Index) const
+{
+    if (!LineupBounds.IsValidIndex(Index)) return FVector2D(-1,-1);
+    FBox B = Arms.IsValidIndex(Index) ? LineupBounds[Index].TransformBy(FigureFrames[Index] * Arms[Index]->GetRelativeTransform()) : LineupBounds[Index];
+    const FVector P = Capture->GetRelativeTransform().InverseTransformPosition(B.GetCenter());
+    const float Tan = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
+    return P.X <= 1 ? FVector2D(-1,-1) : FVector2D(.5 + P.Y/(2*P.X*Tan), .5-P.Z/(2*P.X*Tan*Image->SizeY/Image->SizeX));
+}
+void AAC2Portrait::SelectCharacter(int32 Index)
+{
+    if (LineupBounds.IsValidIndex(Index)) ArmTarget = Index;
+}
+bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2SelectionFigure> &Figures, int32 Selected, int32 Slots)
+{
+    Image = NewObject<UTextureRenderTarget2D>(this);
+    Image->ClearColor = FLinearColor::Black;
+    Image->InitAutoFormat(706,768);
+    Capture->TextureTarget = Image;
+    Capture->ShowOnlyActors.Add(this);
+    Backdrop = MakeUnique<FAC2AssetLibrary>();
+    FString Error;
+    FAC2UISceneInfo Scene;
+    if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(0x21000001,this,Stage,&Scene)) return false;
+    FTransform Holding;
+    if (!Backdrop->HoldingLocation(0x1f000068,1,Holding)) return false;
+    Slots=FMath::Max(3,FMath::Max(Slots,Figures.Num()));
+    ArmCurrent = ArmTarget = FMath::Clamp(Selected,0,Slots-1);
+    for (int32 I=0; I<Slots; ++I)
+    {
+        auto *Arm = NewObject<USceneComponent>(this);
+        AddInstanceComponent(Arm); Arm->SetupAttachment(Stage); Arm->RegisterComponent();
+        const int32 Relative = (I-ArmCurrent+Slots)%Slots;
+        const float Angle = Relative ? -45.f-(Relative-1)*270.f/(Slots-2) : 0;
+        Arm->SetRelativeRotation(FRotator(0,Angle,0));
+        Arms.Add(Arm); ArmStart.Add(Arm->GetRelativeRotation().Quaternion()); ArmEnd.Add(ArmStart.Last());
+        auto ArmModel = MakeUnique<FAC2AssetLibrary>();
+        if (!ArmModel->Open(Directory,Error) || !ArmModel->DrawModel(0x1f000068,this,Arm)) return false;
+        LineupModels.Add(MoveTemp(ArmModel));
+        if (!Figures.IsValidIndex(I)) continue;
+        const auto &Figure=Figures[I];
+        auto *Root=NewObject<USceneComponent>(this);
+        AddInstanceComponent(Root); Root->SetupAttachment(Arm);
+        FTransform At=Holding;
+        At.MultiplyScale3D(FVector(Figure.Build,Figure.Build,Figure.Height));
+        Root->SetRelativeTransform(At); Root->RegisterComponent(); FigureFrames.Add(At);
+        auto Library=MakeUnique<FAC2AssetLibrary>();
+        TInlineComponentArray<UActorComponent*> Before(this);
+        if (!Library->Open(Directory,Error) || !Library->DrawModel(Figure.Physics,this,Root,Figure.Appearance)) return false;
+        FBox Box(ForceInit);
+        TInlineComponentArray<UProceduralMeshComponent*> Meshes(this);
+        for (auto *Mesh:Meshes) if (!Before.Contains(Mesh))
+            for (int32 S=0;S<Mesh->GetNumSections();++S) if (auto *Section=Mesh->GetProcMeshSection(S))
+                for (const auto &V:Section->ProcVertexBuffer) Box+=Mesh->GetRelativeTransform().TransformPosition(V.Position);
+        if (!Box.IsValid) return false;
+        LineupBounds.Add(Box); LineupModels.Add(MoveTemp(Library));
+    }
+    Capture->SetRelativeLocation(Scene.Camera.GetLocation());
+    Capture->SetRelativeRotation((Scene.Camera.GetRotation()*FQuat(FVector::UpVector,PI/2)).Rotator());
+    Capture->FOVAngle=FMath::RadiansToDegrees(2*FMath::Atan(FMath::Tan(FMath::DegreesToRadians(32.5f))*706/768));
+    KeyLight->SetRelativeLocation(Scene.Camera.GetLocation()+FVector(0,100,100));
+    KeyLight->SetIntensity(300000); KeyLight->SetAttenuationRadius(7000);
+    return Ready=true;
 }

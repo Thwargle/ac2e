@@ -29,6 +29,7 @@ uint32 T(const TCHAR* V){return FAC2UILayout::Token(V);}
 }
 void SAC2GameUI::ToggleOptions()
 {
+    if (Frontend) { ShowOptions=false; OnClose.ExecuteIfBound(); return; }
     EndChat();ShowOptions=!ShowOptions;OptionsTab=0;OptionsScroll=0;
     if(ShowOptions){ShowStats=false;Mode->bMap=false;MapUI.Close();}
     if(OptionValues.IsEmpty())RestoreOptions();
@@ -134,7 +135,7 @@ bool SAC2GameUI::OptionAction(FName Name)
     if(Name==TEXT("OptionsApply")){ApplyOptions();return true;}
     if(Name==TEXT("OptionsRecall")){OptionValues=AppliedOptions;Rebuild();return true;}
     if(Name==TEXT("OptionsDefault")){OptionValues.Reset();for(const auto& S:Settings)OptionValues.Add(S.Default);Rebuild();return true;}
-    if(Name==TEXT("Logout")){ClosePanels();if(Mode->Network)Mode->Network->Logout();else{Mode->LeaveWorld();Mode->Offline();}return true;}
+    if(Name==TEXT("Logout")){if(Frontend){Mode->SignOut();return true;}ClosePanels();if(Mode->Network)Mode->Network->Logout();else{Mode->LeaveWorld();Mode->Offline();}return true;}
     if(Name==TEXT("Quit")){if(Mode->Network)Mode->Network->Logout();FPlatformMisc::RequestExit(false);return true;}
     const bool Plus=Key.StartsWith(TEXT("OptionPlus")),Minus=Key.StartsWith(TEXT("OptionMinus"));
     if(Plus||Minus)
@@ -162,5 +163,12 @@ bool SAC2GameUI::SmokeOptions(int32 Step,FString& Error)
         if(OptionValues[0]!=85){Error=TEXT("Native option slider interaction failed");return false;}
     }
     if(Step==2)OptionAction(TEXT("Logout"));
+    return true;
+}
+bool SAC2GameUI::OptionsClosePoint(FVector2D &Point) const
+{
+    const auto *R=Buttons.Find(TEXT("OptionCloseButton"));
+    if(!R)return false;
+    Point=GetCachedGeometry().LocalToAbsolute(FVector2D((R->Left+R->Right)/2,(R->Top+R->Bottom)/2)*Scale);
     return true;
 }

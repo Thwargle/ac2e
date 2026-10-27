@@ -13,10 +13,13 @@ class AAC2HUD;
 class SAC2GameUI : public SCompoundWidget
 {
   public:
-    SLATE_BEGIN_ARGS(SAC2GameUI)
+    SLATE_BEGIN_ARGS(SAC2GameUI) : _Frontend(false)
     {
     }
-    SLATE_ARGUMENT(AAC2GameMode *, Mode) SLATE_END_ARGS() void Construct(const FArguments &Args);
+    SLATE_ARGUMENT(AAC2GameMode *, Mode)
+    SLATE_ARGUMENT(bool, Frontend)
+    SLATE_EVENT(FSimpleDelegate, OnClose)
+    SLATE_END_ARGS() void Construct(const FArguments &Args);
     virtual ~SAC2GameUI();
     virtual void Tick(const FGeometry &, double, float) override;
     virtual int32 OnPaint(const FPaintArgs &, const FGeometry &, const FSlateRect &,
@@ -45,6 +48,7 @@ class SAC2GameUI : public SCompoundWidget
     void RestoreOptions();
     bool OptionsOpen() const {return ShowOptions;}
     bool SmokeOptions(int32 Step,FString& Error);
+    bool OptionsClosePoint(FVector2D &Point) const;
     bool MapSmokeStep(int32 Step, FString &Error) { return MapUI.SmokeStep(Step, Error); }
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
     bool ClosePanels();
@@ -59,6 +63,8 @@ class SAC2GameUI : public SCompoundWidget
     }
 
   private:
+    bool Frontend = false;
+    FSimpleDelegate OnClose;
     TWeakObjectPtr<AAC2GameMode> Mode;
     TUniquePtr<FAC2AssetLibrary> Assets;
     mutable FAC2Fonts Fonts;

@@ -38,6 +38,10 @@ The client requires Unreal Engine 5.8 and the retail AC2 DAT installation in
 `Launch-AC2.bat -DatDirectory "D:\Games\AC2"`.
 
 The client opens its login screen before character selection and world loading.
+Start `start-ac2e.bat`, then sign in with a new account name and a password of
+12–128 characters. First sign-in creates the account; later sign-ins require the
+same password. Normal server startup manages both the account service (loopback
+HTTP 19400) and the game server (UDP 9000/9001).
 Use offline exploration or connect to an AC2E/Pyrealium server. See the guides for
 account setup, hosting, supported gameplay, and remaining implementation limits.
 

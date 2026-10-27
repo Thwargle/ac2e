@@ -28,7 +28,7 @@ def main():
             headers={'Content-Type':'application/json'},method='POST')
         with urllib.request.urlopen(request,timeout=10) as response:return json.load(response)
     try:
-        time.sleep(1);post('register')
+        time.sleep(1);assert post('login')['created'] is True
         game=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19482','--auth-data',str(auth),
             '--data',str(world),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
             '--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','false','--seconds','240'],
@@ -38,6 +38,13 @@ def main():
         login=post('login');peer=Peer()
         peer.send('connect',host=login['game_host'],port=login['game_port'],account=login['account'],ticket=login['ticket']);login=None
         peer.wait('characters')
+        peer.send('create',name='Discard Hero',start_area=0,race=1,sex=4096,physical=[[1,1],[2,1]])
+        discard=peer.wait('created')['character']['id'];assert discard!='0'
+        peer.send('delete',id=discard)
+        assert peer.wait('deleted')['id']==discard
+        assert all(c['id']!=discard for c in peer.wait('characters')['characters'])
+        peer.send('create',name='Second Hero',start_area=0,race=2,sex=4096,physical=[[1,1],[2,1]])
+        second=peer.wait('created')['character']['id'];assert second!='0'
         peer.send('create',name='Controller Hero',start_area=0,race=1,sex=4096,physical=[[1,1],[2,1]])
         character=peer.wait('created')['character']['id'];assert character!='0'
         peer.send('enter',id=character);peer.wait('player')
@@ -64,8 +71,8 @@ def main():
             cwd=ROOT,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',timeout=190,creationflags=0x08000000)
         env.pop('AC2_TEST_PASSWORD',None)
         print(result.stdout,flush=True);result.check_returncode()
-        report={'result':'PASS','checks':['password login through in-client WinHTTP form','character name before environment',
-            'lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}
+        report={'result':'PASS','checks':['password login through in-client WinHTTP form','mouse hover and click routing','character names painted in native list','native carousel and 3D selection','options and credits','delete cancellation','create and cancel buttons','enter selected character before environment',
+            'native character deletion','lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}
         (directory/'result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
     finally:
         if peer:peer.close()

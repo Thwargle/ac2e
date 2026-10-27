@@ -214,6 +214,9 @@ impl Accounts {
         self.records.insert(record.name, record.password_hash);
         Ok(())
     }
+    pub fn contains(&self, name: &str) -> bool {
+        self.records.contains_key(name)
+    }
     pub fn verify(&self, name: &str, password: &str) -> bool {
         if self.poisoned || !valid_account(name) || password.len() > 512 {
             return false;

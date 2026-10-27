@@ -68,6 +68,9 @@ void SAC2CharacterUI::Shutdown()
     if (Portrait.IsValid())
         Portrait->Destroy();
     Portrait.Reset();
+    if (Selection.IsValid()) Selection->Destroy();
+    Selection.Reset();
+    SelectionBrush.SetResourceObject(nullptr);
     if (Lineup.IsValid())
         Lineup->Destroy();
     Lineup.Reset();
@@ -121,6 +124,12 @@ void SAC2CharacterUI::Open(EScreen Next,const FString& InitialMessage)
         Lineup->Capture->bCaptureEveryFrame = false;
     }
     Screen = Next;
+    if (Portrait.IsValid() && Next!=EScreen::Create)
+    {Portrait->SetActorTickEnabled(false);Portrait->Capture->bCaptureEveryFrame=false;}
+    ShowSelectionOptions = false;
+    DeletePending.Empty();
+    CreatorLayout.Hovered = CreatorLayout.Pressed = 0;
+    if (Selection.IsValid()) { Selection->Destroy(); Selection.Reset(); }
     if(Next==EScreen::Select)
     {
         const int32 Active=Mode->Characters.Characters.IndexOfByPredicate([this](const auto& C){return C.Id==Mode->Characters.ActiveId;});
@@ -191,6 +200,7 @@ void SAC2CharacterUI::Close()
         Portrait->SetActorTickEnabled(false);
         Portrait->Capture->bCaptureEveryFrame = false;
     }
+    if (Selection.IsValid()) { Selection->Destroy(); Selection.Reset(); }
     if (auto *PC = Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))
     {
         PC->ResetIgnoreMoveInput();
@@ -199,8 +209,11 @@ void SAC2CharacterUI::Close()
 }
 FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
 {
+    if (Screen==EScreen::Credits) {Screen=EScreen::Select;Refresh();return FReply::Handled();}
     if (Event.GetKey() == EKeys::Escape)
     {
+        if (Screen == EScreen::Select && (ShowSelectionOptions || !DeletePending.IsEmpty()))
+        {ShowSelectionOptions=false; DeletePending.Empty(); Message.Empty(); Refresh(); return FReply::Handled();}
         if (Screen == EScreen::Create && CreationStep > 0)
             SetCreatorStep(CreationStep - 1);
         else if (Screen == EScreen::Create)
@@ -208,6 +221,17 @@ FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
         else if(Screen==EScreen::Select)
             Mode->SignOut();
         return FReply::Handled();
+    }
+    if (Screen == EScreen::Select && !ShowSelectionOptions)
+    {
+        if (Event.GetKey() == EKeys::Enter && DeletePending.IsEmpty()) { Enter(); return FReply::Handled(); }
+        if (Event.GetKey() == EKeys::Left || Event.GetKey() == EKeys::Right || Event.GetKey() == EKeys::Up || Event.GetKey() == EKeys::Down)
+        {
+            const int32 N=Mode->Characters.Characters.Num();
+            const int32 Current=Mode->Characters.Characters.IndexOfByPredicate([this](const auto& C){return C.Id==Mode->Characters.ActiveId;});
+            if (N) SelectCharacter((Current + (Event.GetKey()==EKeys::Left || Event.GetKey()==EKeys::Up ? N-1 : 1)) % N);
+            return FReply::Handled();
+        }
     }
     if (!IsCreation())
     {
@@ -242,6 +266,32 @@ void SAC2CharacterUI::ResetAppearance()
 }
 void SAC2CharacterUI::PreviewDraft()
 {
+    if (Screen == EScreen::Select)
+    {
+        TArray<FAC2SelectionFigure> Figures;
+        int32 Selected=0;
+        for (const auto &P:Mode->Characters.Characters)
+        {
+            const auto *A=Mode->CharacterCatalog.Avatar(P.Race,P.Sex);
+            if (!A) { Message=TEXT("Character appearance is unavailable."); return; }
+            if (P.Id==Mode->Characters.ActiveId) Selected=Figures.Num();
+            FAC2SelectionFigure F;
+            F.Physics=Mode->Network ? Mode->Network->Visual(P.Id) : A->Physics;
+            F.Height=P.Height; F.Build=P.Build;
+            F.Appearance=Mode->Network ? Mode->Network->Appearance(P.Id) : A->Resolve(P.Appearance,P.ClothingMask(Mode->CharacterCatalog));
+            Figures.Add(MoveTemp(F));
+        }
+        Selection=Mode->GetWorld()->SpawnActor<AAC2Portrait>(FVector(0,0,-700000),FRotator::ZeroRotator);
+        if (!Selection.IsValid() || !Selection->ShowSelection(Mode->DatDirectory,Figures,Selected,Mode->Network?Mode->Network->AllowedCharacters:8))
+            Message=TEXT("Native character selection scene could not be loaded.");
+        if (Selection.IsValid())
+        {
+            SelectionBrush.SetResourceObject(Selection->Image);
+            SelectionBrush.ImageSize=FVector2D(706,768);
+            SelectionBrush.DrawAs=ESlateBrushDrawType::Image;
+        }
+        return;
+    }
     const auto *A = Mode->CharacterCatalog.Avatar(Race, Sex);
     if (!A)
         return;
@@ -276,7 +326,17 @@ void SAC2CharacterUI::PreviewDraft()
 }
 bool SAC2CharacterUI::PreviewReady() const
 {
+    if (Screen == EScreen::Select) return Selection.IsValid() && Selection->Ready;
     return Portrait.IsValid() && Portrait->Ready;
+}
+void SAC2CharacterUI::SelectCharacter(int32 Index)
+{
+    if (!Mode->Characters.Characters.IsValidIndex(Index)) return;
+    Mode->Characters.ActiveId=Mode->Characters.Characters[Index].Id;
+    if (Index<Page) Page=Index;
+    if (Index>=Page+5) Page=Index-4;
+    DeletePending.Empty(); Message.Empty();
+    if (Selection.IsValid()) Selection->SelectCharacter(Index);
 }
 void SAC2CharacterUI::Refresh()
 {

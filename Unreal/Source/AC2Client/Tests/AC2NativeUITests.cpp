@@ -82,6 +82,24 @@ bool FAC2NativeWindowsTest::RunTest(const FString &)
         TestTrue(TEXT("native rollover artwork"),
                  Button->Media.ContainsByPredicate([](const auto &M) { return M.Image == 0x410009cdu; }));
     }
+    UI.States.Reset();UI.Visibility.Reset();
+    for(uint32 Base:{T(TEXT("normal")),T(TEXT("ghosted"))})
+    {
+        UI.States.Add(T(TEXT("CreateButton")),Base);
+        UI.Hovered=T(TEXT("CreateButton"));UI.Pressed=0;
+        UI.Begin(FIntPoint(1024,768));UI.Root(0x22000002,TEXT("BackgroundField"));
+        TestEqual(TEXT("explicit base state preserves hover or disabled state"),UI.Find(TEXT("CreateButton"))->State,
+            Base==T(TEXT("ghosted"))?Base:T(TEXT("normal_rollover")));
+        UI.Pressed=UI.Hovered;
+        UI.Begin(FIntPoint(1024,768));UI.Root(0x22000002,TEXT("BackgroundField"));
+        TestEqual(TEXT("explicit base state preserves press or disabled state"),UI.Find(TEXT("CreateButton"))->State,
+            Base==T(TEXT("ghosted"))?Base:T(TEXT("normal_pressed")));
+    }
+    auto R=UI.Bounds(TEXT("CharacterListBox"));
+    UI.Text.Add(T(TEXT("list_box_item")),TEXT("Selection Test"));
+    UI.Template(0x22000002,TEXT("list_box_item"),FIntRect(R.Min,R.Min+FIntPoint(R.Width(),20)),R,T(TEXT("CharacterListBox")));
+    const auto *Row=UI.Find(TEXT("list_box_item"));
+    TestTrue(TEXT("character row belongs to native list, above its background"),Row && Row->Parent!=INDEX_NONE && UI.Nodes[Row->Parent].Id==T(TEXT("CharacterListBox")) && Row->Text==TEXT("Selection Test"));
     return true;
 }
 #endif

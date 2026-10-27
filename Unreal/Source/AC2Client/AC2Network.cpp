@@ -156,6 +156,11 @@ void FAC2Network::Send(TSharedRef<FJsonObject> J)
     if (Bytes.Length() < 65536)
         FPlatformProcess::WritePipe(Write, reinterpret_cast<const uint8 *>(Bytes.Get()), Bytes.Length());
 }
+void FAC2Network::DeleteCharacter(const FString &Id)
+{
+    if (!IsSelection() || !Mode->Characters.Characters.ContainsByPredicate([&](const auto &C){return C.Id==Id;})) return;
+    auto J=Command(TEXT("delete"));J->SetStringField(TEXT("id"),Id);Send(J);
+}
 void FAC2Network::SetStatus(const FString &State, const FString &Text)
 {
     Phase = State;
@@ -581,6 +586,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     }
     if (Event == TEXT("characters"))
     {
+        AllowedCharacters=FMath::Clamp(int32(N(J,TEXT("allowed"))),1,32);
         ClearWorld();
         Mode->Characters = FAC2CharacterStore();
         CharacterVisuals.Reset();
@@ -611,6 +617,15 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         else
             SetStatus(TEXT("selection"), FString::Printf(TEXT("Character creation rejected (%d)"),
                                                          int32(N(J, TEXT("response")))));
+        return;
+    }
+    if (Event == TEXT("deleted"))
+    {
+        Mode->Characters.Characters.RemoveAll([&](const auto &C){return C.Id==Id;});
+        CharacterVisuals.Remove(Id);
+        if (Mode->Characters.ActiveId==Id) Mode->Characters.ActiveId=Mode->Characters.Characters.IsEmpty()?FString():Mode->Characters.Characters[0].Id;
+        SetStatus(TEXT("selection"),TEXT("Character deleted"));
+        if (auto H=HUD(Mode);H && H->CharacterUI) H->CharacterUI->Open(SAC2CharacterUI::EScreen::Select);
         return;
     }
     if (Event == TEXT("player"))
@@ -889,8 +904,17 @@ void FAC2Network::Tick(float Delta)
             if(FParse::Param(FCommandLine::Get(),TEXT("AC2LoginSmoke")))
             {
                 if(Mode->InWorld()){FPlatformMisc::RequestExitWithStatus(false,1);return;}
-                if(!SmokeSelection){SmokeSelection=true;Started=0;FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Login-selection.png"),true,false);}
+                if(!SmokeSelection){SmokeSelection=true;Started=0;}
                 if(Started<2)return;
+                FString Error;
+                auto H=HUD(Mode);
+                if(!H || !H->CharacterUI || !H->CharacterUI->SmokeSelection(SelectionSmokeStep,Error))
+                {UE_LOG(LogTemp,Error,TEXT("Selection pointer smoke step %d: %s"),SelectionSmokeStep,*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/FString::Printf(TEXT("Screenshots/AC2Login-selection-%02d.png"),SelectionSmokeStep),true,false);
+                Started=0;
+                if(++SelectionSmokeStep<=13)return;
+                SmokeEntered=true;
+                return;
             }
             SmokeEntered = true;
             Enter(Mode->Characters.Characters[0].Id);

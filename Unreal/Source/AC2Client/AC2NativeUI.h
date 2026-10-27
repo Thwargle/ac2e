@@ -34,7 +34,8 @@ class FAC2NativeUI
     uint32 Hovered = 0, Pressed = 0;
     void Begin(FIntPoint Viewport);
     bool Root(uint32 Layout, const TCHAR *Name);
-    bool Template(uint32 Layout, const TCHAR *Name, FIntRect Rect, FIntRect Clip);
+    bool Template(uint32 Layout, const TCHAR *Name, FIntRect Rect, FIntRect Clip, uint32 ParentId = 0);
+    bool Template(uint32 Layout, uint32 ElementId, FIntRect Rect, FIntRect Clip, uint32 ParentId = 0);
     const FAC2NativeNode *Find(const TCHAR *Name) const;
     const FAC2NativeNode *Find(uint32 Id) const;
     const FAC2NativeNode *Descendant(const FAC2NativeNode &Parent, const TCHAR *Name) const;

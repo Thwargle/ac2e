@@ -2078,6 +2078,26 @@ bool FAC2AssetLibrary::ValidateGrassMaterials(int32 &Count)
     }
     return Count > 0;
 }
+bool FAC2AssetLibrary::HoldingLocation(uint32 Object, uint32 Location, FTransform &Out)
+{
+    FAC2DecodedVisual V;
+    if (!Impl->Visual(Object, V)) return false;
+    for (const auto &P : V.Parts)
+    {
+        TArray<uint8> B;
+        FAC2Setup S;
+        if (P.Parent || !Impl->Read(P.Setup, B) || !S.Decode(P.Setup, B)) continue;
+        const auto *Socket = S.Sockets.Find(Location);
+        auto World = S.World(S.Rest);
+        if (Socket && World.IsValidIndex(Socket->Bone))
+        {
+            Out = FTransform(Socket->Frame.ToMatrixWithScale() * World[Socket->Bone]) *
+                  FTransform(FQuat::Identity, FVector::ZeroVector, V.Scale);
+            return true;
+        }
+    }
+    return false;
+}
 bool FAC2AssetLibrary::DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Root, FAC2UISceneInfo *Info)
 {
     TArray<uint8> B;

@@ -1,9 +1,11 @@
 #include "AC2CharacterUI.h"
 #include "AC2GameMode.h"
+#include "AC2GameUI.h"
 #include "AC2Portrait.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
+#include "Engine/Texture2D.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -15,6 +17,7 @@
 #include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/SCanvas.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SWindow.h"
 
 namespace
 {
@@ -109,6 +112,7 @@ class SAC2CreatorLayout : public SLeafWidget
     SLATE_ARGUMENT(TFunction<void(uint32)>, Click)
     SLATE_ARGUMENT(TFunction<void(uint32, float)>, Slide)
     SLATE_ARGUMENT(TFunction<void(FVector2D, bool)>, Avatar)
+    SLATE_ARGUMENT(TFunction<void(FVector2D)>, Activate)
     SLATE_ARGUMENT(TFunction<void(float)>, Wheel)
     SLATE_ARGUMENT(
         TFunction<int32(const FAC2NativeNode &, FSlateWindowElementList &, int32, const FGeometry &)>, Scene)
@@ -121,6 +125,7 @@ class SAC2CreatorLayout : public SLeafWidget
         Click = A._Click;
         Slide = A._Slide;
         Avatar = A._Avatar;
+        Activate = A._Activate;
         Wheel = A._Wheel;
         Scene = A._Scene;
     }
@@ -185,12 +190,22 @@ class SAC2CreatorLayout : public SLeafWidget
     {
         if (E.GetEffectingButton() != EKeys::LeftMouseButton)
             return FReply::Unhandled();
+        OnMouseMove(G, E);
         uint32 Id = UI->Pressed;
         UI->Pressed = 0;
         Dragging = 0;
         if (Id && Id == UI->Hovered)
             Click(Id);
         return FReply::Handled().ReleaseMouseCapture();
+    }
+    virtual void OnMouseLeave(const FPointerEvent &E) override
+    { SLeafWidget::OnMouseLeave(E); UI->Hovered=0; }
+    virtual void OnMouseCaptureLost(const FCaptureLostEvent &) override
+    { UI->Pressed=0; Dragging=0; }
+    virtual FReply OnMouseButtonDoubleClick(const FGeometry &G,const FPointerEvent &E) override
+    {
+        if(E.GetEffectingButton()!=EKeys::LeftMouseButton)return FReply::Unhandled();
+        Activate(G.AbsoluteToLocal(E.GetScreenSpacePosition()));return FReply::Handled();
     }
 
   private:
@@ -201,6 +216,7 @@ class SAC2CreatorLayout : public SLeafWidget
     TFunction<void(uint32)> Click;
     TFunction<void(uint32, float)> Slide;
     TFunction<void(FVector2D, bool)> Avatar;
+    TFunction<void(FVector2D)> Activate;
     TFunction<void(float)> Wheel;
     virtual FReply OnMouseWheel(const FGeometry &, const FPointerEvent &E) override
     {
@@ -213,14 +229,69 @@ class SAC2CreatorLayout : public SLeafWidget
         if (const auto *N = UI->Find(Dragging))
         {
             const auto *W = UI->Descendant(*N, TEXT("widget"));
-            const float Thumb = W ? W->Rect.Width() : 0;
-            Slide(Dragging, FMath::Clamp(float(P.X - N->Rect.Min.X - Thumb / 2) /
-                                             FMath::Max(1.f, N->Rect.Width() - Thumb),
+            const int32 Axis=N->Attr(TEXT("horizontal"))?0:1;
+            const float Thumb = W ? W->Rect.Size()[Axis] : 0;
+            Slide(Dragging, FMath::Clamp(float(P[Axis] - N->Rect.Min[Axis] - Thumb / 2) /
+                                             FMath::Max(1.f, N->Rect.Size()[Axis] - Thumb),
                                          0.f, 1.f));
         }
     }
 };
 } // namespace
+void SAC2CharacterUI::BuildCredits()
+{
+    auto T=[](const TCHAR* Name){return FAC2UILayout::Token(Name);};
+    const auto &Layout=CreatorLayout.Layouts[0x22000022];
+    const auto *Field=Layout.Find(TEXT("TextField"));
+    if (!Field) return;
+    TMap<uint32,uint32> Attrs;
+    for (const auto &S:Field->States) for (const auto &A:S.Attributes) Attrs.Add(A.Key,A.Value);
+    if (CreditsText.IsEmpty())
+    {
+        FAC2DatArchive Local;FString Error;
+        if (Local.Open(Mode->DatDirectory/TEXT("local_English.dat"),3,Error))
+            for (int32 I=1;I<=1024;++I)
+            {
+                FString S=AC2ReadUIString(Local,Attrs.FindRef(T(TEXT("stringtable"))),T(*FString::Printf(TEXT("ID_Credits%d"),I)));
+                if (S.IsEmpty()) break;
+                CreditsText+=S+TEXT("\n");
+            }
+    }
+    const float Elapsed=FPlatformTime::Seconds()-CreditsStart;
+    const auto *Picture=Layout.Find(TEXT("PictureField"));
+    TMap<uint32,uint32> Pictures;
+    if (Picture) for (const auto &S:Picture->States) for (const auto &A:S.Attributes) Pictures.Add(A.Key,A.Value);
+    TArray<uint32> Images;
+    for (int32 I=0;I<128;++I)
+    {
+        uint32 Id=Pictures.FindRef(T(*FString::Printf(TEXT("ID_Picture%d"),I)));
+        if(!Id)break;Images.Add(Id);
+    }
+    if (!Images.IsEmpty())
+    {
+        const int32 Index=int32(Elapsed/6)%Images.Num();
+        if(auto *Texture=Assets->Texture(Images[Index]))
+        {
+            FAC2NativeNode N;N.Id=T(TEXT("PictureField"));N.Z=300;
+            FIntPoint Origin(Pictures.FindRef(T(*FString::Printf(TEXT("x_%d"),Index%4))),Pictures.FindRef(T(*FString::Printf(TEXT("y_%d"),Index%4))));
+            N.Rect=FIntRect(Origin,Origin+FIntPoint(Texture->GetSizeX(),Texture->GetSizeY()));N.Clip=FIntRect(0,0,1024,768);
+            FAC2UIArt Art;Art.Image=Images[Index];N.Media.Add(Art);CreatorLayout.Nodes.Add(MoveTemp(N));
+        }
+    }
+    const int32 Left=Attrs.FindRef(T(TEXT("left_margin"))),Right=Attrs.FindRef(T(TEXT("right_margin")));
+    // Resolve the DAT text template first so wrapping and scrolling use its font and margins.
+    CreatorLayout.Text.Add(0xeaca811a,CreditsText);
+    CreatorLayout.Template(0x22000022,0xeaca811au,FIntRect(Left,0,1024-Right,768),FIntRect(0,0,1024,768));
+    if (CreatorLayout.Nodes.IsEmpty())return;
+    auto &Text=CreatorLayout.Nodes.Last();
+    auto Font=Fonts.Get(Text.Attr(TEXT("font"),0x42000024));
+    if(!Font)return;
+    const int32 Height=Font->Lines(CreditsText,Text.Rect.Width()).Num()*Font->Height;
+    const int32 Y=768-FMath::RoundToInt(Elapsed*40);
+    Text.Rect=FIntRect(Left,Y,1024-Right,Y+Height);Text.Clip=FIntRect(Left,0,1024-Right,768);
+    Text.Attributes.Add(T(TEXT("center")),1);
+    if(Y+Height<0){Screen=EScreen::Select;Refresh();}
+}
 void SAC2CharacterUI::BuildCreatorLayout()
 {
     const auto *A = Mode->CharacterCatalog.Avatar(Race, Sex);
@@ -231,16 +302,18 @@ void SAC2CharacterUI::BuildCreatorLayout()
     CreatorLayout.Text.Reset();
     CreatorLayout.Visibility.Reset();
     CreatorLayout.States.Reset();
+    if (Screen==EScreen::Credits) {BuildCredits();CreatorLayout.Prepare(*Assets,Fonts);return;}
     if (Screen == EScreen::Select)
     {
         CreatorLayout.Root(0x22000002, TEXT("Viewport"));
-        for (const TCHAR *Name :
-             {TEXT("DeleteButton"), TEXT("RestoreButton"), TEXT("OptionsButton"), TEXT("CreditsButton")})
-            CreatorLayout.States.Add(T(Name), T(TEXT("ghosted")));
+        CreatorLayout.Visibility.Add(T(TEXT("RestoreButton")),false);
+        CreatorLayout.States.Add(T(TEXT("DeleteButton")),T(Mode->Characters.Active()?TEXT("normal"):TEXT("ghosted")));
+        const bool Connected=!Mode->Network || Mode->Network->IsSelection();
         CreatorLayout.States.Add(T(TEXT("CreateButton")),
-                                 T(Mode->Characters.Characters.Num() < 8 ? TEXT("normal") : TEXT("ghosted")));
+                                 T(Connected && Mode->Characters.Characters.Num() < (Mode->Network?Mode->Network->AllowedCharacters:8) ? TEXT("normal") : TEXT("ghosted")));
         CreatorLayout.States.Add(T(TEXT("EnterButton")),
-                                 T(Mode->Characters.Active() ? TEXT("normal") : TEXT("ghosted")));
+                                 T(Connected && Mode->Characters.Active() ? TEXT("normal") : TEXT("ghosted")));
+        CreatorLayout.Positions.Add(0xb9d70117, float(Page)/FMath::Max(1,Mode->Characters.Characters.Num()-5));
         CreatorLayout.Text.Add(T(TEXT("ErrorMsg")), Message);
         CreatorLayout.Root(0x22000002, TEXT("BackgroundField"));
         CreatorLayout.Root(0x22000002, TEXT("EnterButtonField"));
@@ -254,7 +327,17 @@ void SAC2CharacterUI::BuildCreatorLayout()
                 T(P.Id == Mode->Characters.ActiveId ? TEXT("highlight") : TEXT("normal")));
             FIntPoint Origin = List.Min + FIntPoint(0, (I - Page) * 20);
             CreatorLayout.Template(0x22000002, TEXT("list_box_item"),
-                                   FIntRect(Origin, Origin + FIntPoint(List.Width(), 20)), List);
+                                   FIntRect(Origin, Origin + FIntPoint(List.Width(), 20)), List, T(TEXT("CharacterListBox")));
+        }
+        if (!DeletePending.IsEmpty())
+        {
+            // A modal native confirmation tree owns all pointer hits while it is open.
+            for (auto &N:CreatorLayout.Nodes)
+                if (N.Kind==T(TEXT("button"))) N.State=T(TEXT("ghosted"));
+            const auto *Character=Mode->Characters.Active();
+            CreatorLayout.Text.Add(T(TEXT("QuestionText")),FString::Printf(TEXT("Delete %s? This permanently removes this character."),Character?*Character->Name:TEXT("this character")));
+            CreatorLayout.Root(0x22000005,TEXT("ConfirmationField"));
+            for (auto &N:CreatorLayout.Nodes) if (N.Id==T(TEXT("ConfirmationField"))) N.Z=-1;
         }
     }
     else if (CreationStep == 0)
@@ -316,6 +399,8 @@ void SAC2CharacterUI::BuildCreatorLayout()
 }
 void SAC2CharacterUI::CreatorSlider(uint32 Id, float Value)
 {
+    if (Screen==EScreen::Select && Id==0xb9d70117)
+    {Page=FMath::RoundToInt(Value*FMath::Max(0,Mode->Characters.Characters.Num()-5));return;}
     if (Screen != EScreen::Create || CreationStep != 1)
         return;
     if (Id == FAC2UILayout::Token(TEXT("RotationSlider")))
@@ -343,7 +428,30 @@ void SAC2CharacterUI::CreatorAction(uint32 Id)
     auto Is = [Id](const TCHAR *Name) { return Id == FAC2UILayout::Token(Name); };
     if (Screen == EScreen::Select)
     {
-        if (Is(TEXT("CreateButton")) && Mode->Characters.Characters.Num() < 8)
+        if (!DeletePending.IsEmpty())
+        {
+            if (Is(TEXT("NoButton"))) {DeletePending.Empty();Message.Empty();return;}
+            if (Is(TEXT("YesButton")))
+            {
+                FString CharacterId=MoveTemp(DeletePending);DeletePending.Empty();
+                if (Mode->Network) {Mode->Network->DeleteCharacter(CharacterId);Message=TEXT("Deleting character...");}
+                else
+                {
+                    const auto Previous=Mode->Characters;
+                    Mode->Characters.Characters.RemoveAll([&](const auto &C){return C.Id==CharacterId;});
+                    Mode->Characters.ActiveId=Mode->Characters.Characters.IsEmpty()?FString():Mode->Characters.Characters[0].Id;
+                    if (Persist(Previous)) Open(EScreen::Select);
+                }
+            }
+            return;
+        }
+        if (Is(TEXT("DeleteButton")) && Mode->Characters.Active())
+        {DeletePending=Mode->Characters.ActiveId;return;}
+        if (Is(TEXT("CreditsButton")))
+        {Screen=EScreen::Credits;CreditsStart=FPlatformTime::Seconds();Refresh();return;}
+        if (Is(TEXT("OptionsButton")))
+        {ShowSelectionOptions=true; Refresh(); return;}
+        if (Is(TEXT("CreateButton")) && Mode->Characters.Characters.Num() < (Mode->Network?Mode->Network->AllowedCharacters:8))
         {
             Open(EScreen::Create);
             return;
@@ -451,7 +559,7 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
     }
     BuildCreatorLayout();
     auto View =
-        SNew(SAC2CreatorLayout)
+        SAssignNew(CreatorView,SAC2CreatorLayout)
             .UI(&CreatorLayout)
             .Fonts(&Fonts)
             .Update([this]() { BuildCreatorLayout(); })
@@ -462,7 +570,22 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                     Page = FMath::Clamp(Page - FMath::RoundToInt(V), 0,
                                         FMath::Max(0, Mode->Characters.Characters.Num() - 5));
             })
+            .Activate([this](FVector2D P){
+                if(Screen!=EScreen::Select || !DeletePending.IsEmpty())return;
+                const auto List=CreatorLayout.Bounds(TEXT("CharacterListBox"));
+                int32 Index=INDEX_NONE;
+                if(List.Contains(FIntPoint(P.X,P.Y)))Index=Page+int32((P.Y-List.Min.Y)/20);
+                else if(Selection.IsValid())
+                {
+                    const auto R=CreatorLayout.Bounds(TEXT("Viewport"));
+                    if(R.Contains(FIntPoint(P.X,P.Y)))Index=Selection->PickAvatar((P-FVector2D(R.Min))/FVector2D(R.Size()));
+                }
+                if(Mode->Characters.Characters.IsValidIndex(Index) && Mode->Characters.Characters[Index].Id==Mode->Characters.ActiveId)Enter();
+            })
             .Avatar([this](FVector2D P, bool Click) {
+                if (Screen==EScreen::Credits)
+                {if(Click){Screen=EScreen::Select;Refresh();}return;}
+                if (!DeletePending.IsEmpty()) return;
                 if (Screen == EScreen::Select)
                 {
                     if (Click)
@@ -472,8 +595,12 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                         if (R.Contains(FIntPoint(P.X, P.Y)) &&
                             Mode->Characters.Characters.IsValidIndex(Index))
                         {
-                            Mode->Characters.ActiveId = Mode->Characters.Characters[Index].Id;
-                            Open(EScreen::Select);
+                            SelectCharacter(Index);
+                        }
+                        else if (Selection.IsValid())
+                        {
+                            R=CreatorLayout.Bounds(TEXT("Viewport"));
+                            if (R.Contains(FIntPoint(P.X,P.Y))) SelectCharacter(Selection->PickAvatar((P-FVector2D(R.Min))/FVector2D(R.Size())));
                         }
                     }
                     return;
@@ -504,7 +631,7 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                     return Layer;
                 FIntRect R = N.Rect;
                 const FSlateBrush *B =
-                    Screen == EScreen::Create && CreationStep == 0 ? &LineupBrush : &PortraitBrush;
+                    Screen == EScreen::Select ? &SelectionBrush : Screen == EScreen::Create && CreationStep == 0 ? &LineupBrush : &PortraitBrush;
                 if (R.Width() > 0 && B->GetResourceObject())
                     FSlateDrawElement::MakeBox(
                         Out, ++Layer,
@@ -513,6 +640,9 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
             });
     auto Overlay = SNew(SOverlay);
     Overlay->AddSlot()[View];
+    if (ShowSelectionOptions)
+        Overlay->AddSlot()[SAssignNew(SelectionOptions,SAC2GameUI).Mode(Mode.Get()).Frontend(true)
+            .OnClose_Lambda([this]{ShowSelectionOptions=false; Refresh();FSlateApplication::Get().SetKeyboardFocus(AsShared());})];
     if (Screen == EScreen::Create && CreationStep == 2)
     {
         auto EntryCanvas = SNew(SCanvas).Visibility(EVisibility::SelfHitTestInvisible);
@@ -591,4 +721,89 @@ bool SAC2CharacterUI::SmokeEyes(bool Last)
     PreviewDraft();
     SmokeCreatorPage(0);
     return PreviewReady();
+}
+bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
+{
+    auto T=[](const TCHAR *N){return FAC2UILayout::Token(N);};
+    auto Fail=[&](const TCHAR *Why){Error=Why;return false;};
+    if (!Mode.IsValid() || Mode->InWorld() || !CreatorView) return Fail(TEXT("Frontend is not isolated from world"));
+    auto Pointer=[&](FVector2D Absolute,bool Click)
+    {
+        auto &App=FSlateApplication::Get();
+        const auto Window=App.FindWidgetWindow(CreatorView.ToSharedRef());
+        if (!Window) return false;
+        // Resolve through the rendered window's hit-test grid, including overlays and scale.
+        auto Path=App.LocateWindowUnderMouse(Absolute,{Window.ToSharedRef()},false);
+        if(!Path.IsValid())return false;
+        const TSet<FKey> None,Down={EKeys::LeftMouseButton};
+        App.RoutePointerMoveEvent(Path,FPointerEvent(0,Absolute,Absolute,None,FKey(),0,FModifierKeysState()),false);
+        if (Click)
+        {
+            App.RoutePointerDownEvent(Path,FPointerEvent(0,Absolute,Absolute,Down,EKeys::LeftMouseButton,0,FModifierKeysState()));
+            App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,None,EKeys::LeftMouseButton,0,FModifierKeysState()));
+        }
+        return true;
+    };
+    auto LocalPointer=[&](FVector2D P,bool Click){return Pointer(CreatorView->GetCachedGeometry().LocalToAbsolute(P),Click);};
+    auto Button=[&](const TCHAR *Name,bool Click=true)
+    {
+        auto R=CreatorLayout.Bounds(Name);
+        return R.Width()>0 && LocalPointer(FVector2D(R.Min)+FVector2D(R.Size())*.5,Click);
+    };
+    const auto &Characters=Mode->Characters.Characters;
+    if (Step==0)
+    {
+        if (Characters.Num()<2 || !Selection.IsValid() || !Selection->Ready) return Fail(TEXT("Two native selection models required"));
+        for (const auto &C:Characters)
+            if (!CreatorLayout.Nodes.ContainsByPredicate([&](const auto &N){return N.Text==C.Name && N.Kind==T(TEXT("text")) && N.Parent!=INDEX_NONE;})) return Fail(TEXT("Character name missing from native list"));
+        if(!Button(TEXT("CreateButton"),false))return Fail(TEXT("Create button not hit-testable"));
+        BuildCreatorLayout();
+        if(CreatorLayout.Find(TEXT("CreateButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Create hover feedback missing"));
+    }
+    if(Step==1)
+    {
+        const auto R=CreatorLayout.Bounds(TEXT("CharacterListBox"));
+        LocalPointer(FVector2D(R.Min)+FVector2D(40,30),true);
+        if(Mode->Characters.ActiveId!=Characters[1].Id)return Fail(TEXT("Mouse did not select second name"));
+    }
+    if(Step==2)
+    {
+        if(Selection->SelectionMoving() || Selection->SelectionIndex()!=1)return Fail(TEXT("Carousel did not finish rotating to second slot"));
+        const FVector2D Point=Selection->AvatarPoint(0);
+        if(Selection->PickAvatar(Point)!=0)return Fail(TEXT("First character cannot be picked in native scene"));
+        const auto R=CreatorLayout.Bounds(TEXT("Viewport"));
+        LocalPointer(FVector2D(R.Min)+Point*FVector2D(R.Size()),true);
+        if(Mode->Characters.ActiveId!=Characters[0].Id)return Fail(TEXT("3D character click did not select first slot"));
+    }
+    if(Step==3 && (Selection->SelectionMoving() || Selection->SelectionIndex()!=0))return Fail(TEXT("3D selection did not rotate carousel"));
+    if(Step==4) {if(!Button(TEXT("OptionsButton")) || !ShowSelectionOptions)return Fail(TEXT("Options button did not open native panel"));}
+    if(Step==5)
+    {
+        FVector2D P;
+        if(!SelectionOptions || !SelectionOptions->OptionsClosePoint(P) || !Pointer(P,true) || ShowSelectionOptions)return Fail(TEXT("Options close mouse input failed"));
+    }
+    if(Step==6) {if(!Button(TEXT("CreditsButton")) || Screen!=EScreen::Credits)return Fail(TEXT("Credits button failed"));}
+    if(Step==7)
+    {
+        if(CreditsText.IsEmpty())return Fail(TEXT("DAT credits text unavailable"));
+        FSlateApplication::Get().ProcessKeyDownEvent(FKeyEvent(EKeys::Escape,FModifierKeysState(),0,false,0,0));
+        if(Screen!=EScreen::Select)return Fail(TEXT("Credits did not return to selection"));
+    }
+    if(Step==8) {if(!Button(TEXT("DeleteButton")) || DeletePending.IsEmpty())return Fail(TEXT("Delete confirmation did not open"));}
+    if(Step==9) {if(!Button(TEXT("NoButton")) || !DeletePending.IsEmpty() || Characters.Num()!=2)return Fail(TEXT("Delete cancellation failed"));}
+    if(Step==10) {if(!Button(TEXT("CreateButton")) || Screen!=EScreen::Create)return Fail(TEXT("Create button failed"));}
+    if(Step==11) {if(!Button(TEXT("CancelButton")) || Screen!=EScreen::Select)return Fail(TEXT("Creation cancel failed"));}
+    if(Step==12)
+    {
+        const int32 Index=Characters.IndexOfByPredicate([](const auto &C){return C.Name==TEXT("Controller Hero");});
+        if(Index==INDEX_NONE)return Fail(TEXT("Combat fixture character missing"));
+        const auto R=CreatorLayout.Bounds(TEXT("CharacterListBox"));
+        LocalPointer(FVector2D(R.Min)+FVector2D(40,(Index-Page)*20+10),true);
+        if(Mode->Characters.ActiveId!=Characters[Index].Id)return Fail(TEXT("Final name selection failed"));
+        Button(TEXT("EnterButton"),false);BuildCreatorLayout();
+        if(CreatorLayout.Find(TEXT("EnterButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Enter hover feedback missing"));
+    }
+    if(Step==13) {if(!Button(TEXT("EnterButton")) || Mode->Network->IsSelection())return Fail(TEXT("Enter click did not request world entry"));}
+    UE_LOG(LogTemp,Display,TEXT("AC2 selection pointer smoke step %d passed"),Step);
+    return true;
 }

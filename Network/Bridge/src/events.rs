@@ -62,6 +62,7 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             json!({"event":"created","response":response,"result":weenie_result,"character":character(&identity)})
         }
         ServerEvent::CharacterError(code) => json!({"event":"character_error","code":code}),
+        ServerEvent::CharacterDeleted(id) => json!({"event":"deleted","id":id.to_string()}),
         ServerEvent::CreatePlayer { id, region } => {
             json!({"event":"player","id":id.to_string(),"region":region})
         }

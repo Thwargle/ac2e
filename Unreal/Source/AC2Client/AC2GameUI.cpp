@@ -43,6 +43,7 @@ const TCHAR *PackButtons[] = {TEXT("PackMainButton"), TEXT("PackOneButton"), TEX
 void SAC2GameUI::Construct(const FArguments &Args)
 {
     Mode = Args._Mode;
+    Frontend=Args._Frontend; OnClose=Args._OnClose; ShowOptions=Frontend;
     Assets = MakeUnique<FAC2AssetLibrary>();
     FString Error;
     Assets->Open(Mode->DatDirectory, Error);
@@ -82,6 +83,7 @@ void SAC2GameUI::Construct(const FArguments &Args)
     }));
     Log.Add(EAC2ChatType::System, TEXT("Welcome to Dereth. Enter opens local chat; /help lists commands."));
     Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Server chat: /say, /me, /tell Name, message. T: target; 1: attack; 2: use. /stop ends combat.") : TEXT("Offline world: messages stay in this session."));
+    if (Frontend) RestoreOptions();
     Rebuild();
 }
 SAC2GameUI::~SAC2GameUI()
@@ -91,6 +93,7 @@ SAC2GameUI::~SAC2GameUI()
 }
 bool SAC2GameUI::VisibleWorld() const
 {
+    if (Frontend) return ShowOptions;
     auto *PC = Controller(Mode);
     auto *H = PC ? Cast<AAC2HUD>(PC->GetHUD()) : nullptr;
     return H && Mode.IsValid() && Mode->InWorld() && (!H->CharacterUI || !H->CharacterUI->IsCreation());
@@ -133,6 +136,15 @@ void SAC2GameUI::Rebuild()
     ButtonActions.Reset();
     Icons.Reset();
     Hints.Reset();
+    if (Frontend)
+    {
+        Native.Visibility.Add(Token(TEXT("OptionField")),true);
+        Native.Visibility.Add(Token(TEXT("ExaminationField")),false);
+        Native.Root(0x22000001,TEXT("LeftSidePanel"));
+        BuildOptions();
+        Native.Prepare(*Assets,Fonts);
+        return;
+    }
     auto Show = [&](const TCHAR *Name, bool Value) { Native.Visibility.Add(Token(Name), Value); };
     auto SetText = [&](const TCHAR *Name, FString Value) { Native.Text.Add(Token(Name), MoveTemp(Value)); };
     // gmToolbarUI creates these roots but keeps its mutually exclusive panels hidden until selected.
@@ -483,9 +495,9 @@ FReply SAC2GameUI::OnKeyDown(const FGeometry &, const FKeyEvent &E)
 }
 void SAC2GameUI::Action(FName Name)
 {
-    if(OptionAction(Name))return;
     if (const FName *Bound = ButtonActions.Find(Name))
         Name = *Bound;
+    if(OptionAction(Name))return;
     if (Name == TEXT("ChatEntry"))
     {
         BeginChat();

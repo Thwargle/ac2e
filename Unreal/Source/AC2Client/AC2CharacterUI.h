@@ -23,6 +23,7 @@ class SAC2CharacterUI : public SCompoundWidget
         Closed,
         Login,
         Select,
+        Credits,
         Create,
         Inventory,
         Stats
@@ -37,7 +38,7 @@ class SAC2CharacterUI : public SCompoundWidget
     }
     bool IsCreation() const
     {
-        return Screen == EScreen::Create || Screen == EScreen::Select || Screen==EScreen::Login;
+        return Screen == EScreen::Create || Screen == EScreen::Select || Screen==EScreen::Login || Screen==EScreen::Credits;
     }
     bool PreviewReady() const;
     virtual bool SupportsKeyboardFocus() const override
@@ -56,10 +57,20 @@ class SAC2CharacterUI : public SCompoundWidget
     }
     void SmokeCreatorPage(int32 Tab, bool Confirm = false);
     bool SmokeEyes(bool Last);
+    bool SmokeSelection(int32 Step, FString &Error);
 
   private:
     TWeakObjectPtr<AAC2GameMode> Mode;
-    TWeakObjectPtr<AAC2Portrait> Portrait, Lineup;
+    TWeakObjectPtr<AAC2Portrait> Portrait, Lineup, Selection;
+    FSlateBrush SelectionBrush;
+    TSharedPtr<SWidget> CreatorView;
+    TSharedPtr<class SAC2GameUI> SelectionOptions;
+    bool ShowSelectionOptions = false;
+    FString DeletePending;
+    FString CreditsText;
+    double CreditsStart=0;
+    void BuildCredits();
+    void SelectCharacter(int32 Index);
     FSlateBrush LineupBrush;
     int32 HoveredAvatar = INDEX_NONE;
     TUniquePtr<FAC2AssetLibrary> Assets;

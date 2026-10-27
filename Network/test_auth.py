@@ -21,19 +21,36 @@ def main():
         '--web-bind','127.0.0.1:19280','--public-origin','http://127.0.0.1:19280',
         '--public-host','127.0.0.1','--public-port','19282'],stdout=log,stderr=log,creationflags=0x08000000)
     game=None;peers=[]
-    def post(path,password):
+    def post(path,password,account='network_test'):
         request=urllib.request.Request('http://127.0.0.1:19280/api/'+path,
-            data=json.dumps({'account':'network_test','password':password}).encode(),
+            data=json.dumps({'account':account,'password':password}).encode(),
             headers={'Content-Type':'application/json'},method='POST')
         with urllib.request.urlopen(request,timeout=10) as response:return json.load(response)
     try:
         time.sleep(.6)
         password='AC2e-'+uuid.uuid4().hex
-        post('register',password)
+        first=post('login',password)
+        assert first['created'] is True
+        first=None
+        # A new service process must retain the original password, not register again.
+        (auth/'account-stop.request').write_text('stop\n')
+        assert web.wait(timeout=8)==0
+        web=subprocess.Popen([str(SERVER),'account-web','--auth-data',str(auth),'--data',str(world),
+            '--web-bind','127.0.0.1:19280','--public-origin','http://127.0.0.1:19280',
+            '--public-host','127.0.0.1','--public-port','19282'],stdout=log,stderr=log,creationflags=0x08000000)
+        time.sleep(.6)
         try:post('login','incorrect-password-123')
         except urllib.error.HTTPError as e:assert e.code==401
         else:raise AssertionError('Wrong password accepted')
         login=post('login',password)
+        assert login['created'] is False
+        try:post('login','short','invalid_password_test')
+        except urllib.error.HTTPError as e:assert e.code==400
+        else:raise AssertionError('Short initial password accepted')
+        for name in ('local','admin'):
+            try:post('login',password,name)
+            except urllib.error.HTTPError as e:assert e.code==409
+            else:raise AssertionError('Reserved legacy account was claimed')
         password=None
         game=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19282','--auth-data',str(auth),
             '--data',str(world),'--game-data',str(DAT_DIRECTORY),
@@ -57,7 +74,7 @@ def main():
             assert 'AC2E/emulator/src/server.rs' in z.namelist()
             assert 'AC2E/LICENSE' in z.namelist()
             assert not any('accounts.journal' in name or '/data/' in name for name in z.namelist())
-        report={'result':'PASS','checks':['account registration','wrong password rejected','native one-use ticket login','ticket replay rejected','anonymous login rejected','corresponding source downloadable'],'directory':str(directory)}
+        report={'result':'PASS','checks':['first login creates account','password persists across service restart','wrong password rejected without overwrite','reserved legacy accounts protected','native one-use ticket login','ticket replay rejected','anonymous login rejected','corresponding source downloadable'],'directory':str(directory)}
         (directory/'result.json').write_text(json.dumps(report,indent=2))
         print(json.dumps(report))
     finally:

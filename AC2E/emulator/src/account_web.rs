@@ -286,13 +286,27 @@ fn handle(
             Err(error) => Err(error),
         }
     } else {
+        // First sign-in claims a new account. Existing credentials are never
+        // replaced, and legacy character owners cannot be claimed this way.
+        let created = !accounts.contains(&account);
+        if created {
+            if reserved(&config.game_data, &account)? {
+                return reply(409, "That account name is unavailable. Choose a new account name.");
+            }
+            if let Err(error) = accounts.create(&account, &credentials.password) {
+                if error.kind() == io::ErrorKind::InvalidData {
+                    return reply(400, "Use an account name of 1-32 letters, digits or underscores and a password of 12-128 characters.");
+                }
+                return Err(error);
+            }
+        }
         if !accounts.verify(&account, &credentials.password) {
             return reply(401, "Account or password is incorrect.");
         }
         let ticket = accounts.issue(&account, ip)?;
         Ok((
             200,
-            json!({"account":account,"ticket":ticket,"expires_in":auth::TICKET_SECONDS,"game_host":config.game_host,"game_port":config.game_port}),
+            json!({"account":account,"created":created,"ticket":ticket,"expires_in":auth::TICKET_SECONDS,"game_host":config.game_host,"game_port":config.game_port}),
         ))
     }
 }

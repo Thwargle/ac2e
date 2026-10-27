@@ -160,6 +160,11 @@ impl Session {
     }
     fn command(&mut self, v: &Value) -> Result<(), String> {
         match text(v, "command")? {
+            "delete" if !self.ready && self.player == 0 => {
+                send(&mut self.client, ClientEvent::DeleteCharacter {
+                    account: self.account.clone(), character: id(v, "id")?,
+                })?;
+            }
             "enter" => {
                 self.ready = false;
                 self.player = 0;

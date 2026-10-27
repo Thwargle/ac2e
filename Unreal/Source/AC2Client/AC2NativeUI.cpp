@@ -62,7 +62,7 @@ bool FAC2NativeUI::Open(const FString &Directory, FString &Error)
     if (!Local.Open(FPaths::Combine(Directory, TEXT("local_English.dat")), 3, Error))
         return false;
     for (uint32 Id :
-         {0x22000001u, 0x22000002u, 0x22000005u, 0x2200002bu, 0x22000006u, 0x22000007u, 0x22000008u})
+         {0x22000001u, 0x22000002u, 0x22000005u, 0x2200002bu, 0x22000006u, 0x22000007u, 0x22000008u, 0x22000022u})
     {
         TArray<uint8> Bytes;
         FAC2UILayout Layout;
@@ -110,14 +110,20 @@ bool FAC2NativeUI::Root(uint32 Id, const TCHAR *Name)
             return Add(*L, I, INDEX_NONE, FIntPoint(L->Width, L->Height), 0);
     return false;
 }
-bool FAC2NativeUI::Template(uint32 Id, const TCHAR *Name, FIntRect Rect, FIntRect Clip)
+bool FAC2NativeUI::Template(uint32 Id, const TCHAR *Name, FIntRect Rect, FIntRect Clip, uint32 ParentId)
+{
+    return Template(Id,T(Name),Rect,Clip,ParentId);
+}
+bool FAC2NativeUI::Template(uint32 Id, uint32 ElementId, FIntRect Rect, FIntRect Clip, uint32 ParentId)
 {
     auto *L = Layouts.Find(Id);
     if (!L)
         return false;
+    const auto *ParentNode = ParentId ? Find(ParentId) : nullptr;
+    const int32 Parent = ParentNode ? int32(ParentNode - Nodes.GetData()) : INDEX_NONE;
     for (int32 I : L->Roots)
-        if (L->Controls[I].Id == T(Name))
-            return Add(*L, I, INDEX_NONE, FIntPoint(L->Width, L->Height), 0, &Rect, &Clip);
+        if (L->Controls[I].Id == ElementId)
+            return Add(*L, I, Parent, FIntPoint(L->Width, L->Height), 0, &Rect, &Clip);
     return false;
 }
 bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoint OldParent,
@@ -169,12 +175,22 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
                             N.Attributes.Add(A.Key, A.Value);
     };
     Merge();
-    if (N.Kind == T(TEXT("button")) && !States.Contains(Ref.Id))
+    if (N.Kind == T(TEXT("button")))
     {
-        N.State = N.Attr(TEXT("ghosted"))                         ? T(TEXT("ghosted"))
-                  : Pressed == Ref.Id                             ? T(TEXT("normal_pressed"))
-                  : Hovered == Ref.Id && N.Attr(TEXT("rollover")) ? T(TEXT("normal_rollover"))
-                                                                  : N.State;
+        // An explicit base state controls availability/selection, not pointer feedback.
+        // Preserve disabled controls and use the template's selected variants when present.
+        if (N.State == T(TEXT("ghosted")) || N.Attr(TEXT("ghosted")))
+            N.State = T(TEXT("ghosted"));
+        else if (Pressed == Ref.Id || (Hovered == Ref.Id && N.Attr(TEXT("rollover"))))
+        {
+            const bool Selected = N.State == T(TEXT("highlight"));
+            uint32 Pointer = T(Pressed == Ref.Id ? (Selected ? TEXT("highlight_pressed") : TEXT("normal_pressed"))
+                                               : (Selected ? TEXT("highlight_rollover") : TEXT("normal_rollover")));
+            if (!State(*Desc, Pointer) && !State(Ref, Pointer))
+                Pointer = T(Pressed == Ref.Id ? TEXT("normal_pressed") : TEXT("normal_rollover"));
+            if (State(*Desc, Pointer) || State(Ref, Pointer))
+                N.State = Pointer;
+        }
         Merge();
     }
     if (N.Attr(TEXT("hide")) && !Visibility.Contains(Ref.Id))

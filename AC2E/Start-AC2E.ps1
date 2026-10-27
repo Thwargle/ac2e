@@ -7,6 +7,10 @@ param(
     [string]$DataDirectory='',
     [string]$AuthDirectory='',
     [string]$PublicOrigin='',
+    [ValidateRange(1024,65535)][int]$AccountPort=19400,
+    [string]$GameHost='127.0.0.1',
+    [switch]$ExternalAccounts,
+    [switch]$DevelopmentLogin,
     [string]$Content='',
     [string]$Python='',
     [switch]$SkipBuild,
@@ -64,13 +68,61 @@ if(!$Content){
     if($LASTEXITCODE){throw 'DAT content preparation failed.'}
 }
 $ip=[Net.IPAddress]::Parse($Bind)
-if(![Net.IPAddress]::IsLoopback($ip) -and !$AuthDirectory){throw 'Non-loopback hosting requires an initialized account service (-AuthDirectory).'}
+if($DevelopmentLogin -and ![Net.IPAddress]::IsLoopback($ip)){throw '-DevelopmentLogin is only supported on loopback.'}
 if(![Net.IPAddress]::IsLoopback($ip) -and $PublicOrigin -notmatch '^https://[a-zA-Z0-9.:-]+$'){throw 'Public hosting requires -PublicOrigin https://accounts.example.com, serving the account backend and its source archive.'}
+if(!$DevelopmentLogin){
+    if(!$AuthDirectory){$AuthDirectory=Join-Path (Split-Path $DataDirectory) 'accounts'}
+    $AuthDirectory=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($AuthDirectory)
+    if(!$PublicOrigin){$PublicOrigin="http://127.0.0.1:$AccountPort"}
+}
 $env:AC2E_PUBLIC_ORIGIN=$PublicOrigin
 $env:PYREALIUM_UNREAL_LEGIONS_DATA='1'
 $serverArgs=@('serve','--bind',"${Bind}:$Port",'--account',$Account,'--data',$DataDirectory,'--game-data',$DatDirectory,
     '--content',$Content,'--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','false')
-if($AuthDirectory){$serverArgs+=@('--auth-data',$AuthDirectory)}
-Write-Output "AC2E: UDP $Port and $($Port+1); persistent store $DataDirectory"
-& $server @serverArgs
-if($LASTEXITCODE){throw "AC2E exited with code $LASTEXITCODE"}
+if(!$DevelopmentLogin){$serverArgs+=@('--auth-data',$AuthDirectory)}
+$accounts=$null
+try {
+    if(!$DevelopmentLogin -and !$ExternalAccounts){
+        if(Test-Path -LiteralPath (Join-Path $AuthDirectory 'accounts.lock')){
+            throw 'The account store is already locked. If you intentionally run Start-Accounts.ps1 separately, use -ExternalAccounts with the same AuthDirectory and PublicOrigin.'
+        }
+        # Bind-check before spawning, so an unrelated service is never mistaken for ours.
+        $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$AccountPort)
+        try {$probe.Start()} finally {$probe.Stop()}
+        New-Item -ItemType Directory -Path $AuthDirectory -Force | Out-Null
+        $accountArgs=@('account-web','--auth-data',$AuthDirectory,'--data',$DataDirectory,
+            '--web-bind',"127.0.0.1:$AccountPort",'--public-origin',$PublicOrigin,
+            '--public-host',$GameHost,'--public-port',"$Port")
+        # Arguments are Windows argv values, never shell commands. Reject quotes/newlines
+        # rather than allowing paths or endpoints to change argument boundaries.
+        if($accountArgs | Where-Object {$_ -match '["\r\n]'} ) {throw 'Invalid account-service argument.'}
+        $quotedArgs=($accountArgs | ForEach-Object {'"'+$_.TrimEnd('\')+'"'}) -join ' '
+        $accounts=Start-Process -FilePath $server -ArgumentList $quotedArgs -PassThru -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $AuthDirectory 'service.log') -RedirectStandardError (Join-Path $AuthDirectory 'service-error.log')
+        $ready=$false
+        for($attempt=0;$attempt -lt 50;$attempt++){
+            $accounts.Refresh()
+            if($accounts.HasExited){throw "Account service failed. See $AuthDirectory\service-error.log"}
+            try {
+                $health=Invoke-RestMethod -Uri "http://127.0.0.1:$AccountPort/health" -TimeoutSec 1
+                if($health.status -eq 'ok'){$ready=$true;break}
+            } catch {}
+            Start-Sleep -Milliseconds 100
+        }
+        if(!$ready){throw 'Account service did not become ready.'}
+    }
+    if(!$DevelopmentLogin){Write-Output "Accounts: $PublicOrigin (first sign-in creates an account; passwords require 12-128 characters)."}
+    Write-Output "AC2E: UDP $Port and $($Port+1); persistent store $DataDirectory"
+    & $server @serverArgs
+    if($LASTEXITCODE){throw "AC2E exited with code $LASTEXITCODE"}
+} finally {
+    # Only stop the child owned by this launch; external account services keep running.
+    if($accounts){
+        $accounts.Refresh()
+        if(!$accounts.HasExited){
+            & $server account-stop --auth-data $AuthDirectory --seconds 20
+            if(!$accounts.WaitForExit(5000)){Write-Warning 'Account service is still stopping; check its log.'}
+        }
+        $accounts.Dispose()
+    }
+}

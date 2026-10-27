@@ -20,6 +20,7 @@ class FAC2Network
     void Tick(float Delta);
     void Send(TSharedRef<FJsonObject> Message);
     void Enter(const FString &Id);
+    void DeleteCharacter(const FString &Id);
     void Create(const FString &Name, const FAC2AvatarChoice &Avatar, float Height, float Build,
                 const TMap<uint32, int32> &Choices);
     void SceneComplete();
@@ -39,6 +40,7 @@ class FAC2Network
     void UseItem(int32 Index);
     void MoveItem(int32 Index, int32 Slot);
     uint32 Gold = 0;
+    int32 AllowedCharacters = 8;
     bool Dead = false;
     bool IsWorld() const
     {
@@ -94,6 +96,7 @@ class FAC2Network
     bool SmokeAttacked = false;
     bool SmokeRadar = false;
     bool SmokeSelection=false;
+    int32 SelectionSmokeStep=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;
     TMap<FString, int32> BagSlots;
     TMap<FString, uint32> WornSlots;

@@ -17,7 +17,7 @@ param(
     [switch]$Online,
     [ValidatePattern('^[a-zA-Z0-9.-]+$')][string]$Server='127.0.0.1',
     [ValidateRange(1,65534)][int]$Port=9000,
-    [ValidatePattern('^[a-zA-Z0-9_]{1,32}$')][string]$Account='local',
+    [ValidatePattern('^[a-zA-Z0-9_]{0,32}$')][string]$Account='',
     [string]$AccountUrl='',
     [System.Management.Automation.PSCredential]$Credential,
     [switch]$NetworkSmoke
@@ -88,7 +88,7 @@ if($Online -or $NetworkSmoke -or $LoginSmoke -or $AccountUrl -or $PSBoundParamet
     }
 }
 $launchArgs = @(('"' + $project + '"'), ('-AC2DatDir="' + $DatDirectory + '"'), "-AC2Block=$Block", "-AC2Radius=$Radius", "-AC2Hour=$hourText", '-nosplash')
-if($Online){$launchArgs+=@('-AC2Online',"-AC2Server=$Server","-AC2Port=$Port","-AC2Account=$Account")}
+if($Online){$launchArgs+=@('-AC2Online',"-AC2Server=$Server","-AC2Port=$Port");if($Account){$launchArgs+="-AC2Account=$Account"}}
 if($AccountUrl){$launchArgs+=('-AC2AccountUrl="'+$AccountUrl+'"')}
 if ($Mode -eq 'Play') { $launchArgs += @('-game', '-windowed', '-ResX=1600', '-ResY=900') }
 if ($Dx11) { $launchArgs += '-d3d11' }

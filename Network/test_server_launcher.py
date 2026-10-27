@@ -4,6 +4,8 @@ import socket
 import subprocess
 import time
 import uuid
+import json
+import urllib.request
 
 from test_network import DAT_DIRECTORY, Peer, ROOT, SERVER
 
@@ -15,6 +17,7 @@ def main():
     directory.mkdir(parents=True)
     world = directory / 'world store'
     port = 19490
+    account_port = 19492
     for number in (port, port + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as check:
             check.bind(('127.0.0.1', number))
@@ -24,6 +27,7 @@ def main():
         process = subprocess.Popen([
             'cmd.exe', '/d', '/c', str(ROOT / 'start-ac2e.bat'),
             '-Port', str(port), '-DataDirectory', str(world),
+            '-AccountPort', str(account_port),
             '-DatDirectory', str(DAT_DIRECTORY),
         ], cwd=directory, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
             creationflags=subprocess.CREATE_NO_WINDOW)
@@ -40,7 +44,13 @@ def main():
                 raise AssertionError('Launcher did not start the server: ' + output)
             assert 'AC2E source offer:' not in output, 'Normal startup unexpectedly rebuilt the server.'
             peer = Peer()
-            peer.send('connect', host='127.0.0.1', port=port, account='local')
+            request=urllib.request.Request(f'http://127.0.0.1:{account_port}/api/login',
+                data=json.dumps({'account':'launcher_test','password':uuid.uuid4().hex}).encode(),
+                headers={'Content-Type':'application/json'},method='POST')
+            with urllib.request.urlopen(request,timeout=10) as response:login=json.load(response)
+            assert login['created'] is True
+            peer.send('connect', host=login['game_host'], port=login['game_port'], account=login['account'],ticket=login['ticket'])
+            login=None
             peer.wait('characters')
             peer.close()
             peer = None
@@ -88,6 +98,7 @@ def main():
                 creationflags=subprocess.CREATE_NO_WINDOW)
             assert process.wait(timeout=10) == 0, log_path.read_text(errors='replace')
             assert not lock.exists(), 'Graceful shutdown did not release the store lock.'
+            assert not (directory/'accounts/accounts.lock').exists(), 'Owned account service was not stopped.'
             print('PASS: startup, native login, repeated start, live rebuild rejection, '
                   'unverified lock preservation, and graceful shutdown; log:', log_path)
         finally:

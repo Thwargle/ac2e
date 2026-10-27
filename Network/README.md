@@ -13,7 +13,9 @@ From the workspace root, in separate terminals:
 
 The root `start-ac2e.bat` starts the same server project, reusing the built binary and building only if it is missing. Use `-Rebuild` after changing server source; `-SkipBuild` prevents even a missing-binary build. Create a character in Unreal; it is saved by AC2E under `AC2E/data/world`, independently of offline characters. Stop gracefully with `AC2E/Start-AC2E.ps1 -Stop`.
 
-For a Pyrealium server with an account service:
+AC2E normal startup includes an account service on loopback port 19400. First sign-in
+creates an account; later sign-ins require the same password (12–128 characters).
+The login form defaults to that local service. For a remote Pyrealium server with an account service:
 
 ```powershell
 .\Launch-AC2.ps1 -Online -AccountUrl https://accounts.example.com -Account myaccount
@@ -60,7 +62,9 @@ active-skill request; the server decides whether and where it succeeds.
 
 `Network/test_login_ui.py` tests the complete in-client password form against isolated
 AC2E account/game processes on 19480/19482/19483. It binds and recalls through the native
-protocol, then verifies named character selection before the environment, successful
+protocol, then routes pointer events through Slate's rendered hit-test grid to verify
+hover, names, list/3D carousel selection, options, credits, delete cancellation, creation
+and entry before loading the environment. It also verifies native character deletion, successful
 attack/hit/death animation playback, XP/loot and native inventory/vitals. It uses a
 random temporary password passed only through the child environment and fresh stores.
 

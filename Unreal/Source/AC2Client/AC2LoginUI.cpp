@@ -35,7 +35,7 @@ void SAC2LoginUI::Construct(const FArguments& Args)
     ButtonArt.SetResourceObject(Assets->Texture(0x41006321));ButtonArt.DrawAs=ESlateBrushDrawType::Image;
     auto Font=Fonts.Get(0x42000024);
     auto Text=[Font](FString V){return SNew(SAC2Text).Font(Font).Text(FText::FromString(V));};
-    FString Server=TEXT("127.0.0.1"),User=TEXT("local"),Service;int32 ServerPort=9000;
+    FString Server=TEXT("127.0.0.1"),User,Service=TEXT("http://127.0.0.1:19400");int32 ServerPort=9000;
     FParse::Value(FCommandLine::Get(),TEXT("AC2Server="),Server);FParse::Value(FCommandLine::Get(),TEXT("AC2Port="),ServerPort);
     FParse::Value(FCommandLine::Get(),TEXT("AC2Account="),User);FParse::Value(FCommandLine::Get(),TEXT("AC2AccountUrl="),Service);
     PreauthenticatedTicket=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_LOGIN_TICKET"));
@@ -44,6 +44,8 @@ void SAC2LoginUI::Construct(const FArguments& Args)
     if(!PreauthenticatedTicket.IsEmpty())Status=TEXT("Account authenticated. Select Connect to continue.");
     auto Form=SNew(SVerticalBox);
     Form->AddSlot().AutoHeight().Padding(0,0,0,24)[Text(TEXT("ASHERON'S CALL 2 - SIGN IN"))];
+    Form->AddSlot().AutoHeight().Padding(0,0,0,12)[SNew(SAC2Text).Font(Font)
+        .Text(FText::FromString(TEXT("First sign-in creates your AC2E account. Use the same account and password next time (12-128 characters)."))).AutoWrapText(true)];
     auto Field=[&](const TCHAR* Label,TSharedPtr<SAC2TextEntry>& Entry,FString Value,bool Secret=false){
         Form->AddSlot().AutoHeight().Padding(0,4)[Text(Label)];
         Form->AddSlot().AutoHeight().Padding(0,0,0,8)[SNew(SBorder).BorderBackgroundColor(FLinearColor(.06,.06,.04,1)).Padding(8)
@@ -51,7 +53,7 @@ void SAC2LoginUI::Construct(const FArguments& Args)
                 .IsEnabled_Lambda([this]{return !Busy;}).OnEnter_Lambda([this]{Login();})]]];
     };
     Field(TEXT("Account"),Account,User);Field(TEXT("Password"),Password,TEXT(""),true);
-    Field(TEXT("Account service URL (optional)"),Endpoint,Service);
+    Field(TEXT("Account service URL"),Endpoint,Service);
     Field(TEXT("Game server"),Host,Server);Field(TEXT("Port"),Port,FString::FromInt(ServerPort));
     auto Button=[&](const TCHAR* Label,TFunction<void()> Fn){return SNew(SButton).ButtonStyle(FCoreStyle::Get(),"NoBorder").IsEnabled_Lambda([this]{return !Busy;})
         .OnClicked_Lambda([Fn]{Fn();return FReply::Handled();})[SNew(SBorder).BorderImage(&ButtonArt).Padding(FMargin(16,8))[Text(Label)]];};
@@ -102,7 +104,13 @@ void SAC2LoginUI::Login()
         auto Response=AC2AccountLogin(URL+TEXT("/api/login"),Payload);Payload.Reset();
         AsyncTask(ENamedThreads::GameThread,[Weak,Settings,Response=MoveTemp(Response)]() mutable {
         auto Self=Weak.Pin();if(!Self)return;Self->Busy=false;
-        if(Response.Status!=200){Self->Status=Response.Status==401?TEXT("Account or password is incorrect."):TEXT("Sign-in failed. Check the account-service address and try again.");return;}
+        if(Response.Status!=200){
+            TSharedPtr<FJsonObject> Error;FString Detail;
+            if(FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Response.Body),Error) && Error.IsValid())Error->TryGetStringField(TEXT("message"),Detail);
+            Self->Status=Response.Status==0?TEXT("Could not reach the account service. Start AC2E and check the account-service address."):
+                Response.Status==401?TEXT("Account or password is incorrect."):Detail.IsEmpty()?TEXT("Sign-in failed. Check the account-service address and try again."):Detail.Left(256);
+            return;
+        }
         TSharedPtr<FJsonObject> J;
         if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Response.Body),J)){Self->Status=TEXT("Invalid account-service response.");return;}
         FString Account,Host,Ticket;double Port=0;
