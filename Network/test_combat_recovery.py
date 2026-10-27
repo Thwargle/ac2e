@@ -51,9 +51,10 @@ def main():
     spawn = [59.060577, 240.199, -44.606205]
     source = next(line.split('\t') for line in content.read_text().splitlines()[1:]
                   if line and not line.startswith('#') and line.split('\t')[1] == '470007d1')
-    fixture_ids = [0x8140000000030200 + n for n in range(3)]
+    fixture_ids = [0x8140000000030200 + n for n in range(4)]
     with content.open('a') as output:
-        for iid, room, offset in [(fixture_ids[0], cell, 12), (fixture_ids[1], adjacent, 1), (fixture_ids[2], hidden, 1)]:
+        for iid, room, offset in [(fixture_ids[0], adjacent, 12), (fixture_ids[1], adjacent, 1),
+                                  (fixture_ids[2], hidden, 1), (fixture_ids[3], adjacent, 14)]:
             row = source[:]
             row[0], row[3] = f'{iid:016x}', f'{room:08x}'
             row[4:7] = [str(spawn[0] + offset), str(spawn[1]), str(spawn[2])]
@@ -93,7 +94,7 @@ def main():
             peer.send('ready'); peer.wait('status', lambda e: e['phase'] == 'world')
             until(peer, 0, 'inventory', lambda e: len(e.get('items', [])) >= 3)
         a, b = peers
-        far, near, hidden_id = map(str, fixture_ids)
+        far, near, hidden_id, magic_target = map(str, fixture_ids)
         until(a, 0, 'object', lambda e: e['id'] == near)
         assert not any(e.get('event') == 'object' and e['id'] == hidden_id for e in a.events)
         for command in ['combat', 'attack']:
@@ -138,12 +139,50 @@ def main():
         start = len(a.events)
         a.send('attack', id=hidden_id); time.sleep(.5)
         assert not any(e.get('event') == 'hit' for e in a.events[start:])
+        # At 12-14m across a visible room, pursuit cannot reach the attacker.
+        # The old melee-only engagement check healed every ranged hit immediately.
+        for definition, target, visual, entity in [
+            (0x470007ed, far, 0x1f000066, 0x470000be),
+            (0x470007e0, magic_target, 0x1f0003ce, 0x47000393)]:
+            item = next(e for e in a.events if e.get('event') == 'object' and
+                        e.get('container') == a.id and e.get('entity') == definition)
+            start = len(a.events)
+            a.send('use', item=item['id'], target='0')
+            ack = until(a, start, 'inventory_result', lambda e: e['id'] == item['id'])
+            assert ack['status'] == 0 and ack['equipped'] == 0x40, ack
+            if definition == 0x470007ed:
+                cancel_start, cancel_observed = len(a.events), len(b.events)
+                a.send('skill', skill=0xcf, target=target)
+                shot = until(a, cancel_start, 'missile', lambda e: e['target'] == target)
+                a.send('combat', enabled=False)
+                until(a, cancel_start, 'combat', lambda e: not e['enabled'])
+                for peer, mark in [(a, cancel_start), (b, cancel_observed)]:
+                    until(peer, mark, 'remove', lambda e: e['id'] == shot['id'])
+                time.sleep(.2)
+                assert not any(e.get('event') == 'hit' and e.get('id') == target for e in a.events[cancel_start:])
+            start, observed = len(a.events), len(b.events)
+            a.send('attack', id=target)
+            until(a, start, 'quality', lambda e: e.get('id') == target and e['key'] == 0x102 and e['value'] == 0)
+            until(a, start, 'combat', lambda e: not e['enabled'])
+            for peer, mark in [(a, start), (b, observed)]:
+                until(peer, mark, 'quality', lambda e: e.get('id') == target and e['key'] == 0x102 and e['value'] == 0)
+                health = [e['value'] for e in peer.events[mark:] if e.get('event') == 'quality' and e.get('id') == target and e['key'] == 0x102]
+                assert len(health) >= 3 and all(x >= y for x, y in zip(health, health[1:])), health
+                missile = until(peer, mark, 'missile', lambda e: e['target'] == target)
+                spawn = until(peer, mark, 'object', lambda e: e['id'] == missile['id'])
+                assert spawn['entity'] == entity and spawn['visual']['did'] == visual, spawn
+                until(peer, mark, 'remove', lambda e: e['id'] == missile['id'])
+                assert not any(e.get('event') == 'hit' and e.get('id') == a.id for e in peer.events[mark:])
+            time.sleep(.2)
         report = {'result': 'PASS', 'directory': str(directory), 'checks': [
             'authenticated combat-button and attack-key range failures restore local/remote peace',
             'rejected attacks do not deal damage', 'weapon equips immediately after failed attack',
             'no-target stance toggle still works', 'melee damage, retaliation and death across visible room boundary',
             'both clients retain corpse through the full native death before removal',
-            'overlapping hidden room is neither sent nor attackable']}
+            'overlapping hidden room is neither sent nor attackable',
+            'bow and magic kill at 12-14m across visible room boundary without health resets or remote melee hits',
+            'native arrow and magic missiles reach both clients and retire after flight']}
+        report['checks'].append('stopping an airborne shot cancels its damage and removes it on both clients')
         (directory / 'result.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report), flush=True)
     finally:

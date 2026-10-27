@@ -25,6 +25,9 @@ bool FAC2MotionTest::RunTest(const FString&)
     TestTrue(TEXT("Native behavior table including tail"),Portal.Read(0x44000001,Bytes,Error)&&Behavior.Decode(0x44000001,Bytes));
     TestTrue(TEXT("Retail table exceeds old 4096 limit"),Behavior.Combos.Num()>4096);
     TestEqual(TEXT("Native ordered layer names"),Behavior.LayerOrder.Num(),9);
+    TestTrue(TEXT("Locomotion uses the authored half-second ramp"),FMath::IsNearlyEqual(Behavior.Ramp(AC2Motion::Move),.5f));
+    TestTrue(TEXT("Idle uses the authored stop ramp"),FMath::IsNearlyEqual(Behavior.Ramp(0x40000002),.3f));
+    TestEqual(TEXT("Missing mode transition has native zero ramp"),Behavior.ModeRamp(0,0,0,0),0.f);
     TestTrue(TEXT("Attack takes priority over damage; death overrides both"),
         Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Hit)<Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Attack) &&
         Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Attack)<Behavior.Layer(AC2Motion::Ground,AC2Motion::Dead,AC2Motion::Death));
@@ -136,6 +139,12 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             TestTrue(TEXT("Hit did not cancel the attack"),Model.BehaviorDuration(AC2Motion::Attack)>0 && Model.BehaviorDuration(AC2Motion::Hit)>0);
             float Time=.1f;Model.Animate(Time,0);
             TestFalse(TEXT("Combat changes actual rendered vertices"),Same(Rest,Snapshot()));
+            for(int32 I=0;I<4;++I){Time+=.1f;Model.Animate(Time,0);}
+            const auto BeforeStop=Snapshot();
+            Model.StopBehavior(AC2Motion::Attack);Model.Animate(Time,0);
+            TestTrue(TEXT("Stopping an attack retains the outgoing pose at blend start"),Same(BeforeStop,Snapshot()));
+            Time+=.2f;Model.Animate(Time,0);
+            TestFalse(TEXT("Stopped attack blends back into the base pose"),Same(BeforeStop,Snapshot()));
             TestTrue(TEXT("Combat attachments stay on their animated sockets"),Model.AuditAttachments(Error));
             TestTrue(TEXT("Death resolves in native dead mode"),Model.PlayBehavior(AC2Motion::Death,AC2Motion::Dead));
             TestEqual(TEXT("Death cancels attacks"),Model.BehaviorDuration(AC2Motion::Attack),0.f);
@@ -157,6 +166,20 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             TestTrue(TEXT("Mind Lash impact resolves native FX bank"),Model.PlayEffect(0x41000248));
             Peak=0;for(int32 I=0;I<20;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
             TestTrue(TEXT("Impact produces actual native particles"),Peak>0);
+        }
+        // These are the actual static projectile entities referenced by racial skill scripts.
+        for(uint32 Visual:{0x1f000066u,0x1f000392u,0x1f000393u,0x1f0003ceu,0x1f0003cfu,0x1f0003d0u})
+        {
+            auto* Projectile=World->SpawnActor<AAC2Portrait>();FAC2AssetLibrary Missile;
+            TestTrue(FString::Printf(TEXT("Native projectile visual %08X"),Visual),Missile.Open(AC2::ResolveDatDirectory(TEXT("")),Error)&&Missile.DrawModel(Visual,Projectile,Projectile->Body));
+            int32 Peak=0;for(int32 I=0;I<20;++I){Projectile->SetActorLocation(FVector(I*100,0,0));Missile.Animate(I*.05f,0);Peak=FMath::Max(Peak,Missile.EffectParticleCount());}
+            if(Visual>=0x1f0003ce)
+            {
+                TestTrue(TEXT("Magic missile has startup effects"),Missile.HasStartupEffects());
+                AddInfo(FString::Printf(TEXT("Projectile %08X: startup=%d peak=%d"),Visual,Missile.HasStartupEffects(),Peak));
+                TestTrue(TEXT("Magic missile startup creates native trail particles"),Peak>0);
+            }
+            Projectile->Destroy();
         }
     }
     World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;

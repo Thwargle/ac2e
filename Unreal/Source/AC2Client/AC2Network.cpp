@@ -649,7 +649,7 @@ void FAC2Network::Attack()
     const auto* Target=Objects.Find(TargetId);
     if(!Target || !Targetable(TargetId,**Target))
     {
-        Mode->Notice=TEXT("Select a creature first: Alt shows the cursor, click a creature or press T, then press 1 to attack.");
+        Mode->Notice=TEXT("Select a creature first: release the mouse buttons, click a creature or press T, then press 1 to attack.");
         return;
     }
     {
@@ -797,7 +797,8 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         O.Cell=CellId;O.Goal=Goal;O.MissileVelocity=Velocity;O.MissileTarget=S(J,TEXT("target"));O.MissileOffset=TargetOffset;
         O.MissilePoint=AC2::BlockOrigin(uint32(N(Offset,TEXT("cell")))>>16)+O.MissileOffset;
         O.MissilePointKnown=J->GetBoolField(TEXT("initialized")) && O.MissileTarget==TEXT("0") && N(Offset,TEXT("cell"))!=0;
-        O.Missile=true;O.MissileFinished=false;O.MissileAge=0;
+        O.Missile=true;O.MissileFinished=false;O.MissileAge=0;O.Solid=false;O.GroundedContent=false;
+        if(Smoke)++SmokeMissiles;
         if(O.Actor.IsValid()){O.Actor->SetActorLocation(O.Goal);O.Actor->SetActorEnableCollision(false);}return;
     }
     if(Event==TEXT("fx_script"))
@@ -1254,6 +1255,14 @@ void FAC2Network::Tick(float Delta)
                 FVector Velocity = Delta > 0 ? (Next - Old) / Delta : FVector::ZeroVector;
                 FVector Local = A->GetActorTransform().InverseTransformVectorNoScale(Velocity);
                 Obj.Model->Animate(Time, Velocity.Size2D(), nullptr, &Local);
+                if(Smoke && Obj.Missile)
+                {
+                    if(FVector::DistSquared(Old,Obj.Goal)>1)++SmokeMissileUpdates;
+                    const int32 Particles=Obj.Model->EffectParticleCount();
+                    if(Particles>0 && SmokeMissileParticles==0)
+                        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Combat-projectile.png"),true,false);
+                    SmokeMissileParticles=FMath::Max(SmokeMissileParticles,Particles);
+                }
             }
         }
     // Held objects follow the current animated skeleton, including remote players.
@@ -1389,7 +1398,7 @@ void FAC2Network::Tick(float Delta)
             SmokeChat = true;
             Started = 0;
         }
-        if (IsWorld() && SmokeChat && ReceivedChats > 0 && Started > 2 && !SmokeAttacked)
+        if (IsWorld() && SmokeChat && ReceivedChats > 0 && Started > (MouseSmokeStep==8?.1f:2.f) && !SmokeAttacked)
         {
             if(VerifyEquipment)
             {
@@ -1437,7 +1446,7 @@ void FAC2Network::Tick(float Delta)
                         ++CombatSmokeStep;Started=0;return;
                     }
                     FString RadarError;
-                    if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MOUSE_SMOKE"))==TEXT("1") && MouseSmokeStep<6)
+                    if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MOUSE_SMOKE"))==TEXT("1") && MouseSmokeStep<10)
                     {
                         auto H=HUD(Mode);
                         if(!H || !H->GameUI || !H->GameUI->SmokeMouseControls(MouseSmokeStep,E.Key,RadarError))
@@ -1473,6 +1482,7 @@ void FAC2Network::Tick(float Delta)
         if ((IsWorld() && SmokeAttacked && HasLoot && Started > 6) || Started > 120)
         {
             bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0 && SmokeCastParticles>0));
+            if(VerifyEquipment)OK &= SmokeMissiles>0 && SmokeMissileUpdates>0 && SmokeMissileParticles>0;
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
             if(OK && VerifyEquipment && InventorySmokeStep<8)
             {
@@ -1495,6 +1505,7 @@ void FAC2Network::Tick(float Delta)
                    OK ? TEXT("PASS") : TEXT("FAIL"), Objects.Num(), ReceivedChats,
                    Profile ? Profile->Items.Num() : 0, Profile ? Profile->Experience : 0);
             UE_LOG(LogTemp,Display,TEXT("AC2 server animation verification: played=%d player-attacks=%d mob-attacks=%d hit=%d death=%d failed-attacks=%d"),PlayedBehaviors,PlayerAttacks,MobAttacks,HitEvents,DeathBehaviors,FailedAttacks);
+            UE_LOG(LogTemp,Display,TEXT("AC2 projectile verification: missiles=%d moving-frames=%d trail-particles=%d"),SmokeMissiles,SmokeMissileUpdates,SmokeMissileParticles);
             for (const auto &Entry : Objects)
                 if (Entry.Value->Actor.IsValid())
                     UE_LOG(LogTemp, Display, TEXT("AC2 animated server model %08X size=%s"),

@@ -46,6 +46,7 @@ class FAC2Effects
     struct FEmitterState
     {
         float NextBirth = 0;
+        FVector LastDischarge = FVector::ZeroVector;
         uint32 Born = 0;
     };
     struct FSystem

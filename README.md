@@ -9,8 +9,9 @@ The Shelter sequence now includes the digging-tool exchange, Scout potion reward
 Menhir Glyph travel and an authored Vault completion step. Seven additional DAT
 armor profiles join the racial starter clothes, with saved appearance replicated
 to other players. The client reads native animation FX triggers, timed FX scripts,
-temporary effect models and incoming missile flight. AC2E still resolves its
-starter magic attacks directly; retail projectile creation, full spell FX and the
+temporary effect models and incoming missile flight. AC2E now sends native racial
+missile and auto-magic projectiles, with damage after flight. Starter magic skills
+use their direct cast/impact path. Full retail spell FX, ballistic physics and the
 Menhir history/cinematic remain unfinished. See `AC2E/AC2E-README.md` for scope.
 
 ## First checkout
@@ -68,7 +69,10 @@ The world starts with the DAT mouse pointer visible. **Left-click** selects a
 world object; **double-click** uses it; **right-click** opens the native examination
 panel with information supplied by the server. Hovering a selectable object shows
 the DAT usage cursor and its name. Right-clicking inventory items inspects them;
-double-clicking equips/uses them. **Middle-click** or **Alt** toggles mouse look,
+double-clicking equips/uses them. **Hold right mouse** to look and steer;
+**drag left mouse** to orbit without turning the character; **hold both** to run.
+Releasing restores the pointer, and a right-click without dragging still inspects.
+**Middle-click** or **Alt** optionally toggles continuous mouse look,
 **wheel** zooms the camera, and **Tab** switches first/third person. In mouse look,
 the native center crosshair selects/uses/examines the object you aim at. The pointer
 returns to its previous position when leaving mouse look. UI scrolling stays in

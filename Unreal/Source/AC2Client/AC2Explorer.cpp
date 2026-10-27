@@ -79,12 +79,14 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
 }
 void AAC2Explorer::Forward(float V)
 {
+    const auto* PC=Cast<AAC2PlayerController>(Controller);
+    if(PC && PC->MouseForward)V=1;
     // Camera orbit alone must not rotate the character or send a different network heading.
     MovementSteersCamera=!FMath::IsNearlyZero(V);
-    GetCharacterMovement()->bUseControllerDesiredRotation=MovementSteersCamera;
+    GetCharacterMovement()->bUseControllerDesiredRotation=(PC && PC->CameraSteersPlayer) || (MovementSteersCamera && !(PC && PC->FreeOrbit));
     if (!bHeld && Controller)
     {
-        FRotator R = GetControlRotation();
+        FRotator R = PC && PC->FreeOrbit ? GetActorRotation() : GetControlRotation();
         if (!bFly)
             R.Pitch = 0;
         AddMovementInput(R.Vector(), V);
@@ -92,9 +94,11 @@ void AAC2Explorer::Forward(float V)
 }
 void AAC2Explorer::Right(float V)
 {
-    GetCharacterMovement()->bUseControllerDesiredRotation|=!FMath::IsNearlyZero(V);
+    const auto* PC=Cast<AAC2PlayerController>(Controller);
+    const bool Orbit=PC && PC->FreeOrbit;
+    GetCharacterMovement()->bUseControllerDesiredRotation|=!Orbit && !FMath::IsNearlyZero(V);
     if (!bHeld && Controller)
-        AddMovementInput(FRotationMatrix(FRotator(0, GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), V);
+        AddMovementInput(FRotationMatrix(FRotator(0, Orbit?GetActorRotation().Yaw:GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), V);
 }
 void AAC2Explorer::Up(float V)
 {

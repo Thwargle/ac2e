@@ -348,6 +348,14 @@ bool FAC2LocomotionGraphTest::RunTest(const FString &)
     TestTrue(TEXT("shared normalized phase wraps"),
              Graph->Sample(1.25f, Input, Rest)[0].GetTranslation().Equals(FVector(300, 0, 0), .001));
     TestEqual(TEXT("weighted native cycle period"), Graph->Period(Input), 3.f);
+    // A missing lattice corner contributes no clip, not a half-speed period.
+    const int32 CornerOffset=Cube.Num()-5*4; // clip 2 at half weight, clip 3 remains.
+    const uint8 SavedCorner=Cube[CornerOffset];Cube[CornerOffset]=0;
+    Cube[CornerOffset+3]=0;
+    auto Sparse=FAC2Animator::Load(Read,0x05000100,0);
+    if(TestTrue(TEXT("sparse native locomotion graph"),Sparse.IsValid()))
+        TestEqual(TEXT("missing corner does not double playback speed"),Sparse->Period(Input),4.f);
+    Cube[CornerOffset]=SavedCorner;Cube[CornerOffset+3]=5;
     Input.Mode = 7;
     TestEqual(TEXT("switch selects matching override"), Graph->ActiveClips(Input)[0], 0x05000001u);
     TestFalse(TEXT("unknown map key has no invented clip"),

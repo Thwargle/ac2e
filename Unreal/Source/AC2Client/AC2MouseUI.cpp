@@ -5,6 +5,88 @@
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 
+void SAC2GameUI::CancelCameraGesture()
+{
+    const bool Active=CameraLeft || CameraRight;
+    CameraLeft=CameraRight=CameraDragging=CameraMoved=CameraPrecision=CameraRecapturing=false;CameraTravel=0;
+    if(auto* PC=Mode.IsValid()?Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()):nullptr)
+    {
+        PC->CameraSteersPlayer=PC->MouseForward=PC->FreeOrbit=false;
+        if(Active){PC->RestoreCursor();FSlateApplication::Get().SetCursorPos(CameraScreenPress);}
+    }
+}
+FReply SAC2GameUI::CameraButtonDown(const FPointerEvent& E)
+{
+    const auto Button=E.GetEffectingButton();
+    if(Button!=EKeys::LeftMouseButton && Button!=EKeys::RightMouseButton)return FReply::Handled();
+    auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
+    if(!PC || Editing || Frontend || !Mode->InWorld())return FReply::Unhandled();
+    if(!CameraLeft && !CameraRight)
+    {
+        CameraPress=Mouse;CameraScreenPress=E.GetScreenSpacePosition();CameraTravel=0;CameraMoved=false;CameraPrecision=false;
+        if(Button==EKeys::LeftMouseButton)WorldClick(Button,false);
+    }
+    if(Button==EKeys::LeftMouseButton)CameraLeft=true;else CameraRight=true;
+    CameraDragging|=CameraRight;
+    PC->CameraSteersPlayer=CameraRight;
+    PC->MouseForward=CameraRight && CameraLeft;
+    PC->FreeOrbit=CameraDragging && !CameraRight;
+    CameraMoved|=PC->MouseForward;
+    if(CameraDragging && !CameraPrecision)
+    {
+        PC->bShowMouseCursor=false;
+        CameraRecapturing=HasMouseCapture();CameraPrecision=true;
+        return FReply::Handled().UseHighPrecisionMouseMovement(SharedThis(this));
+    }
+    if(HasMouseCapture())return FReply::Handled();
+    return FReply::Handled().CaptureMouse(SharedThis(this));
+}
+FReply SAC2GameUI::CameraMouseMove(const FPointerEvent& E)
+{
+    auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
+    auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
+    if(!P || Editing || Frontend || !Mode->InWorld())
+    {CancelCameraGesture();return FReply::Handled().ReleaseMouseCapture();}
+    const FVector2D Delta=E.GetCursorDelta();
+    CameraTravel+=FMath::Abs(Delta.X)+FMath::Abs(Delta.Y);
+    CameraMoved|=CameraTravel>4;
+    if(!CameraDragging && CameraMoved)
+    {
+        CameraDragging=true;PC->bShowMouseCursor=false;PC->FreeOrbit=!CameraRight;
+    }
+    if(CameraDragging)
+    {
+        // AC1's held RMB steers, LMB drag orbits, and the two-button chord walks.
+        // Apply Slate's relative delta once; the ignored pawn mouse axes must not add it again.
+        auto Rotation=PC->GetControlRotation();
+        const float Sensitivity=.2f*P->MouseSensitivity;
+        Rotation.Yaw+=Delta.X*Sensitivity;
+        Rotation.Pitch=FMath::Clamp(FRotator::NormalizeAxis(Rotation.Pitch)-Delta.Y*Sensitivity*(P->InvertMouse?-1:1),-80.f,80.f);
+        PC->SetControlRotation(Rotation);
+        if(!CameraPrecision)
+        {
+            CameraRecapturing=HasMouseCapture();CameraPrecision=true;
+            return FReply::Handled().UseHighPrecisionMouseMovement(SharedThis(this));
+        }
+    }
+    return FReply::Handled();
+}
+FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
+{
+    const bool Inspect=E.GetEffectingButton()==EKeys::RightMouseButton && CameraRight && !CameraMoved;
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton)CameraLeft=false;
+    if(E.GetEffectingButton()==EKeys::RightMouseButton)CameraRight=false;
+    auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
+    if(PC){PC->CameraSteersPlayer=CameraRight;PC->MouseForward=CameraLeft && CameraRight;PC->FreeOrbit=CameraDragging && CameraLeft && !CameraRight;}
+    if(CameraLeft || CameraRight)return FReply::Handled();
+    const FVector2D Point=CameraScreenPress;
+    CameraDragging=CameraPrecision=false;CameraTravel=0;
+    if(PC)PC->RestoreCursor();
+    Mouse=CameraPress;
+    if(Inspect)WorldClick(EKeys::RightMouseButton,false);
+    return FReply::Handled().ReleaseMouseCapture().SetMousePos(FIntPoint(FMath::RoundToInt(Point.X),FMath::RoundToInt(Point.Y)));
+}
+
 bool SAC2GameUI::OwnsPointer(FVector2D Point) const
 {
     if(Frontend || MapUI.OwnsPointer(Point))return true;
@@ -66,7 +148,7 @@ bool SAC2GameUI::WorldClick(FKey Button,bool DoubleClick)
     FVector Origin,Direction;
     if(!PC || !PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction))return false;
     // gmSelectionUI::Finish3DSelection (Legions): left selects, double-left uses,
-    // right selects and opens examination. Right-click never starts mouse look.
+    // a short right-click selects and examines after the camera gesture releases.
     if(Mode->Network)
     {
         const FString Id=Mode->Network->WorldTargetAtRay(Origin,Direction);

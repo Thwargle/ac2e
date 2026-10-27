@@ -58,7 +58,9 @@ FAC2MotionValues FAC2MotionData::Values(uint32 Element,uint32 Mode,uint32 Terrai
 bool FAC2BehaviorData::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
 {
     *this={};FAC2AssetReader R(Bytes);if(R.Word()!=Id)return false;
-    int32 N=HashCount(R,20);R.Take(int64(N)*20);
+    int32 N=HashCount(R,20);
+    for(int32 I=0;I<N&&R.Good;++I)
+    {FModeRamp V{R.Word(),R.Word(),R.Word(),R.Word(),R.Float()};if(V.Seconds<0 || V.Seconds>10)R.Good=false;ModeRamps.Add(V);}
     N=HashCount(R,20);
     for(int32 I=0;I<N&&R.Good;++I){FCombo C;C.Element=R.Word();C.Mode=R.Word();C.Behavior=R.Word();C.Key=R.Word();C.Layer=R.Word();Combos.Add(C);}
     N=HashCount(R,28);
@@ -79,6 +81,11 @@ uint32 FAC2BehaviorData::Key(uint32 Element,uint32 Mode,uint32 Behavior) const
 {
     for(const auto& C:Combos)if(C.Element==Element&&C.Mode==Mode&&C.Behavior==Behavior)return C.Key;
     return 0;
+}
+float FAC2BehaviorData::ModeRamp(uint32 FromElement,uint32 FromMode,uint32 ToElement,uint32 ToMode) const
+{
+    for(const auto& R:ModeRamps)if(R.FromElement==FromElement && R.FromMode==FromMode && R.ToElement==ToElement && R.ToMode==ToMode)return R.Seconds;
+    return 0.f; // BehaviorTable::GetModeTransitionRampTime, Legions 00625B10.
 }
 uint32 FAC2BehaviorData::Layer(uint32 Element,uint32 Mode,uint32 Behavior) const
 {

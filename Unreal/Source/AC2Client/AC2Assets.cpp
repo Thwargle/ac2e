@@ -288,8 +288,10 @@ struct FAC2AssetLibrary::FImpl
         TMap<uint32,TSharedPtr<FAC2Animator>> Graphs;
         uint32 Map=0;
         FAC2AnimatorInput Motion;
-        float Phase = 0, MoveWeight = 0;
+        float Phase = 0, IdlePhase = 0, MoveWeight = 0;
         TArray<FTransform> PreviousMotionPose;
+        TArray<FTransform> RenderedPose,TransitionPose;
+        float TransitionTime=0,TransitionDuration=0;
         int32 Parent = -1;
         FAC2Setup::FSocket Socket;
     };
@@ -306,6 +308,11 @@ struct FAC2AssetLibrary::FImpl
         bool Hold=false;
     };
     TArray<FActionTrack> Actions;
+    void BlendFromCurrent(float Seconds)
+    {
+        for(auto& G:Animated)
+        {G.TransitionPose=G.RenderedPose;G.TransitionTime=0;G.TransitionDuration=Seconds;}
+    }
     TSharedPtr<FAC2Animator> Graph(FAnimatedGroup& G,uint32 Key)
     {
         if(!Key)return nullptr;
@@ -2395,13 +2402,15 @@ bool FAC2AssetLibrary::SetMotionDescriptor(uint32 Id)
 void FAC2AssetLibrary::SetAnimationState(uint32 Element,uint32 Mode)
 {
     if(Impl->Mode==AC2Motion::Dead && Mode!=AC2Motion::Dead)StopBehavior();
+    if(Impl->Element!=Element || Impl->Mode!=Mode)
+        Impl->BlendFromCurrent(Impl->Behaviors.ModeRamp(Impl->Element,Impl->Mode,Element,Mode));
     Impl->Element=Element;Impl->Mode=Mode;
 }
 bool FAC2AssetLibrary::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool Hold)
 {
     if(Impl->Actions.ContainsByPredicate([](const auto& A){return A.Behavior==AC2Motion::Death;}))
         return Behavior==AC2Motion::Death; // Duplicate death/hit packets cannot restart a corpse.
-    if(Mode)Impl->Mode=Mode;
+    if(Mode)SetAnimationState(Impl->Element,Mode);
     uint32 Element=Impl->Element,BehaviorMode=Impl->Mode;
     uint32 Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);
     if(!Key){Element=AC2Motion::Ground;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
@@ -2416,9 +2425,10 @@ bool FAC2AssetLibrary::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool 
     if(Duration<=.001f)return false;
     if(Behavior==AC2Motion::Death){Impl->Actions.Reset();Hold=true;}
     const uint32 Layer=Impl->Behaviors.Layer(Element,BehaviorMode,Behavior);
+    const float Ramp=Impl->Behaviors.Ramp(Behavior);
+    if(Impl->Actions.ContainsByPredicate([&](const auto& A){return A.Layer==Layer;}))Impl->BlendFromCurrent(Ramp);
     Impl->Actions.RemoveAll([&](const auto& A){return A.Layer==Layer;});
-    const float* Ramp=Impl->Behaviors.Ramps.Find(Behavior);
-    Impl->Actions.Add({Behavior,Key,Layer,BehaviorMode,Element,0,0,Duration,FMath::Clamp(Rate,.05f,10.f),Ramp?*Ramp:.1f,Hold});
+    Impl->Actions.Add({Behavior,Key,Layer,BehaviorMode,Element,0,0,Duration,FMath::Clamp(Rate,.05f,10.f),Ramp,Hold});
     Impl->Actions.StableSort([&](const auto& A,const auto& B){
         // ComboInfo stores a layer INDEX, not the enum in BehaviorTable::mLayers.
         // AnimCompositor::Animate gives the highest index first claim on each bone.
@@ -2429,6 +2439,8 @@ bool FAC2AssetLibrary::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool 
 }
 void FAC2AssetLibrary::StopBehavior(uint32 Behavior)
 {
+    if(Impl->Actions.ContainsByPredicate([&](const auto& A){return !Behavior || A.Behavior==Behavior;}))
+        Impl->BlendFromCurrent(Behavior?Impl->Behaviors.Ramp(Behavior):.25f);
     Impl->Actions.RemoveAll([&](const auto& A){return !Behavior || A.Behavior==Behavior;});
 }
 float FAC2AssetLibrary::BehaviorDuration(uint32 Behavior) const
@@ -2514,6 +2526,15 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
     Keys.Sort();
     for (uint32 Key : Keys)
         for (const auto &Node : Impl->AppearanceEffects.Contains(Key)?Impl->AppearanceEffects[Key]:Impl->StartupEffects[Key])
+        {
+            // Root emitters must also follow models without an animated group.
+            if(Impl->Animated.IsEmpty() && !Node.Bone && !Node.Holding &&
+                !Node.Descriptors.IsEmpty() && Node.Descriptors[0]>>24==0x39)
+            {
+                const uint32 Descriptor=Node.Descriptors[0];
+                Impl->AppearanceAttachments.Add({INDEX_NONE,Node,uint64(Key)<<32|uint32(Impl->AppearanceAttachments.Num()+1),Descriptor});
+                Impl->AppearanceHash=HashCombineFast(Impl->AppearanceHash,Descriptor);
+            }
             for (int32 I = 0; I < Impl->Animated.Num(); ++I)
             {
                 const auto &G = Impl->Animated[I];
@@ -2531,6 +2552,7 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
                 }
                 break;
             }
+        }
     if (!Impl->AppearanceAttachments.IsEmpty())
     {
         Impl->AttachedEffects = MakeUnique<FAC2Effects>();
@@ -2558,7 +2580,11 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         if(auto Idle=Impl->Graph(G,IdleKey))
         {
             float Period=Idle->Period(G.Motion);
-            if(Period>.001f)Pose=Idle->Sample(Time/Period,G.Motion,G.Setup.Rest);
+            if(Period>.001f)
+            {
+                G.IdlePhase=Impl->Animated.IsValidIndex(G.Parent)?Impl->Animated[G.Parent].IdlePhase:FMath::Frac(G.IdlePhase+Delta/Period);
+                Pose=Idle->Sample(G.IdlePhase,G.Motion,G.Setup.Rest);
+            }
         }
         uint32 MoveKey=Impl->Behaviors.Key(Impl->Element,Impl->Mode,AC2Motion::Move);
         auto MovingGraph=MoveKey ? Impl->Graph(G,MoveKey) : G.Locomotion;
@@ -2571,7 +2597,8 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
             G.Motion.Forward = FMath::FInterpTo(G.Motion.Forward, float(Velocity.Y), Delta, 10);
             G.Motion.Side = FMath::FInterpTo(G.Motion.Side, float(Velocity.X), Delta, 10);
             G.Motion.Vertical = FMath::Max(-10.f, float(Velocity.Z));
-            G.MoveWeight = FMath::FInterpConstantTo(G.MoveWeight, Speed > 10 || Impl->Element==AC2Motion::Air ? 1.f : 0.f, Delta, 7);
+            const float MoveRamp=Impl->Behaviors.Ramp(Speed>10?AC2Motion::Move:0x40000002);
+            G.MoveWeight = FMath::FInterpConstantTo(G.MoveWeight, Speed > 10 || Impl->Element==AC2Motion::Air ? 1.f : 0.f, Delta, MoveRamp>0?1.f/MoveRamp:10000.f);
             const float Period = MovingGraph->Period(G.Motion);
             if (Period > .001f && G.MoveWeight > 0)
             {
@@ -2610,6 +2637,13 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                     for(int32 I=0;I<Pose.Num();++I){FTransform Blend;Blend.Blend(Pose[I],ActionPose[I],Weight);Pose[I]=Blend;}
                 }
             }
+        if(G.TransitionPose.Num()==Pose.Num() && G.TransitionTime<G.TransitionDuration)
+        {
+            G.TransitionTime=FMath::Min(G.TransitionDuration,G.TransitionTime+Delta);
+            const float Alpha=G.TransitionTime/G.TransitionDuration;
+            for(int32 I=0;I<Pose.Num();++I){FTransform Blended;Blended.Blend(G.TransitionPose[I],Pose[I],Alpha);Pose[I]=Blended;}
+        }
+        G.RenderedPose=Pose;
         G.World = G.Setup.World(Pose);
         // CPartArray::UpdateBones keeps unscaled attachment/rigid matrices separate from skin deformation.
         G.Bones = G.Setup.World(Pose, false);
@@ -2687,23 +2721,27 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         TArray<FAC2ParticleSource> Sources;
         for (const auto &A : Impl->AppearanceAttachments)
         {
-            const auto &G = Impl->Animated[A.Group];
             FTransform At(A.Node.Offset * 100);
-            if (const auto *Socket = G.Setup.Sockets.Find(A.Node.Holding))
+            if(Impl->Animated.IsValidIndex(A.Group))
             {
-                if (G.Bones.IsValidIndex(Socket->Bone))
-                    At = At * FTransform(Socket->Frame.ToMatrixWithScale() * G.Bones[Socket->Bone]);
-            }
-            else if (A.Node.Bone)
-            {
-                int32 Bone = G.Setup.Names.IndexOfByKey(A.Node.Bone);
-                if (G.Bones.IsValidIndex(Bone))
-                    At = At * FTransform(G.Bones[Bone]);
+                const auto &G = Impl->Animated[A.Group];
+                if (const auto *Socket = G.Setup.Sockets.Find(A.Node.Holding))
+                {
+                    if (G.Bones.IsValidIndex(Socket->Bone))
+                        At = At * FTransform(Socket->Frame.ToMatrixWithScale() * G.Bones[Socket->Bone]);
+                }
+                else if (A.Node.Bone)
+                {
+                    int32 Bone = G.Setup.Names.IndexOfByKey(A.Node.Bone);
+                    if (G.Bones.IsValidIndex(Bone))At = At * FTransform(G.Bones[Bone]);
+                }
+                At=At*G.Frame;
             }
             FAC2ParticleSource S;
             S.Key = A.Key;
             S.Descriptor = A.Descriptor;
-            S.Frame = At * G.Frame * Impl->ModelRoot->GetComponentTransform();
+            S.Frame = At * Impl->ModelRoot->GetComponentTransform();
+            if(A.Node.RemoveRotation)S.Frame.SetRotation(FQuat::Identity);
             Sources.Add(S);
         }
         Impl->AttachedEffects->SyncSources(Sources);

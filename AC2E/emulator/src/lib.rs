@@ -7,6 +7,7 @@ pub mod appearance;
 pub mod auth;
 pub mod bootstrap;
 pub mod combat_visual;
+pub mod projectiles;
 pub mod content;
 pub mod crafting;
 pub mod crypto;

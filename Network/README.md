@@ -27,7 +27,8 @@ The game opens its account/password form before loading any environment. Enter t
 
 WASD/Shift/Space move. Enter opens server chat (`/say`, `/me`, `/tell Name, message`). T cycles nearby server objects; Z toggles combat/peace; 1 requests repeated attacks. The equipped weapon selects the native melee, missile or magic stance. 2 uses the racial starter magic skill and 3 uses the missile skill; equip a matching weapon first. `/cast <hex skill ID>` sends a learned active skill request; unsupported skills are rejected by the server. `/stop` ends combat. E or `/use` uses the selected world object, including mentors, portals and lifestone binding. Home or `/recall` requests native lifestone recall; a dead character requests resurrection. I opens the native inventory; double-click an item to use/equip it (unequip the current hand item before replacing it). C displays server stats. F4 or Escape → Leave World logs out to character selection. Escape on selection disconnects to sign-in. `/loot` sends the native loot-container request when supported by the connected server.
 
-Alt shows the cursor: click a visible creature in the world to select it, then
+The cursor starts visible. Hold RMB to look/steer, drag LMB to orbit, and hold both
+to run; release to restore the pointer. Click a visible creature to select it, then
 press 1 to attack. World picking respects walls and excludes hidden cells, held
 weapons and inventory objects. The native start/stop buttons enter combat/peace
 even without a target; their ghosted states follow server acknowledgements. Z
@@ -40,7 +41,11 @@ The AC2E initial ruleset tests **automatic loot grants** on supported mob kills.
 
 The Legions profile grants DAT-validated racial starter clothes and three weapons once per character. Equipment acknowledgments update native inventory, and held models follow animated holding locations. Clothing changes rebuild the native avatar appearance while preserving face/body traits and colours; current observers, later arrivals, selection and re-entry receive the saved result. Seven additional armor definitions support Human/Lugian torso, legs and feet and a Tumerok torso, including sex-specific appearance tables and server armor values. Unequip the current piece before wearing its replacement. Additional training Drudges drop these profiles after the relevant quest item has been collected; this is an authored loot policy.
 
-Starter attack IDs and animation modes come from DAT tables; damage, vigor cost, range and timing remain development rules. The client runs native animation FX triggers and timed 0x57 FX scripts, plays particle variants and temporary effect models, and retains target references. The bridge forwards InitializeMissile and moving PhysicsDesc snapshots; the client handles fixed-point, object-target and untargeted flight, arrival and trail cleanup. These presentation paths never apply damage. AC2E still resolves starter magic attacks directly, without retail missile creation or flight-delayed damage. Native ballistic parameters, sound/light/streak effects and full spellbook parity remain incomplete.
+Starter attack IDs and animation modes come from DAT tables; damage, vigor cost, range and timing remain development rules. The client runs native animation FX triggers and timed 0x57 FX scripts, plays particle variants and temporary effect models, and retains target references. AC2E sends native arrow/boulder/javelin and racial auto-magic entities through CreateObject/InitializeMissile. Release is currently an authored 350ms delay and flight uses an authored 22m/s speed; damage is revalidated and applied after flight. Starter magic skills use direct cast/impact scripts. Distance-driven DAT trail emitters now run even with a zero timed birth rate. Objects are removed from every original recipient at impact, including after a disconnect or area change. Native ballistic parameters, sound/light/streak effects and full spellbook parity remain incomplete.
+
+Animation playback keeps native clip periods, normalizes sparse blend-cube timing,
+uses DAT start/stop ramps, and blends interrupted actions from their outgoing pose.
+Body, head and equipment continue sharing phase. No global time-dilation slowdown is applied.
 
 The supported human dungeon circuit is: equip a weapon, defeat three Idol Spawn, use the mentor for the reward, bind the lifestone, use the training gateway to the outdoor hub, then recall. This verifies the **authored AC2E starter circuit**, not the recovered retail tutorial's full quest chain. Starter Idol pursuit is server-owned, limited to its current cell, with an 18m leash; this is not cross-cell pathfinding or line-of-sight collision. Both current observers and later arrivals receive its authoritative pose; respawn returns it to the original placement.
 
@@ -70,6 +75,9 @@ checkout; no pre-existing `Saved` files are needed.
 both local and remote avatars to peace, allows immediate equipment changes, and
 does no damage. Synthetic placements in DAT-visible neighboring rooms verify
 cross-cell melee, retaliation and death; overlapping hidden rooms stay excluded.
+It also verifies bow/magic kills at 12-14m across a visible room boundary without
+health resets or long-range melee hits, replicated missiles and their cleanup,
+and cancellation of airborne damage when returning to peace.
 Range uses shared landblock coordinates (including outdoor block offsets) plus
 native visibility. This does not implement server wall collision or line of sight.
 Out-of-range feedback reports distance and weapon reach. Z or Stop Combat returns
@@ -83,6 +91,9 @@ model mode, disabled button states, chat input isolation/restoration, world
 mouse selection, and server-confirmed attacks, damage, death and loot.
 `Network/test_combat_ui.py` runs these combat checks independently of account
 creation on isolated ports 19486/19487; `--gameplay` adds equipped-staff combat.
+The combined `--mouse --gameplay` run exercises held-button orbit/steering/walking,
+pointer restoration and capture loss, then checks moving magic missiles with
+live DAT trail particles and inventory interactions in the rendered client.
 The two-client gameplay test also checks that a rejected attack restores peace
 on both the player's model and the observing client.
 

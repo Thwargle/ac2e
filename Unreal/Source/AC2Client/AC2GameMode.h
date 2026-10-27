@@ -145,6 +145,8 @@ class AAC2PlayerController : public APlayerController
     void SetCursor(bool Enabled);
     void RestoreCursor() { SetCursor(!MouseLook); }
     bool WantsMouseLook() const { return MouseLook; }
+    // Held-button camera gestures are independent of the optional Alt/MMB toggle.
+    bool CameraSteersPlayer=false, MouseForward=false, FreeOrbit=false;
   private:
     bool MouseLook=false;
     TOptional<FIntPoint> SavedPointer;

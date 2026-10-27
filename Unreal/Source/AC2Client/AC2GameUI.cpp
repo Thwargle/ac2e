@@ -80,10 +80,10 @@ void SAC2GameUI::Construct(const FArguments &Args)
         if (!VisibleWorld())
             return EVisibility::Collapsed;
         auto *PC = Controller(Mode);
-        return PC && PC->bShowMouseCursor ? EVisibility::Visible : EVisibility::HitTestInvisible;
+        return PC && (PC->bShowMouseCursor || CameraLeft || CameraRight) ? EVisibility::Visible : EVisibility::HitTestInvisible;
     }));
     Log.Add(EAC2ChatType::System, TEXT("Welcome to Dereth. Enter opens local chat; /help lists commands."));
-    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Mouse: click selects, double-click uses, right-click examines. Middle or Alt: mouse look. Wheel: camera zoom. Z: combat; 1: attack; 2: magic; 3: missile; E: use.") : TEXT("Offline world: messages stay in this session."));
+    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Mouse: click selects, double-click uses, right-click examines. Hold right: look/steer; drag left: orbit; hold both: run. Wheel: zoom. Z: combat; 1: attack; 2: magic; 3: missile; E: use.") : TEXT("Offline world: messages stay in this session."));
     if (Frontend) RestoreOptions();
     Rebuild();
 }
@@ -445,6 +445,7 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
 FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(CameraLeft || CameraRight)return CameraMouseMove(E);
     if(RotatingPortrait)
     {
         if(Portrait.IsValid())Portrait->Rotate((Mouse.X-PortraitPointer.X)*.6f);
@@ -463,6 +464,10 @@ FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 }
 void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
 {
+    // Slate releases the current captor even when upgrading this same widget
+    // to high-precision input. That one synchronous transfer is not focus loss.
+    if(CameraRecapturing){CameraRecapturing=false;return;}
+    CancelCameraGesture();
     DragItem.Reset();
     DraggingOption=INDEX_NONE;PressedAction=NAME_None;Native.Pressed=0;
     RotatingPortrait=false;
@@ -472,6 +477,7 @@ void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
 FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
 {
     OnMouseMove(G, E);
+    if(CameraLeft || CameraRight)return CameraButtonDown(E);
     if(E.GetEffectingButton()==EKeys::LeftMouseButton && ShowInventory && Portrait.IsValid() &&
         Native.Bounds(TEXT("PaperDollViewport")).Contains(FIntPoint(Mouse.X,Mouse.Y)))
     {RotatingPortrait=true;PortraitPointer=Mouse;return FReply::Handled().CaptureMouse(SharedThis(this));}
@@ -522,7 +528,7 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
     if(E.GetEffectingButton()==EKeys::LeftMouseButton || E.GetEffectingButton()==EKeys::RightMouseButton)
     {
         if(OwnsPointer(Mouse))return FReply::Handled();
-        if(WorldClick(E.GetEffectingButton(),false))return FReply::Handled();
+        if(VisibleWorld() && Mode->InWorld())return CameraButtonDown(E);
     }
     return FReply::Unhandled();
 }
@@ -530,6 +536,7 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
 FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(CameraLeft || CameraRight)return CameraButtonUp(E);
     if(RotatingPortrait && E.GetEffectingButton()==EKeys::LeftMouseButton)
     {RotatingPortrait=false;return FReply::Handled().ReleaseMouseCapture();}
     if(DraggingOption!=INDEX_NONE && E.GetEffectingButton()==EKeys::LeftMouseButton)

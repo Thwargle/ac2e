@@ -59,7 +59,7 @@ def main():
             assert 'AC2 world props passed:' in client
             assert 'grounded NPCs=0' not in client
         if '--mouse' in os.sys.argv:
-            assert all(f'AC2 mouse controls step {step} passed' in client for step in range(6))
+            assert all(f'AC2 mouse controls step {step} passed' in client for step in range(10))
         report = {'result': 'PASS', 'directory': str(directory), 'equipped_magic': '--gameplay' in os.sys.argv,
             'checks': ['native start/stop mouse buttons and ghosted states', 'Z toggles server and avatar stance',
                 'chat focus isolation and restored attack key', 'missing-target feedback',
@@ -73,7 +73,8 @@ def main():
             report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',
                 'double-click use without attacking', 'world zoom and panel scroll isolation',
                 'middle-click capture and pointer restoration', 'camera orbit preserves network heading',
-                'native mouse-look crosshair and center inspection', 'wheel first/third-person transitions']
+                'native mouse-look crosshair and center inspection', 'wheel first/third-person transitions',
+                'held LMB orbit, RMB steer, both-button walking and capture-loss cleanup']
         (directory / 'result.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report))
     finally:

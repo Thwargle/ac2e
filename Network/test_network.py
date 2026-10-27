@@ -10,7 +10,7 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / 'Network/Bridge/target/release/ac2-network-bridge.exe'
-SERVER = ROOT / 'AC2E/target/release/ac2e.exe'
+SERVER = Path(os.environ.get('AC2_TEST_SERVER', ROOT / 'AC2E/target/release/ac2e.exe')).resolve()
 PYTHON = os.sys.executable
 DAT_DIRECTORY = Path(os.environ.get('AC2_DAT_DIRECTORY', ROOT / "Asheron's Call 2 - Legions")).resolve()
 

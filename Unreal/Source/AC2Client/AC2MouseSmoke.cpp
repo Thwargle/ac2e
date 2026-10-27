@@ -97,6 +97,18 @@ bool SAC2GameUI::SmokeMouseControls(int32 Step,const FString& Id,FString& Error)
     static float OriginalYaw=0;
     static FRotator OriginalView;
     static FVector2D Pointer;
+    static FVector WalkStart;
+    auto Gesture=[&](FKey Button,bool Down,FVector2D Delta=FVector2D::ZeroVector) {
+        const auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
+        const auto Path=App.LocateWindowUnderMouse(Pointer,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
+        TSet<FKey> Keys;if(CameraLeft)Keys.Add(EKeys::LeftMouseButton);if(CameraRight)Keys.Add(EKeys::RightMouseButton);
+        if(Button.IsValid()){if(Down)Keys.Add(Button);else Keys.Remove(Button);}
+        FPointerEvent Event(0,Pointer+Delta,Pointer,Keys,Button,0,FModifierKeysState());
+        if(!Button.IsValid())App.RoutePointerMoveEvent(Path,Event,false);
+        else if(Down)App.RoutePointerDownEvent(Path,Event);
+        else App.RoutePointerUpEvent(Path,Event);
+        return true;
+    };
     auto Middle=[&]() {
         const auto Window=App.FindWidgetWindow(SharedThis(this));
         if(!Window)return false;
@@ -172,6 +184,37 @@ bool SAC2GameUI::SmokeMouseControls(int32 Step,const FString& Id,FString& Error)
         if(Pawn->Boom->TargetArmLength<100)return Fail(TEXT("Wheel zoom could not leave first person"));
         Pawn->SetCameraDistance(380);
         FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Mouse-pointer.png"),true,false);
+        break;
+    case 6:
+        ClosePanels();
+        Pointer=GetCachedGeometry().LocalToAbsolute(FVector2D(Size.X*.55,Size.Y*.35)*Scale);
+        App.SetCursorPos(Pointer);OriginalView=PC->GetControlRotation();OriginalYaw=Pawn->GetActorRotation().Yaw;
+        if(!Gesture(EKeys::LeftMouseButton,true) || !Gesture(FKey(),false,FVector2D(40,0)) ||
+            !PC->FreeOrbit || PC->CameraSteersPlayer || PC->bShowMouseCursor)
+        {Error=FString::Printf(TEXT("LMB drag did not capture free orbit: L=%d R=%d drag=%d orbit=%d steer=%d cursor=%d travel=%g"),CameraLeft,CameraRight,CameraDragging,PC->FreeOrbit,PC->CameraSteersPlayer,PC->bShowMouseCursor,CameraTravel);return false;}
+        break;
+    case 7:
+        if(FMath::Abs(FMath::FindDeltaAngleDegrees(OriginalYaw,Pawn->GetActorRotation().Yaw))>.5f ||
+            FMath::Abs(FMath::FindDeltaAngleDegrees(OriginalView.Yaw,PC->GetControlRotation().Yaw))<1)
+            return Fail(TEXT("LMB orbit changed character heading or failed to turn view"));
+        WalkStart=Pawn->GetActorLocation();
+        if(!Gesture(EKeys::RightMouseButton,true) || !PC->MouseForward || !PC->CameraSteersPlayer || PC->FreeOrbit)
+            return Fail(TEXT("Both-button chord did not walk and steer"));
+        Gesture(FKey(),false,FVector2D(20,0));break;
+    case 8:
+        if(FVector::Dist2D(WalkStart,Pawn->GetActorLocation())<5)
+            return Fail(TEXT("Held mouse chord did not move the pawn"));
+        if(!Gesture(EKeys::RightMouseButton,false) || PC->MouseForward || !PC->FreeOrbit)
+            return Fail(TEXT("Releasing RMB did not stop walking and resume orbit"));
+        if(!Gesture(EKeys::LeftMouseButton,false) || !PC->bShowMouseCursor || PC->FreeOrbit || PC->CameraSteersPlayer ||
+            FVector2D::Distance(Pointer,App.GetCursorPos())>3)
+            return Fail(TEXT("Gesture release did not restore pointer and camera state"));
+        PC->SetControlRotation(OriginalView);break;
+    case 9:
+        if(!Gesture(EKeys::RightMouseButton,true) || PC->bShowMouseCursor)return Fail(TEXT("Held RMB did not capture"));
+        App.ReleaseAllPointerCapture();
+        if(CameraLeft || CameraRight || PC->MouseForward || PC->CameraSteersPlayer || !PC->bShowMouseCursor)
+            return Fail(TEXT("Capture loss left mouse steering active"));
         break;
     }
     UE_LOG(LogTemp,Display,TEXT("AC2 mouse controls step %d passed"),Step);

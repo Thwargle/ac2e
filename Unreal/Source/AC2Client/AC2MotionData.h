@@ -28,6 +28,10 @@ struct FAC2BehaviorData
     struct FTransition {uint32 FromElement,FromMode,ToElement,ToMode,Behavior,Effect,StopEffect;};
     TArray<FTransition> Transitions;
     TMap<uint32,float> Ramps;
+    struct FModeRamp {uint32 FromElement,FromMode,ToElement,ToMode;float Seconds;};
+    TArray<FModeRamp> ModeRamps;
+    float Ramp(uint32 Behavior) const {const auto* R=Ramps.Find(Behavior);return R?*R:.25f;}
+    float ModeRamp(uint32 FromElement,uint32 FromMode,uint32 ToElement,uint32 ToMode) const;
     uint32 InitialMode=0;
     bool Decode(uint32 Id,TConstArrayView<uint8> Bytes);
     uint32 Key(uint32 Element,uint32 Mode,uint32 Behavior) const;

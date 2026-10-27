@@ -200,10 +200,14 @@ float FAC2Animator::Period(const FAC2AnimatorInput &Input) const
 {
     TArray<FWeighted> Clips;
     Gather(Root.Get(), Input, 1, Clips);
-    float Period = 0;
+    float Period = 0, Weight = 0;
     for (const auto &C : Clips)
+    {
         Period += C.Weight * C.Node->Clip->Period;
-    return Period;
+        Weight += C.Weight;
+    }
+    // Null lattice corners provide no animation, not a zero-duration clip.
+    return Weight>SMALL_NUMBER ? Period/Weight : 0;
 }
 TArray<uint32> FAC2Animator::ActiveClips(const FAC2AnimatorInput &Input) const
 {

@@ -44,11 +44,15 @@ struct Attack {
     next: u64,
     repeat: bool,
     category: usize,
+    stage: u8,
+    started: u64,
+    skill: bool,
 }
 pub enum Event {
     Move { actor: u64, placement: Placement },
     IdolVisual(u64, crate::combat_visual::IdolAction),
     Swing(u64),
+    Projectile { player: u64, target: u64, profile: crate::projectiles::Profile, flight_ms: u64 },
     /// Signed health on the victim. Negative is damage. The vital update is separate.
     Hit {
         victim: u64,
@@ -388,6 +392,11 @@ impl Encounters {
             return Err(invalid("attack cooldown capacity"));
         }
         let next = self.cooldowns.get(&player).copied().unwrap_or(now);
+        // Repeated attack input must not restart a windup or an airborne shot.
+        if let Some(queued) = self.attacks.get_mut(&player).filter(|a| a.target == target && a.category == category) {
+            queued.repeat = true;
+            return Ok(());
+        }
         self.attacks.insert(
             player,
             Attack {
@@ -395,6 +404,9 @@ impl Encounters {
                 next,
                 repeat: true,
                 category,
+                stage: 0,
+                started: next,
+                skill: false,
             },
         );
         Ok(())
@@ -408,8 +420,12 @@ impl Encounters {
         scene: &Scene,
         store: &Store,
     ) -> io::Result<()> {
+        if self.attacks.get(&player).is_some_and(|a| a.stage != 0) {
+            return Err(invalid("An attack is already in progress."));
+        }
         self.start(player, target, now, scene, store)?;
         self.attacks.get_mut(&player).unwrap().repeat = false;
+        self.attacks.get_mut(&player).unwrap().skill = true;
         Ok(())
     }
     fn stopped(&mut self, player: u64, events: &mut Vec<Event>) {
@@ -463,6 +479,32 @@ impl Encounters {
                 }
                 self.stopped(player, &mut events);
                 continue;
+            }
+            if attack.category != 0 && attack.stage == 0 {
+                let cost = if attack.category == 2 { self.cost.max(6) } else { self.cost };
+                if store.characters[&player].progression.apply(&Command::SpendVigor(cost)).is_err() {
+                    events.push(Event::Note { player, text: "Attack stopped: insufficient vigor.".into() });
+                    self.stopped(player, &mut events);
+                    continue;
+                }
+                events.push(Event::Swing(player));
+                let queued = self.attacks.get_mut(&player).unwrap();
+                queued.started = now;
+                queued.stage = 1;
+                queued.next = now.saturating_add(crate::projectiles::RELEASE_MS);
+                continue;
+            }
+            if attack.category != 0 && attack.stage == 1 {
+                let race = store.characters[&player].creation.as_ref().map_or(1, |r| r.race);
+                if let Some(profile) = crate::projectiles::profile(race, attack.category, attack.skill) {
+                    let distance = scene.combat_distance(player, attack.target).unwrap();
+                    let flight_ms = crate::projectiles::flight_ms(distance);
+                    events.push(Event::Projectile { player, target: attack.target, profile, flight_ms });
+                    let queued = self.attacks.get_mut(&player).unwrap();
+                    queued.stage = 2;
+                    queued.next = now.saturating_add(flight_ms);
+                    continue;
+                }
             }
             let actor = &self.actors[&attack.target];
             // Authored starter balance; the client sends only a learned skill/target.
@@ -548,12 +590,15 @@ impl Encounters {
                     book: store.characters[&player].quests.clone(),
                 });
             }
-            let until = now.saturating_add(self.interval);
+            let until = if attack.category == 0 { now.saturating_add(self.interval) }
+                else { attack.started.saturating_add(self.interval).max(now.saturating_add(100)) };
             self.cooldowns.insert(player, until);
             self.attacks.get_mut(&player).unwrap().next = until;
+            self.attacks.get_mut(&player).unwrap().stage = 0;
+            self.attacks.get_mut(&player).unwrap().skill = false;
             let actor = self.actors.get_mut(&attack.target).unwrap();
             actor.health -= dealt;
-            events.push(Event::Swing(player));
+            if attack.category == 0 { events.push(Event::Swing(player)); }
             if let Ok(dealt) = i32::try_from(dealt) {
                 events.push(Event::Hit {
                     victim: attack.target,
@@ -651,12 +696,15 @@ impl Encounters {
                     }
                 }
             }
+            // Engagement and melee reach are separate. In particular, a ranged
+            // hit across visible cells or a slope must not heal the victim on
+            // the same tick merely because our bounded pursuit cannot reach it.
             let eligible = |player| {
                 store
                     .characters
                     .get(&player)
                     .is_some_and(|c| !c.deleted && c.progression.alive())
-                    && scene.combat_distance(player, id).is_some_and(|distance| distance <= actor.rule.range)
+                    && scene.combat_distance(player, id).is_some_and(|distance| distance <= 18.0)
             };
             if !eligible(target) {
                 if let Some((&other, _)) = self
@@ -683,7 +731,8 @@ impl Encounters {
                     continue;
                 }
             }
-            if now < actor.next_attack {
+            if !scene.combat_distance(target, id).is_some_and(|distance| distance <= actor.rule.range)
+                || now < actor.next_attack {
                 continue;
             }
             let account = store.characters[&target].account.clone();

@@ -30,6 +30,7 @@ class SAC2GameUI : public SCompoundWidget
     virtual FReply OnMouseButtonDoubleClick(const FGeometry &, const FPointerEvent &) override;
     virtual FReply OnMouseMove(const FGeometry &, const FPointerEvent &) override;
     virtual void OnMouseCaptureLost(const FCaptureLostEvent&) override;
+    void CancelCameraGesture();
     virtual FReply OnMouseWheel(const FGeometry &, const FPointerEvent &) override;
     virtual FReply OnKeyDown(const FGeometry &, const FKeyEvent &) override;
     void BeginChat();
@@ -95,6 +96,13 @@ class SAC2GameUI : public SCompoundWidget
     double NextHover=0;
     int32 ExamineScroll=0, ExamineMaxScroll=0;
     bool OwnsPointer(FVector2D Point) const;
+    bool CameraLeft=false,CameraRight=false,CameraDragging=false,CameraMoved=false;
+    bool CameraPrecision=false,CameraRecapturing=false;
+    FVector2D CameraPress,CameraScreenPress;
+    float CameraTravel=0;
+    FReply CameraButtonDown(const FPointerEvent& E);
+    FReply CameraButtonUp(const FPointerEvent& E);
+    FReply CameraMouseMove(const FPointerEvent& E);
     void UpdateHover(const FGeometry&,double Time);
     void BuildPointerFeedback();
     bool WorldClick(FKey Button,bool DoubleClick);

@@ -82,6 +82,7 @@ bool FAC2Effects::Start(const FAC2ParticleSource &Source, bool Persistent)
     {
         const auto &E = Preset->Data.Emitters[I];
         S.Emitters[I].NextBirth = FMath::Max(0.f, E.Start) + FMath::Max(.001f, E.BirthInterval);
+        S.Emitters[I].LastDischarge = Source.Frame.GetLocation();
         S.Stop = FMath::Max(S.Stop, E.Start + (E.Duration > 0 ? E.Duration : 1.f));
     }
     S.Stop = FMath::Clamp(S.Stop, .1f, 15.f);
@@ -235,9 +236,36 @@ void FAC2Effects::Step(float Dt, const FVector &Wind)
         {
             const auto &E = D.Emitters[I];
             auto &State = S.Emitters[I];
-            if (!E.Active || E.BirthInterval <= 0 || !E.Blast || S.Age < E.Start ||
+            if (!E.Active || !E.Blast || S.Age < E.Start ||
                 (E.Duration > 0 && S.Age > E.Start + E.Duration))
                 continue;
+            // ParticleEmitter::EmitDistanceParticles (7160 00598970) is
+            // independent of the timed birth rate. Native missile trails have
+            // a zero birth interval and emit each 0.25/0.333m travelled.
+            const float Spacing=E.EmissionDistance*100;
+            if(FMath::IsFinite(Spacing) && Spacing>SMALL_NUMBER)
+            {
+                const FTransform EndFrame=S.Source.Frame;
+                const FVector Delta=EndFrame.GetLocation()-State.LastDischarge;
+                const float Distance=Delta.Size();
+                const int32 Steps=FMath::FloorToInt(FMath::Min(Distance/Spacing,128.f));
+                const FVector Direction=Delta.GetSafeNormal();
+                for(int32 Step=0;Step<Steps;++Step)
+                {
+                    State.LastDischarge+=Direction*Spacing;
+                    int32 N=FMath::Min3(4096-Particles.Num(),int32(FMath::Min(D.Maximum,1024u))-SystemAlive,int32(FMath::Min(E.Maximum,1024u))-Alive[I]);
+                    N=FMath::Min(N,int32(FMath::Min(E.Blast,128u)));
+                    if(E.Limit)N=FMath::Min(N,int32(E.Limit>State.Born?E.Limit-State.Born:0));
+                    if(N<=0){State.LastDischarge=EndFrame.GetLocation();break;}
+                    S.Source.Frame.SetLocation(State.LastDischarge);
+                    for(int32 J=0;J<N;++J){Discharge(Pair.Key,S,I,S.Age);++State.Born;}
+                    Alive[I]+=N;SystemAlive+=N;
+                }
+                // Drop excessive travel (teleports), instead of replaying it on later frames.
+                if(Distance>Spacing*128)State.LastDischarge=EndFrame.GetLocation();
+                S.Source.Frame=EndFrame;
+            }
+            if(E.BirthInterval<=0)continue;
             const float Interval = FMath::Max(.001f, E.BirthInterval);
             int32 Budget = 128;
             while (State.NextBirth <= S.Age && Budget-- > 0)

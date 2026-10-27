@@ -1882,6 +1882,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             None => crate::content::Content::default(),
         },
     };
+    let mut projectiles = crate::projectiles::Projectiles::default();
     let mut encounters = config
         .encounters
         .as_deref()
@@ -4739,6 +4740,18 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                     crate::encounters::Event::Move {actor,placement} => {
                         updates.extend(scene.move_creature(actor,placement,now_ms)?);
                     }
+                    crate::encounters::Event::Projectile { player, target, profile, flight_ms } => {
+                        // A saturated cosmetic pool must never terminate the world server.
+                        match projectiles.fire(&scene, player, target, profile, flight_ms, now_ms) {
+                            Ok(deliveries) => updates.extend(deliveries),
+                            Err(error) => {
+                                let reason=format!("Projectile presentation: {error}");
+                                if diagnosed_application_errors.len()<32 && diagnosed_application_errors.insert(reason.clone()) {
+                                    eprintln!("{reason}");
+                                }
+                            }
+                        }
+                    }
                     crate::encounters::Event::Swing(player) => {
                         if let Some(addr) = active_characters.get(&player) {
                             if let Some(peer) = peers.get_mut(addr) {
@@ -4918,6 +4931,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 &mut failed_peers,
             )?;
         }
+        deliver_scene(projectiles.retire(now_ms), &active_characters, &mut peers, &primary, now, &mut failed_peers)?;
         let mut remove = std::mem::take(&mut failed_peers);
         for (addr, peer) in &mut peers {
             if peer.native_shop.is_some() {
