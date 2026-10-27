@@ -25,11 +25,15 @@ The game opens its account/password form before loading any environment. Enter t
 
 ## Network controls and authority
 
-WASD/Shift/Space move. Enter opens server chat (`/say`, `/me`, `/tell Name, message`). T cycles nearby server objects; 1 requests repeated attacks; `/stop` ends combat. 2 uses the selected world object, including lifestone binding. Home or `/recall` requests native lifestone recall; a dead character requests resurrection. I opens the native inventory; double-click an item to use/equip it; selecting an item and an empty cell requests a server move. C displays server stats. F4 or Escape → Leave World logs out to character selection. Escape on selection disconnects to sign-in. `/loot` sends the native loot-container request when supported by the connected server.
+WASD/Shift/Space move. Enter opens server chat (`/say`, `/me`, `/tell Name, message`). T cycles nearby server objects; Z toggles combat/peace; 1 requests repeated attacks. The equipped weapon selects the native melee, missile or magic stance. 2 uses the racial starter magic skill and 3 uses the missile skill; equip a matching weapon first. `/cast <hex skill ID>` sends a learned active skill request; unsupported skills are rejected by the server. `/stop` ends combat. E or `/use` uses the selected world object, including mentors, portals and lifestone binding. Home or `/recall` requests native lifestone recall; a dead character requests resurrection. I opens the native inventory; double-click an item to use/equip it (unequip the current hand item before replacing it). C displays server stats. F4 or Escape → Leave World logs out to character selection. Escape on selection disconnects to sign-in. `/loot` sends the native loot-container request when supported by the connected server.
 
 Server characters, positions, visuals, appearance aspects, actor visibility, inventory, health/vigor, levels, XP and gold update from server events. Remote actors interpolate server movement and use native locomotion animation. Client collision and prediction are retained for local movement. NPC test spawning, flight and arbitrary map teleports are disabled online. Inventory changes wait for acknowledgement; no network profile is written to the offline character file.
 
 The AC2E initial ruleset tests **automatic loot grants** on supported mob kills. It does not yet supply a complete retail corpse-looting window, every combat animation, every merchant/quest/social panel, terrain-authoritative server collision or anti-cheat parity. Static recovered placements and authored encounter behavior are distinct; seeing an NPC does not mean its full original script has been implemented.
+
+The Legions profile grants the DAT-validated racial starter clothes and three weapons once per character. Hand equipment acknowledgments update the native inventory, and held models follow the player's or remote character's animated holding location. Global appearance modifiers preserve character faces and starter clothing. Starter attack IDs and animation modes come from DAT enum mappers; damage, vigor cost, range and timing are explicit development rules. Magic currently resolves direct server damage with native casting animation; retail projectile/effect and spellbook parity remain incomplete. Armor changing and general item services beyond the supported hand items/potions remain unfinished.
+
+The supported human dungeon circuit is: equip a weapon, defeat three Idol Spawn, use the mentor for the reward, bind the lifestone, use the training gateway to the outdoor hub, then recall. This verifies the **authored AC2E starter circuit**, not the recovered retail tutorial's full quest chain. Starter Idol pursuit is server-owned, limited to its current cell, with an 18m leash; this is not cross-cell pathfinding or line-of-sight collision. Both current observers and later arrivals receive its authoritative pose; respawn returns it to the original placement.
 
 ## Build and verify
 
@@ -42,6 +46,10 @@ The bridge dependency is pinned at AC2_Rusted commit `bcf67b4b9ac3ee9eb429d68ba6
 All integration scripts generate their compatible content in the temporary test
 directory. Set `AC2_DAT_DIRECTORY` to use a retail installation outside this
 checkout; no pre-existing `Saved` files are needed.
+
+`Network/test_gameplay.py` uses two real UDP clients on 19320/19321 to exercise weapon equip/unequip, combat modes, rejected wrong-weapon casting, melee/magic/missile attacks, creature pursuit and shared locations, incoming damage, kills, the starter reward, portal visibility removal and recall. It also tests player death/resurrection and journal replay of equipment and quest completion. `Network/test_login_ui.py --gameplay` additionally renders Unreal with a server-equipped staff and checks native magic animation playback, animated attachment and global appearance alongside the existing login/selection/inventory tests. Both use disposable stores under `Saved/AC2NetworkTests`.
+
+The Unreal server profile sends compact native inventory profiles because the pinned bridge decoder does not yet support the optional embedded native VisualDesc in full inventory graphs. Authoritative object visuals still travel in CreateObject. The original-client server profile retains full graphs; servers sending those full inventory graphs to this bridge still need decoder support.
 
 `Network/test_server_launcher.py` runs the public batch launcher from another
 working directory, connects a native client, and stops the server gracefully.

@@ -12,6 +12,35 @@ use std::{
     sync::Arc,
 };
 
+#[cfg(test)]
+mod motion_tests {
+    use super::*;
+    fn spawn(point: Placement, instance:u16) -> Vec<u8> {
+        world::create_stationary_object(&StationaryObject {character_id:NAMESPACE+1,
+            parent_visual_did:0x1f0003d1,entity_did:crate::quests::TARGET_ENTITY,
+            cell_id:point.cell,position:point.coordinates,orientation:point.orientation(),
+            instance_stamp:instance,visual_ordering_stamp:0,timestamps:[0;4]}).unwrap()
+    }
+    #[test]
+    fn pursuit_updates_late_observers_and_respawn_returns_to_authored_home() {
+        let home=Placement::HUMAN_START;
+        let id=NAMESPACE+1;
+        let mut content=Content::default();
+        content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,placement:home,home,
+            spawn:spawn(home,1).into(),destroy:vec![0;16].into(),active:true,instance:1,
+            visual_stamp:0,position_stamp:0,stats:BTreeMap::new()});
+        let mut next=home;next.coordinates[0]+=1.5;next.heading=64;
+        content.move_creature(id,next,2500).unwrap();
+        assert_eq!(&*content.object(id).unwrap().spawn,spawn(next,1));
+        let mut wrong=next;wrong.cell+=1;
+        assert!(content.move_creature(id,wrong,2600).is_err());
+        assert_eq!(content.object(id).unwrap().placement,next);
+        content.despawn(id).unwrap();content.respawn(id).unwrap();
+        assert_eq!(&*content.object(id).unwrap().spawn,spawn(home,2));
+        assert_eq!(content.object(id).unwrap().placement,home);
+    }
+}
+
 pub const NAMESPACE: u64 = 0x8140000000000000;
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_OBJECTS: usize = 16384;
@@ -23,11 +52,13 @@ pub struct Object {
     pub id: u64,
     pub entity: u32,
     pub placement: Placement,
+    home: Placement,
     pub spawn: Arc<[u8]>,
     pub destroy: Arc<[u8]>,
     active: bool,
     instance: u16,
     visual_stamp: u16,
+    position_stamp: u16,
     stats: BTreeMap<u32, (u32, Arc<[u8]>)>,
 }
 impl Object {
@@ -56,6 +87,38 @@ pub struct Content {
     cells: BTreeMap<u32, Vec<u64>>,
 }
 impl Content {
+    /// Bounded same-cell creature pursuit. Retain the new pose in CreateObject
+    /// too, so late observers receive the same location as existing observers.
+    pub fn move_creature(&mut self, id: u64, placement: Placement, now: u64) -> io::Result<Arc<[u8]>> {
+        let object = self.objects.get_mut(&id).filter(|o| o.active && o.entity == crate::quests::TARGET_ENTITY)
+            .ok_or_else(|| invalid("unsupported moving creature"))?;
+        if !placement.valid() || placement.cell != object.placement.cell {
+            return Err(invalid("creature pursuit cannot cross cell boundaries"));
+        }
+        object.position_stamp = object.position_stamp.checked_add(1).ok_or_else(|| invalid("creature position stamp exhausted"))?;
+        Self::set_pose(object, placement)?;
+        let update = crate::movement::ClientPosition {
+            time: now as f64 / 1000.0, placement, motion: u32::from(placement.heading) << 24,
+            cancel_moveto: false, stamps: [object.instance,0,0,0], jump_velocity: None,
+        };
+        crate::movement::server_position(id,object.instance,object.position_stamp,&update)
+            .map(Arc::from).map_err(io::Error::other)
+    }
+    fn set_pose(object: &mut Object, placement: Placement) -> io::Result<()> {
+        // StationaryObject's pinned Idol serializer: mode, one scale slider,
+        // then Position. Do not guess offsets for arbitrary visual profiles.
+        let spawn = Arc::make_mut(&mut object.spawn);
+        if spawn.get(20..24) != Some(0x8082u32.to_le_bytes().as_slice()) || spawn.len() < 96
+            || spawn.get(32..36) != Some(1u32.to_le_bytes().as_slice()) {
+            return Err(invalid("unsupported creature position layout"));
+        }
+        // A slider stores its key and two floats; Position starts at byte 48.
+        spawn[48..52].copy_from_slice(&placement.cell.to_le_bytes());
+        for (i,v) in placement.coordinates.iter().enumerate() { spawn[52+i*4..56+i*4].copy_from_slice(&v.to_le_bytes()); }
+        for (i,v) in placement.orientation().iter().enumerate() {spawn[64+i*4..68+i*4].copy_from_slice(&v.to_le_bytes());}
+        object.placement=placement;
+        Ok(())
+    }
     /// The shipped snapshot works independently of the current directory.
     pub fn bundled(game_data: &Path) -> io::Result<Self> {
         Self::parse(include_str!("../content/world.tsv"), game_data)
@@ -200,6 +263,8 @@ impl Content {
             .get_mut(&id)
             .filter(|object| !object.active)
             .ok_or_else(|| invalid("content object already active"))?;
+        if object.placement != object.home { Self::set_pose(object,object.home)?; }
+        object.position_stamp=0;
         object.instance = object
             .instance
             .checked_add(1)
@@ -394,11 +459,13 @@ impl Content {
                     id,
                     entity,
                     placement,
+                    home: placement,
                     spawn: spawn.into(),
                     destroy: destroy.into(),
                     active: true,
                     instance: 1,
                     visual_stamp: 0,
+                    position_stamp: 0,
                     stats: BTreeMap::new(),
                 },
             );

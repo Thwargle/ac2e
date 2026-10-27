@@ -11,6 +11,12 @@ pub const DO_STORY: u32 = 0x100a8;
 pub const PEACE: u32 = 0x40000001;
 pub const ONE_HAND: u32 = 0x4100000a;
 pub const MARTIAL_ARTS: u32 = 0x4100000f;
+// Legions EnumMapper 23000026 / 23000027.
+pub const MISSILE: u32 = 0x41000010;
+pub const MAGIC: u32 = 0x41000011;
+pub const BOULDER: u32 = 0x41000015;
+pub const MAGIC_AUTO: u32 = 0x410000b0;
+pub const MISSILE_AUTO: u32 = 0x410000e2;
 pub const MELEE_AUTO: u32 = 0x41000089;
 pub const MELEE_NORMAL: u32 = 0x41000077;
 /// Captured result paired with a nonzero health hook. Not a reconstructed crit table.
@@ -78,7 +84,7 @@ pub fn mode(owner: u64, instance: u16, stamp: u16, fighting: bool) -> Result<Vec
     mode_id(owner,instance,stamp,if fighting { ONE_HAND } else { PEACE })
 }
 pub fn mode_id(owner: u64, instance: u16, stamp: u16, mode: u32) -> Result<Vec<u8>, WorldError> {
-    if ![PEACE,ONE_HAND,MARTIAL_ARTS].contains(&mode) {return Err(WorldError::InvalidValue);}
+    if ![PEACE,ONE_HAND,MARTIAL_ARTS,MISSILE,MAGIC,BOULDER].contains(&mode) {return Err(WorldError::InvalidValue);}
     let mut wire = prefix(DO_MODE, owner, instance, stamp)?;
     wire.extend(mode.to_le_bytes());
     Ok(wire)
@@ -88,11 +94,14 @@ pub fn mode_id(owner: u64, instance: u16, stamp: u16, mode: u32) -> Result<Vec<u
 /// PhysicsStory, whose native StoryManager creates a fresh behavior context.
 /// Damage remains in the existing authoritative encounter/victim update path.
 pub fn basic_attack(owner: u64, instance: u16, stamp: u16) -> Result<Vec<u8>, WorldError> {
+    weapon_attack(owner, instance, stamp, ONE_HAND)
+}
+pub fn weapon_attack(owner: u64, instance: u16, stamp: u16, mode: u32) -> Result<Vec<u8>, WorldError> {
     let mut wire = prefix(DO_STORY, owner, instance, stamp)?;
     wire.extend(0x26u32.to_le_bytes()); // Attacker, behavior, basic-attack flag.
     wire.extend(owner.to_le_bytes());
     wire.extend(0x601u32.to_le_bytes()); // Behavior, propagate, send-event.
-    wire.extend(MELEE_AUTO.to_le_bytes());
+    wire.extend(match mode { MAGIC => MAGIC_AUTO, MISSILE | BOULDER => MISSILE_AUTO, _ => MELEE_AUTO }.to_le_bytes());
     wire.extend(1u32.to_le_bytes()); // Propagate to the held weapon.
     wire.extend(0u32.to_le_bytes()); // No interpreted completion callback.
     wire.extend(0u32.to_le_bytes()); // No duplicated damage hooks.

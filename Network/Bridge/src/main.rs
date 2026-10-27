@@ -16,6 +16,19 @@ const MAX_LINE: usize = 65536;
 mod use_tests {
     use super::*;
     #[test]
+    fn equip_and_unequip_keep_native_unsigned_ids_and_slot_types() {
+        for equip in [true,false] {
+            let d=if equip {InvEquipDesc::equip(0x8140000000000001,7,0x40,7,3)}
+                else {InvEquipDesc::unequip(0x8140000000000001,7,0x40,3)};
+            let ClientEvent::Interp {function,arguments,..}=equip_item(d,equip) else {panic!("equip event")};
+            assert_eq!(arguments.len(),180);
+            assert_eq!(arguments[111],0x84);assert_eq!(arguments[115],4);
+            let decoded=ScriptRequest::decode(function,&arguments).unwrap().unwrap();
+            let d=match decoded {ScriptRequest::EquipItem(d)|ScriptRequest::UnequipItem(d)=>d,_=>panic!("equip descriptor")};
+            assert_eq!(d.item(),0x8140000000000001);assert_eq!(d.container(),7);assert_eq!(d.location(),0x40);assert_eq!(d.slot(),3);
+        }
+    }
+    #[test]
     fn native_use_keeps_unsigned_object_ids_and_default_target() {
         let owner=0x5000000000000001;let item=0x8140000000030003;
         let ClientEvent::Interp {function,arguments,..}=use_item(owner,item,0) else {panic!("use event")};
@@ -75,6 +88,17 @@ fn use_item(user: u64, item: u64, target: u64) -> ClientEvent {
     }
     ClientEvent::Interp { function: 0x82160016,
         arguments: pack_values(&[PackValue::Reference(reference)]), encrypted: false }
+}
+fn equip_item(desc: InvEquipDesc, equip: bool) -> ClientEvent {
+    // gmCWInterface::EquipItem / UnEquipItem: typed unsigned IDs and slot enums.
+    // Generic reference setters keep signed Int/Long tags; the native script
+    // constructors preserve these narrower tags in their packed heap graph.
+    let mut reference=desc.to_reference();
+    if let PackedEntry::Heap {object,..}=&mut reference.entries[0] {
+        object.tags=vec![2,1,2,0x84,0xcd,2,if equip {2}else{4},4,0x84,0xcd,0x84,0xcd,2,2,2,4,0x82,0xcd,4];
+    }
+    ClientEvent::Interp {function:if equip {0x820e004f}else{0x820e0015},
+        arguments:pack_values(&[PackValue::Reference(reference)]),encrypted:false}
 }
 struct Session {
     client: NetClient,
@@ -303,6 +327,23 @@ impl Session {
                     },
                 )?;
             }
+            "combat" if self.ready => {
+                let enabled = v["enabled"].as_bool().ok_or("Expected combat enabled flag")?;
+                send(&mut self.client, ClientEvent::Interp {
+                    function: if enabled { 0x82040008 } else { 0x82040010 },
+                    arguments: vec![], encrypted: false,
+                })?;
+            }
+            "skill" if self.ready => {
+                let skill = word(v, "skill")?;
+                if skill == 0 || skill > 65535 { return Err("Invalid skill ID".into()); }
+                self.skill_request = self.skill_request.wrapping_add(1);
+                send(&mut self.client, ClientEvent::Interp {
+                    function: 0x8204000b,
+                    arguments: pack_values(&[PackValue::Int(self.skill_request), PackValue::Int(skill), PackValue::LongInt(id(v, "target")?)]),
+                    encrypted: false,
+                })?;
+            }
             "resurrect" if self.ready => {
                 send(
                     &mut self.client,
@@ -351,26 +392,24 @@ impl Session {
             "equip" if self.ready => {
                 send(
                     &mut self.client,
-                    ScriptRequest::EquipItem(InvEquipDesc::equip(
+                    equip_item(InvEquipDesc::equip(
                         id(v, "id")?,
                         self.player,
                         word(v, "location")?,
                         self.player,
                         word(v, "slot")? as i32,
-                    ))
-                    .to_event(),
+                    ),true),
                 )?;
             }
             "unequip" if self.ready => {
                 send(
                     &mut self.client,
-                    ScriptRequest::UnequipItem(InvEquipDesc::unequip(
+                    equip_item(InvEquipDesc::unequip(
                         id(v, "id")?,
                         self.player,
                         word(v, "location")?,
                         word(v, "slot")? as i32,
-                    ))
-                    .to_event(),
+                    ),false),
                 )?;
             }
             "use" if self.ready => {

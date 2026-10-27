@@ -1164,7 +1164,7 @@ void AAC2GameMode::Attack()
 }
 void AAC2GameMode::CastBurst(uint32 Id)
 {
-    if(Network) { Network->UseTarget(); return; }
+    if(Network) { Network->StarterSkill(2); return; }
     auto *PC = GetWorld()->GetFirstPlayerController();
     if (Effects && PC && PC->GetPawn())
         Notice = Effects->NativeBurst(Id, PC->GetPawn()->GetActorLocation() +
@@ -1248,6 +1248,18 @@ void AAC2PlayerController::Burst()
     if (auto *M = GetWorld()->GetAuthGameMode<AAC2GameMode>())
         M->CastBurst(M->PreviewEffect);
 }
+void AAC2PlayerController::CombatMode()
+{
+    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) if(M->Network) M->Network->SetCombat(!M->Network->Combat);
+}
+void AAC2PlayerController::UseTarget()
+{
+    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) if(M->Network) M->Network->UseTarget();
+}
+void AAC2PlayerController::MissileSkill()
+{
+    if(auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>()) { if(M->Network) M->Network->StarterSkill(1); else Weather(); }
+}
 void AAC2PlayerController::Weather()
 {
     AC2Weather(-1);
@@ -1264,7 +1276,9 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AAC2PlayerController::Select);
     InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AAC2PlayerController::Attack);
     InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AAC2PlayerController::Burst);
-    InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AAC2PlayerController::Weather);
+    InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AAC2PlayerController::MissileSkill);
+    InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &AAC2PlayerController::CombatMode);
+    InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AAC2PlayerController::UseTarget);
     InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &AAC2PlayerController::AC2Recall);
     InputComponent->BindKey(EKeys::R, IE_Pressed, this, &AAC2PlayerController::Spawn);
     InputComponent->BindKey(EKeys::LeftAlt, IE_Pressed, this, &AAC2PlayerController::Cursor);

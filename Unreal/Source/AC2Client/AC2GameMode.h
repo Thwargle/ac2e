@@ -129,6 +129,9 @@ class AAC2PlayerController : public APlayerController
     void Select();
     void Attack();
     void Burst();
+    void CombatMode();
+    void UseTarget();
+    void MissileSkill();
     void Weather();
     void Spawn();
     void Cursor();

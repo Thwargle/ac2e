@@ -24,11 +24,6 @@ def prepare(directory, output):
                 continue
             fields = line.split('\t')
             iid, entity, visual, cell = [int(v, 16) for v in fields[:4]]
-            # Lifestones now have a server-owned binding/recall service. Keep their
-            # authored coordinates; portals still require the separate portal service.
-            if name == 'training-world.tsv' and entity == 0x4700084d:
-                inactive.append(fields[0])
-                continue
             # Outdoor cells use the landblock record; interior cells have individual records.
             record = cell if cell & 65535 >= 256 else cell | 65535
             if entity not in present or visual not in present or record not in cell_ids:

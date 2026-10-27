@@ -2078,6 +2078,17 @@ bool FAC2AssetLibrary::ValidateGrassMaterials(int32 &Count)
     }
     return Count > 0;
 }
+bool FAC2AssetLibrary::AnimatedHoldingLocation(uint32 Location, FTransform &Out) const
+{
+    for(const auto& G:Impl->Animated)
+        if(const auto* Socket=G.Setup.Sockets.Find(Location))
+            if(G.Bones.IsValidIndex(Socket->Bone))
+            {
+                Out=FTransform(Socket->Frame.ToMatrixWithScale()*G.Bones[Socket->Bone])*G.Frame;
+                return true;
+            }
+    return false;
+}
 bool FAC2AssetLibrary::HoldingLocation(uint32 Object, uint32 Location, FTransform &Out)
 {
     FAC2DecodedVisual V;

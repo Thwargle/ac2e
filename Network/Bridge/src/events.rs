@@ -6,10 +6,9 @@ fn string(s: &StringInfo) -> Value {
     json!({"literal":s.literal,"table":s.table_id,"key":s.string_id})
 }
 fn visual(v: &VisualDesc) -> Value {
-    let aspects: Vec<Value> = v
-        .part_groups
-        .iter()
-        .flat_map(|(_, g)| {
+    let aspects: Vec<Value> = v.global_mods.iter()
+        .chain(v.part_groups.iter().map(|(_, g)|g))
+        .flat_map(|g| {
             g.appearance.iter().flat_map(|(table, values)| {
                 values
                     .iter()
@@ -70,7 +69,7 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             let object=json!({"event":"object","id":o.id.to_string(),"visual":visual(&o.visual),
             "placement":o.physics.position.as_ref().map(position),"instance":o.physics.instance_stamp,"scale":o.weenie.scale.unwrap_or(1.0),
             "entity":o.weenie.entity_did,"icon":o.weenie.icon,"quantity":o.weenie.quantity,
-            "name":o.weenie.name.as_ref().map(string),"parent":o.physics.parent.map(|p|p.0.to_string()),
+            "name":o.weenie.name.as_ref().map(string),"parent":o.physics.parent.map(|p|p.0.to_string()),"holding":o.physics.parent.map(|p|p.1),
             "container":o.weenie.container.map(|p|p.to_string()),"wielder":o.weenie.wielder.map(|p|p.to_string())});
             let mut out=vec![object];
             if let Some(mode)=o.physics.mode {out.push(json!({"event":"mode","id":o.id.to_string(),"instance":o.physics.instance_stamp,"mode":mode}));}
@@ -151,16 +150,31 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             arguments,
             object,
         } => {
+            if function == 0x8204001b || function == 0x82040019 {
+                if let Ok(values) = unpack_values(&arguments) {
+                    if let [PackValue::Int(value)] = values.as_slice() {
+                        return vec![if function == 0x8204001b {
+                            json!({"event":"combat","enabled":*value != 0})
+                        } else { json!({"event":"skill_finished","request":value}) }];
+                    }
+                }
+            }
             if let Some(Ok(DeathMessage::PlayerDeath(dead))) =
                 DeathMessage::decode(function, &arguments)
             {
                 return vec![json!({"event":"death","dead":u32::from(dead)})];
             }
             if function == 0x82120027 {
+                if let Err(error) = unpack_values(&arguments) {
+                    return vec![json!({"event":"error","message":format!("Cannot decode player inventory: {error}")})];
+                }
                 if let Ok(values) = unpack_values(&arguments) {
                     if values.len() == 14 {
                         let bag = ContainerContents::from_values(&values[9..12]);
                         let equipment = Equipment::from_values(&values[6..9]);
+                        if bag.is_err() || equipment.is_err() {
+                            return vec![json!({"event":"error","message":"Cannot decode authoritative inventory slots"})];
+                        }
                         if let (Ok(bag), Ok(equipment)) = (bag, equipment) {
                             let gold = match values[0] {
                                 PackValue::Int(n) => n,
@@ -185,8 +199,11 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                 )) => {
                     json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"slot":d.actual_target_slot()})
                 }
-                Some(Ok(ScriptMessage::EquipItemDone(d) | ScriptMessage::UnequipItemDone(d))) => {
-                    json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string()})
+                Some(Ok(ScriptMessage::EquipItemDone(d))) => {
+                    json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"equipped":d.location()})
+                }
+                Some(Ok(ScriptMessage::UnequipItemDone(d))) => {
+                    json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"equipped":0,"slot":d.slot()})
                 }
                 Some(Ok(ScriptMessage::LootAllDone(d))) => {
                     json!({"event":"inventory_result","status":d.status(),"id":d.container().to_string()})
@@ -224,6 +241,16 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn global_creation_traits_and_clothing_survive_the_bridge() {
+        let v=VisualDesc {parent:Some(0x1f000023),global_mods:Some(PartGroupDesc {
+            appearance:vec![(0x20000014,vec![(0x10,1.0),(2,0.25)])],..Default::default()
+        }),..Default::default()};
+        let result=visual(&v);
+        assert_eq!(result["aspects"].as_array().unwrap().len(),2);
+        assert_eq!(result["aspects"][0]["key"],0x10);
+        assert_eq!(result["aspects"][1]["value"],0.25);
+    }
     fn object(action:ObjectAction)->ServerEvent {
         ServerEvent::Object(ObjectEvent {sender:InstanceIdWithStamp {id:0x8140000000030003,instance:7,other:11},action})
     }

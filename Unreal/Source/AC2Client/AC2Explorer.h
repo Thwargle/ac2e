@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "Components/SceneComponent.h"
 #include "AC2Assets.h"
 #include "AC2Explorer.generated.h"
 
@@ -28,6 +29,8 @@ class AAC2Explorer : public ACharacter
     void Hit(float Damage);
     virtual void Landed(const FHitResult& Hit) override;
     bool AuditAttachments(FString& Error) const { return Model && Model->AuditAttachments(Error); }
+    bool HoldingTransform(uint32 Location,FTransform& Out) const
+    { if(!Model || !Model->AnimatedHoldingLocation(Location,Out)) return false; Out=Out*Body->GetComponentTransform();return true; }
     void ToggleView();
     void SetWater(bool InWater, double Level);
     void UpdateWater(bool Present,double Level);

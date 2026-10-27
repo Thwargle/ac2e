@@ -570,6 +570,11 @@ fn inventory_map(
     equipment: bool,
 ) {
     use crate::inventory::Location;
+    // Unreal receives authoritative visuals in CreateObject. Its native bridge
+    // does not yet decode the optional native VisualDesc inside InventProfile.
+    // Use the protocol's default null appearance reference for this profile;
+    // retain the full native inventory graph for original-client connections.
+    let compact = std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1");
     let mut items: Vec<_> = inventory
         .into_iter()
         .flat_map(|inventory| inventory.items())
@@ -597,7 +602,7 @@ fn inventory_map(
         } else {
             payload.extend([item.id as u32, (item.id >> 32) as u32]);
         }
-        payload.push(2 + index as u32 * 5);
+        payload.push(2 + index as u32 * if compact { 1 } else { 5 });
     }
     let mut objects = vec![Object::native(
         if equipment { 0x11 } else { 0x40 },
@@ -612,7 +617,7 @@ fn inventory_map(
         objects.push(Object::interpreted(
             0x1f9,
             &[
-                (root + 1, REF),
+                (if compact { NULL } else { root + 1 }, REF),
                 (u32::from(item.equipment_mask), INT),
                 (slot, INT),
                 (0, INT),
@@ -620,6 +625,7 @@ fn inventory_map(
                 ((item.id >> 32) as u32, 0xcd),
             ],
         ));
+        if compact { continue; }
         objects.push(Object::interpreted(
             0x1a2,
             &[(root + 2, REF), (root + 3, REF), (root + 4, REF)],

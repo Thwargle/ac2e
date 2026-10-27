@@ -78,7 +78,7 @@ if(!$DevelopmentLogin){
 $env:AC2E_PUBLIC_ORIGIN=$PublicOrigin
 $env:PYREALIUM_UNREAL_LEGIONS_DATA='1'
 $serverArgs=@('serve','--bind',"${Bind}:$Port",'--account',$Account,'--data',$DataDirectory,'--game-data',$DatDirectory,
-    '--content',$Content,'--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','false')
+    '--content',$Content,'--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','true')
 if(!$DevelopmentLogin){$serverArgs+=@('--auth-data',$AuthDirectory)}
 $accounts=$null
 try {

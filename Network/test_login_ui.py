@@ -17,6 +17,7 @@ def main():
         with socket.socket(socket.AF_INET,kind) as check:check.bind(('127.0.0.1',port))
     content=prepare_test_content(directory)
     env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1')
+    if '--gameplay' in os.sys.argv:env['AC2_GAMEPLAY_SMOKE']='1'
     log=(directory/'server.log').open('w',encoding='utf-8')
     web=subprocess.Popen([str(SERVER),'account-web','--auth-data',str(auth),'--data',str(world),
         '--web-bind','127.0.0.1:19480','--public-origin','http://127.0.0.1:19480',
@@ -73,6 +74,7 @@ def main():
         print(result.stdout,flush=True);result.check_returncode()
         report={'result':'PASS','checks':['password login through in-client WinHTTP form','mouse hover and click routing','character names painted in native list','native carousel and 3D selection','options and credits','delete cancellation','create and cancel buttons','enter selected character before environment',
             'native character deletion','lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}
+        if env.get('AC2_GAMEPLAY_SMOKE')=='1':report['checks']+=['server inventory equip acknowledgement','animated held weapon socket','native magic attack graph','global clothing/face appearance']
         (directory/'result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report))
     finally:
         if peer:peer.close()

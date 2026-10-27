@@ -218,7 +218,7 @@ void SAC2GameUI::Rebuild()
     FIntRect Shortcuts = Native.Bounds(TEXT("ShortcutListBox"));
     Native.States.Add(Token(TEXT("ShortcutTemplate")), Token(TEXT("normal")));
     // Empty shortcut numbers are already part of the native background. Instantiate occupied slots only.
-    for (int32 I = 0; I < 2 && Shortcuts.Width() > 0; ++I)
+    for (int32 I = 0; I < (Mode->Network ? 3 : 2) && Shortcuts.Width() > 0; ++I)
     {
         SetText(TEXT("NumberDisplay"), FString::FromInt((I + 1) % 10));
         FIntRect R(Shortcuts.Min + FIntPoint(I * 32, 0), Shortcuts.Min + FIntPoint((I + 1) * 32, 32));
@@ -233,7 +233,7 @@ void SAC2GameUI::Rebuild()
                 Native.Nodes[J].Media.Add(Art);
             }
         }
-        Buttons.Add(I == 0 ? TEXT("Strike") : TEXT("Cast"), SlateRect(R));
+        Buttons.Add(I == 0 ? TEXT("Strike") : I == 1 ? TEXT("Cast") : TEXT("MissileSkill"), SlateRect(R));
     }
     if (ShowInventory && P)
     {
@@ -523,16 +523,23 @@ void SAC2GameUI::Action(FName Name)
     if (Name == TEXT("StopAttack"))
     {
         if(Mode->Network)Mode->Network->Chat(TEXT("/stop"));
-        if(auto* P=Cast<AAC2Explorer>(Controller(Mode)->GetPawn()))P->SetNativeMode(AC2Motion::Peace);
+        if(!Mode->Network)if(auto* P=Cast<AAC2Explorer>(Controller(Mode)->GetPawn()))P->SetNativeMode(AC2Motion::Peace);
         Mode->Target = nullptr;
         return;
     }
     if (Name == TEXT("Skills") || Name == TEXT("Quests") || Name == TEXT("Social"))
     {
+        if(Mode->Network)
+        {
+            if(Name==TEXT("Quests")) Mode->Network->Chat(TEXT("@quest status"));
+            else Log.Add(EAC2ChatType::System,TEXT("Z: combat/peace. 1: attack. 2: magic skill. 3: missile skill. Equip a matching weapon in Inventory. E: use target. Home: recall. /cast <hex skill ID> uses a learned skill."));
+            return;
+        }
         Log.Add(EAC2ChatType::System,
                 TEXT("This panel's gameplay data is not available in the offline client yet."));
         return;
     }
+    if(Name==TEXT("MissileSkill") && Mode->Network){Mode->Network->StarterSkill(1);return;}
     FString Key = Name.ToString();
     if (Key.StartsWith(TEXT("Pack")))
     {

@@ -656,14 +656,8 @@ fn training_combat_visual(
     swing: bool,
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     let saved = &store.characters[&character];
-    // Starter swords use the one-handed graph; unarmed characters use the
-    // native martial-arts branch instead of silently dropping their swings.
-    let sword=saved.inventory.items().any(|item| {
-            (item.definition == crate::training_kit::DEFINITION || crate::starter_gear::is_sword(item.definition))
-                && item.location == crate::inventory::Location::Equipped(0x40)
-        });
-    let mode=if !fighting {crate::combat_visual::PEACE}
-        else if sword {crate::combat_visual::ONE_HAND} else {crate::combat_visual::MARTIAL_ARTS};
+    let mode = if fighting { crate::starter_gear::combat_mode(&saved.inventory) }
+        else { crate::combat_visual::PEACE };
     let (mut next, stamp) = peer.emotes.next_visual(saved.instance).map_err(other)?;
     let mut last_stamp = stamp;
     let mut events = vec![
@@ -673,7 +667,7 @@ fn training_combat_visual(
         let (after, stamp) = next.next_visual(saved.instance).map_err(other)?;
         next = after;
         last_stamp = stamp;
-        events.push(crate::combat_visual::basic_attack(character, saved.instance, stamp).map_err(other)?);
+        events.push(crate::combat_visual::weapon_attack(character, saved.instance, stamp, mode).map_err(other)?);
     }
     peer.validate_scene_batch(&events)?;
     let mut deliveries = Vec::new();
@@ -851,11 +845,13 @@ fn quest_action(
             state = state.apply(&reward).map_err(io::Error::other)?;
         }
     }
-    let text = quests.guidance();
+    let starter_complete = std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1")
+        && quests.get().is_some_and(|q|q.claimed) && quests.supplies().is_none();
+    let text = if starter_complete { "Training combat complete. Your reward is saved. Bind the nearby lifestone and use the training gateway to leave the dungeon. Retail tutorial and crafting quests remain unfinished.".into() } else { quests.guidance() };
     let mut events = match speaker {
         Some(speaker) => {
             let race = saved.creation.as_ref().map_or(1, |request| request.race);
-            mentor_interaction_events(character, speaker, scene, &crate::training_dialogue::greeting(race, &quests))?
+            mentor_interaction_events(character, speaker, scene, &if starter_complete {text.clone()} else {crate::training_dialogue::greeting(race, &quests)})?
         }
         None => vec![script::chat(&text, 1).map_err(other)?],
     };
@@ -1309,6 +1305,14 @@ fn use_training_mentor(
     }
     peer.admit_npc_dialogue(now)?;
     let book = &store.characters[&character].quests;
+    if std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1") {
+        let action = if book.get().is_none() { "start" } else if book.ready() { "claim" } else { "status" };
+        let updates = quest_action(peer, character, action, store, scene, Some(target))?;
+        if store.characters[&character].quests.get().is_some_and(|q| q.claimed) {
+            peer.queue_ordered_batch(vec![script::chat("Training combat complete. Bind the nearby lifestone, then use the training gateway to leave the dungeon. This is the AC2E starter circuit; retail quest scripting is still being reconstructed.", 1).map_err(other)?])?;
+        }
+        return Ok(updates);
+    }
     if book.journey_phase() != 0 {
         return quest_action(peer, character, if book.journey_phase() == 3 { "journey claim" } else { "status" }, store, scene, Some(target));
     }
@@ -1563,6 +1567,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             "training kits and world interactions require --initialize-ui true",
         ));
     }
+    let unreal_gameplay = config.initialize_ui
+        && std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1");
+    let starter_equipment = config.training_kit || unreal_gameplay;
     let initial_ui = if config.initialize_ui {
         let unreal = std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1");
         let directory = config.game_data.as_ref().unwrap();
@@ -1588,7 +1595,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             crate::ui::validate_layouts(&wlib, &crate::interaction::LAYOUTS).map_err(|e| other(format!("interaction WLIB: {e}")))?;
             crate::ui::validate_layouts(&wlib, &crate::allegiance::LAYOUTS).map_err(|e| other(format!("allegiance WLIB: {e}")))?;
         }
-        if config.training_kit
+        if starter_equipment
             || config.lifestones
             || config.portals
             || store
@@ -1602,10 +1609,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 let mut locale = crate::dat::Dat::open(directory.join("local_English.dat"))?;
                 locale.read(0x25000014)?;
             }
-            if config.training_kit {
+            if starter_equipment {
                 for (definition, metadata) in crate::starter_gear::validate(&mut portal)? {
                     inventory_metadata.insert(definition, Some(metadata));
                 }
+            }
+            if config.training_kit {
                 let catalog = crate::merchants::Catalog::validate(&mut portal)?;
                 for (definition, metadata) in catalog.entries() {
                     inventory_metadata.insert(definition, Some(metadata));
@@ -1776,11 +1785,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             "Development encounters enabled with explicit authored rules; original combat parity is unfinished."
         );
     }
-    let training_quest_enabled = config.training_kit
+    let training_quest_enabled = starter_equipment
         && encounters
             .as_ref()
             .is_some_and(|runtime| runtime.includes_entity(crate::quests::TARGET_ENTITY));
-    let mut abilities = if config.initialize_ui && config.training_kit {
+    let mut abilities = if starter_equipment {
         Some(crate::abilities::Runtime::development().map_err(io::Error::other)?)
     } else {
         None
@@ -2601,8 +2610,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 return Ok(replies);
                                             }
                                             if config.initialize_ui
-                                                && config.training_kit
-                                                && skill == crate::skills::TRAINING_ATTACK
+                                                && starter_equipment
+                                                && store.characters[&character].creation.as_ref()
+                                                    .and_then(|r| crate::appearance::body(r.race, r.sex))
+                                                    .is_some_and(|body| body.starters.contains(&skill))
                                             {
                                                 let saved = &store.characters[&character];
                                                 let attack = (|| -> io::Result<()> {
@@ -2611,17 +2622,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             "The development training attack is not learned.",
                                                         ));
                                                     }
-                                                    if !saved.inventory.items().any(|item| {
-                                                        matches!(
-                                                            item.location,
-                                                            crate::inventory::Location::Equipped(
-                                                                0x40
-                                                            )
-                                                        )
-                                                    }) {
-                                                        return Err(invalid(
-                                                            "Equip a main-hand item before using the training attack.",
-                                                        ));
+                                                    let body = saved.creation.as_ref().and_then(|r| crate::appearance::body(r.race, r.sex)).unwrap();
+                                                    let category = body.starters.iter().position(|id| *id == skill).unwrap();
+                                                    if category != crate::starter_gear::equipped_category(&saved.inventory) {
+                                                        return Err(invalid("Equip the matching melee, missile or magic weapon before using this skill."));
                                                     }
                                                     let events = vec![
                                                         crate::ui::skill_update(
@@ -2742,7 +2746,6 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
                                             if service_entity == Some(TRAINING_MENTOR_ENTITY)
-                                                && config.training_kit
                                                 && training_quest_enabled
                                             {
                                                 if request.owner != character {
@@ -2814,7 +2817,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 },
                                             ) {
                                                 if !config.initialize_ui
-                                                    || !config.training_kit
+                                                    || !starter_equipment
                                                     || request.owner != character
                                                 {
                                                     return Err(invalid(
@@ -3469,7 +3472,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             .map_err(other)?;
                                             replies.extend(peer.send_event(&response, now)?);
                                             peer.combat = enabled;
-                                            if config.training_kit {
+                                            if config.initialize_ui {
                                                 deliveries.extend(training_combat_visual(
                                                     peer, character, &store, &mut scene, enabled,
                                                     false,
@@ -4050,7 +4053,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         "saved placement references unavailable cell",
                                                     ));
                                                 }
-                                                if config.training_kit {
+                                                if starter_equipment {
                                                     match store.grant_starter_gear(&peer.session.account, character_id) {
                                                         Ok(true) => eprintln!("Racial starter gear saved for character {character_id}"),
                                                         Ok(false) => {},
@@ -4318,6 +4321,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             deliveries.push(crate::scene::Delivery { recipient: character, data: script::chat(
                                                 "Training: equip the sword in your bag. Click an Idol Spawn, stand within three metres, and enter combat. Your attacks repeat until you leave combat. The first hotbar button swings once with the training attack skill. Speak to Pectar for the three-kill reward. Tebor opens the shop. A once-only supply pack provides two health potions, one vigor potion, 1 Mucor Mushroom and 100 Tallow. Use Crafting to make another potion. Lifestones bind your return; portals lead outside and back.", 1).map_err(other)?.into() });
                                         }
+                                        if first && unreal_gameplay {
+                                            deliveries.push(crate::scene::Delivery {recipient:character,data:script::chat(
+                                                "Starter circuit: I opens inventory; double-click a weapon to equip. Z changes combat/peace; 1 attacks; 2 uses your magic skill; 3 uses your missile skill. Match the skill to your weapon. T selects a target; E uses it. Defeat three Idol Spawn and speak to the mentor, bind the lifestone, then leave through the gateway. Home recalls. Merchant/crafting lessons are not enabled in this Legions profile.",1).map_err(other)?.into()});
+                                        }
                                         eprintln!(
                                             "Scene ready for character {character}: cell={:08x}, visible content={}",
                                             scene
@@ -4481,6 +4488,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 }
                             }
                         }
+                    }
+                    crate::encounters::Event::Move {actor,placement} => {
+                        updates.extend(scene.move_creature(actor,placement,now_ms)?);
                     }
                     crate::encounters::Event::Swing(player) => {
                         if let Some(addr) = active_characters.get(&player) {

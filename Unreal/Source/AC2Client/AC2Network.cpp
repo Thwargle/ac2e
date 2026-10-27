@@ -189,7 +189,7 @@ void FAC2Network::ClearWorld()
     PlayerId.Reset();
     TargetId.Reset();
     HasPlayerPose = NeedsPlacement = false;
-    Dead = false;
+    Dead = Combat = false;
     if(auto P=Pawn(Mode)){P->ResetMotionParameters();P->SetDead(false);P->SetHeld(true);}
 }
 uint32 FAC2Network::Visual(const FString &Id) const
@@ -271,7 +271,7 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     if (Obj.Actor.IsValid())
         Obj.Actor->Destroy();
     Obj.Model.Reset();
-    if (!Obj.Visual || !Obj.Placed)
+    if (!Obj.Visual || (!Obj.Placed && Obj.Parent.IsEmpty()))
         return;
     auto A = Mode->GetWorld()->SpawnActor<AActor>();
     Obj.Actor = A;
@@ -357,6 +357,9 @@ void FAC2Network::Logout()
 void FAC2Network::Chat(FString Text)
 {
     if(Text.Equals(TEXT("/recall"),ESearchCase::IgnoreCase)){Recall();return;}
+    if(Text.Equals(TEXT("/combat"),ESearchCase::IgnoreCase)){SetCombat(!Combat);return;}
+    if(Text.StartsWith(TEXT("/cast "))){CastSkill(FCString::Strtoui64(*Text.Mid(6),nullptr,16));return;}
+    if(Text.Equals(TEXT("/use"),ESearchCase::IgnoreCase)){UseTarget();return;}
     Text = Text.TrimStartAndEnd().Left(2048);
     if (Text.IsEmpty() || !IsWorld())
         return;
@@ -470,6 +473,24 @@ void FAC2Network::Attack()
         Send(J);
     }
 }
+void FAC2Network::SetCombat(bool Enabled)
+{
+    if (!IsWorld()) return;
+    auto J = Command(TEXT("combat")); J->SetBoolField(TEXT("enabled"), Enabled); Send(J);
+}
+void FAC2Network::CastSkill(uint32 Skill)
+{
+    if (!IsWorld() || Dead) return;
+    auto J = Command(TEXT("skill")); J->SetNumberField(TEXT("skill"), Skill);
+    J->SetStringField(TEXT("target"), Skill == 0x55 || Skill == 0x343 ? PlayerId : (TargetId.IsEmpty() ? TEXT("0") : TargetId));
+    Send(J);
+}
+void FAC2Network::StarterSkill(int32 Category)
+{
+    auto P = Mode->Characters.Active(); if (!P || Category < 0 || Category > 2) return;
+    const uint32 Human[] = {0xb0,0xcf,0x60}, Lugian[] = {0x166,0x1a0,0x111}, Tumerok[] = {0x2cc,0x316,0x2a0};
+    CastSkill((P->Race == 2 ? Lugian : P->Race == 4 ? Tumerok : Human)[Category]);
+}
 void FAC2Network::UseTarget()
 {
     if (IsWorld() && !TargetId.IsEmpty())
@@ -535,6 +556,7 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
 void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
+    if (Event == TEXT("combat")) { Combat = J->GetBoolField(TEXT("enabled")); return; }
     if(Event==TEXT("behavior")||Event==TEXT("mode")||Event==TEXT("stop_behavior")||Event==TEXT("hit")||Event==TEXT("impulse")||Event==TEXT("motion"))
     {
         auto* Found=Objects.Find(Id);
@@ -546,14 +568,16 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         if(Obj.Model)Obj.Model->SetAnimationState(AC2Motion::Ground,Obj.AnimMode);
         if(Event==TEXT("behavior"))
         {
+            const bool IsAttack=B==AC2Motion::Attack||B==AC2Motion::MeleeNormal||B==0x410000b0||B==0x410000e2;
             bool Hold=false;J->TryGetBoolField(TEXT("hold"),Hold);Hold|=B==AC2Motion::Death;
             const bool Played=Player?Player->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold):Obj.Model&&Obj.Model->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold);
             if(Played)
             {
                 ++PlayedBehaviors;if(B==AC2Motion::Death)++DeathBehaviors;
-                if(B==AC2Motion::Attack||B==AC2Motion::MeleeNormal){if(Player)++PlayerAttacks;else ++MobAttacks;}
+                if(IsAttack){if(Player)++PlayerAttacks;else ++MobAttacks;}
+                if(Player && B==0x410000b0) {++MagicAttacks;if(Smoke)FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-cast.png"),true,false);}
             }
-            else if(B==AC2Motion::Attack||B==AC2Motion::MeleeNormal)++FailedAttacks;
+            else if(IsAttack)++FailedAttacks;
             if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server behavior %08X mode=%08X played=%d player=%d"),B,M,Played,Player!=nullptr);
         }
         if(Event==TEXT("stop_behavior")){if(Player)Player->StopBehavior(B);else if(Obj.Model)Obj.Model->StopBehavior(B);}
@@ -707,6 +731,25 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
                 FString::Printf(TEXT("Server rejected inventory change (%d)"), int32(N(J, TEXT("status"))));
             return;
         }
+        if (J->HasField(TEXT("equipped")))
+        {
+            const uint32 Location = N(J,TEXT("equipped"));
+            const int32 Slot = Location ? BagSlots.FindRef(Id) : int32(N(J,TEXT("slot")));
+            if (Location)
+            {
+                BagSlots.Remove(Id); WornSlots.Add(Id,Location);
+                for (auto& Entry:BagSlots) if(Entry.Value>Slot) --Entry.Value;
+            }
+            else
+            {
+                WornSlots.Remove(Id);
+                for(auto& Entry:BagSlots) if(Entry.Key!=Id && Entry.Value>=Slot) ++Entry.Value;
+                BagSlots.Add(Id,Slot);
+            }
+            if(auto P=Mode->Characters.Active()) for(auto& I:P->Items)
+            { I.Equipped=WornSlots.FindRef(I.NetworkId); if(auto BagCell=BagSlots.Find(I.NetworkId)) I.Cell=*BagCell; }
+            return;
+        }
         if (auto P = Mode->Characters.Active())
             for (auto &I : P->Items)
                 if (I.NetworkId == Id && J->HasField(TEXT("slot")))
@@ -768,6 +811,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         // Behavior/mode stamps are instance stamps. Retain the create stamp so
         // valid server actions are not compared against an uninitialized zero.
         Obj.Instance=int32(N(J,TEXT("instance")));
+        Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
         Obj.Entity = N(J, TEXT("entity"));
         Obj.EntityScale = FMath::Clamp(float(N(J, TEXT("scale"), 1)), .01f, 100.f);
@@ -794,7 +838,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             P->Items.RemoveAll([&](const FAC2InventoryItem &Existing) { return Existing.NetworkId == Id; });
             P->Items.Add(I);
         }
-        return;
+        if(Obj.Parent.IsEmpty()) return;
     }
     auto Pose = Event == TEXT("object") ? O(J, TEXT("placement")) : (Event == TEXT("position") ? J : nullptr);
     if(Event==TEXT("position") && Obj.Instance && int32(N(J,TEXT("instance")))!=Obj.Instance)return;
@@ -851,7 +895,7 @@ void FAC2Network::Tick(float Delta)
     }
     auto P = Pawn(Mode);
     for (auto &E : Objects)
-        if (E.Value->Actor.IsValid())
+        if (E.Value->Actor.IsValid() && E.Value->Parent.IsEmpty())
         {
             auto &Obj = *E.Value;
             auto A = Obj.Actor.Get();
@@ -872,6 +916,25 @@ void FAC2Network::Tick(float Delta)
                 Obj.Model->Animate(Time, Velocity.Size2D(), nullptr, &Local);
             }
         }
+    // Held objects follow the current animated skeleton, including remote players.
+    // Resolve after every actor has animated so map iteration order cannot add a frame of lag.
+    for(auto& Entry:Objects)
+    {
+        auto& Obj=*Entry.Value;
+        if(Obj.Parent.IsEmpty() || !Obj.Actor.IsValid()) continue;
+        FTransform Socket; bool Attached=false;
+        if(Obj.Parent==PlayerId && P) Attached=P->HoldingTransform(Obj.Holding,Socket);
+        else if(auto Parent=Objects.Find(Obj.Parent))
+            if((*Parent)->Actor.IsValid() && (*Parent)->Model && (*Parent)->Model->AnimatedHoldingLocation(Obj.Holding,Socket))
+            {Socket=Socket*(*Parent)->Actor->GetActorTransform();Attached=true;}
+        Obj.Actor->SetActorHiddenInGame(!Attached);
+        if(Attached)
+        {
+            if(Obj.Parent==PlayerId)SmokeHeld=true;
+            Obj.Actor->SetActorTransform(FTransform(FQuat::Identity,FVector::ZeroVector,Obj.Scale*Obj.EntityScale)*Socket);
+            if(Obj.Model)Obj.Model->Animate(Time,0);
+        }
+    }
     if (IsWorld() && P && !Dead && !NeedsPlacement && Time - LastMovement >= .1)
     {
         FVector Position =
@@ -899,6 +962,7 @@ void FAC2Network::Tick(float Delta)
     }
     if (Smoke)
     {
+        const bool VerifyEquipment=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_GAMEPLAY_SMOKE"))==TEXT("1");
         if (IsSelection() && !SmokeEntered && !Mode->Characters.Characters.IsEmpty())
         {
             if(FParse::Param(FCommandLine::Get(),TEXT("AC2LoginSmoke")))
@@ -927,6 +991,15 @@ void FAC2Network::Tick(float Delta)
         }
         if (IsWorld() && SmokeChat && ReceivedChats > 0 && Started > 2 && !SmokeAttacked)
         {
+            if(VerifyEquipment)
+            {
+                auto Profile=Mode->Characters.Active();
+                if(!Profile)return;
+                const int32 Staff=Profile->Items.IndexOfByPredicate([](const auto& I){return I.Definition==0x470007e0;});
+                if(Staff<0)return;
+                if(!SmokeEquipped){UseItem(Staff);SmokeEquipped=true;Started=0;return;}
+                if(!Profile->Items[Staff].Equipped || !SmokeHeld || Appearance(PlayerId).IsEmpty())return;
+            }
             for (auto &E : Objects)
                 if (E.Value->Entity == 0x470007d1 && FVector::Dist(E.Value->Goal, Feet) < 300)
                 {
@@ -934,18 +1007,20 @@ void FAC2Network::Tick(float Delta)
                     if (auto H = HUD(Mode); H && H->GameUI)
                         SmokeRadar = H->GameUI->SmokeNetworkRadar(E.Key, RadarError);
                     if (!SmokeRadar) { UE_LOG(LogTemp, Error, TEXT("AC2 network radar smoke: %s"), *RadarError); continue; }
-                    Attack();
+                    if(VerifyEquipment)StarterSkill(2);else Attack();
                     SmokeAttacked = true;
                     FScreenshotRequest::RequestScreenshot(
                         FPaths::ProjectSavedDir() / TEXT("Screenshots/AC2Network-world.png"), true, false);
                     break;
                 }
         }
+        if(VerifyEquipment && IsWorld() && SmokeAttacked && !SmokeRepeated && Started>3)
+        {Attack();SmokeRepeated=true;}
         const auto Profile = Mode->Characters.Active();
         const bool HasLoot = Profile && !Profile->Items.IsEmpty() && Profile->Experience > 0;
         if ((IsWorld() && SmokeAttacked && HasLoot && Started > 6) || Started > 120)
         {
-            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0;
+            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0));
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
             FFileHelper::SaveStringToFile(OK ? TEXT("PASS") : TEXT("FAIL"), *Report);
             if (auto H = HUD(Mode))

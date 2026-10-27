@@ -56,6 +56,7 @@ class FAC2AssetLibrary : public FGCObject
     uint32 AppearanceFingerprint() const;
     bool DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Root, FAC2UISceneInfo *Info = nullptr);
     bool HoldingLocation(uint32 Object, uint32 Location, FTransform &Out);
+    bool AnimatedHoldingLocation(uint32 Location, FTransform &Out) const;
     void Animate(float Time, float Speed, const FVector *LocalViewer = nullptr,
                  const FVector *LocalVelocity = nullptr);
     void SetAnimationState(uint32 Element, uint32 Mode);

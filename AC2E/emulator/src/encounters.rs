@@ -29,6 +29,8 @@ struct Rule {
 }
 struct Actor {
     entity: u32,
+    home: Placement,
+    pursuit: bool,
     rule: Rule,
     health: u32,
     target: Option<u64>,
@@ -41,8 +43,10 @@ struct Attack {
     target: u64,
     next: u64,
     repeat: bool,
+    category: usize,
 }
 pub enum Event {
+    Move { actor: u64, placement: Placement },
     IdolVisual(u64, crate::combat_visual::IdolAction),
     Swing(u64),
     /// Signed health on the victim. Negative is damage. The vital update is separate.
@@ -290,6 +294,10 @@ impl Encounters {
                         object.id,
                         Actor {
                             entity: object.entity,
+                            home: object.placement,
+                            pursuit: object.entity == crate::quests::TARGET_ENTITY
+                                && object.spawn.get(16..20) == Some(0x1f0003d1u32.to_le_bytes().as_slice())
+                                && object.spawn.get(20..24) == Some(0x8082u32.to_le_bytes().as_slice()),
                             rule,
                             health: rule.health,
                             target: None,
@@ -361,11 +369,12 @@ impl Encounters {
         {
             return Err(invalid("dead or unavailable character cannot attack"));
         }
+        let category = crate::starter_gear::equipped_category(&store.characters[&player].inventory);
         if !scene.can_observe(player, target)
             || !in_range(
                 scene.player_placement(player),
                 scene.content_placement(target),
-                self.range,
+                if category == 0 { self.range } else { 18.0 },
             )
         {
             return Err(invalid("target is out of attack range"));
@@ -386,6 +395,7 @@ impl Encounters {
                 target,
                 next,
                 repeat: true,
+                category,
             },
         );
         Ok(())
@@ -442,7 +452,7 @@ impl Encounters {
                 || !in_range(
                     scene.player_placement(player),
                     scene.content_placement(attack.target),
-                    self.range,
+                    if attack.category == 0 { self.range } else { 18.0 },
                 )
             {
                 if alive {
@@ -459,13 +469,15 @@ impl Encounters {
                 continue;
             }
             let actor = &self.actors[&attack.target];
-            let dealt = self
-                .damage
+            // Authored starter balance; the client sends only a learned skill/target.
+            let damage = if attack.category == 2 { self.damage.saturating_add(4) } else { self.damage };
+            let cost = if attack.category == 2 { self.cost.max(6) } else { self.cost };
+            let dealt = damage
                 .saturating_sub(actor.rule.armor)
                 .max(1)
                 .min(actor.health);
             let killed = dealt == actor.health;
-            let mut commands = vec![Command::SpendVigor(self.cost)];
+            let mut commands = vec![Command::SpendVigor(cost)];
             if killed && actor.rule.xp > 0 {
                 commands.push(Command::AwardXp(actor.rule.xp));
             }
@@ -624,6 +636,24 @@ impl Encounters {
             let Some(mut target) = actor.target else {
                 continue;
             };
+            // Only the validated starter creature pursues, inside its current
+            // room and within an 18m leash. No guessed cross-cell navigation.
+            if actor.pursuit && store.characters.get(&target).is_some_and(|c|c.progression.alive()) {
+                if let (Some(mut point),Some(player))=(scene.content_placement(id),scene.player_placement(target)) {
+                    if in_range(Some(actor.home),Some(player),18.0) && point.cell == player.cell {
+                        let dx=player.coordinates[0]-point.coordinates[0]; let dy=player.coordinates[1]-point.coordinates[1];
+                        let distance=dx.hypot(dy);
+                        if distance>2.05 && (point.coordinates[2]-player.coordinates[2]).abs()<1.0 {
+                            let step=0.2f32.min(distance-2.0);
+                            point.coordinates[0]+=dx/distance*step;point.coordinates[1]+=dy/distance*step;
+                            point.heading=(dx.atan2(dy).to_degrees().rem_euclid(360.0)/360.0*255.0).round() as u8;
+                            events.push(Event::Move {actor:id,placement:point});
+                            // Keep pursuing instead of resetting health while outside melee reach.
+                            if distance>actor.rule.range {continue;}
+                        }
+                    }
+                }
+            }
             let eligible = |player| {
                 store
                     .characters

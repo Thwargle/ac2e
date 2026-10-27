@@ -79,8 +79,8 @@ impl Runtime {
         let fields: Vec<_> = record.split('\t').collect();
         if fields.len() != 12
             || fields[1] != "70001729"
-            || fields[2] != "96e453fa8275af8d7ba10909b2e9fb83a036816c1cef0d6e70413c031779af45"
-            || fields[3] != "c20d6f529add398f"
+            || fields[2] != "7df78d58e287e81d98536d0ac6aee651a3d332ac773882d3c597e56734d93334"
+            || fields[3] != "6698164fee68611f"
             || fields[4..] != ["1", "3", "1", "50", "6f001ef5", "65", "59:0", "-"]
         {
             return Err(AbilityError::Catalog);

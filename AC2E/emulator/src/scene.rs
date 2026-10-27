@@ -426,6 +426,11 @@ impl Scene {
             .filter(|_| self.content.cell(id).is_some())
             .map(|object| object.placement)
     }
+    pub fn move_creature(&mut self,id:u64,placement:Placement,now:u64) -> std::io::Result<Vec<Delivery>> {
+        let wire=self.content.move_creature(id,placement,now)?;
+        Ok(self.bodies.keys().filter(|observer| self.can_observe(**observer,id))
+            .map(|recipient|Delivery {recipient:*recipient,data:wire.clone()}).collect())
+    }
     pub fn examination_content(
         &self,
         observer: u64,

@@ -36,12 +36,15 @@ class FAC2Network
     TArray<FRadarContact> RadarContacts() const;
     void SelectTarget(const FString &Id);
     void Attack();
+    void SetCombat(bool Enabled);
+    void CastSkill(uint32 Skill);
+    void StarterSkill(int32 Category);
     void UseTarget();
     void UseItem(int32 Index);
     void MoveItem(int32 Index, int32 Slot);
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
-    bool Dead = false;
+    bool Dead = false, Combat = false;
     bool IsWorld() const
     {
         return Phase == TEXT("world");
@@ -72,7 +75,8 @@ class FAC2Network
         uint32 Visual = 0, Cell = 0, Entity = 0;
         int32 Instance = 0;
         float EntityScale = 1;
-        FString Name;
+        FString Name, Parent;
+        uint32 Holding=0;
         FVector Scale = FVector::OneVector, Goal = FVector::ZeroVector;
         float Yaw = 0;
         uint32 AnimMode=AC2Motion::Peace;
@@ -94,6 +98,8 @@ class FAC2Network
     int32 ReceivedChats = 0;
     double SmokeFinish = 0;
     bool SmokeAttacked = false;
+    bool SmokeEquipped=false, SmokeRepeated=false, SmokeHeld=false;
+    int32 MagicAttacks=0;
     bool SmokeRadar = false;
     bool SmokeSelection=false;
     int32 SelectionSmokeStep=0;
