@@ -45,6 +45,14 @@ The client requires Unreal Engine 5.8 and the retail AC2 DAT installation in
 `Asheron's Call 2 - Legions/`. A different DAT directory can be supplied with
 `Launch-AC2.bat -DatDirectory "D:\Games\AC2"`.
 
+Run `Launch-AC2.bat` again to open additional game windows for multiplayer testing.
+While a client or this project's editor is open, Play reuses the current build
+without closing existing windows. Each game window writes a separate
+`Unreal/Saved/Logs/AC2Play-*.log`. Sign in with a different account in each window
+to test multiple players on the same server. Close this project's game/editor
+windows before rebuilding to apply code changes; `-SkipBuild` also skips the
+initial build when you already have current binaries.
+
 The client opens its login screen before character selection and world loading.
 Start `start-ac2e.bat`, then sign in with a new account name and a password of
 12–128 characters. First sign-in creates the account; later sign-ins require the

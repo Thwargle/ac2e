@@ -35,23 +35,23 @@ $editor = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor.exe'
 $commandlet = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
 if (!(Test-Path -LiteralPath $build)) { throw "Unreal Engine 5.8 not found: $EngineRoot" }
 if (!$SkipBuild) {
-    # Only this project's game windows can be closed automatically. An editor may
-    # contain unsaved work; fail before linking rather than forcing it to exit.
+    # A running game/editor locks the client DLL. Additional play windows share
+    # the existing build; rebuilding must never close someone else's session.
     $projectKey = [IO.Path]::GetFullPath($project).Replace('/', '\').ToLowerInvariant()
     $clients = @(Get-CimInstance Win32_Process -Filter "Name='UnrealEditor.exe'" | Where-Object {
         $_.CommandLine -and $_.CommandLine.Replace('/', '\').ToLowerInvariant().Contains($projectKey)
     })
-    if ($clients | Where-Object { $_.CommandLine -notmatch '(?i)(?:^|\s)-game(?:\s|$)' }) {
-        throw 'Close this project in Unreal Editor before rebuilding, or launch with -SkipBuild to use the current binary.'
-    }
-    foreach ($client in $clients) {
-        $running = Get-Process -Id $client.ProcessId -ErrorAction SilentlyContinue
-        if (!$running) { continue }
-        Write-Output 'Closing the running AC2 game window so its client DLL can be rebuilt...'
-        if (!$running.CloseMainWindow() -or !$running.WaitForExit(15000)) {
-            throw 'AC2 is still running. Close its game window and try again; the launcher will not force it to exit.'
+    if ($clients.Count -gt 0) {
+        if ($Mode -ne 'Play') {
+            throw 'Close this project''s AC2 game and Unreal Editor windows before rebuilding, or use -SkipBuild to use the current binary.'
         }
+        $clientModule = Join-Path $PSScriptRoot 'Unreal/Binaries/Win64/UnrealEditor-AC2Client.dll'
+        if (!(Test-Path -LiteralPath $clientModule)) { throw 'The AC2 client DLL is missing. Close this project''s windows and rebuild before launching another client.' }
+        Write-Output 'AC2 is already running. Launching another window with the current build; source changes will apply after all clients close and rebuild.'
+        $SkipBuild = $true
     }
+}
+if (!$SkipBuild) {
     & $build AC2UnrealEditor Win64 Development "-Project=$project" -WaitMutex -NoHotReloadFromIDE
     if ($LASTEXITCODE -ne 0) { throw "AC2 editor build failed ($LASTEXITCODE)." }
 }
@@ -169,6 +169,12 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
         Write-Output 'AC2 world smoke passed: native HUD, streamed scenery FX, multiple emitters, rain/shelter, player, offline NPCs, water, interiors, LOD, streaming and sky.'
     }
 } else {
+    if ($Mode -eq 'Play') {
+        $logDirectory = Join-Path $PSScriptRoot 'Unreal/Saved/Logs'
+        New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+        $instanceLog = Join-Path $logDirectory ('AC2Play-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N') + '.log')
+        $launchArgs += ('-abslog="' + $instanceLog + '"')
+    }
     $playStart=New-Object System.Diagnostics.ProcessStartInfo
     $playStart.FileName=$editor;$playStart.Arguments=$launchArgs -join ' ';$playStart.WorkingDirectory=$PSScriptRoot;$playStart.UseShellExecute=$false
     if($loginTicket){$playStart.EnvironmentVariables['AC2_LOGIN_TICKET']=$loginTicket}
@@ -176,5 +182,6 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     $loginTicket=$null;$playStart.EnvironmentVariables.Remove('AC2_LOGIN_TICKET')
     if ($process.WaitForExit(3000)) { throw "AC2 closed during startup ($($process.ExitCode)). See Unreal/Saved/Logs." }
     Write-Output "AC2 launched (process $($process.Id))."
+    if ($instanceLog) { Write-Output "Client log: $instanceLog" }
 }
 

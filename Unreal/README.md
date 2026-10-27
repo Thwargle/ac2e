@@ -31,7 +31,11 @@ decal/streak rendering and complete elemental skill-effect scripting remain unfi
 ## Run
 
 From the repository root, run `Launch-AC2.bat`. It builds the editor target and opens
-a game window. Windows PowerShell 5.1 is supported. Defaults are block **5667**,
+a game window. Repeated launches reuse the current build while this project's game
+or editor is open, so multiple clients can run together. Each game window has its
+own `Saved/Logs/AC2Play-*.log`; use a separate server account per player. Close the
+game/editor windows before rebuilding to apply code changes.
+Windows PowerShell 5.1 is supported. Defaults are block **5667**,
 radius **2** (25 detailed blocks), and noon. The launcher prepares twelve project-owned
 shader templates when absent or outdated. DATs are read in place and never modified or bundled.
 
