@@ -12,6 +12,7 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SScaleBox.h"
@@ -74,9 +75,18 @@ void SAC2LoginUI::Tick(const FGeometry& Geometry,double Time,float Delta)
     FString Secret=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_TEST_PASSWORD"));
     FPlatformMisc::SetEnvironmentVar(TEXT("AC2_TEST_PASSWORD"),TEXT(""));
     if(Secret.IsEmpty()||!Mode.IsValid()||Mode->InWorld()){FPlatformMisc::RequestExitWithStatus(false,1);return;}
-    Password->SetText(Secret);Secret.Reset();
+    // Exercise the same focused DAT-font text inputs and Enter action as a user.
+    auto& App=FSlateApplication::Get();
+    const FString User=Account->Value();Account->SetText(TEXT(""));
+    App.SetKeyboardFocus(Account,EFocusCause::SetDirectly);
+    for(TCHAR C:User)App.ProcessKeyCharEvent(FCharacterEvent(C,FModifierKeysState(),0,false));
+    App.SetKeyboardFocus(Password,EFocusCause::SetDirectly);
+    for(TCHAR C:Secret)App.ProcessKeyCharEvent(FCharacterEvent(C,FModifierKeysState(),0,false));
+    const bool Entered=Account->Value()==User && Password->Value()==Secret;
+    Secret.Reset();
+    if(!Entered){FPlatformMisc::RequestExitWithStatus(false,1);return;}
     FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Login-sign-in.png"),true,false);
-    Login();
+    App.ProcessKeyDownEvent(FKeyEvent(EKeys::Enter,FModifierKeysState(),0,false,0,0));
 }
 void SAC2LoginUI::Login()
 {
@@ -95,6 +105,7 @@ void SAC2LoginUI::Login()
     }
     if(!ValidEndpoint(URL)){Status=TEXT("Use an HTTPS account-service address. Local HTTP is supported on 127.0.0.1.");return;}
     if(Password->Value().IsEmpty()){Status=TEXT("Enter your account password.");return;}
+    if(Password->Value().Len()<12){Status=TEXT("Use a password of 12-128 characters. First sign-in creates your account; later sign-ins need the same password.");return;}
     URL.RemoveFromEnd(TEXT("/"));URL.ReplaceInline(TEXT("http://localhost"),TEXT("http://127.0.0.1"));
     auto Body=MakeShared<FJsonObject>();Body->SetStringField(TEXT("account"),Settings.Account);Body->SetStringField(TEXT("password"),Password->Value());
     FString Payload;FJsonSerializer::Serialize(Body,TJsonWriterFactory<>::Create(&Payload));Password->SetText(TEXT(""));

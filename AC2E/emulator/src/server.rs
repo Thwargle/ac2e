@@ -607,7 +607,7 @@ fn selection_list_excluding(
                 c.creation
                     .as_ref()
                     .filter(|r| profile.supports(r))
-                    .map(|r| profile.selection(c.id, r))
+                    .map(|r| {let mut selection=profile.selection(c.id,r);selection.appearance=crate::starter_gear::appearance(c).ok();selection})
             } else {
                 Some(world::SelectionCharacter {
                     id: c.id,
@@ -668,6 +668,12 @@ fn training_combat_visual(
         next = after;
         last_stamp = stamp;
         events.push(crate::combat_visual::weapon_attack(character, saved.instance, stamp, mode).map_err(other)?);
+        if mode==crate::combat_visual::MAGIC {
+            if let Some((fx,_))=saved.creation.as_ref().and_then(|r|crate::combat_visual::magic_effects(r.race)) {
+                let (after,stamp)=next.next_visual(saved.instance).map_err(other)?;next=after;last_stamp=stamp;
+                events.push(crate::combat_visual::effect(character,saved.instance,stamp,fx).map_err(other)?);
+            }
+        }
     }
     peer.validate_scene_batch(&events)?;
     let mut deliveries = Vec::new();
@@ -819,6 +825,10 @@ fn quest_action(
         return Err(invalid("Player is not ready."));
     }
     let saved = &store.characters[&character];
+    if action.trim().eq_ignore_ascii_case("shelter") {
+        peer.queue_ordered_batch(vec![script::chat(crate::shelter::guidance(saved.quests.shelter_phase()),1).map_err(other)?])?;
+        return Ok(Vec::new());
+    }
     let command = match action.trim().to_ascii_lowercase().as_str() {
         "" | "status" => None,
         "start" => Some(crate::quests::Command::Accept),
@@ -909,14 +919,15 @@ fn change_hand_item(
         .items()
         .find(|item| item.id == request.item)
         .ok_or_else(|| invalid("Item is not owned."))?;
+    let apparel = saved.creation.as_ref().and_then(|r| crate::starter_gear::apparel_slot(item,r.race));
     let hand = metadata
         .get(&item.definition)
         .and_then(|entry| *entry)
-        .and_then(|entry| entry.equipment)
+        .and_then(|entry| entry.equipment.or_else(|| apparel.map(|slot|crate::inventory_request::Equipment {
+            valid:u32::from(slot), preferred:u32::from(slot), primary:0, secondary:0 })))
         .ok_or_else(|| invalid("This item-use profile is not available."))?;
-    let slot = hand
-        .hand_slot(item)
-        .ok_or_else(|| invalid("Only supported hand-held items can be changed here."))?;
+    let slot = apparel.or_else(||hand.hand_slot(item))
+        .ok_or_else(|| invalid("This item's equipment appearance is not supported."))?;
     if hand.primary == 3 && !saved.creation.as_ref().is_some_and(|request| request.race == 4) {
         return Err(invalid("This instrument requires a Tumerok holding location."));
     }
@@ -1000,6 +1011,22 @@ fn change_hand_item(
         .ok_or_else(|| invalid("Equipment has no avatar lifetime."))?
         .instance;
     let spawn = inventory_spawn(changed, character, instance, parent_instance, metadata)?;
+    if apparel.is_some() {
+        let creation=saved.creation.as_ref().unwrap();
+        let visual=crate::appearance::body(creation.race,creation.sex).unwrap()
+            .visual_desc_worn(&creation.physical_values,crate::starter_gear::worn_mask(&candidate,creation.race)).map_err(other)?;
+        let (next,stamp)=peer.emotes.next_visual(saved.instance).map_err(other)?;
+        let appearance=crate::combat_visual::appearance(character,saved.instance,stamp,&visual).map_err(other)?;
+        let old_instance=scene.inventory_instance(character,item.id).map_err(other)?;
+        let events=vec![world::destroy_inventory_item(item.id,old_instance),spawn,acknowledgment,appearance.clone()];
+        peer.validate_scene_batch(&events)?;
+        let updates=scene.broadcast(character,appearance).map_err(other)?;
+        store.inventory_command(&peer.session.account,character,command)?;
+        scene.apparel_changed(character,request.item,instance).map_err(other)?;
+        scene.replace_appearance(character,&visual,stamp).map_err(other)?;
+        peer.emotes=next;peer.last_inventory_ms=Some(now);peer.queue_ordered_batch(events)?;
+        return Ok(updates.into_iter().filter(|d|d.recipient!=character).collect());
+    }
     scene
         .validate_hand_change(character, item.id, &spawn, equipped)
         .map_err(other)?;
@@ -1236,13 +1263,34 @@ fn group_publish(
 // Placements are discovered from the live scene, not a fixed list of IIDs.
 const TRAINING_MENTOR_ENTITY: u32 = crate::training_dialogue::MENTOR_ENTITY;
 
-fn npc_interaction_events(
+fn use_shelter_guide(peer: &mut Peer, character: u64, target: u64, store: &mut Store,
+    scene: &crate::scene::Scene, now: u64) -> io::Result<()> {
+    if peer.combat || !store.characters[&character].progression.alive() {
+        return Err(invalid("Speak to the Shelter guides while alive and out of combat."));
+    }
+    let npc=scene.examination_content(character,target).ok_or_else(||invalid("Shelter guide is not visible."))?;
+    let (table,key,command)=crate::shelter::introduction(&store.characters[&character].quests,npc.entity)
+        .ok_or_else(||invalid("Unsupported Shelter guide."))?;
+    // Reuse authoritative visibility, same-cell and four-metre checks.
+    let mut events=vec![npc_use_completion(character,target,scene)?];
+    events.push(crate::shelter::text(table,key).map_err(other)?);
+    let next=match command {Some(c)=>store.characters[&character].quests.apply(&c).map_err(other)?,None=>store.characters[&character].quests.clone()};
+    if command.is_some() {events.extend(next.updates().map_err(other)?);}
+    if next.shelter_phase()==3 && npc.entity==crate::shelter::SENTRY {
+        events.push(script::chat(crate::shelter::guidance(3),1).map_err(other)?);
+    }
+    peer.admit_npc_dialogue(now)?;
+    peer.validate_scene_batch(&events)?;
+    if let Some(c)=command {store.quest_command(&peer.session.account,character,c)?;}
+    peer.queue_ordered_batch(events)?;
+    Ok(())
+}
+
+fn npc_use_completion(
     owner: u64,
     target: u64,
     scene: &crate::scene::Scene,
-    name: &str,
-    text: &str,
-) -> io::Result<Vec<Vec<u8>>> {
+) -> io::Result<Vec<u8>> {
     let player = scene
         .player_placement(owner)
         .ok_or_else(|| invalid("Player is not ready."))?;
@@ -1259,10 +1307,12 @@ fn npc_interaction_events(
     if player.cell != npc.placement.cell || distance > 4.0 {
         return Err(invalid("Move within four metres of the NPC."));
     }
-    Ok(vec![
-        crate::interaction::success(owner, target, player, distance).map_err(other)?,
-        crate::interaction::speech(target, name, text).map_err(other)?,
-    ])
+    crate::interaction::success(owner, target, player, distance).map_err(other)
+}
+fn npc_interaction_events(owner: u64, target: u64, scene: &crate::scene::Scene,
+    name: &str, text: &str) -> io::Result<Vec<Vec<u8>>> {
+    Ok(vec![npc_use_completion(owner,target,scene)?,
+        crate::interaction::speech(target,name,text).map_err(other)?])
 }
 
 fn mentor_interaction_events(owner: u64, target: u64, scene: &crate::scene::Scene, text: &str) -> io::Result<Vec<Vec<u8>>> {
@@ -2074,7 +2124,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                     c.creation
                                         .as_ref()
                                         .filter(|r| profile.supports(r))
-                                        .map(|r| profile.selection(c.id, r))
+                                        .map(|r| {let mut selection=profile.selection(c.id,r);selection.appearance=crate::starter_gear::appearance(c).ok();selection})
                                 })
                                 .collect();
                             world::character_set(peer.session.account.as_bytes(), 5, &selection)
@@ -2745,6 +2795,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         script::Request::UseObject(request) => {
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
+                                            if unreal_gameplay && service_entity.is_some_and(crate::shelter::supported) {
+                                                if request.owner != character {return Err(invalid("Shelter use owner mismatch."));}
+                                                if let Err(error)=use_shelter_guide(peer,character,request.item,&mut store,&scene,now_ms) {
+                                                    replies.extend(peer.send_event(&script::chat(&error.to_string(),1).map_err(other)?,now)?);
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if service_entity == Some(TRAINING_MENTOR_ENTITY)
                                                 && training_quest_enabled
                                             {
@@ -4139,7 +4196,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     &peer.session.account,
                                                     character_id,
                                                 )?;
-                                                let events = profile
+                                                let mut events = profile
                                                     .events_at_state(
                                                         character_id,
                                                         &request,
@@ -4149,6 +4206,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             .progression,
                                                     )
                                                     .map_err(other)?;
+                                                let visual=crate::starter_gear::appearance(&store.characters[&character_id]).map_err(other)?;
+                                                let old_visual=crate::appearance::visual_len(&events[1][12..]).ok_or_else(||invalid("Invalid player appearance"))?;
+                                                events[1].splice(12..12+old_visual,visual);
                                                 let owner = peer.session.account.clone();
                                                 peer.session
                                                     .request_enter(character_id, &owner, true)
@@ -4476,6 +4536,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 ));
                             }
                         } else {
+                            if let Some((_,fx))=store.characters.get(&attacker)
+                                .filter(|c|crate::starter_gear::equipped_category(&c.inventory)==2)
+                                .and_then(|c|c.creation.as_ref()).and_then(|r|crate::combat_visual::magic_effects(r.race)) {
+                                updates.extend(scene.content_effect(victim,fx)?);
+                            }
                             match scene.content_damage_story(victim, attacker, health_change) {
                                 Ok(deliveries) => updates.extend(deliveries),
                                 Err(error) => {

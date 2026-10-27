@@ -5,6 +5,11 @@ Rust server derived from Pyrealium. The client is in `Unreal/`, and the server i
 in `AC2E/`. This is an experimental implementation, with offline exploration and
 native multiplayer; it is not yet complete retail emulation.
 
+Recent multiplayer support includes visible equip/unequip for all racial starter
+shirts, pants and boots, appearance updates for nearby players and later arrivals,
+and DAT-backed native spell impact particles. Other armor profiles and complete
+projectile/cast presentation remain in development.
+
 ## First checkout
 
 ```powershell
@@ -42,6 +47,9 @@ Start `start-ac2e.bat`, then sign in with a new account name and a password of
 12–128 characters. First sign-in creates the account; later sign-ins require the
 same password. Normal server startup manages both the account service (loopback
 HTTP 19400) and the game server (UDP 9000/9001).
+Choose a new name; `local` and `admin` are reserved legacy/service names. After a
+crash, the launcher can recover a stale lock when its recorded process is gone;
+it preserves the old marker and never deletes characters or account records.
 Use offline exploration or connect to an AC2E/Pyrealium server. See the guides for
 account setup, hosting, supported gameplay, and remaining implementation limits.
 
@@ -65,6 +73,10 @@ Network integration tests prepare their own content and isolated stores:
 $env:AC2_DAT_DIRECTORY = 'D:\Games\AC2'
 python .\Network\test_network.py
 python .\Network\test_auth.py
+python .\Network\test_gameplay.py
+python .\Network\test_armor.py
+python .\Network\test_login_ui.py --gameplay
+python .\Network\test_server_launcher.py
 ```
 
 Pass `-Python 'path\to\python.exe'` to the build/server scripts if Python is not

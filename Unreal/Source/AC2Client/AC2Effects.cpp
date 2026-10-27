@@ -96,6 +96,22 @@ bool FAC2Effects::NativeBurst(uint32 Id, const FVector &Position)
     S.Frame = FTransform(Position);
     return Start(S, false);
 }
+bool FAC2Effects::MoveSource(uint64 Key,const FTransform& Frame)
+{
+    auto S=Systems.Find(Key);if(!S)return false;
+    if(!Presets[S->Descriptor].Data.WorldSpace && !S->Source.Frame.Equals(Frame))
+        for(auto& P:Particles)if(P.System==Key)
+        {
+            P.P=Frame.TransformPosition(S->Source.Frame.InverseTransformPosition(P.P));
+            P.Origin=Frame.TransformPosition(S->Source.Frame.InverseTransformPosition(P.Origin));
+            P.V=Frame.TransformVector(S->Source.Frame.InverseTransformVector(P.V));
+        }
+    S->Source.Frame=Frame;return true;
+}
+void FAC2Effects::StopSource(uint64 Key)
+{
+    Systems.Remove(Key);Particles.RemoveAll([Key](const FParticle& P){return P.System==Key;});
+}
 void FAC2Effects::SyncSources(const TArray<FAC2ParticleSource> &Sources)
 {
     TSet<uint64> Wanted;
@@ -121,15 +137,7 @@ void FAC2Effects::SyncSources(const TArray<FAC2ParticleSource> &Sources)
             Start(S, true);
         else
         {
-            if (!Presets[S.Descriptor].Data.WorldSpace && !Existing->Source.Frame.Equals(S.Frame))
-                for (auto &P : Particles)
-                    if (P.System == S.Key)
-                    {
-                        P.P = S.Frame.TransformPosition(Existing->Source.Frame.InverseTransformPosition(P.P));
-                        P.Origin = S.Frame.TransformPosition(
-                            Existing->Source.Frame.InverseTransformPosition(P.Origin));
-                        P.V = S.Frame.TransformVector(Existing->Source.Frame.InverseTransformVector(P.V));
-                    }
+            MoveSource(S.Key,S.Frame);
             Existing->Source = S;
         }
     }

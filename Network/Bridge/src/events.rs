@@ -87,6 +87,9 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             json!({"event":"remove","id":o.id.to_string(),"instance":o.instance})
         }
         ServerEvent::Object(o) => match o.action {
+            ObjectAction::DoFx {fx,scalar} => json!({"event":"fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx,"strength":scalar}),
+            ObjectAction::DoTargettedFx {fx,scalar,target} => json!({"event":"fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx,"strength":scalar,"target":target.to_string()}),
+            ObjectAction::StopFx(fx) => json!({"event":"stop_fx","id":o.sender.id.to_string(),"instance":o.sender.instance,"fx":fx}),
             ObjectAction::DoMode(mode) | ObjectAction::SetMode(mode) => {
                 json!({"event":"mode","id":o.sender.id.to_string(),"instance":o.sender.instance,"mode":mode})
             }

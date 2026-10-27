@@ -13,6 +13,8 @@ if(!$AuthDirectory){$AuthDirectory=Join-Path $PSScriptRoot 'data/accounts'}
 if(!$DataDirectory){$DataDirectory=Join-Path $PSScriptRoot 'data/world'}
 $server=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
 if($Stop){& $server account-stop --auth-data $AuthDirectory --seconds 20;return}
+. (Join-Path $PSScriptRoot 'Recover-StaleLock.ps1')
+Restore-AC2EStaleLock $AuthDirectory 'accounts.lock'
 if(!(Test-Path -LiteralPath $server)){throw 'Build AC2E first with AC2E/Build-AC2E.ps1.'}
 $env:AC2E_PUBLIC_ORIGIN=$PublicOrigin
 & $server account-web --auth-data $AuthDirectory --data $DataDirectory --web-bind $Bind --public-origin $PublicOrigin --public-host $GameHost --public-port $GamePort

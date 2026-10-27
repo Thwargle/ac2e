@@ -26,6 +26,10 @@ def main():
     data = ROOT / 'Saved/AC2NetworkTests' / ('gameplay-' + uuid.uuid4().hex)
     data.mkdir(parents=True)
     content = prepare_test_content(data)
+    # Isolated service fixtures. These are test positions, not retail spawns.
+    with content.open('a') as fixture:
+        for n,entity,visual,x,y in [(0,0x4700157d,0x1f000d74,58,239),(1,0x4700157e,0x1f000d75,58,238),(2,0x47001581,0x1f000d78,60,238),(3,0x47001573,0x1f0002f4,60,239)]:
+            fixture.write(f'{0x8140000000030100+n:016x}\t{entity:08x}\t{visual:08x}\t02990109\t{x}\t{y}\t-44.606205\t1\t0\t0\t0\t-\n')
     log = (data/'server.log').open('w', encoding='utf-8')
     args = [str(SERVER), 'serve', '--bind', '127.0.0.1:19320', '--account', 'local',
             '--data', str(data/'world'), '--game-data', str(DAT_DIRECTORY), '--content', str(content),
@@ -48,10 +52,45 @@ def main():
             until(p,0,'inventory',lambda e:len(e.get('items',[]))>=3)
         a,b=peers
         until(a,0,'object',lambda e:e['id']==b.id)
+        def shelter(n,table,key):
+            start=len(a.events);a.send('use',target='0',item=str(0x8140000000030100+n))
+            until(a,start,'chat',lambda e:e.get('text',{}).get('table')==table and e['text'].get('key')==key)
+            time.sleep(1.1)
+        shelter(2,0x2500164c,0x8b6b186d) # Sentry cannot bypass Guard/Lieutenant.
+        shelter(0,0x25001648,0x2824fd4c)
+        shelter(0,0x25001648,0x63691d8f) # Repeated use does not write duplicate progress.
+        shelter(1,0x25001649,0x8b6b186f)
+        shelter(2,0x2500164c,0x8b6b1869)
+        shelter(3,0x2500163e,0x6c459364) # Native training-stone text reference.
+        result['shelter_introductions_ordered_native_dialogue']=True
         inventory=next(e for e in a.events if e.get('event')=='inventory')
         items={e['entity']:e for e in a.events if e.get('event')=='object' and e.get('container')==a.id}
         sword,staff,bow=[items[did] for did in [0x470007ee,0x470007e0,0x470007ed]]
         bag=list(inventory['items'])
+        shirt=items[0x47000ef8]
+        original=a.spawn['visual']
+        time.sleep(.15);start=len(a.events);obs=len(b.events)
+        a.send('unequip',id=shirt['id'],location=2,slot=len(bag))
+        ack=until(a,start,'inventory_result',lambda e:e['id']==shirt['id'])
+        assert ack['status']==0 and ack.get('equipped')==0,ack
+        bag.insert(ack['slot'],shirt['id'])
+        bare=until(a,start,'visual',lambda e:e['id']==a.id)['visual']
+        remote=until(b,obs,'visual',lambda e:e['id']==a.id)['visual']
+        assert bare==remote and bare!=original
+        assert next(v['value'] for v in bare['aspects'] if v['table']==0x20000016 and v['key']==0x10)==0
+        # A later observer must receive the changed armor in CreateObject.
+        obs=len(b.events);b.send('logout',id=b.id);until(b,obs,'selection')
+        obs=len(b.events);b.send('enter',id=b.id);until(b,obs,'player');b.send('ready')
+        assert until(b,obs,'object',lambda e:e['id']==a.id)['visual']==bare
+        time.sleep(.15);start=len(a.events);obs=len(b.events)
+        a.send('equip',id=shirt['id'],location=2,slot=bag.index(shirt['id']))
+        ack=until(a,start,'inventory_result',lambda e:e['id']==shirt['id'])
+        assert ack['status']==0 and ack.get('equipped')==2,ack
+        bag.remove(shirt['id'])
+        assert until(a,start,'visual',lambda e:e['id']==a.id)['visual']==original
+        assert until(b,obs,'visual',lambda e:e['id']==a.id)['visual']==original
+        result['armor_local_remote_and_late_observer']=True
+        time.sleep(.15)
         def equip(item,mode):
             start=len(a.events); obs=len(b.events)
             a.send('equip',id=item['id'],location=0x40,slot=bag.index(item['id']))
@@ -119,6 +158,9 @@ def main():
         until(a,start,'quality',lambda e:e.get('id')==ids[1] and e['key']==0x102 and e['value']==0)
         until(a,attack_start,'combat',lambda e:not e['enabled'])
         result['magic_and_enemy_replication']=True
+        until(a,attack_start,'fx',lambda e:e['id']==a.id and e['fx']==0x41000058)
+        until(b,0,'fx',lambda e:e['id']==ids[1] and e['fx']==0x41000248)
+        result['native_cast_and_impact_fx_replicated']=True
         loot2=until(a,start,'object',lambda e:e.get('container')==a.id and e['entity']==loot['entity'])
         bag.append(loot2['id'])
         time.sleep(.3);unequip(staff);equip(bow,0x41000010)
@@ -173,8 +215,12 @@ def main():
         saved=until(p,0,'inventory');assert {'id':bow_id,'slot':0x40} in saved['equipment'],saved
         p.send('chat',text='@quest status',channel='say')
         until(p,0,'chat',lambda e:'Training combat complete' in str(e))
+        time.sleep(.6) # Chat commands share the normal anti-flood interval.
+        start=len(p.events);p.send('chat',text='@quest shelter',channel='say')
+        until(p,start,'chat',lambda e:"Sentry asks" in str(e))
         result['restart_preserves_gear_and_quest']=True
-        result['scope']='AC2E authored combat/binding/exit circuit; retail tutorial quest chain not implemented'
+        result['shelter_introduction_survives_restart']=True
+        result['scope']='Shelter introduction plus AC2E authored combat/binding/exit circuit; retail tool/glyph/Menhir stages remain unfinished'
         (data/'result.json').write_text(json.dumps(result,indent=2))
         print(json.dumps(result,indent=2));print(data)
     finally:

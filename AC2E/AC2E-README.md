@@ -12,7 +12,10 @@ Starting again with the same data directory reports the existing server's PID an
 endpoint and exits successfully. It does not rebuild, rewrite the live content,
 or apply different settings to that server. Stop the server before rebuilding or
 changing its configuration. The launcher verifies the lock's process, executable,
-and data directory; it never automatically removes an unverified or stale lock.
+and data directory. A stale marker is archived only after obtaining exclusive
+read/write access and confirming its recorded process has exited. Live,
+unreadable and unverifiable markers remain intact. Both world and account
+services use this recovery path.
 
 ## Initial gameplay ruleset
 
@@ -40,6 +43,35 @@ For external hosting, put the loopback account backend behind a TLS reverse prox
 The account backend serves `/source.zip` with the source used to build this modified server, preserving the AGPL source offer. Build after changing source; do not point the offer at unmodified upstream. `export_source.py` packages the current server source, docs, dependency lockfile, and build/launch helpers using explicit source directories. It works in this monorepo and in an unpacked source download, and excludes game DATs, account state and journals.
 
 ## Implementation notes
+
+### Armor, effects and Shelter introduction
+
+The racial starter shirt, pants and boots can be equipped or removed from the
+inventory. AC2E composes the avatar's native VisualDesc from saved clothing slots
+and character-creation traits, sends it to the owner and nearby players, and
+updates the spawn snapshot for later arrivals. Selection and re-entry use the
+same saved equipment. Other armor appearances still require validated profiles.
+
+The Unreal bridge forwards native DoFX/StopFX messages. PSDesc bursts attach to
+the model's DAT bone or holding location and honor local/world particle space.
+Mind Lash's impact particles are verified in the rendered client. Cast enum IDs
+exist, but the basic Mind Lash cast ID has no FX-table node in these Legions
+DATs; projectile, sound, light and complete cast presentation are unfinished.
+
+The Shelter Guard, Lieutenant and Sentry now use the original localized DAT
+dialogue with ordered, durable introduction progress (`q5` records). The ten
+training-stone types display their original instructions. `@quest shelter`
+reports progress. The starter instance mirrors the Guard and Lieutenant from
+the observed 0298 instance: cells 0108 and 0109 match 0299 byte-for-byte after
+their identity word. The new placement IIDs are reconstructed. No Sentry or
+training-stone coordinates were recovered, so this patch does not invent them
+in the normal world; the integration test uses explicitly marked fixtures.
+
+This is not the complete retail tutorial. Imbued Digging Tool and Menhir Glyph
+turn-ins, Scout rewards, the Menhir portal/shard, and the remaining original
+placements still need implementation. The separate Training Grounds combat,
+binding and exit circuit remains available; completing it does not complete
+Rescue the Shelter Hold.
 
 - The opt-in `PYREALIUM_UNREAL_LEGIONS_DATA=1` profile recognizes the supplied Legions state fingerprints. It does not modify DAT bytes or claim compatibility with the original 7148 client VM. Unreal decodes wire data and does not execute the merchant/group/allegiance WLIB packages whose retail layouts differ.
 - Skill metadata (1,927 resolved definitions; 186 unresolved) and 30 advancement curves were regenerated with the existing strict DAT readers. Unsupported records remain unsupported. Server metadata validation remains active for supported skills, inventory and loot.

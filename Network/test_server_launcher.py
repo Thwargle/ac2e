@@ -18,6 +18,13 @@ def main():
     world = directory / 'world store'
     port = 19490
     account_port = 19492
+    # Reproduce the user's crashed-launch marker without touching their store.
+    exited=subprocess.Popen(['cmd.exe','/d','/c','exit','0'],creationflags=subprocess.CREATE_NO_WINDOW)
+    exited.wait()
+    world.mkdir()
+    (world/'server.lock').write_text(str(exited.pid)+'\n')
+    (directory/'accounts').mkdir()
+    (directory/'accounts/accounts.lock').write_text(str(exited.pid)+'\n')
     for number in (port, port + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as check:
             check.bind(('127.0.0.1', number))
@@ -43,6 +50,7 @@ def main():
             else:
                 raise AssertionError('Launcher did not start the server: ' + output)
             assert 'AC2E source offer:' not in output, 'Normal startup unexpectedly rebuilt the server.'
+            assert 'Recovered stale server.lock' in output and 'Recovered stale accounts.lock' in output,output
             peer = Peer()
             request=urllib.request.Request(f'http://127.0.0.1:{account_port}/api/login',
                 data=json.dumps({'account':'launcher_test','password':uuid.uuid4().hex}).encode(),

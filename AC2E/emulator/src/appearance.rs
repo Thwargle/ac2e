@@ -213,6 +213,9 @@ impl Body {
     /// Full VisualDesc for this body with the creation choices applied.
     /// Rejects unknown physique keys and out-of-range values.
     pub fn visual_desc(&self, physical: &[(u32, u32)]) -> Result<Vec<u8>, WorldError> {
+        self.visual_desc_worn(physical, 0x1a)
+    }
+    pub fn visual_desc_worn(&self, physical: &[(u32, u32)], worn: u16) -> Result<Vec<u8>, WorldError> {
         let mut values = std::collections::BTreeMap::new();
         for &(key, bits) in physical {
             let value = f32::from_bits(bits);
@@ -236,11 +239,12 @@ impl Body {
             }
         }
         for &(physique, aspect) in self.clothing {
+            let slot = match physique { SHIRT => 2, PANTS => 8, BOOTS => 0x10, _ => 0 };
             let traits = aspects.entry(aspect).or_default();
             if let Some(colour) = get(physique).filter(|value| *value != 0.0) {
                 traits.insert(CLOTHING_COLOR, colour);
             }
-            traits.insert(CLOTHING_WORN, 1.0);
+            traits.insert(CLOTHING_WORN, if worn & slot != 0 {1.0} else {0.0});
         }
         aspects.retain(|_, traits| !traits.is_empty());
 

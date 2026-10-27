@@ -270,7 +270,7 @@ pub fn hand_equipment_at(
     equipped: bool,
     destination: u16,
 ) -> Result<Vec<u8>, WorldError> {
-    if !matches!(slot, 0x40 | 0x80) || other_hands & !0xc0 != 0 || other_hands & slot != 0 {
+    if !matches!(slot, 2 | 8 | 0x10 | 0x40 | 0x80) || other_hands & !0xc0 != 0 || other_hands & slot != 0 {
         return Err(WorldError::InvalidValue);
     }
     let mut fields = [0; 19];
@@ -285,7 +285,7 @@ pub fn hand_equipment_at(
         fields[index + 1] = (owner >> 32) as u32;
     }
     fields[12] = if equipped {
-        if slot == 0x40 { 0xce } else { 0x8e }
+        if slot == 0x40 { 0xce } else if slot == 0x80 { 0x8e } else { 0xe }
     } else {
         0x9e
     };

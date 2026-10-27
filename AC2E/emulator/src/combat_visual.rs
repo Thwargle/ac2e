@@ -79,6 +79,19 @@ fn prefix(opcode: u32, owner: u64, instance: u16, stamp: u16) -> Result<Vec<u8>,
     wire.extend(stamp.to_le_bytes());
     Ok(wire)
 }
+pub fn appearance(owner:u64, instance:u16, stamp:u16, visual:&[u8]) -> Result<Vec<u8>, WorldError> {
+    if crate::appearance::visual_len(visual) != Some(visual.len()) {return Err(WorldError::InvalidValue);}
+    let mut wire=prefix(0x1009f,owner,instance,stamp)?;
+    wire.extend(visual); Ok(wire)
+}
+/// Legions FX enum 23000042: racial starter cast/impact pairs.
+pub fn magic_effects(race:u32) -> Option<(u32,u32)> {
+    match race {1=>Some((0x41000058,0x41000248)),2=>Some((0x410000f5,0x410002e5)),4=>Some((0x410001a1,0x41000391)),_=>None}
+}
+pub fn effect(owner:u64,instance:u16,stamp:u16,fx:u32) -> Result<Vec<u8>,WorldError> {
+    if fx>>24!=0x41 {return Err(WorldError::InvalidValue);}
+    let mut wire=prefix(0x100a0,owner,instance,stamp)?;wire.extend(fx.to_le_bytes());wire.extend(1f32.to_le_bytes());Ok(wire)
+}
 
 pub fn mode(owner: u64, instance: u16, stamp: u16, fighting: bool) -> Result<Vec<u8>, WorldError> {
     mode_id(owner,instance,stamp,if fighting { ONE_HAND } else { PEACE })

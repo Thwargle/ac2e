@@ -338,6 +338,12 @@ pub fn chat(text: &str, kind: u32) -> Result<Vec<u8>, WorldError> {
     arguments.extend(integer(kind));
     private_call(CHAT_STRING, &arguments)
 }
+/// Native StringInfo reference. The client resolves localized text from its DAT.
+pub fn localized(table: u32, key: u32) -> Result<Vec<u8>, WorldError> {
+    if table >> 24 != 0x25 || key == 0 { return Err(WorldError::InvalidValue); }
+    Ok([5u32,1,1,0x44000100,0,0xffff006a,key,table,0,0]
+        .into_iter().flat_map(u32::to_le_bytes).collect())
+}
 
 /// 82040019 -> 1aa400b2 -> 9aac000f -> native EndSpecialAttack.
 /// Echo only the action counter, never a skill ID or an error code.

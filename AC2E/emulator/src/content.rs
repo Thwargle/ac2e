@@ -257,6 +257,12 @@ impl Content {
         object.visual_stamp = stamp;
         Ok(wire.into())
     }
+    pub fn effect(&mut self,id:u64,fx:u32) -> io::Result<Arc<[u8]>> {
+        let object=self.objects.get_mut(&id).filter(|o|o.active).ok_or_else(||invalid("inactive effect owner"))?;
+        let stamp=object.visual_stamp.checked_add(1).ok_or_else(||invalid("effect stamp exhausted"))?;
+        let wire=crate::combat_visual::effect(id,object.instance,stamp,fx).map_err(|e|invalid(e.to_string()))?;
+        Arc::make_mut(&mut object.spawn)[26..28].copy_from_slice(&stamp.to_le_bytes());object.visual_stamp=stamp;Ok(wire.into())
+    }
     pub fn respawn(&mut self, id: u64) -> io::Result<()> {
         let object = self
             .objects

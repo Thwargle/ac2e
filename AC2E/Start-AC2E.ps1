@@ -25,10 +25,12 @@ if(!$DataDirectory){$DataDirectory=Join-Path $PSScriptRoot 'data/world'}
 $DataDirectory=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DataDirectory)
 $server=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
 if($Stop){& $server stop --data $DataDirectory --seconds 20; if($LASTEXITCODE){throw 'Server stop failed.'};return}
+. (Join-Path $PSScriptRoot 'Recover-StaleLock.ps1')
+Restore-AC2EStaleLock $DataDirectory 'server.lock'
 if($SkipBuild -and $Rebuild){throw 'Choose either -SkipBuild or -Rebuild.'}
 # The store's native exclusive lock remains authoritative. Only report a live
 # owner after checking its executable and data directory, since PIDs are reused.
-# Never remove a lock here: that could allow two writers into the same journals.
+# A lock remaining after exclusive stale recovery must stay intact.
 $lockFile=Join-Path $DataDirectory 'server.lock'
 if(Test-Path -LiteralPath $lockFile -PathType Leaf){
     $lockOwner=[uint32]0
@@ -83,6 +85,7 @@ if(!$DevelopmentLogin){$serverArgs+=@('--auth-data',$AuthDirectory)}
 $accounts=$null
 try {
     if(!$DevelopmentLogin -and !$ExternalAccounts){
+        Restore-AC2EStaleLock $AuthDirectory 'accounts.lock'
         if(Test-Path -LiteralPath (Join-Path $AuthDirectory 'accounts.lock')){
             throw 'The account store is already locked. If you intentionally run Start-Accounts.ps1 separately, use -ExternalAccounts with the same AuthDirectory and PublicOrigin.'
         }

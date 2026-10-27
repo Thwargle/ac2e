@@ -262,6 +262,21 @@ impl Scene {
             .copied()
             .unwrap_or(body.instance))
     }
+    /// Replace only VisualDesc; retain movement stamps, position, mode and hands.
+    /// Future observers must see exactly the same armor as current observers.
+    pub fn replace_appearance(&mut self, owner:u64, visual:&[u8], stamp:u16) -> Result<(),WorldError> {
+        if crate::appearance::visual_len(visual)!=Some(visual.len()) || stamp==0 {return Err(WorldError::InvalidValue);}
+        let body=self.bodies.get_mut(&owner).ok_or(WorldError::InvalidValue)?;
+        let old=body.physics;let next=12+visual.len();
+        body.spawn.splice(12..old,visual.iter().copied());
+        body.position_offset=body.position_offset-old+next;body.physics=next;
+        body.spawn[next+6..next+8].copy_from_slice(&stamp.to_le_bytes());
+        Ok(())
+    }
+    pub fn apparel_changed(&mut self, owner:u64, item:u64, instance:u16) -> Result<(),WorldError> {
+        if self.next_item_instance(owner,item)? != instance {return Err(WorldError::InvalidValue);}
+        self.bodies.get_mut(&owner).unwrap().item_instances.insert(item,instance);Ok(())
+    }
     pub fn admit_inventory_grant(&self, owner: u64, item: u64) -> Result<u16, WorldError> {
         let body = self
             .bodies
@@ -518,6 +533,11 @@ impl Scene {
                 data: data.clone(),
             })
             .collect())
+    }
+    pub fn content_effect(&mut self,id:u64,fx:u32) -> std::io::Result<Vec<Delivery>> {
+        let cell=self.content.cell(id).ok_or_else(||std::io::Error::other("inactive effect owner"))?;
+        let data=self.content.effect(id,fx)?;
+        Ok(self.neighbor_ids(cell,0).map(|recipient|Delivery{recipient,data:data.clone()}).collect())
     }
     pub fn idol_presentation(
         &mut self,

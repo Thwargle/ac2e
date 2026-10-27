@@ -31,9 +31,14 @@ Server characters, positions, visuals, appearance aspects, actor visibility, inv
 
 The AC2E initial ruleset tests **automatic loot grants** on supported mob kills. It does not yet supply a complete retail corpse-looting window, every combat animation, every merchant/quest/social panel, terrain-authoritative server collision or anti-cheat parity. Static recovered placements and authored encounter behavior are distinct; seeing an NPC does not mean its full original script has been implemented.
 
-The Legions profile grants the DAT-validated racial starter clothes and three weapons once per character. Hand equipment acknowledgments update the native inventory, and held models follow the player's or remote character's animated holding location. Global appearance modifiers preserve character faces and starter clothing. Starter attack IDs and animation modes come from DAT enum mappers; damage, vigor cost, range and timing are explicit development rules. Magic currently resolves direct server damage with native casting animation; retail projectile/effect and spellbook parity remain incomplete. Armor changing and general item services beyond the supported hand items/potions remain unfinished.
+The Legions profile grants the DAT-validated racial starter clothes and three weapons once per character. Equipment acknowledgments update the native inventory, and held models follow the player's or remote character's animated holding location. Starter clothing changes rebuild the native avatar appearance, preserving face/body traits and colours, and replicate to existing and later observers. Selection and re-entry restore saved equipment. Human and Lugian kits include shirts, pants and boots; Tumeroks have shirts and pants. Other armor definitions still require validated appearance profiles. Starter attack IDs and animation modes come from DAT enum mappers; damage, vigor cost, range and timing are explicit development rules. Magic resolves direct server damage with native animation and DAT impact particles; full projectile/cast, sound/light effects and spellbook parity remain incomplete.
 
 The supported human dungeon circuit is: equip a weapon, defeat three Idol Spawn, use the mentor for the reward, bind the lifestone, use the training gateway to the outdoor hub, then recall. This verifies the **authored AC2E starter circuit**, not the recovered retail tutorial's full quest chain. Starter Idol pursuit is server-owned, limited to its current cell, with an 18m leash; this is not cross-cell pathfinding or line-of-sight collision. Both current observers and later arrivals receive its authoritative pose; respawn returns it to the original placement.
+
+Separately, the Shelter Guard/Lieutenant/Sentry introduction and training-stone
+text use native DAT StringInfo references, with per-character durable progress.
+`@quest shelter` reports its status. Tool/glyph turn-ins and the Menhir stages
+remain unfinished; see the AC2E guide for recovered versus reconstructed placements.
 
 ## Build and verify
 
@@ -56,6 +61,13 @@ working directory, connects a native client, and stops the server gracefully.
 It verifies that normal startup reuses the built server without invoking Rust,
 repeated startup reports the existing process without rewriting live content,
 rebuilding a running server is rejected, and unverified locks are preserved.
+It also checks recovery of abandoned world/account markers from an exited process.
+
+`test_armor.py` exercises every starter clothing slot for all six supported bodies
+through two UDP clients. `test_gameplay.py` additionally checks appearance for a
+late observer and Shelter introduction order/restart persistence. The rendered
+login test types through focused Slate fields, verifies visible shirt removal and
+replacement, and captures emitted native spell particles.
 
 `Launch-AC2.ps1 -Online -Server 127.0.0.1 -Port 9000 -SkipBuild -NetworkSmoke` runs the Unreal render acceptance test against a **test server with an existing human character**. It sends chat, attacks a nearby authored training mob, receives loot, captures the native world/inventory and exits. Use isolated server data: this test intentionally changes its character's progress.
 

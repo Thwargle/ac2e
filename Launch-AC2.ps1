@@ -110,6 +110,7 @@ if ($Smoke) {
 }
 # Interactive launch requested by the caller; compiler and commandlet modes stay in this terminal.
 if($NetworkSmoke -or $LoginSmoke){
+    $launchArgs+='-LogCmds="LogTemp Verbose"'
     $smokeReport=Join-Path $PSScriptRoot 'Unreal/Saved/Diagnostics/AC2Network-smoke.txt'
     if(Test-Path -LiteralPath $smokeReport){Remove-Item -LiteralPath $smokeReport}
     $smokeFlag=if($LoginSmoke){'-AC2LoginSmoke'}else{'-AC2NetworkSmoke'}

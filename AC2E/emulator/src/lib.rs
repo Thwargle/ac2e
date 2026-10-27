@@ -32,6 +32,7 @@ pub mod quests;
 pub mod scene;
 pub mod script;
 pub mod server;
+pub mod shelter;
 pub mod skills;
 pub mod starter_gear;
 pub mod state;

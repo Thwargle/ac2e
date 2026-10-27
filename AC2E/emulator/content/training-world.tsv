@@ -1,4 +1,9 @@
 pyrealium-world-v3
+# Shelter Guard/Lieutenant mirrored from captured 0298 to the supported 0299
+# start instance. Both pairs of cell records are byte-identical after their DID.
+# These new IIDs/instance assignments are AC2E reconstructions, not captured spawns.
+8140000000030040	4700157d	1f000d74	02990109	52.1591148	242.034378	-44.4508781	0.707106769	0	0	-0.707106769	-
+8140000000030041	4700157e	1f000d75	02990108	-13.4980259	239.340042	-43.9098969	0.707106769	0	0	-0.707106769	-
 # Authored development placements near the supported human start. Not recovered original spawns.
 # IID entity visual cell X Y Z W QX QY QZ scale (tab-separated)
 8140000000030000	470007d1	1f0003d1	02990109	61.060577	240.199	-44.606205	1	0	0	0	0.75

@@ -13,7 +13,7 @@ class SourceOfferTests(unittest.TestCase):
             workspace = Path(temp)
             server = workspace / 'AC2E'
             required = [
-                'LICENSE', 'NOTICE', 'Build-AC2E.ps1', 'export_source.py',
+                'LICENSE', 'NOTICE', 'Build-AC2E.ps1', 'export_source.py', 'Recover-StaleLock.ps1',
                 'emulator/Cargo.toml', 'emulator/Cargo.lock', 'emulator/build.rs',
                 'emulator/src/server.rs', 'emulator/content/world.tsv',
                 'emulator/docs/architecture.md', 'emulator/tools/prepare.py',

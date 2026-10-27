@@ -50,6 +50,7 @@ pub struct Book {
     supplies: Option<bool>,
     potion: u8, // 0 absent, 1 accepted, 2 crafted, 3 rewarded
     journey: u8, // 0 absent, 1 accepted, 2 bound, 3 travelled, 4 rewarded
+    shelter: u8, // 0 absent, 1 guard, 2 lieutenant, 3 sentry. Retail continuation pending.
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,6 +67,9 @@ pub enum Command {
     BoundLifestone,
     Travelled,
     ClaimJourney,
+    ShelterGuard,
+    ShelterLieutenant,
+    ShelterSentry,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +101,9 @@ impl QuestError {
 impl Command {
     pub fn encode(&self) -> String {
         match self {
+            Self::ShelterGuard => "shelter.guard".into(),
+            Self::ShelterLieutenant => "shelter.lieutenant".into(),
+            Self::ShelterSentry => "shelter.sentry".into(),
             Self::Accept => "a".into(),
             Self::Kill(entity) => format!("k,{entity:08x}"),
             Self::Claim => "c".into(),
@@ -108,6 +115,9 @@ impl Command {
     }
     pub fn decode(text: &str) -> Result<Self, QuestError> {
         match text {
+            "shelter.guard" => Ok(Self::ShelterGuard),
+            "shelter.lieutenant" => Ok(Self::ShelterLieutenant),
+            "shelter.sentry" => Ok(Self::ShelterSentry),
             "a" => Ok(Self::Accept),
             "c" => Ok(Self::Claim),
             "s.a" => Ok(Self::AcceptSupplies),
@@ -130,6 +140,7 @@ impl Command {
 }
 
 impl Book {
+    pub fn shelter_phase(&self) -> u8 { self.shelter }
     pub fn get(&self) -> Option<&Progress> {
         self.training.as_ref()
     }
@@ -165,6 +176,11 @@ impl Book {
         }
         let mut next = self.clone();
         match command {
+            Command::ShelterGuard | Command::ShelterLieutenant | Command::ShelterSentry => {
+                let previous = match command {Command::ShelterGuard=>0,Command::ShelterLieutenant=>1,_=>2};
+                if self.shelter != previous {return Err(QuestError::NotReady);}
+                next.shelter=previous+1;
+            }
             Command::AcceptPotion => {
                 if self.supplies != Some(true) { return Err(QuestError::NotReady); }
                 if self.potion != 0 { return Err(QuestError::AlreadyAccepted); }
@@ -254,13 +270,14 @@ impl Book {
     /// The gmQuestInfoList argument used by UI_Load for saved journal restoration.
     pub fn list_graph(&self) -> Result<Vec<u8>, WorldError> {
         let mut payload = Vec::new();
-        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0));
+        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0));
         if let Some(state) = self.training {
             payload.extend(info_payload(state, false)?);
         }
         if let Some(claimed) = self.supplies { payload.extend(supplies_payload(claimed, false)?); }
         if self.potion != 0 { payload.extend(self.lesson_payload(false, false)?); }
         if self.journey != 0 { payload.extend(self.lesson_payload(true, false)?); }
+        if self.shelter != 0 { payload.extend(self.shelter_payload(false)?); }
         Ok(native_graph(0xa1, &payload))
     }
 }
@@ -326,6 +343,12 @@ impl Book {
     }
     pub fn updates(&self) -> Result<Vec<Vec<u8>>, WorldError> {
         let mut events = Vec::new();
+        if self.shelter != 0 {
+            let mut args=script::integer(0);
+            args.extend(native_graph(0xa0,&self.shelter_payload(true)?));
+            args.extend(script::integer(UNDERWAY));
+            events.push(script::private_call(UPDATE,&args)?);
+        }
         if self.training.is_some() { events.push(self.update()?); }
         if let Some(claimed) = self.supplies {
             let mut args = script::integer(0);
@@ -387,6 +410,16 @@ pub fn validate_supplies_exchange(book: &Book, bag: &crate::inventory::Inventory
 }
 
 impl Book {
+    fn shelter_payload(&self, play_fx: bool) -> Result<Vec<u8>, WorldError> {
+        let mut bytes=Vec::new(); word(&mut bytes,crate::shelter::JOURNAL);
+        bytes.extend(world::literal_name("Rescue the Shelter Hold")?);
+        bytes.extend(world::literal_name(crate::shelter::guidance(self.shelter))?);
+        word(&mut bytes,ICON); word(&mut bytes,UNDERWAY); word(&mut bytes,1);
+        bytes.extend(world::literal_name(crate::shelter::guidance(self.shelter))?);
+        word(&mut bytes,1); bytes.extend((-1.0f64).to_le_bytes()); bytes.extend((-1.0f64).to_le_bytes());
+        word(&mut bytes,0); bytes.extend(0f64.to_le_bytes()); bytes.extend(0f64.to_le_bytes());
+        word(&mut bytes,u32::from(play_fx)); Ok(bytes)
+    }
     pub fn potion_phase(&self) -> u8 { self.potion }
     pub fn journey_phase(&self) -> u8 { self.journey }
     pub fn potion_guidance(&self) -> String {

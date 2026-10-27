@@ -33,6 +33,20 @@ pub fn is_apparel(definition: u32) -> bool {
         .iter()
         .any(|profile| profile.definition == definition && profile.worn != 0)
 }
+pub fn apparel_slot(item: &Item, race: u32) -> Option<u16> {
+    PROFILES.iter().find(|p| p.race == race && p.definition == item.definition
+        && p.visual == item.visual && p.worn != 0 && p.mask == item.equipment_mask
+        && item.quantity == 1).map(|p| p.worn)
+}
+pub fn worn_mask(inventory: &Inventory, race: u32) -> u16 {
+    inventory.items().filter_map(|item| apparel_slot(item, race)
+        .filter(|slot|item.location == Location::Equipped(*slot))).fold(0, |a,b|a|b)
+}
+pub fn appearance(character: &crate::store::Character) -> Result<Vec<u8>, crate::world::WorldError> {
+    let request=character.creation.as_ref().ok_or(crate::world::WorldError::InvalidValue)?;
+    crate::appearance::body(request.race,request.sex).ok_or(crate::world::WorldError::InvalidValue)?
+        .visual_desc_worn(&request.physical_values, if character.starter_gear {worn_mask(&character.inventory,request.race)} else {0x1a})
+}
 pub fn is_weapon(definition: u32) -> bool {
     PROFILES
         .iter()

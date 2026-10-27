@@ -557,6 +557,22 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
     if (Event == TEXT("combat")) { Combat = J->GetBoolField(TEXT("enabled")); return; }
+    if(Event==TEXT("fx") || Event==TEXT("stop_fx"))
+    {
+        auto Found=Objects.Find(Id);if(!Found || (J->HasField(TEXT("instance")) && (*Found)->Instance!=int32(N(J,TEXT("instance")))))return;
+        auto Player=Id==PlayerId?Pawn(Mode):nullptr;const uint32 Fx=N(J,TEXT("fx"));
+        if(Event==TEXT("stop_fx"))
+        {
+            if(Player)Player->StopEffect(Fx);else if((*Found)->Model)(*Found)->Model->StopEffect(Fx);
+            for(auto& Entry:Objects)if(Entry.Value->Parent==Id && Entry.Value->Model)Entry.Value->Model->StopEffect(Fx);
+            return;
+        }
+        bool Played=Player?Player->PlayEffect(Fx,N(J,TEXT("strength"),1)):(*Found)->Model && (*Found)->Model->PlayEffect(Fx,N(J,TEXT("strength"),1));
+        if(!Played)for(auto& Entry:Objects)if(Entry.Value->Parent==Id && Entry.Value->Model)
+            Played|=Entry.Value->Model->PlayEffect(Fx,N(J,TEXT("strength"),1));
+        if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server FX %08X played=%d player=%d"),Fx,Played,Player!=nullptr);
+        if(Played)++PlayedEffects;return;
+    }
     if(Event==TEXT("behavior")||Event==TEXT("mode")||Event==TEXT("stop_behavior")||Event==TEXT("hit")||Event==TEXT("impulse")||Event==TEXT("motion"))
     {
         auto* Found=Objects.Find(Id);
@@ -963,6 +979,15 @@ void FAC2Network::Tick(float Delta)
     if (Smoke)
     {
         const bool VerifyEquipment=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_GAMEPLAY_SMOKE"))==TEXT("1");
+        if(PlayedEffects>0 && SmokeParticles==0)
+        {
+            for(const auto& Entry:Objects)if(Entry.Value->Model)SmokeParticles+=Entry.Value->Model->EffectParticleCount();
+            if(SmokeParticles>0)
+            {
+                UE_LOG(LogTemp,Display,TEXT("AC2 network spell particles emitted: %d"),SmokeParticles);
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-spell-impact.png"),true,false);
+            }
+        }
         if (IsSelection() && !SmokeEntered && !Mode->Characters.Characters.IsEmpty())
         {
             if(FParse::Param(FCommandLine::Get(),TEXT("AC2LoginSmoke")))
@@ -995,6 +1020,18 @@ void FAC2Network::Tick(float Delta)
             {
                 auto Profile=Mode->Characters.Active();
                 if(!Profile)return;
+                if(SmokeArmorStage<4)
+                {
+                    const int32 Shirt=Profile->Items.IndexOfByPredicate([](const auto& I){return I.Definition==0x47000ef8;});
+                    if(Shirt<0)return;
+                    if(SmokeArmorStage==0){SmokeClothedHash=P->AvatarAppearanceFingerprint();UseItem(Shirt);SmokeArmorStage=1;Started=0;return;}
+                    if(SmokeArmorStage==1 && !Profile->Items[Shirt].Equipped && P->AvatarAppearanceFingerprint()!=SmokeClothedHash)
+                    {FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-armor-off.png"),true,false);SmokeArmorStage=2;Started=0;return;}
+                    if(SmokeArmorStage==2){UseItem(Shirt);SmokeArmorStage=3;Started=0;return;}
+                    if(SmokeArmorStage==3 && Profile->Items[Shirt].Equipped && P->AvatarAppearanceFingerprint()==SmokeClothedHash)
+                    {FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-armor-on.png"),true,false);SmokeArmorStage=4;SmokeArmor=true;Started=0;return;}
+                    return;
+                }
                 const int32 Staff=Profile->Items.IndexOfByPredicate([](const auto& I){return I.Definition==0x470007e0;});
                 if(Staff<0)return;
                 if(!SmokeEquipped){UseItem(Staff);SmokeEquipped=true;Started=0;return;}
@@ -1020,7 +1057,7 @@ void FAC2Network::Tick(float Delta)
         const bool HasLoot = Profile && !Profile->Items.IsEmpty() && Profile->Experience > 0;
         if ((IsWorld() && SmokeAttacked && HasLoot && Started > 6) || Started > 120)
         {
-            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0));
+            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0));
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
             FFileHelper::SaveStringToFile(OK ? TEXT("PASS") : TEXT("FAIL"), *Report);
             if (auto H = HUD(Mode))

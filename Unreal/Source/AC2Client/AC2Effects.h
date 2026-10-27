@@ -13,6 +13,9 @@ class FAC2Effects
     ~FAC2Effects();
     void Open(UWorld *World, const FString &Directory);
     bool NativeBurst(uint32 Id, const FVector &Position);
+    bool NativeBurst(const FAC2ParticleSource& Source) { return Start(Source,false); }
+    bool MoveSource(uint64 Key,const FTransform& Frame);
+    void StopSource(uint64 Key);
     void SyncSources(const TArray<FAC2ParticleSource> &Sources);
     void Update(const FVector &Camera, const FVector &Right, const FVector &Up, float Delta, float Rain,
                 const FVector &Wind, bool Indoors);

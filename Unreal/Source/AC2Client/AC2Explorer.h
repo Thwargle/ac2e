@@ -18,6 +18,10 @@ class AAC2Explorer : public ACharacter
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     bool ApplyAvatar(uint32 Physics, float Height, float Build, const FAC2Appearance &Appearance = {});
     bool PlayBehavior(uint32 Behavior,uint32 Mode=0,float Rate=1,bool Hold=false);
+    bool PlayEffect(uint32 Effect,float Strength=1) {return Model && Model->PlayEffect(Effect,Strength);}
+    void StopEffect(uint32 Effect) {if(Model)Model->StopEffect(Effect);}
+    int32 EffectParticleCount() const {return Model?Model->EffectParticleCount():0;}
+    uint32 AvatarAppearanceFingerprint() const {return Model?Model->AppearanceFingerprint():0;}
     void StopBehavior(uint32 Behavior=0);
     void SetNativeMode(uint32 Mode);
     void SetMotionParameter(const FString& Parameter,double Value);
