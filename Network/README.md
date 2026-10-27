@@ -43,7 +43,9 @@ checkout; no pre-existing `Saved` files are needed.
 
 `Network/test_server_launcher.py` runs the public batch launcher from another
 working directory, connects a native client, and stops the server gracefully.
-It verifies that normal startup reuses the built server without invoking Rust.
+It verifies that normal startup reuses the built server without invoking Rust,
+repeated startup reports the existing process without rewriting live content,
+rebuilding a running server is rejected, and unverified locks are preserved.
 
 `Launch-AC2.ps1 -Online -Server 127.0.0.1 -Port 9000 -SkipBuild -NetworkSmoke` runs the Unreal render acceptance test against a **test server with an existing human character**. It sends chat, attacks a nearby authored training mob, receives loot, captures the native world/inventory and exits. Use isolated server data: this test intentionally changes its character's progress.
 

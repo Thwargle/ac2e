@@ -1,4 +1,5 @@
-"""Exercise the public batch launcher with an existing server and an isolated store."""
+"""Exercise normal/repeated startup, lock ownership, native login, and shutdown."""
+import os
 import socket
 import subprocess
 import time
@@ -12,7 +13,7 @@ def main():
         raise RuntimeError('Build AC2E before testing its existing-binary startup path.')
     directory = ROOT / 'Saved/AC2NetworkTests' / ('launcher-' + uuid.uuid4().hex)
     directory.mkdir(parents=True)
-    world = directory / 'world'
+    world = directory / 'world store'
     port = 19490
     for number in (port, port + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as check:
@@ -43,6 +44,41 @@ def main():
             peer.wait('characters')
             peer.close()
             peer = None
+            lock = world / 'server.lock'
+            lock_owner = lock.read_text()
+            content = world / 'legions-world.tsv'
+            content_time = content.stat().st_mtime_ns
+            repeated = subprocess.run([
+                'cmd.exe', '/d', '/c', str(ROOT / 'start-ac2e.bat'),
+                '-Port', str(port), '-DataDirectory', str(world),
+                '-DatDirectory', str(DAT_DIRECTORY),
+            ], cwd=directory, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                timeout=15, creationflags=subprocess.CREATE_NO_WINDOW)
+            assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+            assert 'already running' in repeated.stdout, repeated.stdout
+            assert lock.read_text() == lock_owner
+            assert content.stat().st_mtime_ns == content_time, 'Repeated startup rewrote live content.'
+            rebuild = subprocess.run([
+                'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', str(ROOT / 'AC2E/Start-AC2E.ps1'), '-Rebuild',
+                '-DataDirectory', str(world),
+            ], cwd=directory, capture_output=True, text=True, timeout=15,
+                creationflags=subprocess.CREATE_NO_WINDOW)
+            assert rebuild.returncode != 0 and 'before rebuilding' in rebuild.stderr, rebuild
+            # A recycled PID (here this Python process) must never be accepted
+            # as a server owner, nor authorize removal of the store's lock.
+            other_store = directory / 'unverified store'
+            other_store.mkdir()
+            other_lock = other_store / 'server.lock'
+            other_lock.write_text(str(os.getpid()) + '\n')
+            rejected = subprocess.run([
+                'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', str(ROOT / 'AC2E/Start-AC2E.ps1'),
+                '-DataDirectory', str(other_store),
+            ], cwd=directory, capture_output=True, text=True, timeout=15,
+                creationflags=subprocess.CREATE_NO_WINDOW)
+            assert rejected.returncode != 0 and 'cannot be confirmed' in rejected.stderr, rejected
+            assert other_lock.read_text().strip() == str(os.getpid())
             # Use the same public launcher for graceful shutdown, from another cwd.
             subprocess.run([
                 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -51,7 +87,9 @@ def main():
             ], cwd=directory, stdout=log, stderr=log, check=True, timeout=30,
                 creationflags=subprocess.CREATE_NO_WINDOW)
             assert process.wait(timeout=10) == 0, log_path.read_text(errors='replace')
-            print('PASS: batch startup without rebuilding, native login, and graceful shutdown; log:', log_path)
+            assert not lock.exists(), 'Graceful shutdown did not release the store lock.'
+            print('PASS: startup, native login, repeated start, live rebuild rejection, '
+                  'unverified lock preservation, and graceful shutdown; log:', log_path)
         finally:
             if peer:
                 peer.close()

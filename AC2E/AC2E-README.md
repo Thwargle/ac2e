@@ -8,6 +8,12 @@ Run `start-ac2e.bat` from the workspace root, or `AC2E/Start-AC2E.ps1`. This use
 
 Parameters: `-Port`, `-Account`, `-DatDirectory`, `-DataDirectory`, `-Content`, `-Python`, `-SkipBuild`, `-Rebuild`. `-SkipBuild` also prevents the first build when no binary exists; it cannot be combined with `-Rebuild`. Defaults resolve relative to the project directory, regardless of the current working directory. Graceful shutdown: `Start-AC2E.ps1 -Stop`. Back up `data/world` with the server stopped. The store uses append-only journals with exclusive writer locks, validated replay, atomic transactions and persisted placements; it is not a MySQL schema. The CLI also exposes store inspection and compaction commands inherited from Pyrealium.
 
+Starting again with the same data directory reports the existing server's PID and
+endpoint and exits successfully. It does not rebuild, rewrite the live content,
+or apply different settings to that server. Stop the server before rebuilding or
+changing its configuration. The launcher verifies the lock's process, executable,
+and data directory; it never automatically removes an unverified or stale lock.
+
 ## Initial gameplay ruleset
 
 The default server loads 15,116 DAT-compatible placements from the retained population and authored starter content. Twenty-two rows reference assets absent from this Legions installation and are excluded with a report next to the generated TSV. Seven inactive authored portal test fixtures are also excluded; four compatible lifestone fixtures are enabled along with the server's native binding/recall handlers. Recovered world placements are retained. Static NPC/portal placements do not imply complete NPC scripting.
