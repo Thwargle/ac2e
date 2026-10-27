@@ -50,7 +50,7 @@ class FAC2Network
     void CastSkill(uint32 Skill);
     void StarterSkill(int32 Category);
     void UseTarget();
-    void UseItem(int32 Index);
+    void UseItem(int32 Index, uint32 EquipSlot=0);
     void MoveItem(int32 Index, int32 Slot);
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
@@ -81,6 +81,7 @@ class FAC2Network
     }
 
   private:
+    bool SmokeWorldProps(FString& Error) const;
     struct FObject
     {
         uint32 Visual = 0, Cell = 0, Entity = 0;
@@ -93,6 +94,10 @@ class FAC2Network
         uint32 AnimMode=AC2Motion::Peace;
         FAC2Appearance Aspects;
         TWeakObjectPtr<AActor> Actor;
+        TWeakObjectPtr<USceneComponent> Body;
+        bool Content=false, GroundedContent=false, Solid=false;
+        float FootZ=0;
+        double NextGroundCheck=0;
         TUniquePtr<FAC2AssetLibrary> Model;
         bool Placed = false;
         bool Missile=false,MissileFinished=false,MissilePointKnown=false;
@@ -121,6 +126,8 @@ class FAC2Network
     int32 SelectionSmokeStep=0;
     int32 CombatSmokeStep=0;
     int32 MouseSmokeStep=0;
+    int32 InventorySmokeStep=0;
+    double InventorySmokeNext=0;
     int32 MapTravelSmokeStep=0;
     double MapTravelSmokeNext=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;

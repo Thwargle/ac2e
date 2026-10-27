@@ -50,6 +50,8 @@ struct FAC2InventoryItem
     int32 Cell = 0;
     FString NetworkId;
     int32 Quantity = 1;
+    uint32 Visual=0;
+    FAC2Appearance Aspects;
 };
 struct FAC2CharacterProfile
 {

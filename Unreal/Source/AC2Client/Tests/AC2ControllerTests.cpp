@@ -3,6 +3,7 @@
 #include "AC2Projectile.h"
 #include "AC2DatArchive.h"
 #include "AC2Assets.h"
+#include "AC2CharacterData.h"
 #include "AC2Portrait.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -157,6 +158,51 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             Peak=0;for(int32 I=0;I<20;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
             TestTrue(TEXT("Impact produces actual native particles"),Peak>0);
         }
+    }
+    World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2WorldPropTest,"AC2.Data.WorldPropsAndInventoryIcons",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2WorldPropTest::RunTest(const FString&)
+{
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false)
+        .CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false).EnableTraceCollision(true);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+    {
+        FAC2AssetLibrary Assets;FString Error;
+        TestTrue(TEXT("DAT assets"),Assets.Open(AC2::ResolveDatDirectory(TEXT("")),Error));
+        for(uint32 Visual:{0x1f00059cu,0x1f0005a4u,0x1f0005a8u,0x1f0002a6u,0x1f0004f8u,0x1f000063u,0x1f00058eu,0x1f00058cu,0x1f00058du})
+        {
+            const auto Icons=Assets.IconLayers(Visual);
+            TestTrue(FString::Printf(TEXT("Native armor/quest/weapon icon %08X"),Visual),
+                !Icons.IsEmpty() && Icons.ContainsByPredicate([](const auto& I){return I.Image && I.Image!=0x4100034b;}));
+            for(const auto& I:Icons){TestNotNull(TEXT("Native icon texture"),Assets.Texture(I.Image));AddInfo(FString::Printf(TEXT("Icon %08X layer=%u image=%08X tint=%08X"),Visual,I.Layer,I.Image,I.Color));}
+        }
+        FAC2CharacterCatalog Catalog;
+        TestTrue(TEXT("Native item catalog"),Catalog.Open(AC2::ResolveDatDirectory(TEXT("")),Error));
+        Catalog.LoadNetworkItem(AC2::ResolveDatDirectory(TEXT("")),0x47001582);
+        const auto* Glyph=Catalog.Items.Find(0x47001582);
+        TestTrue(TEXT("Quest item without layered artwork has an entity icon"),Glyph && Glyph->Icon && Assets.Texture(Glyph->Icon));
+        if(Glyph){TestEqual(TEXT("Menhir native icon"),Glyph->Icon,0x41003418u);TestEqual(TEXT("Localized Menhir name"),Glyph->Name,FString(TEXT("Menhir Glyph")));}
+        Catalog.LoadNetworkItem(AC2::ResolveDatDirectory(TEXT("")),0x47001745);
+        const auto* Potion=Catalog.Items.Find(0x47001745);
+        TestTrue(TEXT("Potion native fallback icon"),Potion && Potion->Icon==0x41006f81 && Assets.Texture(Potion->Icon));
+        auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);
+        Actor->SetRootComponent(Root);Root->RegisterComponent();
+        TestTrue(TEXT("Fountain visual"),Assets.DrawModel(0x1f00002d,Actor,Root));
+        TestTrue(TEXT("Fountain solid surfaces cooked"),Assets.EnableWorldObjectCollision()>0);
+        FHitResult Hit;
+        TestTrue(TEXT("Pawn cannot pass through fountain base"),World->LineTraceSingleByChannel(Hit,FVector(-1000,0,40),FVector(1000,0,40),ECC_Pawn));
+        TestTrue(TEXT("Walking capsule is blocked by fountain"),World->SweepSingleByChannel(Hit,FVector(-1000,0,100),FVector(1000,0,100),FQuat::Identity,ECC_Pawn,FCollisionShape::MakeCapsule(34,88)));
+        Actor->Destroy();
+        FAC2AssetLibrary NPC;NPC.Open(AC2::ResolveDatDirectory(TEXT("")),Error);
+        Actor=World->SpawnActor<AActor>();Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();
+        TestTrue(TEXT("Shelter Lieutenant native visual"),NPC.DrawModel(0x1f000d75,Actor,Root));
+        const auto Feet=NPC.ModelBounds(0x81000001);
+        AddInfo(FString::Printf(TEXT("Lieutenant feet=%s gravity=%d hover=%g"),*Feet.ToString(),NPC.MotionData().Values(AC2Motion::Ground).Gravity,NPC.MotionData().Values(AC2Motion::Ground).Hover));
+        TestTrue(TEXT("Lieutenant has a native foot plane"),Feet.IsValid!=0);
+        TestEqual(TEXT("Animated NPC does not cook moving triangle walls"),NPC.EnableWorldObjectCollision(),0);
     }
     World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;
 }

@@ -168,6 +168,14 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             arguments,
             object,
         } => {
+            if function==0x820e0058 {
+                if let Ok(values)=unpack_values(&arguments) {
+                    if let [PackValue::LongInt(item)]=values.as_slice() {
+                        return vec![json!({"event":"inventory_remove","id":item.to_string()})];
+                    }
+                }
+                return vec![json!({"event":"error","message":"Invalid native inventory removal"})];
+            }
             if function == 0x8204001b || function == 0x82040019 {
                 if let Ok(values) = unpack_values(&arguments) {
                     if let [PackValue::Int(value)] = values.as_slice() {
@@ -216,10 +224,14 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                 Some(Ok(ScriptMessage::Equipment(e))) => {
                     json!({"event":"equipment","slots":e.locations().unwrap_or_default().iter().map(|(slot,id)|json!({"slot":slot,"id":id.to_string()})).collect::<Vec<_>>()})
                 }
-                Some(Ok(
-                    ScriptMessage::MoveItemDone(d) | ScriptMessage::ReorganizeContentsDone(d),
-                )) => {
+                Some(Ok(ScriptMessage::MoveItemDone(d))) => {
                     json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"slot":d.actual_target_slot()})
+                }
+                Some(Ok(ScriptMessage::ReorganizeContentsDone(d))) => {
+                    // Native drag ordinals are insertion boundaries in the
+                    // pre-removal list. The Unreal view stores final cells.
+                    let slot=d.actual_target_slot()-i32::from(d.from()==d.target() && d.actual_from_slot()<d.actual_target_slot());
+                    json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"slot":slot})
                 }
                 Some(Ok(ScriptMessage::EquipItemDone(d))) => {
                     json!({"event":"inventory_result","status":d.status(),"id":d.item().to_string(),"equipped":d.location()})
@@ -263,6 +275,15 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn consumed_item_removal_is_forwarded_without_losing_its_identity() {
+        let id=0x813000000000002au64;
+        let mut arguments=2u32.to_le_bytes().to_vec();arguments.extend(id.to_le_bytes());
+        let message=|arguments|ServerEvent::Interp{function:0x820e0058,arguments,object:None};
+        let event=convert(message(arguments.clone()));
+        assert_eq!(event[0],json!({"event":"inventory_remove","id":id.to_string()}));
+        arguments.pop();assert_eq!(convert(message(arguments))[0]["event"],"error");
+    }
     #[test]
     fn global_creation_traits_and_clothing_survive_the_bridge() {
         let v=VisualDesc {parent:Some(0x1f000023),global_mods:Some(PartGroupDesc {

@@ -964,9 +964,6 @@ fn change_hand_item(
     }
     let equipped = !matches!(action, HandChange::Unequip { .. })
         && matches!(item.location, crate::inventory::Location::Bag(_));
-    if equipped && saved.inventory.items().any(|other|other.id!=item.id && other.location==crate::inventory::Location::Equipped(slot)) {
-        return Err(invalid("Unequip the item in that slot before equipping its replacement."));
-    }
     if let HandChange::Equip {
         slot: requested,
         source,
@@ -976,6 +973,12 @@ fn change_hand_item(
             return Err(invalid(
                 "The equip source or supported hand slot has changed.",
             ));
+        }
+    }
+    if equipped {
+        let previous=saved.inventory.items().find(|other|other.id!=item.id && other.location==crate::inventory::Location::Equipped(slot)).map(|i|i.id);
+        if let Some(previous)=previous {
+            return replace_equipment(peer,character,item.id,previous,slot,store,scene,metadata,now);
         }
     }
     let command = if let HandChange::Unequip {
@@ -1083,6 +1086,61 @@ fn change_hand_item(
         .into_iter()
         .filter(|delivery| delivery.recipient != character)
         .collect())
+}
+
+/// Swap an occupied slot in one durable inventory command, even with a full
+/// backpack. Admit both native item lifetimes before committing either change.
+fn replace_equipment(
+    peer:&mut Peer, character:u64, incoming:u64, outgoing:u64, slot:u16,
+    store:&mut Store, scene:&mut crate::scene::Scene,
+    metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>, now:u64,
+) -> io::Result<Vec<crate::scene::Delivery>> {
+    use crate::inventory::{Command,Location};
+    let saved=&store.characters[&character];
+    let command=Command::Equip{item:incoming,slot};
+    let candidate=saved.inventory.apply(&command).map_err(other)?;
+    let creation=saved.creation.as_ref().ok_or_else(||invalid("Character appearance is unavailable."))?;
+    let parent_instance=peer.motion.as_ref().ok_or_else(||invalid("Equipment has no avatar lifetime."))?.instance;
+    let other_hands=candidate.items().filter(|i|i.id!=incoming).fold(0,|mask,i|match i.location{Location::Equipped(s)=>mask|(s&0xc0),_=>mask});
+    let mut events=Vec::new();let mut lifetimes=Vec::new();let mut apparel_changed=false;
+    // Equipping removes the source from the dense bag. Returning the displaced
+    // item to that same ordinal inserts it again, preserving all other slots.
+    for id in [incoming,outgoing] {
+        let item=candidate.items().find(|i|i.id==id).ok_or_else(||invalid("Equipment changed."))?;
+        let apparel=crate::starter_gear::apparel_slot(item,creation.race).or_else(||crate::apparel::slot(item,creation.race));
+        let hand=metadata.get(&item.definition).and_then(|m|*m).and_then(|m|m.equipment)
+            .or_else(||apparel.map(|s|crate::inventory_request::Equipment{valid:u32::from(s),preferred:u32::from(s),primary:0,secondary:0}))
+            .ok_or_else(||invalid("Replacement equipment profile is unavailable."))?;
+        let instance=scene.next_item_instance(character,id).map_err(other)?;
+        let spawn=inventory_spawn(item,character,instance,parent_instance,metadata)?;
+        let equipped=id==incoming;
+        if apparel.is_none(){scene.validate_hand_change(character,id,&spawn,equipped).map_err(other)?;}
+        let old=scene.inventory_instance(character,id).map_err(other)?;
+        events.push(world::destroy_inventory_item(id,old));events.push(spawn.clone());
+        let destination=match item.location{Location::Bag(index)=>index,_=>0};
+        events.push(crate::ui::hand_equipment_at(character,id,slot,other_hands,hand,equipped,destination).map_err(other)?);
+        apparel_changed|=apparel.is_some();lifetimes.push((id,instance,spawn,equipped,apparel.is_some()));
+    }
+    let appearance=if apparel_changed {
+        let visual=crate::appearance::body(creation.race,creation.sex).ok_or_else(||invalid("Unsupported appearance."))?
+            .visual_desc_equipped(&creation.physical_values,crate::starter_gear::worn_mask(&candidate,creation.race),&crate::apparel::aspects(&candidate,creation.race,creation.sex)).map_err(other)?;
+        let (next,stamp)=peer.emotes.next_visual(saved.instance).map_err(other)?;
+        let event=crate::combat_visual::appearance(character,saved.instance,stamp,&visual).map_err(other)?;
+        events.push(event.clone());Some((visual,next,stamp,event))
+    } else {None};
+    peer.validate_scene_batch(&events)?;
+    store.inventory_command(&peer.session.account,character,command)?;
+    let mut updates=Vec::new();
+    for(id,instance,spawn,equipped,apparel)in lifetimes {
+        if apparel {scene.apparel_changed(character,id,instance).map_err(other)?;}
+        else {updates.extend(scene.hand_change(character,id,spawn,equipped).map_err(other)?);}
+    }
+    if let Some((visual,next,stamp,event))=appearance {
+        updates.extend(scene.broadcast(character,event).map_err(other)?);
+        scene.replace_appearance(character,&visual,stamp).map_err(other)?;peer.emotes=next;
+    }
+    peer.last_inventory_ms=Some(now);peer.queue_ordered_batch(events)?;
+    Ok(updates.into_iter().filter(|d|d.recipient!=character).collect())
 }
 
 fn selection_status(

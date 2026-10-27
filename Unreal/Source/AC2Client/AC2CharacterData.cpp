@@ -109,10 +109,58 @@ FString StringTable(FAC2DatArchive &Local, uint32 Table, uint32 Key, int32 Depth
     }
     return {};
 }
+FString ReadItemStringInfo(FAC2AssetReader& R,FAC2DatArchive& Local,int32 Depth=0)
+{
+    if(Depth>8){R.Good=false;return {};}
+    const uint32 Key=R.Word(),Table=R.Word();
+    const int16 Count=int16(R.Short()),Literal=int16(R.Short());
+    if(Count>256){R.Good=false;return {};}
+    FString Text=Literal?ReadString(R,2):StringTable(Local,Table,Key);
+    FString Noun;
+    for(int32 I=0;I<Count && R.Good;++I)
+    {
+        const uint32 Id=R.Word();const uint16 Type=R.Short();R.Align();
+        switch(Type)
+        {
+        case 2:case 6:R.Take(4);break;
+        case 3:case 7:case 4:R.Take(10);break;
+        case 5:R.Take(16);break;
+        case 9:{const FString Value=ReadItemStringInfo(R,Local,Depth+1);if(Id==0x9d066c50)Noun=Value;break;}
+        case 10:case 12:R.Take(8);break;
+        case 11:case 13:R.Take(14);break;
+        default:break; // Native empty StringInfoData subclasses carry no payload.
+        }
+        R.Align();
+    }
+    R.Align();
+    // The native generated-item format wraps its localized noun in prefix /
+    // suffix variables. Preserve the noun when the full formatter is unavailable.
+    if(Text.IsEmpty())Text=Noun;
+    while(Text.EndsWith(TEXT("]")))
+    {int32 Start;if(!Text.FindLastChar('[',Start)||Text.Len()-Start>8)break;Text.LeftInline(Start);}
+    return Text;
+}
+void ReadItemDescriptor(FAC2DatArchive& Portal,FAC2DatArchive& Local,FAC2ItemDefinition& Item)
+{
+    TArray<uint8> Bytes;FString Error;const uint32 Did=0x81000000|(Item.Id&0xffffff);
+    if(!Portal.Read(Did,Bytes,Error))return;
+    FAC2AssetReader R(MoveTemp(Bytes));const uint32 Header=R.Word();
+    if(R.Word()!=Did || !(Header&1))return;
+    // CBaseQualities starts with gmWeenieDesc. Only read its bounded metadata
+    // prefix; the remaining quality tables are not needed for inventory art.
+    const uint32 Mask=R.Word();if(Mask&1)R.Word();if(Mask&0x02000000)R.Word();if(Mask&2)R.Word();
+    const FString Name=(Mask&4)?ReadItemStringInfo(R,Local):FString();
+    if(Mask&8)ReadItemStringInfo(R,Local);
+    const uint32 Icon=(Mask&16)?R.Word():0;
+    if(!R.Good)return;
+    if(!Name.IsEmpty())Item.Name=Name;
+    if(Icon>>24==0x41)Item.Icon=Icon;
+}
 // Entity overrides have typed properties. Unknown script defaults remain unknown instead of fabricated stats.
 void ReadItem(FAC2DatArchive &Portal, FAC2DatArchive &Local, const TMap<uint32, uint32> &Types,
               FAC2ItemDefinition &Item)
 {
+    ReadItemDescriptor(Portal,Local,Item);
     FString Error;
     TArray<uint8> Bytes;
     if (!Portal.Read(Item.Id, Bytes, Error))

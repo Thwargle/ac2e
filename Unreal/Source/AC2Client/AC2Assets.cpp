@@ -129,6 +129,7 @@ struct FAC2PartAtom
 };
 struct FAC2Atoms
 {
+    TArray<FAC2IconLayer> Icons;
     TArray<FAC2MatAtom> Materials;
     TArray<FAC2MeshAtom> Meshes;
     TArray<FAC2PartAtom> Parts;
@@ -146,6 +147,7 @@ struct FAC2AppearanceTable
 };
 struct FAC2DecodedVisual
 {
+    TArray<FAC2IconLayer> Icons;
     uint32 Parent = 0, MotionDesc = 0, BehaviorTable = 0;
     FVector Scale = FVector::OneVector;
     TArray<FAC2DecodedPart> Parts;
@@ -1391,7 +1393,7 @@ struct FAC2AssetLibrary::FImpl
                         C.Atoms.Effects.Add(FX, Nodes);
                 }
                 K = R.Count(12);
-                R.Take(int64(K) * 12);
+                for(int32 A=0;A<K;++A){FAC2IconLayer Icon;Icon.Layer=R.Word();Icon.Image=R.Word();Icon.Color=R.Word();C.Atoms.Icons.Add(Icon);}
                 Collections.Add(MoveTemp(C));
             }
         }
@@ -1426,6 +1428,11 @@ struct FAC2AssetLibrary::FImpl
         }
         if (!Chosen)
             return;
+        for(const auto& Icon:Chosen->Atoms.Icons)
+        {
+            Out.Icons.RemoveAll([&](const auto& Old){return Old.Layer==Icon.Layer;});
+            Out.Icons.Add(Icon);
+        }
         for (const auto &FX : Chosen->Atoms.Effects)
             Out.Effects.Add(FX.Key, FX.Value);
         for (const auto &A : Chosen->Atoms.Materials)
@@ -1562,7 +1569,7 @@ struct FAC2AssetLibrary::FImpl
         if (Bits & 128)
         {
             const int32 N = R.Count(12);
-            R.Take(int64(N) * 12);
+            for(int32 I=0;I<N;++I){FAC2IconLayer Icon;Icon.Layer=R.Word();Icon.Image=R.Word();Icon.Color=R.Word();V.Icons.Add(Icon);}
         }
         if (Bits & 256)
             V.FX = Part(R);
@@ -1585,6 +1592,8 @@ struct FAC2AssetLibrary::FImpl
             FAC2DecodedVisual Parent;
             if (!Visual(V.Parent, Parent, Depth + 1))
                 return false;
+            for(const auto& Icon:Parent.Icons)
+                if(!V.Icons.ContainsByPredicate([&](const auto& Child){return Child.Layer==Icon.Layer;}))V.Icons.Add(Icon);
             if(!(Bits&4))V.MotionDesc=Parent.MotionDesc;
             if(!(Bits&8))V.BehaviorTable=Parent.BehaviorTable;
             if (!(Bits & 32))
@@ -2439,6 +2448,56 @@ bool FAC2AssetLibrary::AuditAttachments(FString& Error) const
         }
     return !Impl->Animated.IsEmpty();
 }
+TArray<FAC2IconLayer> FAC2AssetLibrary::IconLayers(uint32 Id,const FAC2Appearance& Appearance)
+{
+    FAC2DecodedVisual V;
+    if(!Impl->Visual(Id,V))return {};
+    FAC2Atoms Atoms;
+    for(const auto& Key:V.FX.Appearance)Impl->CollectAtoms(Key,Atoms);
+    for(const auto& Key:Appearance)Impl->CollectAtoms(Key,Atoms);
+    for(const auto& Icon:Atoms.Icons)
+    {
+        V.Icons.RemoveAll([&](const auto& Old){return Old.Layer==Icon.Layer;});
+        V.Icons.Add(Icon);
+    }
+    // A null image clears an inherited layer; it is not a missing texture.
+    V.Icons.RemoveAll([](const auto& Icon){return !Icon.Image;});
+    V.Icons.Sort([](const auto& A,const auto& B){return A.Layer<B.Layer;});
+    return V.Icons;
+}
+int32 FAC2AssetLibrary::EnableWorldObjectCollision()
+{
+    if (!Impl->ModelRoot.IsValid()) return 0;
+    // MotionData is inherited by animated props too (including lifestones).
+    // Only a model with an actual locomotion graph is a moving creature.
+    if (Impl->Animated.ContainsByPredicate([](const auto& G){return G.Parent<0 && G.Locomotion.IsValid();})) return 0;
+    int32 Count=0;
+    TInlineComponentArray<UProceduralMeshComponent*> Meshes(Impl->ModelRoot->GetOwner());
+    for(auto* Mesh:Meshes)
+    {
+        bool Solid=false;
+        for(int32 S=0;S<Mesh->GetNumSections();++S)
+            if(auto* Section=Mesh->GetProcMeshSection(S))
+            {
+                const auto* Mat=Mesh->GetMaterial(S);
+                Section->bEnableCollision=Section->bSectionVisible && Mat && Mat->GetBlendMode()==BLEND_Opaque;
+                Solid|=Section->bEnableCollision;
+            }
+        if(!Solid)continue;
+        Mesh->bUseAsyncCooking=false;
+        Mesh->bUseComplexAsSimpleCollision=true;
+        // SetProcMeshSection rebuilds the cooked collision after the flags change.
+        const FProcMeshSection Section=*Mesh->GetProcMeshSection(0);
+        Mesh->SetProcMeshSection(0,Section);
+        Mesh->SetCollisionObjectType(ECC_WorldDynamic);
+        Mesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+        Mesh->SetCollisionResponseToChannel(ECC_Pawn,ECR_Block);
+        Mesh->SetCollisionResponseToChannel(ECC_Camera,ECR_Block);
+        Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+        ++Count;
+    }
+    return Count;
+}
 bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root,
                                  const FAC2Appearance &Appearance)
 {
@@ -2764,6 +2823,7 @@ void FAC2AssetLibrary::StopEffect(uint32 Effect)
     for(int32 I=Impl->NetworkEffects.Num()-1;I>=0;--I)if(Impl->NetworkEffects[I].Effect==Effect)
     {if(Impl->AttachedEffects)Impl->AttachedEffects->StopSource(Impl->NetworkEffects[I].Attachment.Key);Impl->NetworkEffects.RemoveAt(I);}
 }
+bool FAC2AssetLibrary::HasStartupEffects() const {return !Impl->StartupEffects.IsEmpty();}
 int32 FAC2AssetLibrary::EffectParticleCount() const
 {
     int32 Count=Impl->AttachedEffects?Impl->AttachedEffects->Count():0;

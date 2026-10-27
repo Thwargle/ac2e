@@ -36,6 +36,10 @@ struct FAC2UISceneInfo
     FAC2PreviewLighting Lighting;
     TMap<uint32, FTransform> Locations;
 };
+struct FAC2IconLayer
+{
+    uint32 Layer=0, Image=0, Color=0xffffffff;
+};
 
 // Owns this loaded patch's decoded resources and GC references. Never writes DATs.
 class FAC2AssetLibrary : public FGCObject
@@ -63,6 +67,10 @@ class FAC2AssetLibrary : public FGCObject
     // Posed, rendered triangles in model-root coordinates, excluding invisible DAT helpers.
     // Optional MeshType uses the native MeshType enum (feet/head/body etc.).
     FBox ModelBounds(uint32 MeshType = 0) const;
+    // Static network props keep solid surfaces; animated bodies and FX do not
+    // become collision walls. Movement remains server owned.
+    int32 EnableWorldObjectCollision();
+    TArray<FAC2IconLayer> IconLayers(uint32 Visual, const FAC2Appearance& Appearance = {});
     bool DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Root, FAC2UISceneInfo *Info = nullptr);
     // Call before drawing a preview, and again when its camera light changes.
     void SetPreviewLighting(const FAC2PreviewLighting& Lighting, const FTransform& SceneToWorld);
@@ -78,6 +86,7 @@ class FAC2AssetLibrary : public FGCObject
     bool PlayEffectScript(uint32 Script);
     void StopEffect(uint32 Effect);
     int32 EffectParticleCount() const;
+    bool HasStartupEffects() const;
     const FAC2MotionData &MotionData() const;
     bool SetMotionDescriptor(uint32 Id);
     bool AuditAttachments(FString &Error) const;

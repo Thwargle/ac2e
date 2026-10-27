@@ -456,10 +456,11 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
     return Layer;
 }
 int32 FAC2NativeUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometry &G, FAC2Fonts &Fonts,
-                          TFunction<int32(const FAC2NativeNode &, int32)> Content) const
+                          TFunction<int32(const FAC2NativeNode &, int32)> Content, int32 FirstNode, int32 EndNode) const
 {
     for (int32 Index : PaintOrder())
     {
+        if(Index<FirstNode || Index>=EndNode)continue;
         const auto &N = Nodes[Index];
         PushClip(Out, G, N.Clip);
         // An animation replaces its previous image; never draw all frames on top of one another.

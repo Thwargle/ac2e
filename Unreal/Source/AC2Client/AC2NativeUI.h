@@ -46,7 +46,8 @@ class FAC2NativeUI
     bool CursorAt(FVector2D Point, uint32& Image, FIntPoint& Hotspot) const;
     void Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts);
     int32 Paint(FSlateWindowElementList &, int32 Layer, const FGeometry &, FAC2Fonts &,
-                TFunction<int32(const FAC2NativeNode &, int32)> Content = {}) const;
+                          TFunction<int32(const FAC2NativeNode &, int32)> Content = {},
+                          int32 FirstNode = 0, int32 EndNode = MAX_int32) const;
     int32 PaintText(const FAC2NativeNode &, const FString &, FSlateWindowElementList &, int32,
                     const FGeometry &, FAC2Fonts &) const;
     const FSlateBrush *Brush(uint32 Id) const

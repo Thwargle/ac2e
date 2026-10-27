@@ -43,6 +43,7 @@ class SAC2GameUI : public SCompoundWidget
     bool Smoke(FString &Error);
     void SmokeDraft();
     void ToggleInventory();
+    void RefreshInventoryAppearance() {if(ShowInventory)UpdatePortrait();}
     void ToggleStats();
     void ToggleMap();
     void ToggleOptions();
@@ -53,6 +54,7 @@ class SAC2GameUI : public SCompoundWidget
     bool MapSmokeStep(int32 Step, FString &Error) { return MapUI.SmokeStep(Step, Error); }
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
     bool SmokeCombatInput(int32 Step, FString &Error);
+    bool SmokeInventoryInput(int32 Step, FString &Error);
     bool SmokeWorldTarget(const FString &Id, FString &Error,FKey Button=EKeys::LeftMouseButton,bool DoubleClick=false,bool CenterAim=false);
     bool SmokeMouseControls(int32 Step,const FString& Id,FString& Error);
     FAC2CursorIcon CursorAt(FVector2D ScreenPoint) const;
@@ -111,11 +113,20 @@ class SAC2GameUI : public SCompoundWidget
     void ApplyOptions();
     bool OptionAction(FName Name);
     int32 Pack = 0, PackRow = 0, SelectedItem = INDEX_NONE;
+    FString SelectedNetworkItem;
+    int32 PointerNodesStart=MAX_int32;
+    int32 PackStart() const {return ModeHasNetwork ? (Pack?42+(Pack-1)*12:0) : Pack*24;}
+    int32 PackCount() const {return ModeHasNetwork ? (Pack?12:42) : 24;}
+    bool ModeHasNetwork=false;
     FName PressedAction;
+    FVector2D ItemPressPoint;
+    FString DragItem;
     struct FIcon
     {
         FIntRect Rect, Clip;
         uint32 Image;
+        int32 Quantity=1;
+        FLinearColor Tint=FLinearColor::White;
     };
     TArray<FIcon> Icons;
     void Rebuild();

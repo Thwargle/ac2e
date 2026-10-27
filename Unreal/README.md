@@ -330,18 +330,39 @@ approximation. Native layout evaluation supplies the window geometry; local C++
 bindings supply the supported interactions and offline values.
 
 Each new character receives the native race's starter inventory (26 distinct
-templates across five races). Inventory has four 24-slot pages and the native
-equipment slot bits. Slots use the native six-column list and equipment artwork.
+templates across five races). Offline inventory preserves four 24-slot pages;
+AC2E uses its authoritative 78-slot bag (42 main slots and three 12-slot packs).
+Slots use the native six-column list and equipment artwork.
 Click an item to inspect it; double-click to equip/unequip. Click an empty slot on
 another pack to move the selected item. Mouse-wheel over the pack reveals the last
-row. Existing 96-slot saves are preserved; retail pack capacities are not imposed. Replacement equipment returns displaced items to
+rows. Existing offline 96-slot saves are preserved. Replacement equipment returns displaced items to
 the backpacks. Full bags, conflicting slots and known race/level restrictions
 reject the operation without losing items. Equipment and pack positions persist.
 
-The native examination panel shows local level/XP/vitals and known item armor. Explicit native item overrides
-provide names, descriptions, icons and bonuses where available. Several older
-starter templates depend on script defaults; their source-derived labels and
-labels stand in for missing names, and unknown weapon damage uses the
+Online inventory supports dragging bag items between positions or onto compatible
+equipment slots, and dragging worn items back into the bag. Double-click replaces
+occupied equipment in one server transaction; the outgoing item takes the incoming
+item's bag position, including when the bag is full. Item selection follows its
+network identity across object recreation. Consumption and quest turn-ins remove
+the item and compact bag positions; reordering applies the server's final ordinal.
+VisualDesc/appearance icon layers supply colored armor and weapon artwork, with
+the native qualities descriptor as the fallback for potions and quest items.
+Tooltips render above the panels, icons and paperdoll. The current authored loot
+rules grant rewards directly to the backpack; corpse containers and dropping items
+into the world are still unfinished.
+
+Network scenery with solid opaque geometry now blocks the character and camera;
+translucent effects do not form walls. Native locomotion graphs distinguish moving
+creatures from animated stationary props such as lifestones. Grounded placed NPCs
+align their native foot plane to streamed floor collision without changing their
+authoritative network position or grounding flying creatures. Portal meshes and
+the invisible native interaction hulls of effect-only portals participate in mouse
+picking; solid objects continue to ignore halos. Interaction hulls stay nonblocking.
+
+The native examination panel shows local level/XP/vitals and known item armor.
+Native qualities descriptors and entity overrides provide localized names,
+descriptions, fallback icons and known bonuses. Unresolved script defaults retain
+source-derived labels, and unknown weapon damage in the offline sandbox uses the
 existing 25-damage sandbox strike. Retail progression/skills/vital formulas are
 not connected. Native StartInvData equips starter clothing on creation. Equipping
 or removing those garments updates the preview and player; selected garment colours

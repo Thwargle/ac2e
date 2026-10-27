@@ -139,6 +139,8 @@ void SAC2GameUI::Rebuild()
     ButtonActions.Reset();
     Icons.Reset();
     Hints.Reset();
+    PointerNodesStart=MAX_int32;
+    ModeHasNetwork=Mode->Network.IsValid();
     if (Frontend)
     {
         Native.Visibility.Add(Token(TEXT("OptionField")),true);
@@ -176,6 +178,8 @@ void SAC2GameUI::Rebuild()
     Native.States.Add(Token(TEXT("StartAttackButton")),Token(Combat?TEXT("ghosted"):TEXT("normal")));
     Native.States.Add(Token(TEXT("StopAttackButton")),Token(Combat?TEXT("normal"):TEXT("ghosted")));
     const auto *P = Mode->Characters.Active();
+    if(P && ModeHasNetwork && !SelectedNetworkItem.IsEmpty())
+        SelectedItem=P->Items.IndexOfByPredicate([&](const auto& I){return I.NetworkId==SelectedNetworkItem;});
     const float MaxHealth=Mode->Network ? Mode->Network->MaxHealth : 100, MaxVigor=Mode->Network ? Mode->Network->MaxVigor : 100;
     SetText(TEXT("HealthText"), FString::Printf(TEXT("%.0f / %.0f"), P ? P->Health : 0,MaxHealth));
     SetText(TEXT("VigorText"), FString::Printf(TEXT("%.0f / %.0f"), P ? P->Vigor : 0,MaxVigor));
@@ -247,11 +251,19 @@ void SAC2GameUI::Rebuild()
     }
     if (ShowInventory && P)
     {
+        auto AddIcon=[&](const FAC2InventoryItem& Item,FIntRect Rect,FIntRect Clip)
+        {
+            const auto& D=Mode->CharacterCatalog.Items[Item.Definition];
+            auto Layers=Item.Visual?Assets->IconLayers(Item.Visual,Item.Aspects):TArray<FAC2IconLayer>();
+            if(Layers.IsEmpty())Icons.Add({Rect,Clip,D.Icon,Item.Quantity});
+            else for(int32 I=0;I<Layers.Num();++I)
+                Icons.Add({Rect,Clip,Layers[I].Image,I==Layers.Num()-1?Item.Quantity:1,FLinearColor(FColor(Layers[I].Color))});
+        };
         Native.Root(0x22000001, TEXT("PaperDollViewport"));
         const FIntRect List = Native.Bounds(TEXT("ContainerListBox"));
-        for (int32 C = 0; C < 24; ++C)
+        for (int32 C = 0; C < PackCount(); ++C)
         {
-            const int32 Cell = Pack * 24 + C;
+            const int32 Cell = PackStart() + C;
             const int32 Index =
                 P->Items.IndexOfByPredicate([&](const auto &I) { return !I.Equipped && I.Cell == Cell; });
             const FIntPoint XY = List.Min + FIntPoint((C % 6) * 36, (C / 6 - PackRow) * 36);
@@ -260,11 +272,12 @@ void SAC2GameUI::Rebuild()
                 continue;
             Native.Template(0x22000001, TEXT("ItemBackground"), R, List);
             FName Key(*FString::Printf(TEXT("Cell%d"), Cell));
-            Buttons.Add(Key, SlateRect(R));
+            Buttons.Add(Key, SlateRect(FIntRect(FMath::Max(R.Min.X,List.Min.X),FMath::Max(R.Min.Y,List.Min.Y),
+                FMath::Min(R.Max.X,List.Max.X),FMath::Min(R.Max.Y,List.Max.Y))));
             if (Index != INDEX_NONE)
             {
                 const auto &D = Mode->CharacterCatalog.Items[P->Items[Index].Definition];
-                Icons.Add({FIntRect(XY + FIntPoint(2, 2), XY + FIntPoint(34, 34)), List, D.Icon});
+                AddIcon(P->Items[Index],FIntRect(XY + FIntPoint(2, 2), XY + FIntPoint(34, 34)),List);
                 Hints.Add(Key, D.Name);
             }
         }
@@ -281,7 +294,7 @@ void SAC2GameUI::Rebuild()
             {
                 const auto &D = Mode->CharacterCatalog.Items[P->Items[Index].Definition];
                 if (const auto *Icon = Native.Descendant(*Slot, TEXT("ItemIcon")))
-                    Icons.Add({Icon->Rect, Icon->Clip, D.Icon});
+                    AddIcon(P->Items[Index],Icon->Rect,Icon->Clip);
                 FName Key(*FString::Printf(TEXT("Item%d"), Index));
                 Buttons.Add(Key, SlateRect(Slot->Clip));
                 Hints.Add(Key, D.Name);
@@ -320,7 +333,8 @@ void SAC2GameUI::Rebuild()
             if (D.HasDamage)
                 Lines.Add(FString::Printf(TEXT("Damage: %d"), D.Damage));
             Lines.Add(Item.Equipped ? TEXT("Equipped") : TEXT("In backpack"));
-            Lines.Add(TEXT("Double-click the item to equip or remove it."));
+            Lines.Add(D.Preferred?TEXT("Double-click to equip or remove."):TEXT("Double-click to use."));
+            if(Item.Quantity>1)Lines.Add(FString::Printf(TEXT("Quantity: %d"),Item.Quantity));
         }
         else
         {
@@ -369,6 +383,7 @@ void SAC2GameUI::Rebuild()
         Native.LoadImage(Icon.Image, *Assets);
     Native.Prepare(*Assets, Fonts);
     MapUI.Update(*Mode.Get(), FIntPoint(FMath::RoundToInt(Size.X), FMath::RoundToInt(Size.Y)), *Assets, Fonts);
+    PointerNodesStart=Native.Nodes.Num();
     BuildPointerFeedback();
     Native.Prepare(*Assets, Fonts);
 }
@@ -379,7 +394,7 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
     if (!Mode.IsValid() || !VisibleWorld())
         return Layer;
     const FGeometry P = G.MakeChild(Size, FSlateLayoutTransform(Scale));
-    Layer = Native.Paint(Out, Layer, P, Fonts);
+    Layer = Native.Paint(Out, Layer, P, Fonts,{},0,PointerNodesStart);
     for (const auto &I : Icons)
         if (const auto *B = Native.Brush(I.Image))
         {
@@ -387,7 +402,9 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
                 P.MakeChild(FVector2D(I.Clip.Size()), FSlateLayoutTransform(FVector2D(I.Clip.Min)))));
             FSlateDrawElement::MakeBox(
                 Out, ++Layer,
-                P.ToPaintGeometry(FVector2D(I.Rect.Size()), FSlateLayoutTransform(FVector2D(I.Rect.Min))), B);
+                P.ToPaintGeometry(FVector2D(I.Rect.Size()), FSlateLayoutTransform(FVector2D(I.Rect.Min))), B,ESlateDrawEffect::None,I.Tint);
+            if(I.Quantity>1)
+                BodyFont->Draw(Out,++Layer,P,FString::FromInt(I.Quantity),FVector2D(I.Rect.Min)+FVector2D(1,16),FLinearColor::White);
             Out.PopClip();
         }
     if (ShowInventory && Portrait.IsValid() && Portrait->Ready)
@@ -422,7 +439,8 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
         Out.PopClip();
     }
     Layer = MapUI.Paint(Out, Layer + 1, P, Fonts);
-    return SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
+    Layer=SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
+    return Native.Paint(Out,Layer+1,P,Fonts,{},PointerNodesStart);
 }
 FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 {
@@ -445,6 +463,7 @@ FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 }
 void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
 {
+    DragItem.Reset();
     DraggingOption=INDEX_NONE;PressedAction=NAME_None;Native.Pressed=0;
     RotatingPortrait=false;
     if(MapCaptured){MapCaptured=false;MapUI.Release(Mouse,false,false);}
@@ -471,6 +490,14 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
             if (Inside(B.Value, Mouse))
             {
                 PressedAction = B.Key;
+                ItemPressPoint=Mouse;DragItem.Reset();
+                if(Mode->Network)
+                {
+                    const auto* P=Mode->Characters.Active();const FString Key=B.Key.ToString();
+                    const int32 Index=Key.StartsWith(TEXT("Item"))?FCString::Atoi(*Key.Mid(4)):
+                        Key.StartsWith(TEXT("Cell"))&&P?P->Items.IndexOfByPredicate([&](const auto& I){return !I.Equipped && I.Cell==FCString::Atoi(*Key.Mid(4));}):INDEX_NONE;
+                    if(P && P->Items.IsValidIndex(Index))DragItem=P->Items[Index].NetworkId;
+                }
                 Native.Pressed = Native.Hovered;
                 return FReply::Handled().CaptureMouse(SharedThis(this));
             }
@@ -515,6 +542,22 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
     }
     if (E.GetEffectingButton() == EKeys::LeftMouseButton && !PressedAction.IsNone())
     {
+        if(Mode->Network && !DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
+        {
+            const auto* P=Mode->Characters.Active();
+            const int32 Index=P?P->Items.IndexOfByPredicate([&](const auto& I){return I.NetworkId==DragItem;}):INDEX_NONE;
+            if(Index!=INDEX_NONE)
+            {
+                for(const auto& B:Buttons)if(B.Key.ToString().StartsWith(TEXT("Cell")) && Inside(B.Value,Mouse))
+                    {Mode->Network->MoveItem(Index,FCString::Atoi(*B.Key.ToString().Mid(4)));break;}
+                if(!P->Items[Index].Equipped)for(int32 Bit=0;Bit<11;++Bit)
+                    if(Native.Bounds(*(FString(SlotNames[Bit])+TEXT("_Slot"))).Contains(FIntPoint(Mouse.X,Mouse.Y)))
+                        {Mode->Network->UseItem(Index,1u<<Bit);break;}
+            }
+            DragItem.Reset();PressedAction=NAME_None;Native.Pressed=0;
+            return FReply::Handled().ReleaseMouseCapture();
+        }
+        DragItem.Reset();
         FName ActionName = PressedAction;
         PressedAction = NAME_None;
         Native.Pressed = 0;
@@ -563,7 +606,9 @@ FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
     if (MapUI.Wheel(P, E.GetWheelDelta())) return FReply::Handled();
     if (ShowInventory && Inside(SlateRect(Native.Bounds(TEXT("ContainerListBox"))), P))
     {
-        PackRow = FMath::Clamp(PackRow - FMath::RoundToInt(E.GetWheelDelta()), 0, 1);
+        const int32 Rows=FMath::DivideAndRoundUp(PackCount(),6);
+        const int32 VisibleRows=FMath::Max(1,Native.Bounds(TEXT("ContainerListBox")).Height()/36);
+        PackRow = FMath::Clamp(PackRow - FMath::RoundToInt(E.GetWheelDelta()), 0, FMath::Max(0,Rows-VisibleRows));
         return FReply::Handled();
     }
     if(ShowStats && Inside(SlateRect(Native.Bounds(TEXT("ExaminationListBox"))),P))
@@ -727,6 +772,8 @@ void SAC2GameUI::ToggleMap()
 void SAC2GameUI::SelectItem(int32 Index)
 {
     SelectedItem = Index;
+    const auto* P=Mode.IsValid()?Mode->Characters.Active():nullptr;
+    SelectedNetworkItem=P && P->Items.IsValidIndex(Index)?P->Items[Index].NetworkId:FString();
     InspectedObject.Reset();InspectedMob.Reset();ExamineScroll=0;
     ShowStats = true;
     if (Mode.IsValid()) { Mode->bMap = false; MapUI.Close(); }

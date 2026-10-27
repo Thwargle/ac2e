@@ -273,6 +273,7 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
         CharacterVisuals.Add(PlayerId, J);
         if (auto P = Pawn(Mode))
             P->ApplyAvatar(Obj.Visual, Obj.Scale.Z, Obj.Scale.X, Obj.Aspects);
+        if(auto H=HUD(Mode);H && H->GameUI)H->GameUI->RefreshInventoryAppearance();
         return;
     }
     if (Obj.Actor.IsValid())
@@ -289,20 +290,35 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     A->SetActorLocation(Obj.Goal);
     A->SetActorRotation(FRotator(0, Obj.Yaw - 90, 0));
     A->SetActorScale3D(Obj.Scale * Obj.EntityScale);
+    auto Body=NewObject<USceneComponent>(A);
+    Body->SetupAttachment(Root);Body->RegisterComponent();Obj.Body=Body;
     Obj.Model = MakeUnique<FAC2AssetLibrary>();
     FString Error;
     if (!Obj.Model->Open(Mode->DatDirectory, Error) ||
-        !Obj.Model->DrawModel(Obj.Visual, A, Root, Obj.Aspects))
+        !Obj.Model->DrawModel(Obj.Visual, A, Body, Obj.Aspects))
     {
         UE_LOG(LogTemp, Warning, TEXT("AC2 server visual unavailable: %08X"), Obj.Visual);
         A->Destroy();
         Obj.Model.Reset();
     }
-    else if (Smoke)
+    else
     {
+        const FBox FeetBounds=Obj.Model->ModelBounds(0x81000001);
+        const auto Motion=Obj.Model->MotionData().Values(AC2Motion::Ground);
+        const bool GroundedBody=FeetBounds.IsValid && Motion.Gravity && FMath::IsNearlyZero(Motion.Hover);
+        Obj.GroundedContent=Obj.Content && Obj.Parent.IsEmpty() && GroundedBody;
+        // Feet are a mesh-type in the DAT. Do not use an effect's bounding box
+        // or a tail tip as the humanoid's standing plane.
+        Obj.FootZ=GroundedBody?FeetBounds.Min.Z:0;
+        if(GroundedBody && Obj.Parent.IsEmpty())Body->SetRelativeLocation(FVector(0,0,-Obj.FootZ));
+        Obj.Solid=Obj.Content && Obj.Parent.IsEmpty() && Obj.Model->EnableWorldObjectCollision()>0;
+        A->SetActorEnableCollision(Obj.Solid);
+        if(Smoke)
+        {
         const FBox Bounds = A->GetComponentsBoundingBox(true);
         UE_LOG(LogTemp, Display, TEXT("AC2 network model %08X size=%s"), Obj.Visual,
                *Bounds.GetSize().ToString());
+        }
     }
 }
 void FAC2Network::Enter(const FString &Id)
@@ -483,7 +499,7 @@ FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Dire
 {
     if(!IsWorld())return FString();
     const FVector End=Origin+Direction.GetSafeNormal()*15000.;
-    // Network models have no movement collision. Bounds are only a broad phase:
+    // Bounds are only a broad phase; creature visuals have no triangle collision:
     // large lifestones and animated limbs overlap other actors' screen rectangles.
     // Pick the current rendered triangles, bounded by dungeon/scenery collision.
     FHitResult Wall;
@@ -499,6 +515,17 @@ FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Dire
         FVector Hit,Normal;float HitTime=0;
         if(!Bounds.IsValid || !FMath::LineExtentBoxIntersection(Bounds,Origin,End,FVector::ZeroVector,Hit,Normal,HitTime) || HitTime>=Limit)continue;
         TInlineComponentArray<UProceduralMeshComponent*> Meshes(E.Value->Actor.Get());
+        bool HasSolidSurface=false,HasVisibleSurface=false;
+        for(auto* Mesh:Meshes)if(Mesh->IsVisible() && !Mesh->bHiddenInGame)
+            for(int32 Section=0;Section<Mesh->GetNumSections();++Section)
+                if(const auto* Part=Mesh->GetProcMeshSection(Section);Part && Part->bSectionVisible && !Part->ProcIndexBuffer.IsEmpty())
+                {
+                    HasVisibleSurface=true;
+                    if(const auto* Mat=Mesh->GetMaterial(Section);Mat && (Mat->GetBlendMode()==BLEND_Opaque || Mat->GetBlendMode()==BLEND_Masked))HasSolidSurface=true;
+                }
+        // Effect-only portals retain an alpha-zero native mesh as their
+        // interaction hull. Keep it invisible/nonblocking, but selectable.
+        const bool EffectHull=!HasVisibleSurface && E.Value->Model && E.Value->Model->HasStartupEffects();
         for(auto* Mesh:Meshes)
         {
             if(!Mesh->IsVisible() || Mesh->bHiddenInGame)continue;
@@ -510,11 +537,15 @@ FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Dire
             for(int32 Section=0;Section<Mesh->GetNumSections();++Section)
             {
                 const auto* Part=Mesh->GetProcMeshSection(Section);
-                if(!Part || !Part->bSectionVisible)continue;
+                if(!Part || (!Part->bSectionVisible && !EffectHull))continue;
                 // Glows, halos and spell billboards can span neighbouring actors;
                 // they are visual effects, not the object's selectable surface.
                 const auto* Material=Mesh->GetMaterial(Section);
-                if(Material && Material->GetBlendMode()!=BLEND_Opaque && Material->GetBlendMode()!=BLEND_Masked)continue;
+                // Portals can consist entirely of translucent/additive native
+                // mesh. Prefer solid surfaces when present so a character's
+                // halo cannot steal clicks from a neighbour. Particle actors
+                // are separate and are never included in this ray test.
+                if(HasSolidSurface && Material && Material->GetBlendMode()!=BLEND_Opaque && Material->GetBlendMode()!=BLEND_Masked)continue;
                 for(int32 I=0;I+2<Part->ProcIndexBuffer.Num();I+=3)
                     if(FMath::SegmentTriangleIntersection(LocalStart,LocalStart+Delta*Limit,
                         Part->ProcVertexBuffer[Part->ProcIndexBuffer[I]].Position,
@@ -525,6 +556,48 @@ FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Dire
         }
     }
     return Best;
+}
+bool FAC2Network::SmokeWorldProps(FString& Error) const
+{
+    int32 Portals=0,Grounded=0;
+    for(const auto& Entry:Objects)
+    {
+        const auto& Obj=*Entry.Value;
+        if(!Obj.Actor.IsValid() || Obj.Actor->IsHidden())continue;
+        if(Obj.GroundedContent && Obj.Body.IsValid())
+        {
+            FHitResult Hit;const FVector Foot=Obj.Body->GetComponentTransform().TransformPosition(FVector(0,0,Obj.FootZ));
+            if(Mode->GetWorld()->LineTraceSingleByObjectType(Hit,Foot+FVector(0,0,50),Foot-FVector(0,0,200),FCollisionObjectQueryParams(ECC_WorldStatic)) && Hit.ImpactNormal.Z>.57f)
+            {
+                if(FMath::Abs(Foot.Z-Hit.ImpactPoint.Z-2)>3){Error=TEXT("Grounded NPC does not meet floor");return false;}
+                ++Grounded;
+            }
+        }
+        if(Obj.Visual!=0x1f00031e || !Targetable(Entry.Key,Obj))continue;
+        bool Picked=false;TInlineComponentArray<UProceduralMeshComponent*> Meshes(Obj.Actor.Get());
+        for(auto* Mesh:Meshes)if(Mesh->IsVisible())
+            for(int32 S=0;S<Mesh->GetNumSections() && !Picked;++S)
+                if(const auto* Section=Mesh->GetProcMeshSection(S))
+                    for(int32 I=0;I+2<Section->ProcIndexBuffer.Num() && !Picked;I+=3)
+                    {
+                        FVector Points[3];
+                        for(int32 V=0;V<3;++V)Points[V]=Mesh->GetComponentTransform().TransformPosition(FVector(Section->ProcVertexBuffer[Section->ProcIndexBuffer[I+V]].Position));
+                        const FVector Normal=FVector::CrossProduct(Points[1]-Points[0],Points[2]-Points[0]).GetSafeNormal();
+                        if(!Normal.IsNearlyZero())
+                            for(double Side:{-1.,1.})Picked|=WorldTargetAtRay((Points[0]+Points[1]+Points[2])/3+Normal*(Side*20),-Normal*Side)==Entry.Key;
+                    }
+        if(!Picked)
+        {
+            for(auto* Mesh:Meshes)
+                for(int32 S=0;S<Mesh->GetNumSections();++S)if(const auto* Part=Mesh->GetProcMeshSection(S))
+                    UE_LOG(LogTemp,Display,TEXT("AC2 portal pick mesh visible=%d hidden=%d section=%d triangles=%d blend=%d"),Mesh->IsVisible(),Mesh->bHiddenInGame,Part->bSectionVisible,Part->ProcIndexBuffer.Num()/3,Mesh->GetMaterial(S)?int32(Mesh->GetMaterial(S)->GetBlendMode()):-1);
+            Error=FString::Printf(TEXT("Native portal %s cell=%08X meshes=%d bounds=%s cannot be selected"),*Entry.Key,Obj.Cell,Meshes.Num(),*Obj.Actor->GetComponentsBoundingBox(true).ToString());return false;
+        }
+        ++Portals;
+    }
+    if(!Portals){Error=TEXT("No native portal present for picking regression");return false;}
+    UE_LOG(LogTemp,Display,TEXT("AC2 world props passed: selectable portals=%d grounded NPCs=%d"),Portals,Grounded);
+    return true;
 }
 void FAC2Network::SelectTarget(const FString &Id)
 {
@@ -613,7 +686,7 @@ void FAC2Network::UseTarget()
         Send(J);
     }
 }
-void FAC2Network::UseItem(int32 Index)
+void FAC2Network::UseItem(int32 Index, uint32 EquipSlot)
 {
     auto P = Mode->Characters.Active();
     if (!IsWorld() || !P || !P->Items.IsValidIndex(Index))
@@ -638,7 +711,7 @@ void FAC2Network::UseItem(int32 Index)
     {
         auto J = Command(TEXT("equip"));
         J->SetStringField(TEXT("id"), I.NetworkId);
-        J->SetNumberField(TEXT("location"), D->Preferred);
+        J->SetNumberField(TEXT("location"), EquipSlot?EquipSlot:D->Preferred);
         J->SetNumberField(TEXT("slot"), I.Cell);
         Send(J);
     }
@@ -658,8 +731,13 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
     if (!IsWorld() || !P || !P->Items.IsValidIndex(Index) || Slot < 0 || Slot >= 78)
         return;
     auto &I = P->Items[Index];
+    int32 Count=0;for(const auto& Item:P->Items)if(!Item.Equipped)++Count;
+    Slot=FMath::Min(Slot,Count);
     if (I.Equipped)
-        return;
+    {
+        auto J=Command(TEXT("unequip"));J->SetStringField(TEXT("id"),I.NetworkId);
+        J->SetNumberField(TEXT("location"),I.Equipped);J->SetNumberField(TEXT("slot"),Slot);Send(J);return;
+    }
     auto J = Command(TEXT("move_item"));
     J->SetStringField(TEXT("id"), I.NetworkId);
     J->SetNumberField(TEXT("from"), I.Cell);
@@ -925,6 +1003,21 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             }
         return;
     }
+    if(Event==TEXT("inventory_remove"))
+    {
+        if(const int32* CellIndex=BagSlots.Find(Id))
+        {
+            const int32 Removed=*CellIndex;BagSlots.Remove(Id);
+            for(auto& Entry:BagSlots)if(Entry.Value>Removed)--Entry.Value;
+        }
+        WornSlots.Remove(Id);
+        if(auto P=Mode->Characters.Active())
+        {
+            P->Items.RemoveAll([&](const auto& I){return I.NetworkId==Id;});
+            for(auto& I:P->Items)if(auto* Slot=BagSlots.Find(I.NetworkId))I.Cell=*Slot;
+        }
+        return;
+    }
     if (Event == TEXT("inventory_result"))
     {
         if (N(J, TEXT("status")) != 0)
@@ -952,14 +1045,22 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             { I.Equipped=WornSlots.FindRef(I.NetworkId); if(auto BagCell=BagSlots.Find(I.NetworkId)) I.Cell=*BagCell; }
             return;
         }
-        if (auto P = Mode->Characters.Active())
-            for (auto &I : P->Items)
-                if (I.NetworkId == Id && J->HasField(TEXT("slot")))
+        if(J->HasField(TEXT("slot")))
+        {
+            const int32 Destination=N(J,TEXT("slot"));
+            if(const auto* Previous=BagSlots.Find(Id))
+            {
+                const int32 Source=*Previous;
+                for(auto& Entry:BagSlots)if(Entry.Key!=Id)
                 {
-                    I.Cell = N(J, TEXT("slot"));
-                    I.Equipped = 0;
-                    BagSlots.Add(Id, I.Cell);
+                    if(Source<Destination && Entry.Value>Source && Entry.Value<=Destination)--Entry.Value;
+                    else if(Source>Destination && Entry.Value>=Destination && Entry.Value<Source)++Entry.Value;
                 }
+            }
+            BagSlots.Add(Id,Destination);
+            if(auto P=Mode->Characters.Active())for(auto& I:P->Items)
+                if(auto* Slot=BagSlots.Find(I.NetworkId)){I.Cell=*Slot;I.Equipped=WornSlots.FindRef(I.NetworkId);}
+        }
         return;
     }
     if (Event == TEXT("quality") && (Id.IsEmpty() || Id == PlayerId))
@@ -1019,6 +1120,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
         Obj.Entity = N(J, TEXT("entity"));
+        Obj.Content=(FCString::Strtoui64(*Id,nullptr,10)>>48)==0x8140;
         Obj.EntityScale = FMath::Clamp(float(N(J, TEXT("scale"), 1)), .01f, 100.f);
         if (Obj.Name.IsEmpty() && Obj.Entity)
         {
@@ -1036,6 +1138,8 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory, Did);
             FAC2InventoryItem I;
             I.Definition = Did;
+            const auto ItemVisual=O(J,TEXT("visual"));
+            I.Visual=uint32(N(ItemVisual,TEXT("did")));I.Aspects=Aspects(ItemVisual);
             I.NetworkId = Id;
             I.Quantity = FMath::Max(1, int32(N(J, TEXT("quantity"), 1)));
             I.Cell = BagSlots.Contains(Id) ? BagSlots[Id] : P->Items.Num();
@@ -1132,6 +1236,19 @@ void FAC2Network::Tick(float Delta)
                 P && !Obj.MissileFinished && Mode->CellVisible(Obj.Cell ? Obj.Cell : Cell) &&
                 FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
             A->SetActorHiddenInGame(!Visible);
+            A->SetActorEnableCollision(Visible && Obj.Solid);
+            if(Visible && Obj.GroundedContent && Obj.Body.IsValid() && Time>=Obj.NextGroundCheck)
+            {
+                Obj.NextGroundCheck=Time+.25;
+                FHitResult Floor;FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2NPCFloor),true,A);
+                if(Mode->GetWorld()->LineTraceSingleByObjectType(Floor,Next+FVector(0,0,100),Next-FVector(0,0,200),
+                    FCollisionObjectQueryParams(ECC_WorldStatic),Query) && Floor.ImpactNormal.Z>.57f)
+                {
+                    // Only correct the presentation offset, never the network pose.
+                    const double ScaleZ=A->GetActorScale3D().Z;
+                    Obj.Body->SetRelativeLocation(FVector(0,0,(Floor.ImpactPoint.Z-Next.Z+2)/ScaleZ-Obj.FootZ));
+                }
+            }
             if (Visible && Obj.Model)
             {
                 FVector Velocity = Delta > 0 ? (Next - Old) / Delta : FVector::ZeroVector;
@@ -1149,7 +1266,7 @@ void FAC2Network::Tick(float Delta)
         if(Obj.Parent==PlayerId && P) Attached=P->HoldingTransform(Obj.Holding,Socket);
         else if(auto Parent=Objects.Find(Obj.Parent))
             if((*Parent)->Actor.IsValid() && !(*Parent)->Actor->IsHidden() && (*Parent)->Model && (*Parent)->Model->AnimatedHoldingLocation(Obj.Holding,Socket))
-            {Socket=Socket*(*Parent)->Actor->GetActorTransform();Attached=true;}
+            {Socket=Socket*((*Parent)->Body.IsValid()?(*Parent)->Body->GetComponentTransform():(*Parent)->Actor->GetActorTransform());Attached=true;}
         Obj.Actor->SetActorHiddenInGame(!Attached);
         if(Attached)
         {
@@ -1298,6 +1415,8 @@ void FAC2Network::Tick(float Delta)
             if(CombatSmokeStep<8)
             {
                 FString Error;auto H=HUD(Mode);
+                if(VerifyEquipment && CombatSmokeStep==0 && !SmokeWorldProps(Error))
+                {UE_LOG(LogTemp,Error,TEXT("AC2 world props smoke: %s"),*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
                 if(!H || !H->GameUI || !H->GameUI->SmokeCombatInput(CombatSmokeStep,Error))
                 {UE_LOG(LogTemp,Error,TEXT("AC2 combat input smoke: %s"),*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
                 ++CombatSmokeStep;Started=0;return;
@@ -1355,6 +1474,14 @@ void FAC2Network::Tick(float Delta)
         {
             bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0 && SmokeCastParticles>0));
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
+            if(OK && VerifyEquipment && InventorySmokeStep<8)
+            {
+                if(Time<InventorySmokeNext)return;
+                FString Error;auto H=HUD(Mode);
+                if(H && H->GameUI && H->GameUI->SmokeInventoryInput(InventorySmokeStep,Error))
+                {++InventorySmokeStep;InventorySmokeNext=Time+.7;return;}
+                UE_LOG(LogTemp,Error,TEXT("AC2 inventory smoke step %d: %s"),InventorySmokeStep,*Error);OK=false;
+            }
             FFileHelper::SaveStringToFile(OK ? TEXT("PASS") : TEXT("FAIL"), *Report);
             if (auto H = HUD(Mode))
                 if (H->GameUI)

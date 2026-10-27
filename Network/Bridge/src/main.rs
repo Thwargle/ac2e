@@ -17,6 +17,15 @@ const MAX_LINE: usize = 65536;
 mod use_tests {
     use super::*;
     #[test]
+    fn bag_sort_uses_native_reorganize_and_unsigned_heap_fields() {
+        let ClientEvent::Interp{function,arguments,..}=reorganize_item(InvMoveDesc::new(0x813000000000002a,7,3,7,8,12)) else {panic!("reorganize event")};
+        assert_eq!(function,0x820e0049);assert_eq!(arguments.len(),284);
+        assert_eq!(arguments[232+2],0x84);assert_eq!(arguments[232+44],0x84);
+        assert_eq!(arguments[232+25],4);assert_eq!(arguments[232+26],4);
+        let ScriptRequest::ReorganizeContents(desc)=ScriptRequest::decode(function,&arguments).unwrap().unwrap() else {panic!("sort descriptor")};
+        assert_eq!(desc.item(),0x813000000000002a);assert_eq!(desc.from_slot(),3);assert_eq!(desc.target_slot(),8);assert_eq!(desc.quantity(),12);
+    }
+    #[test]
     fn equip_and_unequip_keep_native_unsigned_ids_and_slot_types() {
         for equip in [true,false] {
             let d=if equip {InvEquipDesc::equip(0x8140000000000001,7,0x40,7,3)}
@@ -101,6 +110,18 @@ fn equip_item(desc: InvEquipDesc, equip: bool) -> ClientEvent {
     }
     ClientEvent::Interp {function:if equip {0x820e004f}else{0x820e0015},
         arguments:pack_values(&[PackValue::Reference(reference)]),encrypted:false}
+}
+fn reorganize_item(desc: InvMoveDesc) -> ClientEvent {
+    let mut reference=desc.to_reference();
+    // Native same-container drag (820e0049), including typed DID/unsigned IID
+    // fields retained in the sorting captures. Generic MoveItem is a different
+    // operation: ownership transfer, splitting, or dropping into the world.
+    if let PackedEntry::Heap{object,..}=&mut reference.entries[0] {
+        object.tags=vec![2,2,0x84,0xcd,2,2,4,2,0x84,0xcd,2,4,2,2,2,2,0x84,0xcd,0x82,0xcd,2,2,4,2,4,2,4,2,0x84,0xcd,1,2,0x84,0xcd,2,2,0x84,0xcd,4,4,2,2,2,2,0x84,0xcd,2,2,2,2,4];
+        if desc.from_slot()!=0 {object.tags[1]=4;}
+        if desc.quantity()>1 {object.tags[25]=4;}
+    }
+    ClientEvent::Interp{function:0x820e0049,arguments:pack_values(&[PackValue::Reference(reference)]),encrypted:false}
 }
 struct Session {
     client: NetClient,
@@ -383,15 +404,14 @@ impl Session {
             "move_item" if self.ready => {
                 send(
                     &mut self.client,
-                    ScriptRequest::MoveItem(InvMoveDesc::new(
+                    reorganize_item(InvMoveDesc::new(
                         id(v, "id")?,
                         self.player,
                         word(v, "from")? as i32,
                         self.player,
                         word(v, "to")? as i32,
                         word(v, "quantity")? as i32,
-                    ))
-                    .to_event(),
+                    )),
                 )?;
             }
             "equip" if self.ready => {

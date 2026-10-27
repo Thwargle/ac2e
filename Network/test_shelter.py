@@ -49,6 +49,7 @@ def main():
         start=use(0x8140000000030044);until(a,start,'chat',lambda e:'four' in str(e).lower())
         move(a,[94.63357,241.79227,-44.962006],0x0299011d)
         start=use(0x8140000000030044);until(a,start,'chat',lambda e:e['text']['table']==0x2500164b and e['text']['key']==0x11ded2d4)
+        until(a,start,'inventory_remove',lambda e:e['id']==tool['id'])
         a.bag.remove(tool['id'])
         for d in [0x47001583,0x47001584,0x47001585]:a.bag.append(until(a,start,'object',lambda e:e.get('container')==a.id and e['entity']==d)['id'])
         start=use(0x8140000000030044);until(a,start,'chat',lambda e:e['text']['key']==0x8b6b1867)
@@ -59,11 +60,11 @@ def main():
         for n,d,slot,aspect in [(0,0x47001951,16,0x20000118),(1,0x47001952,8,0x20000068),(2,0x47001954,2,0x20000064)]:
             item=kill(0x8140000000030210+n,d)
             old=next(e['id'] for e in a.inventory['equipment'] if e['slot']==slot)
-            start=len(a.events);a.send('unequip',id=old,location=slot,slot=len(a.bag))
-            ack=until(a,start,'inventory_result',lambda e:e['id']==old);assert ack['status']==0,ack
-            a.bag.insert(ack['slot'],old);time.sleep(.15)
+            source=a.bag.index(item['id'])
             start=len(a.events);obs=len(b.events);a.send('equip',id=item['id'],location=slot,slot=a.bag.index(item['id']))
             ack=until(a,start,'inventory_result',lambda e:e['id']==item['id']);assert ack['status']==0,ack
+            displaced=until(a,start,'inventory_result',lambda e:e['id']==old)
+            assert displaced['status']==0 and displaced['equipped']==0 and displaced['slot']==source,displaced
             local=until(a,start,'visual',lambda e:e['id']==a.id)['visual'];remote=until(b,obs,'visual',lambda e:e['id']==a.id)['visual'];assert local==remote
             assert any(t['table']==aspect and t['key']==16 and t['value']==1 for t in local['aspects']),local
             # Equip replaces the slot; rebuild the dense bag from authoritative results.
@@ -71,10 +72,21 @@ def main():
             for e in a.events[start:]:
                 if e.get('event')=='inventory_result' and not e.get('equipped') and e['status']==0 and e['id'] not in a.bag:a.bag.insert(e['slot'],e['id'])
         result['additional_armor_visible_on_owner_and_observer']=True
+        result['armor_replacement_returns_old_item_to_source_slot']=True
+        # Dense bag sorting must report the final index, not the pre-removal boundary.
+        for source,destination in [(0,len(a.bag)),(len(a.bag)-1,0)]:
+            time.sleep(.2);iid=a.bag[source];start=len(a.events)
+            a.send('move_item',id=iid,**{'from':source,'to':destination,'quantity':1})
+            ack=until(a,start,'inventory_result',lambda e:e['id']==iid)
+            final=destination-int(source<destination)
+            assert ack['status']==0 and ack['slot']==final,ack
+            a.bag.pop(source);a.bag.insert(final,iid)
+        result['dense_bag_reorder_both_directions']=True
         glyph=kill(0x8140000000030045,0x47001582)
         start=use(glyph['id'],0x8140000000030044);until(a,start,'chat',lambda e:'Target the Menhir Portal' in str(e))
         start=use(glyph['id'],0x8140000000030047)
         arrival=until(a,start,'position',lambda e:e['id']==a.id and e['cell']==0x03f40154)
+        until(a,start,'inventory_remove',lambda e:e['id']==glyph['id'])
         a.pos=list(arrival['position']);a.bag.remove(glyph['id'])
         scout=until(a,start,'object',lambda e:e.get('entity')==0x4700157f and e.get('placement',{}).get('cell')==0x03f40154)
         start=use(scout['id']);until(a,start,'chat',lambda e:e['text']['key']==0x8b6b1863)

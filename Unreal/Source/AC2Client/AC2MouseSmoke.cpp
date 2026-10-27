@@ -8,6 +8,85 @@
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 
+bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
+{
+    auto* Profile=Mode->Characters.Active();auto* Net=Mode->Network.Get();
+    auto Fail=[&](const TCHAR* Why){Error=Why;return false;};
+    if(!Profile || !Net)return Fail(TEXT("No network inventory"));
+    auto Item=[&](uint32 Definition){return Profile->Items.IndexOfByPredicate([&](const auto& I){return I.Definition==Definition;});};
+    static int32 OriginalSwordCell=0;
+    auto DragCell=[&](int32 From,int32 To){
+        Pack=0;PackRow=0;Rebuild();
+        const auto* A=Buttons.Find(*FString::Printf(TEXT("Cell%d"),From));
+        const auto* B=Buttons.Find(*FString::Printf(TEXT("Cell%d"),To));if(!A||!B)return false;
+        auto Point=[&](const FSlateRect& R){return GetCachedGeometry().LocalToAbsolute(FVector2D((R.Left+R.Right)*.5,(R.Top+R.Bottom)*.5)*Scale);};
+        const auto Start=Point(*A),End=Point(*B);auto& App=FSlateApplication::Get();
+        auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
+        auto Path=App.LocateWindowUnderMouse(Start,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
+        App.RoutePointerDownEvent(Path,FPointerEvent(0,Start,Start,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
+        App.RoutePointerMoveEvent(Path,FPointerEvent(0,End,Start,{EKeys::LeftMouseButton},FKey(),0,FModifierKeysState()),false);
+        App.RoutePointerUpEvent(Path,FPointerEvent(0,End,Start,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
+    };
+    auto ClickItem=[&](int32 Index){
+        if(!Profile->Items.IsValidIndex(Index))return false;
+        const auto& I=Profile->Items[Index];Pack=0;PackRow=I.Equipped?0:FMath::Max(0,I.Cell/6-1);Rebuild();
+        const FName Key(*(I.Equipped?FString::Printf(TEXT("Item%d"),Index):FString::Printf(TEXT("Cell%d"),I.Cell)));
+        const auto* R=Buttons.Find(Key);if(!R)return false;
+        const auto Absolute=GetCachedGeometry().LocalToAbsolute(FVector2D((R->Left+R->Right)*.5,(R->Top+R->Bottom)*.5)*Scale);
+        auto& App=FSlateApplication::Get();auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
+        auto Path=App.LocateWindowUnderMouse(Absolute,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
+        App.SetCursorPos(Absolute);
+        App.RoutePointerMoveEvent(Path,FPointerEvent(0,Absolute,Absolute,{},FKey(),0,FModifierKeysState()),false);
+        App.RoutePointerDoubleClickEvent(Path,FPointerEvent(0,Absolute,Absolute,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
+        App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
+    };
+    const int32 Sword=Item(0x470007ee),Staff=Item(0x470007e0);
+    if(Sword==INDEX_NONE || Staff==INDEX_NONE)return Fail(TEXT("Starter equipment is missing"));
+    switch(Step)
+    {
+    case 0: Net->SetCombat(false);break;
+    case 1:
+        if(Net->Combat)return Fail(TEXT("Equipment test did not leave combat"));
+        if(!ShowInventory)ToggleInventory();
+        if(!ClickItem(Sword))return Fail(TEXT("Sword double-click did not route"));break;
+    case 2:
+        if(Profile->Items[Sword].Equipped!=0x40 || Profile->Items[Staff].Equipped ||
+            SelectedNetworkItem!=Profile->Items[Sword].NetworkId)return Fail(TEXT("Weapon replacement or stable selection failed"));
+        if(!ClickItem(Staff))return Fail(TEXT("Staff double-click did not route"));break;
+    case 3:
+        if(Profile->Items[Staff].Equipped!=0x40 || Profile->Items[Sword].Equipped)return Fail(TEXT("Second weapon replacement failed"));
+        Rebuild();
+        for(const auto& Icon:Icons)if(!Native.Brush(Icon.Image)){Error=FString::Printf(TEXT("Inventory icon texture missing: %08X"),Icon.Image);return false;}
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-icons-tooltip.png"),true,false);
+        break;
+    case 4:
+        Pack=0;PackRow=4;Rebuild();
+        if(!Buttons.Contains(TEXT("Cell41")) || Buttons.Contains(TEXT("Cell42")))return Fail(TEXT("Main bag end is not accessible"));
+        for(int32 I=1;I<4;++I)
+        {
+            Pack=I;PackRow=0;Rebuild();
+            if(PackStart()!=42+(I-1)*12 || PackCount()!=12 || !Buttons.Contains(*FString::Printf(TEXT("Cell%d"),PackStart()+11)))
+                return Fail(TEXT("Side pack capacity mismatch"));
+        }
+        Pack=0;PackRow=0;Rebuild();break;
+    case 5:
+        OriginalSwordCell=Profile->Items[Sword].Cell;
+        if(OriginalSwordCell<=0 || !DragCell(OriginalSwordCell,0))return Fail(TEXT("Native bag drag did not route"));break;
+    case 6:
+        if(Profile->Items[Sword].Cell!=0)return Fail(TEXT("Bag drag did not update final cell"));
+        if(!DragCell(0,OriginalSwordCell+1))return Fail(TEXT("Reverse bag drag did not route"));break;
+    case 7:
+    {
+        if(Profile->Items[Sword].Cell!=OriginalSwordCell)return Fail(TEXT("Reverse bag drag has wrong final cell"));
+        TSet<int32> Cells;
+        for(const auto& I:Profile->Items)if(!I.Equipped){if(Cells.Contains(I.Cell))return Fail(TEXT("Bag contains overlapping item cells"));Cells.Add(I.Cell);}
+        if(SelectedItem==INDEX_NONE || Profile->Items[SelectedItem].NetworkId!=SelectedNetworkItem)return Fail(TEXT("Selected item changed during object recreation"));
+        ClosePanels();break;
+    }
+    }
+    UE_LOG(LogTemp,Display,TEXT("AC2 inventory input step %d passed"),Step);return true;
+}
+
 bool SAC2GameUI::SmokeMouseControls(int32 Step,const FString& Id,FString& Error)
 {
     auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());

@@ -16,6 +16,10 @@ def main():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as check:
             check.bind(('127.0.0.1', port))
     content = prepare_test_content(directory)
+    # A placed ground NPC in the loaded starter cell exercises foot alignment.
+    # This is an isolated test fixture, not a claimed retail spawn coordinate.
+    with content.open('a') as fixture:
+        fixture.write('8140000000030700\t4700157e\t1f000d75\t02990109\t58\t238\t-44.606205\t1\t0\t0\t0\t-\n')
     env = dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1')
     if '--mouse' in os.sys.argv:
         env['AC2_MOUSE_SMOKE'] = '1'
@@ -50,12 +54,21 @@ def main():
         assert all(f'AC2 combat input step {step} passed' in client for step in range(8))
         assert 'AC2 combat world pointer selected' in client
         assert 'AC2 network smoke PASS' in client
+        if '--gameplay' in os.sys.argv:
+            assert all(f'AC2 inventory input step {step} passed' in client for step in range(8))
+            assert 'AC2 world props passed:' in client
+            assert 'grounded NPCs=0' not in client
         if '--mouse' in os.sys.argv:
             assert all(f'AC2 mouse controls step {step} passed' in client for step in range(6))
         report = {'result': 'PASS', 'directory': str(directory), 'equipped_magic': '--gameplay' in os.sys.argv,
             'checks': ['native start/stop mouse buttons and ghosted states', 'Z toggles server and avatar stance',
                 'chat focus isolation and restored attack key', 'missing-target feedback',
                 'world creature mouse selection', 'server attack/hit/death animations, damage and loot']}
+        if '--gameplay' in os.sys.argv:
+            report['checks'] += ['native portal hull picking', 'placed NPC foot alignment',
+                'mouse double-click replaces equipped weapons', 'native layered item icons and tooltip screenshot',
+                'all 78 backpack slots accessible', 'mouse drag sorts both directions without duplicate cells',
+                'selection follows item identity across recreation and reordering']
         if '--mouse' in os.sys.argv:
             report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',
                 'double-click use without attacking', 'world zoom and panel scroll isolation',
