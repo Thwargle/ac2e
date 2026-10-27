@@ -338,6 +338,14 @@ void SAC2CharacterUI::BuildCreatorLayout()
             FIntPoint Origin = List.Min + FIntPoint(0, (I - Page) * 20);
             CreatorLayout.Template(0x22000002, TEXT("list_box_item"),
                                    FIntRect(Origin, Origin + FIntPoint(List.Width(), 20)), List, T(TEXT("CharacterListBox")));
+            // Keep the DAT's font, spacing and selection artwork. Its dark-blue
+            // selected label is illegible against this dark panel at modern scales.
+            auto& Row = CreatorLayout.Nodes.Last();
+            const FLinearColor Ink = P.Id == Mode->Characters.ActiveId
+                ? FLinearColor(1.f, .86f, .48f) : FLinearColor::White;
+            const TCHAR* Channels[] = {TEXT("font_color_red"),TEXT("font_color_green"),TEXT("font_color_blue")};
+            for(int32 C=0;C<3;++C){uint32 Bits;FMemory::Memcpy(&Bits,&Ink.Component(C),4);Row.Attributes.Add(T(Channels[C]),Bits);}
+            Row.Attributes.Add(T(TEXT("font_outline")),1);
         }
         if (!DeletePending.IsEmpty())
         {
@@ -771,6 +779,9 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         if (Characters.Num()<2 || !Selection.IsValid() || !Selection->Ready) return Fail(TEXT("Two native selection models required"));
         for (const auto &C:Characters)
             if (!CreatorLayout.Nodes.ContainsByPredicate([&](const auto &N){return N.Text==C.Name && N.Kind==T(TEXT("text")) && N.Parent!=INDEX_NONE;})) return Fail(TEXT("Character name missing from native list"));
+        for(const auto& N:CreatorLayout.Nodes)if(N.Id==T(TEXT("list_box_item")))
+            if(N.Attr(TEXT("font"))!=0x42000024 || !N.Attr(TEXT("font_outline")) || N.Float(TEXT("font_color_green"))<.8f)
+                return Fail(TEXT("Character list lost native font or readable text contrast"));
         if(!Button(TEXT("CreateButton"),false))return Fail(TEXT("Create button not hit-testable"));
         BuildCreatorLayout();
         if(CreatorLayout.Find(TEXT("CreateButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Create hover feedback missing"));

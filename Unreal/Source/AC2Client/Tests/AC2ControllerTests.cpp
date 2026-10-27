@@ -2,6 +2,11 @@
 #include "AC2LoginUI.h"
 #include "AC2Projectile.h"
 #include "AC2DatArchive.h"
+#include "AC2Assets.h"
+#include "AC2Portrait.h"
+#include "Engine/Engine.h"
+#include "Engine/World.h"
+#include "ProceduralMeshComponent.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #if WITH_DEV_AUTOMATION_TESTS
@@ -18,6 +23,10 @@ bool FAC2MotionTest::RunTest(const FString&)
     TestTrue(TEXT("Water has buoyancy and drag"),Motion.Values(AC2Motion::Water).Lift>0&&Motion.Values(AC2Motion::Water).Drag>0);
     TestTrue(TEXT("Native behavior table including tail"),Portal.Read(0x44000001,Bytes,Error)&&Behavior.Decode(0x44000001,Bytes));
     TestTrue(TEXT("Retail table exceeds old 4096 limit"),Behavior.Combos.Num()>4096);
+    TestEqual(TEXT("Native ordered layer names"),Behavior.LayerOrder.Num(),9);
+    TestTrue(TEXT("Attack takes priority over damage; death overrides both"),
+        Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Hit)<Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Attack) &&
+        Behavior.Layer(AC2Motion::Ground,AC2Motion::Melee,AC2Motion::Attack)<Behavior.Layer(AC2Motion::Ground,AC2Motion::Dead,AC2Motion::Death));
     auto Complete=Bytes;Bytes.Pop();TestFalse(TEXT("Truncated table rejected"),FAC2BehaviorData().Decode(0x44000001,Bytes));
     for(uint32 Action:{AC2Motion::Jump,AC2Motion::Land,AC2Motion::Attack,AC2Motion::Hit,AC2Motion::Death,AC2Motion::Recall})
     {
@@ -99,5 +108,56 @@ bool FAC2ProjectileTest::RunTest(const FString&)
     TestEqual(TEXT("Native script period"),Script.Period,1.f);TestEqual(TEXT("All three simultaneous effects kept"),Script.Effects.Num(),3);
     Bytes.Pop();TestFalse(TEXT("Truncated FX script rejected"),Script.Decode(0x5700000c,Bytes));
     return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2CombatPoseTest,"AC2.Data.CombatLayersDeathAndParticles",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2CombatPoseTest::RunTest(const FString&)
+{
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false)
+        .CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+    {
+        auto* Actor=World->SpawnActor<AAC2Portrait>();
+        FAC2AssetLibrary Model;FString Error;
+        if(TestTrue(TEXT("Native human for combat pose checks"),Model.Open(AC2::ResolveDatDirectory(TEXT("")),Error) &&
+            Model.DrawModel(0x1f000023,Actor,Actor->Body)))
+        {
+            auto Snapshot=[&](){TArray<FVector> Points;TInlineComponentArray<UProceduralMeshComponent*> Meshes(Actor);
+                for(auto* M:Meshes)for(int32 S=0;S<M->GetNumSections();++S)if(auto* Section=M->GetProcMeshSection(S))
+                    for(const auto& V:Section->ProcVertexBuffer)Points.Add(M->GetComponentTransform().TransformPosition(V.Position));
+                return Points;};
+            auto Same=[](const TArray<FVector>& A,const TArray<FVector>& B){if(A.Num()!=B.Num())return false;
+                for(int32 I=0;I<A.Num();++I)if(!A[I].Equals(B[I],.01))return false;return true;};
+            const auto Rest=Snapshot();
+            TestTrue(TEXT("Native attack begins"),Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee));
+            TestTrue(TEXT("Native hit begins on separate layer"),Model.PlayBehavior(AC2Motion::Hit));
+            TestTrue(TEXT("Hit did not cancel the attack"),Model.BehaviorDuration(AC2Motion::Attack)>0 && Model.BehaviorDuration(AC2Motion::Hit)>0);
+            float Time=.1f;Model.Animate(Time,0);
+            TestFalse(TEXT("Combat changes actual rendered vertices"),Same(Rest,Snapshot()));
+            TestTrue(TEXT("Combat attachments stay on their animated sockets"),Model.AuditAttachments(Error));
+            TestTrue(TEXT("Death resolves in native dead mode"),Model.PlayBehavior(AC2Motion::Death,AC2Motion::Dead));
+            TestEqual(TEXT("Death cancels attacks"),Model.BehaviorDuration(AC2Motion::Attack),0.f);
+            TestTrue(TEXT("Ten-second native death/hold is retained"),Model.BehaviorDuration(AC2Motion::Death)>=10.f);
+            for(int32 I=0;I<110;++I){Time+=.1f;Model.Animate(Time,0);}
+            const auto Corpse=Snapshot();
+            TestFalse(TEXT("Death pose differs from standing"),Same(Rest,Corpse));
+            TestFalse(TEXT("A late damage packet cannot interrupt death"),Model.PlayBehavior(AC2Motion::Hit));
+            TestFalse(TEXT("A late floor collision cannot interrupt death"),Model.PlayBehavior(AC2Motion::Land));
+            Model.PlayBehavior(AC2Motion::Death,AC2Motion::Dead);
+            Time+=.1f;Model.Animate(Time,0);
+            TestTrue(TEXT("Duplicate death does not restart final pose"),Same(Corpse,Snapshot()));
+            Model.SetAnimationState(AC2Motion::Ground,AC2Motion::Peace);
+            TestEqual(TEXT("Resurrection releases the held death"),Model.BehaviorDuration(AC2Motion::Death),0.f);
+            TestTrue(TEXT("Native Mind Lash cast animation"),Model.PlayBehavior(0x410000b9,0x41000011));
+            TestTrue(TEXT("Shared native Cast_Attack resolves hand emitters"),Model.PlayEffect(0x810001cd));
+            int32 Peak=0;for(int32 I=0;I<80;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
+            TestTrue(TEXT("Cast cue produces actual native particles"),Peak>0);
+            TestTrue(TEXT("Mind Lash impact resolves native FX bank"),Model.PlayEffect(0x41000248));
+            Peak=0;for(int32 I=0;I<20;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
+            TestTrue(TEXT("Impact produces actual native particles"),Peak>0);
+        }
+    }
+    World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;
 }
 #endif

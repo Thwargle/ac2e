@@ -24,7 +24,7 @@ fn character(c: &CharacterIdentity) -> Value {
 fn behavior(id: u64, instance: u16, p: &BehaviorParams) -> Value {
     json!({"event":"behavior","id":id.to_string(),"instance":instance,"behavior":p.behavior,
         "mode":p.mode,"rate":p.time_scale,"hold":p.hold_cycles==0,"lock":p.lock_actions!=0,
-        "impulse":p.impulse})
+        "impulse":p.impulse,"propagate":p.propagate!=0})
 }
 fn position(p: &Position) -> Value {
     let [w, x, y, z] = p.rotation;
@@ -300,11 +300,12 @@ mod tests {
     }
     #[test]
     fn stories_forward_attack_and_damage_without_misattributing_stamps() {
-        let s=PhysicsStory {attacker:Some(22),attacker_behavior:Some(BehaviorParams {behavior:0x41000089,..Default::default()}),
+        let s=PhysicsStory {attacker:Some(22),attacker_behavior:Some(BehaviorParams {behavior:0x41000089,propagate:1,..Default::default()}),
             hooks:vec![StoryHook {bitfield:1,target:Some(33),target_health_change:Some(-9),..Default::default()},
                 StoryHook {bitfield:1,target:Some(44),target_health_change:Some(12),..Default::default()}],..Default::default()};
         let v=convert(object(ObjectAction::DoStory(Box::new(s))));
         assert_eq!(v.len(),2);assert_eq!(v[0]["id"],"22");assert!(v[0].get("instance").is_none());
+        assert_eq!(v[0]["propagate"],true);
         assert_eq!(v[1]["id"],"33");assert_eq!(v[1]["damage"],9);
     }
     #[test]

@@ -13,6 +13,21 @@ are ready; the world, sky and default avatar are not created behind the initial 
 The server stores network characters separately from offline profiles. The controls
 below describe offline mode; network targeting, attacks, item use and chat route to the server.
 
+Character previews retain the DAT scene lights and material colors, captured to an
+explicit sRGB LDR target without tone mapping or exposure adaptation. The character
+list keeps DAT font `42000024` and native row geometry; selected text uses a gold
+outline-backed contrast adjustment instead of the original dark blue.
+
+Combat actions use the native BehaviorTable layer indices and blend times. A single
+action phase drives the body and attached parts; mode changes cannot select a different
+branch midway through a clip. Death overrides other actions and holds its final pose.
+Offline corpses live through their decoded clip; AC2E retains starter corpses for
+3.5–5.5 seconds (the native clips last up to 4.375 seconds), with a 12-second fallback
+for other profiles. These are presentation lifetimes, not retail corpse/loot rules.
+Startup particle emitters are separate from appearance FX overrides. Cast_Attack uses
+the native hand emitters, and racial impacts resolve their DAT banks. Native sound,
+decal/streak rendering and complete elemental skill-effect scripting remain unfinished.
+
 ## Run
 
 From the repository root, run `Launch-AC2.bat`. It builds the editor target and opens

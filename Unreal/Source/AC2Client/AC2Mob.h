@@ -34,5 +34,6 @@ class AAC2Mob : public ACharacter
     float Time = 0, Decision = 0, Death = 0;
     bool Aggressive=false;
     float AttackTime=0;
+    float CorpseDuration=5;
     bool VisibleToViewer = true;
 };

@@ -126,6 +126,14 @@ def main():
         until(b, observed, 'hit', lambda e: e['id'] == near)
         until(a, start, 'quality', lambda e: e.get('id') == near and e['key'] == 0x102 and e['value'] == 0)
         until(a, start, 'combat', lambda e: not e['enabled'])
+        for peer, mark in [(a, start), (b, observed)]:
+            until(peer, mark, 'behavior', lambda e: e['id'] == near and e['behavior'] == 0x4100001f and e['mode'] == 0x41000005)
+        # The old 1.5s removal cut the Idol's 2.375s native death short.
+        time.sleep(2.6)
+        for peer, mark in [(a, start), (b, observed)]:
+            assert not any(e.get('event') == 'remove' and e['id'] == near for e in peer.events[mark:])
+        for peer, mark in [(a, start), (b, observed)]:
+            until(peer, mark, 'remove', lambda e: e['id'] == near, timeout=5)
         # Identical coordinates in a non-visible room never become a valid target.
         start = len(a.events)
         a.send('attack', id=hidden_id); time.sleep(.5)
@@ -134,6 +142,7 @@ def main():
             'authenticated combat-button and attack-key range failures restore local/remote peace',
             'rejected attacks do not deal damage', 'weapon equips immediately after failed attack',
             'no-target stance toggle still works', 'melee damage, retaliation and death across visible room boundary',
+            'both clients retain corpse through the full native death before removal',
             'overlapping hidden room is neither sent nor attackable']}
         (directory / 'result.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report), flush=True)

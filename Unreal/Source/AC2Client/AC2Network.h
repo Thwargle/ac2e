@@ -125,7 +125,7 @@ class FAC2Network
     double MapTravelSmokeNext=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;
     int32 PlayedEffects=0;
-    int32 SmokeParticles=0;
+    int32 SmokeParticles=0,SmokeCastParticles=0;
     int32 SmokeArmorStage=0;uint32 SmokeClothedHash=0;bool SmokeArmor=false;
     TMap<FString, int32> BagSlots;
     TMap<FString, uint32> WornSlots;

@@ -294,9 +294,16 @@ struct FAC2AssetLibrary::FImpl
     TArray<FAnimatedGroup> Animated;
     FAC2MotionData Movement;
     FAC2BehaviorData Behaviors;
-    uint32 Element=AC2Motion::Ground, Mode=AC2Motion::Peace, Action=0, ActionKey=0;
-    float ActionTime=0, ActionRate=1, ActionDuration=0;
-    bool HoldAction=false;
+    uint32 Element=AC2Motion::Ground, Mode=AC2Motion::Peace;
+    // BehaviorTracker keeps independent tracks per native layer. Damage reactions
+    // must not replace an attack on another layer (Legions BehaviorTracker::Think).
+    struct FActionTrack
+    {
+        uint32 Behavior=0,Key=0,Layer=0,Mode=0,Element=0;
+        float Time=0,Previous=0,Duration=0,Rate=1,Ramp=.1f;
+        bool Hold=false;
+    };
+    TArray<FActionTrack> Actions;
     TSharedPtr<FAC2Animator> Graph(FAnimatedGroup& G,uint32 Key)
     {
         if(!Key)return nullptr;
@@ -321,6 +328,7 @@ struct FAC2AssetLibrary::FImpl
     uint64 EffectSerial=0x8000000000000000ULL;
     uint32 ModelVisual=0;
     TMap<uint32, TArray<FAC2FXNode>> AppearanceEffects;
+    TMap<uint32, TArray<FAC2FXNode>> StartupEffects;
     TUniquePtr<FAC2Effects> AttachedEffects;
     TWeakObjectPtr<USceneComponent> ModelRoot;
     FTransform EffectFrame(const FAC2FXNode& Node) const
@@ -2122,6 +2130,14 @@ struct FAC2AssetLibrary::FImpl
                 else
                     V.Parts.Add(A.Part);
             }
+            // FillFXTable supplies overrides; only ApplyStartupFX makes emitters
+            // persistent. Spell/hit/death overrides must wait for their trigger.
+            auto Startup=[&](const FAC2DecodedPart& Part){
+                for(uint32 Key:Part.Startup)
+                    if(const auto* Override=Part.Overrides.Find(Key))StartupEffects.FindOrAdd(Key).Append(*Override);
+                    else if(Part.FXTable)TableFX(Part.FXTable,Key,StartupEffects.FindOrAdd(Key));
+            };
+            Startup(V.FX);for(const auto& P:V.Parts)Startup(P);
         }
         FTransform Scaled = Placement;
         Scaled.SetScale3D(E.Scale * V.Scale);
@@ -2369,30 +2385,47 @@ bool FAC2AssetLibrary::SetMotionDescriptor(uint32 Id)
 }
 void FAC2AssetLibrary::SetAnimationState(uint32 Element,uint32 Mode)
 {
+    if(Impl->Mode==AC2Motion::Dead && Mode!=AC2Motion::Dead)StopBehavior();
     Impl->Element=Element;Impl->Mode=Mode;
 }
 bool FAC2AssetLibrary::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool Hold)
 {
+    if(Impl->Actions.ContainsByPredicate([](const auto& A){return A.Behavior==AC2Motion::Death;}))
+        return Behavior==AC2Motion::Death; // Duplicate death/hit packets cannot restart a corpse.
     if(Mode)Impl->Mode=Mode;
-    uint32 Key=Impl->Behaviors.Key(Impl->Element,Impl->Mode,Behavior);
-    if(!Key)Key=Impl->Behaviors.Key(AC2Motion::Ground,Impl->Mode,Behavior);
+    uint32 Element=Impl->Element,BehaviorMode=Impl->Mode;
+    uint32 Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);
+    if(!Key){Element=AC2Motion::Ground;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
     if(!Key && (Behavior==AC2Motion::Jump||Behavior==AC2Motion::Land||Behavior==AC2Motion::Fall))
-        Key=Impl->Behaviors.Key(AC2Motion::Air,Impl->Mode,Behavior);
-    if(!Key)Key=Impl->Behaviors.Key(AC2Motion::Ground,AC2Motion::Peace,Behavior);
+        {Element=AC2Motion::Air;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
+    if(!Key){Element=AC2Motion::Ground;BehaviorMode=AC2Motion::Peace;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
     if(!Key)return false;
     float Duration=0;
     for(auto& G:Impl->Animated)
-        if(auto Graph=Impl->Graph(G,Key))
-        {G.Motion.Mode=Impl->Mode;G.Motion.Element=Impl->Element;Duration=FMath::Max(Duration,Graph->Period(G.Motion));}
+        if(G.Parent<0)if(auto Graph=Impl->Graph(G,Key))
+        {auto Input=G.Motion;Input.Mode=BehaviorMode;Input.Element=Element;Duration=FMath::Max(Duration,Graph->Period(Input));}
     if(Duration<=.001f)return false;
-    Impl->Action=Behavior;Impl->ActionKey=Key;Impl->ActionTime=0;Impl->ActionDuration=Duration;
-    Impl->ActionRate=FMath::Clamp(Rate,.05f,10.f);Impl->HoldAction=Hold;
+    if(Behavior==AC2Motion::Death){Impl->Actions.Reset();Hold=true;}
+    const uint32 Layer=Impl->Behaviors.Layer(Element,BehaviorMode,Behavior);
+    Impl->Actions.RemoveAll([&](const auto& A){return A.Layer==Layer;});
+    const float* Ramp=Impl->Behaviors.Ramps.Find(Behavior);
+    Impl->Actions.Add({Behavior,Key,Layer,BehaviorMode,Element,0,0,Duration,FMath::Clamp(Rate,.05f,10.f),Ramp?*Ramp:.1f,Hold});
+    Impl->Actions.StableSort([&](const auto& A,const auto& B){
+        // ComboInfo stores a layer INDEX, not the enum in BehaviorTable::mLayers.
+        // AnimCompositor::Animate gives the highest index first claim on each bone.
+        return A.Layer<B.Layer;
+    });
     UE_LOG(LogTemp,Verbose,TEXT("AC2 behavior %08X mode=%08X key=%08X duration=%g"),Behavior,Impl->Mode,Key,Duration);
     return true;
 }
 void FAC2AssetLibrary::StopBehavior(uint32 Behavior)
 {
-    if(!Behavior||Behavior==Impl->Action){Impl->Action=Impl->ActionKey=0;Impl->HoldAction=false;}
+    Impl->Actions.RemoveAll([&](const auto& A){return !Behavior || A.Behavior==Behavior;});
+}
+float FAC2AssetLibrary::BehaviorDuration(uint32 Behavior) const
+{
+    const auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior;});
+    return Track?Track->Duration/Track->Rate:0;
 }
 bool FAC2AssetLibrary::AuditAttachments(FString& Error) const
 {
@@ -2418,10 +2451,10 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
     E.Data = Id;
     bool OK = Impl->DrawEntity(E, Owner, Root, FVector::ZeroVector, false);
     TArray<uint32> Keys;
-    Impl->AppearanceEffects.GetKeys(Keys);
+    Impl->StartupEffects.GetKeys(Keys);
     Keys.Sort();
     for (uint32 Key : Keys)
-        for (const auto &Node : Impl->AppearanceEffects[Key])
+        for (const auto &Node : Impl->AppearanceEffects.Contains(Key)?Impl->AppearanceEffects[Key]:Impl->StartupEffects[Key])
             for (int32 I = 0; I < Impl->Animated.Num(); ++I)
             {
                 const auto &G = Impl->Animated[I];
@@ -2453,11 +2486,9 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                                const FVector *LocalVelocity)
 {
     TArray<FAC2Animation::FEffect> AnimationEffects;
-    const float PreviousActionTime=Impl->ActionTime;
     const float Delta = FMath::Clamp(Time - Impl->PreviousAnimationTime, 0.f, .2f);
     Impl->PreviousAnimationTime = Time;
-    Impl->ActionTime+=Delta*Impl->ActionRate;
-    const bool ActionFinished=Impl->Action && !Impl->HoldAction && Impl->ActionTime>Impl->ActionDuration;
+    for(auto& Action:Impl->Actions){Action.Previous=Action.Time;Action.Time+=Delta*Action.Rate;}
     for (auto &G : Impl->Animated)
     {
         if (LocalViewer && FVector::DistSquared(G.Frame.GetLocation(), *LocalViewer) > FMath::Square(12000.))
@@ -2502,16 +2533,21 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                 G.PreviousMotionPose = Moving;
             }
         }
-        if(Impl->Action)
-            if(auto ActionGraph=Impl->Graph(G,Impl->ActionKey))
+        for(const auto& Action:Impl->Actions)
+            if(auto ActionGraph=Impl->Graph(G,Action.Key))
             {
-                const float Period=ActionGraph->Period(G.Motion);
+                auto Input=G.Motion;Input.Mode=Action.Mode;Input.Element=Action.Element;
+                const float Period=ActionGraph->Period(Input);
                 if(Period>.001f)
                 {
-                    const float Phase=FMath::Min(Impl->ActionTime/Period,.99999f);
-                    if(G.Parent<0)AnimationEffects.Append(ActionGraph->EffectsBetween(PreviousActionTime/Period,FMath::Min(Impl->ActionTime/Period,1.f),G.Motion));
-                    auto ActionPose=ActionGraph->Sample(Phase,G.Motion,Pose);
-                    const float Weight=FMath::Min(1.f,Impl->ActionTime/.08f);
+                    // CPartGroup shares the BehaviorTrack phase with every part.
+                    // Timing a head/weapon by its own clip period separates it from the body.
+                    const float Phase=FMath::Min(Action.Time/Action.Duration,.99999f);
+                    if(G.Parent<0)AnimationEffects.Append(ActionGraph->EffectsBetween(Action.Previous/Action.Duration,FMath::Min(Action.Time/Action.Duration,1.f),Input));
+                    auto ActionPose=ActionGraph->Sample(Phase,Input,Pose);
+                    const float In=Action.Ramp>0?FMath::Min(1.f,Action.Time/Action.Ramp):1.f;
+                    const float Out=Action.Hold||Action.Ramp<=0?1.f:FMath::Clamp((Action.Duration-Action.Time)/Action.Ramp,0.f,1.f);
+                    const float Weight=FMath::Min(In,Out);
                     for(int32 I=0;I<Pose.Num();++I){FTransform Blend;Blend.Blend(Pose[I],ActionPose[I],Weight);Pose[I]=Blend;}
                 }
             }
@@ -2564,7 +2600,7 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                 M.Component->UpdateMeshSection(J, V, N, D.UVs, TArray<FColor>(), TArray<FProcMeshTangent>());
         }
     }
-    if(ActionFinished)StopBehavior();
+    Impl->Actions.RemoveAll([](const auto& A){return !A.Hold && A.Time>=A.Duration;});
     for(const auto& E:AnimationEffects)
     {
         if(E.Stop)StopEffect(E.Id);
@@ -2616,6 +2652,7 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         {
             const auto& A=Impl->NetworkEffects[I].Attachment;
             FTransform At=Impl->EffectFrame(A.Node);
+            if(A.Node.RemoveRotation)At.SetRotation(FQuat::Identity);
             // Native FireParticleFX leaves the emitter at its birth frame.
             // Retarget means clone an FX target, not move the source to a victim.
             if(A.Node.FireAndForget)At=Impl->NetworkEffects[I].BirthFrame;
@@ -2666,7 +2703,13 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
     if(Nodes.IsEmpty())for(const auto& Part:V.Parts)Resolve(Part);
     UE_LOG(LogTemp,Verbose,TEXT("AC2 FX resolve visual=%08X key=%08X nodes=%d groups=%d"),Impl->ModelVisual,Effect,Nodes.Num(),Impl->Animated.Num());
     if(Nodes.IsEmpty())return false;
-    if(!Impl->AttachedEffects){Impl->AttachedEffects=MakeUnique<FAC2Effects>();Impl->AttachedEffects->Open(Impl->ModelRoot->GetWorld(),Impl->Directory);}
+    if(!Impl->AttachedEffects)
+    {
+        Impl->AttachedEffects=MakeUnique<FAC2Effects>();
+        Impl->AttachedEffects->Open(Impl->ModelRoot->GetWorld(),Impl->Directory);
+        if(auto* Capture=Impl->ModelRoot->GetOwner()->FindComponentByClass<USceneCaptureComponent2D>())
+            Capture->ShowOnlyActors.Add(Impl->AttachedEffects->RenderActor());
+    }
     bool Played=false;
     for(const auto& Node:Nodes)
     {
@@ -2681,11 +2724,14 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
             auto* Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();Actor->SetActorTransform(Source);
             auto Model=MakeShared<FAC2AssetLibrary>();FString Error;
             Model->Impl->EffectDepth=Impl->EffectDepth+1;
+            if(Impl->PreviewMode)Model->SetPreviewLighting(Impl->PreviewLighting,Impl->PreviewToWorld);
             if(Model->Open(Impl->Directory,Error) && Model->DrawModel(Node.Visual,Actor,Root))
             {
+                if(auto* Capture=Impl->ModelRoot->GetOwner()->FindComponentByClass<USceneCaptureComponent2D>())
+                    Capture->ShowOnlyActors.Add(Actor);
                 if(Node.Behavior)Model->PlayBehavior(Node.Behavior);
                 if(Node.TargetFX)Model->PlayEffect(Node.TargetFX,Strength,Target);
-                const float Life=FMath::IsFinite(Node.Lifetime)&&Node.Lifetime>0?FMath::Clamp(Node.Lifetime,.05f,30.f):FMath::Clamp(Model->Impl->ActionDuration,.5f,5.f);
+                const float Life=FMath::IsFinite(Node.Lifetime)&&Node.Lifetime>0?FMath::Clamp(Node.Lifetime,.05f,30.f):FMath::Clamp(Model->BehaviorDuration(Node.Behavior),.5f,30.f);
                 Impl->VisualEffects.Add({{-1,Node,0,0},Effect,0,Life,Actor,Model,Target});Played=true;
             }
             else Actor->Destroy();

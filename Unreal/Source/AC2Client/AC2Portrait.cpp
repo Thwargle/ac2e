@@ -4,6 +4,18 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "ProceduralMeshComponent.h"
 
+namespace
+{
+void InitPreviewTarget(UTextureRenderTarget2D* Target, int32 Width, int32 Height)
+{
+    // FinalColorLDR must be display encoded before Slate samples the preview.
+    // InitAutoFormat's float target reports gamma 1, leaving this path too dark.
+    // Keep capture and Slate on the same LDR/sRGB contract, without tone mapping.
+    Target->TargetGamma = 2.2f;
+    Target->InitCustomFormat(Width, Height, PF_B8G8R8A8, false);
+}
+}
+
 AAC2Portrait::AAC2Portrait()
 {
     PrimaryActorTick.bCanEverTick = true;
@@ -42,7 +54,7 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
     {
         Image = NewObject<UTextureRenderTarget2D>(this);
         Image->ClearColor = FLinearColor(.018f, .026f, .03f, 1);
-        Image->InitAutoFormat(640, 674);
+        InitPreviewTarget(Image, 640, 674);
         Capture->TextureTarget = Image;
         Capture->ShowOnlyActors.Add(this);
     }
@@ -260,7 +272,7 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         return Ready;
     Image = NewObject<UTextureRenderTarget2D>(this);
     Image->ClearColor = FLinearColor::Black;
-    Image->InitAutoFormat(1024, 619);
+    InitPreviewTarget(Image, 1024, 619);
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();
@@ -340,7 +352,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
 {
     Image = NewObject<UTextureRenderTarget2D>(this);
     Image->ClearColor = FLinearColor::Black;
-    Image->InitAutoFormat(706,768);
+    InitPreviewTarget(Image,706,768);
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();

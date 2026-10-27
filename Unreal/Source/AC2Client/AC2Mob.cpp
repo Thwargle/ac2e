@@ -65,7 +65,7 @@ void AAC2Mob::Tick(float Dt)
     {
         Death += Dt;
         if(Model)Model->Animate(Time,0);
-        if (Death > 5)
+        if (Death > CorpseDuration)
             Destroy();
         return;
     }
@@ -156,7 +156,11 @@ bool AAC2Mob::Hit(float Damage)
     {
         GetCharacterMovement()->DisableMovement();
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        if(Model)Model->PlayBehavior(AC2Motion::Death,AC2Motion::Dead,1,true);
+        if(Model)
+        {
+            Model->PlayBehavior(AC2Motion::Death,AC2Motion::Dead,1,true);
+            CorpseDuration=FMath::Max(5.f,Model->BehaviorDuration(AC2Motion::Death)+1.f);
+        }
     }
     else {Aggressive=true;AttackTime=.7f;if(Model)Model->PlayBehavior(AC2Motion::Hit,AC2Motion::Monster);}
     return true;

@@ -64,7 +64,7 @@ bool FAC2BehaviorData::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
     N=HashCount(R,28);
     for(int32 I=0;I<N&&R.Good;++I)
     {FTransition T;T.FromElement=R.Word();T.FromMode=R.Word();T.ToElement=R.Word();T.ToMode=R.Word();T.Behavior=R.Word();T.Effect=R.Word();T.StopEffect=R.Word();Transitions.Add(T);}
-    N=R.Count(4,4096);R.Take(int64(N)*4); // layer order
+    N=R.Count(4,4096);for(int32 I=0;I<N&&R.Good;++I)LayerOrder.Add(R.Word());
     N=R.Count(4,4096);R.Take(int64(N)*4); // tweak layers
     N=HashCount(R,12);
     for(int32 I=0;I<N&&R.Good;++I){R.Word();R.Word();int32 K=R.Count(8,4096);R.Take(int64(K)*8);}
@@ -72,10 +72,16 @@ bool FAC2BehaviorData::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
     N=HashCount(R,12);
     for(int32 I=0;I<N&&R.Good;++I){uint32 B=R.Word();float Ramp=R.Float();R.Word();Ramps.Add(B,FMath::Clamp(Ramp,0.f,10.f));}
     N=R.Count(4,4096);R.Take(int64(N)*4);InitialMode=R.Word();
+    for(const auto& C:Combos)if(C.Layer>=uint32(LayerOrder.Num()))return false;
     return R.End()&&!Combos.IsEmpty();
 }
 uint32 FAC2BehaviorData::Key(uint32 Element,uint32 Mode,uint32 Behavior) const
 {
     for(const auto& C:Combos)if(C.Element==Element&&C.Mode==Mode&&C.Behavior==Behavior)return C.Key;
+    return 0;
+}
+uint32 FAC2BehaviorData::Layer(uint32 Element,uint32 Mode,uint32 Behavior) const
+{
+    for(const auto& C:Combos)if(C.Element==Element&&C.Mode==Mode&&C.Behavior==Behavior)return C.Layer;
     return 0;
 }

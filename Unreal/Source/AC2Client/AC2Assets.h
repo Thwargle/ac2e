@@ -73,6 +73,7 @@ class FAC2AssetLibrary : public FGCObject
     void SetAnimationState(uint32 Element, uint32 Mode);
     bool PlayBehavior(uint32 Behavior, uint32 Mode = 0, float Rate = 1, bool Hold = false);
     void StopBehavior(uint32 Behavior = 0);
+    float BehaviorDuration(uint32 Behavior) const;
     bool PlayEffect(uint32 Effect,float Strength=1,USceneComponent* Target=nullptr);
     bool PlayEffectScript(uint32 Script);
     void StopEffect(uint32 Effect);

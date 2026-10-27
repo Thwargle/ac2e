@@ -584,17 +584,14 @@ impl Encounters {
                         actor.rule.xp, actor.rule.gold
                     ),
                 });
-                if matches!(actor.entity,crate::quests::TARGET_ENTITY|crate::shelter::DIGGER|crate::shelter::SENTINEL) {
-                    events.push(Event::IdolVisual(
-                        attack.target,
-                        crate::combat_visual::IdolAction::Death,
-                    ));
-                    // Authored presentation grace; rewards and attack authority
-                    // are already settled. This is not a lootable corpse.
-                    actor.despawn_at = Some(now.saturating_add(1500.min(actor.rule.respawn)));
-                } else {
-                    events.push(Event::Despawn(attack.target));
-                }
+                // Death mode/behavior is shared by the native creature tables;
+                // the receiving client selects that creature's own DAT graph.
+                events.push(Event::IdolVisual(
+                    attack.target,
+                    crate::combat_visual::IdolAction::Death,
+                ));
+                let grace=crate::combat_visual::death_presentation_ms(actor.entity);
+                actor.despawn_at=Some(now.saturating_add(grace.min(actor.rule.respawn)));
                 let stopped = self
                     .attacks
                     .iter()

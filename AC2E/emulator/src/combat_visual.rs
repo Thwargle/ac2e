@@ -22,6 +22,17 @@ pub const MELEE_NORMAL: u32 = 0x41000077;
 /// Captured result paired with a nonzero health hook. Not a reconstructed crit table.
 pub const HEALTH_RESULT: u32 = 0x40000008;
 
+/// Presentation grace, not combat authority or a loot lifetime. Native Legions
+/// death graphs: Idol 03000072 = 2.375s; Drudge 0300002a variants <= 4.375s.
+/// Uncatalogued profiles receive room for the 10s humanoid death/hold clips.
+pub fn death_presentation_ms(entity: u32) -> u64 {
+    match entity {
+        crate::quests::TARGET_ENTITY => 3500,
+        crate::shelter::DIGGER | crate::shelter::SENTINEL => 5500,
+        _ => 12000,
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum IdolAction {
     Combat,
@@ -84,12 +95,15 @@ pub fn appearance(owner:u64, instance:u16, stamp:u16, visual:&[u8]) -> Result<Ve
     let mut wire=prefix(0x1009f,owner,instance,stamp)?;
     wire.extend(visual); Ok(wire)
 }
-/// Legions FX enum 23000042: racial starter cast/impact pairs.
+/// Legions shared Cast_Attack (23000051 / DBFXTable 1e000056) plus racial
+/// impacts in 1e000075. The older named *_cast enums have no DAT FX binding.
+/// This uses the native shared attack cue; elemental spell-specific sequencing
+/// still requires the original skill effect scripts.
 pub fn magic_effects(race:u32) -> Option<(u32,u32)> {
-    match race {1=>Some((0x41000058,0x41000248)),2=>Some((0x410000f5,0x410002e5)),4=>Some((0x410001a1,0x41000391)),_=>None}
+    match race {1=>Some((0x810001cd,0x41000248)),2=>Some((0x810001cd,0x410002e5)),4=>Some((0x810001cd,0x41000391)),_=>None}
 }
 pub fn effect(owner:u64,instance:u16,stamp:u16,fx:u32) -> Result<Vec<u8>,WorldError> {
-    if fx>>24!=0x41 {return Err(WorldError::InvalidValue);}
+    if !matches!(fx>>24,0x40|0x41|0x81) {return Err(WorldError::InvalidValue);}
     let mut wire=prefix(0x100a0,owner,instance,stamp)?;wire.extend(fx.to_le_bytes());wire.extend(1f32.to_le_bytes());Ok(wire)
 }
 

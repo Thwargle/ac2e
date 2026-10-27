@@ -762,6 +762,10 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             const bool IsAttack=B==AC2Motion::Attack||B==AC2Motion::MeleeNormal||B==0x410000b0||B==0x410000b9||B==0x410000bc||B==0x410000e2;
             bool Hold=false;J->TryGetBoolField(TEXT("hold"),Hold);Hold|=B==AC2Motion::Death;
             const bool Played=Player?Player->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold):Obj.Model&&Obj.Model->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold);
+            bool Propagate=false;J->TryGetBoolField(TEXT("propagate"),Propagate);
+            if(Propagate)for(auto& Entry:Objects)
+                if(Entry.Value->Parent==Id && Entry.Value->Model)
+                    Entry.Value->Model->PlayBehavior(B,M?M:Obj.AnimMode,float(N(J,TEXT("rate"),1)),Hold);
             if(Played)
             {
                 ++PlayedBehaviors;if(B==AC2Motion::Death)++DeathBehaviors;
@@ -1182,6 +1186,12 @@ void FAC2Network::Tick(float Delta)
     if (Smoke)
     {
         const bool VerifyEquipment=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_GAMEPLAY_SMOKE"))==TEXT("1");
+        if(MagicAttacks>0 && P && SmokeCastParticles==0 && P->EffectParticleCount()>0)
+        {
+            SmokeCastParticles=P->EffectParticleCount();
+            UE_LOG(LogTemp,Display,TEXT("AC2 native hand cast particles emitted: %d"),SmokeCastParticles);
+            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-spell-cast.png"),true,false);
+        }
         if(PlayedEffects>0 && SmokeParticles==0)
         {
             for(const auto& Entry:Objects)if(Entry.Value->Model)SmokeParticles+=Entry.Value->Model->EffectParticleCount();
@@ -1343,7 +1353,7 @@ void FAC2Network::Tick(float Delta)
         const bool HasLoot = Profile && !Profile->Items.IsEmpty() && Profile->Experience > 0;
         if ((IsWorld() && SmokeAttacked && HasLoot && Started > 6) || Started > 120)
         {
-            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0));
+            bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0 && SmokeCastParticles>0));
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
             FFileHelper::SaveStringToFile(OK ? TEXT("PASS") : TEXT("FAIL"), *Report);
             if (auto H = HUD(Mode))

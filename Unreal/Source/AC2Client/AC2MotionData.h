@@ -24,12 +24,14 @@ struct FAC2BehaviorData
 {
     struct FCombo { uint32 Element,Mode,Behavior,Key,Layer; };
     TArray<FCombo> Combos;
+    TArray<uint32> LayerOrder;
     struct FTransition {uint32 FromElement,FromMode,ToElement,ToMode,Behavior,Effect,StopEffect;};
     TArray<FTransition> Transitions;
     TMap<uint32,float> Ramps;
     uint32 InitialMode=0;
     bool Decode(uint32 Id,TConstArrayView<uint8> Bytes);
     uint32 Key(uint32 Element,uint32 Mode,uint32 Behavior) const;
+    uint32 Layer(uint32 Element,uint32 Mode,uint32 Behavior) const;
 };
 namespace AC2Motion
 {

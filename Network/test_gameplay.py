@@ -171,7 +171,7 @@ def main():
         until(a,start,'quality',lambda e:e.get('id')==ids[1] and e['key']==0x102 and e['value']==0)
         until(a,attack_start,'combat',lambda e:not e['enabled'])
         result['magic_and_enemy_replication']=True
-        until(a,attack_start,'fx',lambda e:e['id']==a.id and e['fx']==0x41000058)
+        until(a,attack_start,'fx',lambda e:e['id']==a.id and e['fx']==0x810001cd)
         until(b,0,'fx',lambda e:e['id']==ids[1] and e['fx']==0x41000248)
         result['native_cast_and_impact_fx_replicated']=True
         loot2=until(a,start,'object',lambda e:e.get('container')==a.id and e['entity']==loot['entity'])

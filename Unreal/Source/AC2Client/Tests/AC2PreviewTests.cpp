@@ -4,6 +4,7 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -74,6 +75,13 @@ bool FAC2PreviewLightingTest::RunTest(const FString&)
                         LoggedIn.AppearanceFingerprint(),Creator.AppearanceFingerprint());
                 First->Destroy(); Second->Destroy();
             }
+    }
+    TestTrue(TEXT("Selection render target created"),Portrait->ShowSelection(Directory,{{0x1f000023,1,1,{}}},0,5));
+    if(Portrait->Image)
+    {
+        TestEqual(TEXT("Final LDR target uses byte sRGB format"),Portrait->Image->GetFormat(),PF_B8G8R8A8);
+        TestFalse(TEXT("Slate target does not force linear gamma"),Portrait->Image->bForceLinearGamma);
+        TestEqual(TEXT("Display gamma retained through capture"),Portrait->Image->TargetGamma,2.2f);
     }
     World->DestroyWorld(false); GEngine->DestroyWorldContext(World);
     return true;

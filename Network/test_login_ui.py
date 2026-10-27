@@ -82,6 +82,8 @@ def main():
         combat_log=(directory/'login-ui.log').read_text(encoding='utf-8',errors='replace')
         assert all(f'AC2 combat input step {step} passed' in combat_log for step in range(8)), 'Combat input regression did not complete'
         assert 'AC2 combat world pointer selected' in combat_log, 'World mouse selection was not verified'
+        if env.get('AC2_GAMEPLAY_SMOKE')=='1':
+            assert 'AC2 native hand cast particles emitted:' in combat_log, 'Native cast particles were not rendered'
         # The UI-created character must survive a new authenticated session.
         login=post('login');peer=Peer()
         peer.send('connect',host=login['game_host'],port=login['game_port'],account=login['account'],ticket=login['ticket']);login=None
