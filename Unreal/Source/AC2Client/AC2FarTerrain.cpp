@@ -178,3 +178,7 @@ uint32 FAC2FarTerrain::Center() const
 {
     return Impl->Current;
 }
+void FAC2FarTerrain::SetVisible(bool Visible)
+{
+    if (Impl->Actor) Impl->Actor->SetActorHiddenInGame(!Visible);
+}

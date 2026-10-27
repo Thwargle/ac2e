@@ -18,6 +18,7 @@ struct FAC2WorldStream::FImpl
         TUniquePtr<FAC2AssetLibrary> Assets;
         AActor *Actor = nullptr;
         UProceduralMeshComponent *Terrain = nullptr;
+        UProceduralMeshComponent *WaterMesh = nullptr;
         FAC2BlockWater Water;
         bool Complete = false;
         ~FBlock()
@@ -36,6 +37,21 @@ struct FAC2WorldStream::FImpl
     TUniquePtr<FBlock> Pending;
     TFuture<bool> Future;
     uint32 Center = 0;
+    uint32 InteriorCell = 0;
+    bool ExteriorVisible = true, TerrainCollision = true;
+    void ApplyCellContext()
+    {
+        const auto* Active = Blocks.Find(InteriorCell >> 16);
+        ExteriorVisible = !InteriorCell || (Active && (*Active)->Assets->CellReachesOutside(InteriorCell));
+        for (auto& Pair : Blocks)
+        {
+            auto& B = *Pair.Value;
+            B.Assets->SetActiveCell(!InteriorCell || (ExteriorVisible && B.Id != (InteriorCell >> 16)) ? 0 : InteriorCell);
+            B.Terrain->SetVisibility(ExteriorVisible);
+            B.Terrain->SetCollisionEnabled(ExteriorVisible && TerrainCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+            if (B.WaterMesh) B.WaterMesh->SetVisibility(ExteriorVisible);
+        }
+    }
     int32 UnloadedSinceGC = 0;
     bool Stopping = false;
     bool Load(uint32 Id, FAC2LandBlock &Land, FString &Error)
@@ -66,6 +82,7 @@ struct FAC2WorldStream::FImpl
         if (B.Water.Present)
         {
             auto *W = NewObject<UProceduralMeshComponent>(B.Actor);
+            B.WaterMesh = W;
             B.Actor->AddInstanceComponent(W);
             W->SetupAttachment(Root);
             W->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -81,6 +98,7 @@ struct FAC2WorldStream::FImpl
             W->SetMaterial(0, B.Assets->Material(B.Water.Above, true));
         }
         Blocks.Add(B.Id, MoveTemp(Pending));
+        ApplyCellContext();
     }
 };
 FAC2WorldStream::FAC2WorldStream() : Impl(MakeUnique<FImpl>())
@@ -242,6 +260,52 @@ bool FAC2WorldStream::PlacementReadyAt(const FVector &P) const
             return false;
     }
     return true;
+}
+void FAC2WorldStream::SetInteriorCell(uint32 Cell)
+{
+    if ((Cell & 0xffff) < 0x100) Cell = 0;
+    if (Impl->InteriorCell == Cell) return;
+    Impl->InteriorCell = Cell;
+    Impl->ApplyCellContext();
+}
+bool FAC2WorldStream::ExteriorVisible() const { return Impl->ExteriorVisible; }
+bool FAC2WorldStream::CellVisible(uint32 Cell) const
+{
+    const auto* Block = Impl->Blocks.Find(Cell >> 16);
+    return Block && (*Block)->Assets->CellVisible((Cell & 0xffff) >= 0x100 ? Cell : 0);
+}
+bool FAC2WorldStream::NetworkLanding(const FVector& Feet, uint32 Cell, float CapsuleRadius, float HalfHeight,
+                                   FVector& Center, const AActor* Ignore) const
+{
+    if (!Impl->World || Feet.ContainsNaN() || CapsuleRadius <= 0 || HalfHeight < CapsuleRadius) return false;
+    if (AC2::StandingPosition(Impl->World, Feet, CapsuleRadius, HalfHeight, Center, Ignore)) return true;
+    // A saved jump or swim is valid too. Do not hold login forever just because
+    // that authoritative position is above the short standing-floor probe.
+    const FVector AirCenter = Feet + FVector(0,0,HalfHeight);
+    if (AC2::CapsuleClear(Impl->World, AirCenter, CapsuleRadius, HalfHeight, Ignore))
+    {
+        FHitResult Floor;
+        FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2ArrivalAir),false,Ignore);
+        double Water;
+        const bool Swimming = (Cell & 0xffff) < 0x100 && WaterAt(Feet,Water) && Feet.Z < Water;
+        const bool AboveFloor = Impl->World->LineTraceSingleByChannel(Floor,Feet,Feet-FVector(0,0,500),ECC_Pawn,Query) &&
+            !Floor.bStartPenetrating && Floor.ImpactNormal.Z >= .57357644f && Feet.Z-Floor.ImpactPoint.Z > 60;
+        if (Swimming || AboveFloor) { Center=AirCenter; return true; }
+    }
+    // Keep authoritative positions when clear. Search locally at the same floor
+    // level when old saves or a larger avatar put the capsule in a wall.
+    for (int32 Ring = 1; Ring <= 8; ++Ring)
+        for (int32 Angle = 0; Angle < 16; ++Angle)
+        {
+            const FVector Hint = Feet + FRotator(0, Angle * 22.5, 0).Vector() * (Ring * 50);
+            if ((Cell & 0xffff) >= 0x100)
+            {
+                uint32 Found;
+                if (!InteriorCellAt(Hint, Found) || (Found >> 16) != (Cell >> 16)) continue;
+            }
+            if (AC2::StandingPosition(Impl->World, Hint, CapsuleRadius, HalfHeight, Center, Ignore)) return true;
+        }
+    return false;
 }
 bool FAC2WorldStream::LandingPosition(const FVector &Preferred, FVector &Position, float CapsuleRadius,
                                       float HalfHeight) const
@@ -444,9 +508,8 @@ FString FAC2WorldStream::Status() const
 }
 void FAC2WorldStream::SetTerrainCollision(bool Enabled)
 {
-    for (auto &P : Impl->Blocks)
-        P.Value->Terrain->SetCollisionEnabled(Enabled ? ECollisionEnabled::QueryAndPhysics
-                                                      : ECollisionEnabled::NoCollision);
+    Impl->TerrainCollision = Enabled;
+    Impl->ApplyCellContext();
 }
 
 bool FAC2WorldStream::InteriorAt(const FVector &P, uint32 &Block) const
@@ -486,6 +549,7 @@ TArray<FAC2ParticleSource> FAC2WorldStream::ParticleSources(const FVector &Viewe
         for (int32 I = 0; I < Sources.Num(); ++I)
         {
             FAC2ParticleSource S = Sources[I];
+            if (!Block.Value->Assets->CellVisible(S.Cell)) continue;
             S.Frame.AddToTranslation(AC2::BlockOrigin(Block.Key));
             if (FVector::DistSquared(S.Frame.GetLocation(), Viewer) > FMath::Square(22000.))
                 continue;

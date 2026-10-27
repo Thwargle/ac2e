@@ -1,4 +1,5 @@
 #include "AC2Assets.h"
+#include "AC2CellConnectivity.h"
 #include "AC2Animation.h"
 #include "AC2Effects.h"
 #include "Camera/PlayerCameraManager.h"
@@ -252,9 +253,18 @@ struct FAC2AssetLibrary::FImpl
         bool Frill = false;
         int32 AnimationGroup = -1, Bone = 0;
         bool Structural = false;
+        uint32 Cell = 0;
     };
     TArray<FDraw> Draws;
     TArray<TWeakObjectPtr<UProceduralMeshComponent>> CollisionMeshes;
+    struct FCellMesh { TWeakObjectPtr<UProceduralMeshComponent> Mesh; uint32 Cell; bool Solid; };
+    TArray<FCellMesh> CellMeshes;
+    FAC2CellConnectivity Cells;
+    TSet<uint32> VisibleCells;
+    uint32 DrawingCell = 0, ActiveCell = MAX_uint32;
+    bool ShowExterior = true;
+    bool CellVisible(uint32 Cell) const
+    { return ActiveCell == MAX_uint32 || (Cell ? VisibleCells.Contains(Cell) : ShowExterior); }
     FAC2DecodedImage TerrainAtlas;
     int32 NextDraw = 0;
     bool Preparing = false, SkyMode = false;
@@ -370,7 +380,7 @@ struct FAC2AssetLibrary::FImpl
     const FAC2LandBlock *EnvironmentLand = nullptr;
     uint32 EnvironmentTerrainMask = 0;
     TMap<uint32, TArray<FVector>> InteriorPositions;
-    TArray<FBox> InteriorBounds;
+    TMap<uint32, FBox> InteriorBounds;
     TMap<uint32,TArray<FVector>> InteriorFloorTriangles;
 
     bool Read(uint32 Id, TArray<uint8> &Bytes)
@@ -1860,6 +1870,11 @@ struct FAC2AssetLibrary::FImpl
         }
         if (HasCollision)
             CollisionMeshes.Add(C);
+        const uint32 Cell = Draw.Cell ? Draw.Cell : DrawingCell;
+        CellMeshes.Add({C, Cell, HasCollision});
+        const bool Visible = CellVisible(Cell);
+        C->SetVisibility(Visible);
+        if (!Visible) C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         return C;
     }
     bool AnimatedSetup(const FAC2DecodedPart &P, const FTransform &Frame, AActor *Owner,
@@ -2756,13 +2771,32 @@ bool FAC2AssetLibrary::CollisionReady() const
 {
     for (const auto &Weak : Impl->CollisionMeshes)
         if (auto *C = Weak.Get())
+            if (C->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
             if (!C->GetBodyInstance() || !C->GetBodyInstance()->IsValidBodyInstance())
                 return false;
     return true;
 }
+void FAC2AssetLibrary::SetActiveCell(uint32 Cell)
+{
+    if (Impl->ActiveCell == Cell) return;
+    Impl->ActiveCell = Cell;
+    Impl->VisibleCells = Impl->Cells.Reachable(Cell);
+    Impl->ShowExterior = Impl->Cells.ReachesOutside(Cell);
+    if (Cell && Impl->ShowExterior) Impl->VisibleCells.Append(Impl->Cells.Reachable(0));
+    for (const auto& Entry : Impl->CellMeshes)
+        if (auto* C = Entry.Mesh.Get())
+        {
+            const bool Visible = Impl->CellVisible(Entry.Cell);
+            C->SetVisibility(Visible);
+            C->SetCollisionEnabled(Visible && Entry.Solid ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
+        }
+}
+bool FAC2AssetLibrary::CellVisible(uint32 Cell) const { return Impl->CellVisible(Cell); }
+bool FAC2AssetLibrary::CellReachesOutside(uint32 Cell) const { return Impl->Cells.ReachesOutside(Cell); }
 void FAC2AssetLibrary::InteriorSpawnPoints(const FVector &Near, float Radius, TArray<FVector> &Out) const
 {
     for (const auto &Cell : Impl->InteriorPositions)
+        if (Impl->CellVisible(Cell.Key))
         for (const FVector &P : Cell.Value)
             if (FVector::DistSquared2D(P, Near) <= FMath::Square(Radius) && FMath::Abs(P.Z - Near.Z) < 180)
                 Out.Add(P);
@@ -2910,7 +2944,7 @@ FAC2BlockWater FAC2AssetLibrary::Water() const
 bool FAC2AssetLibrary::InteriorAt(const FVector &P) const
 {
     for (const auto &B : Impl->InteriorBounds)
-        if (B.ExpandBy(FVector(10, 10, 60)).IsInsideOrOn(P))
+        if (Impl->CellVisible(B.Key) && B.Value.ExpandBy(FVector(10, 10, 60)).IsInsideOrOn(P))
             return true;
     return false;
 }
@@ -2927,6 +2961,7 @@ bool FAC2AssetLibrary::InteriorCellAt(const FVector& P,uint32& Cell) const
     double Best=180;
     bool Found=false;
     for(const auto& Entry:Impl->InteriorFloorTriangles)
+        if (Impl->CellVisible(Entry.Key))
         for(int32 I=0;I+2<Entry.Value.Num();I+=3)
         {
             const FVector A=Entry.Value[I],B=Entry.Value[I+1],C=Entry.Value[I+2];
@@ -3133,6 +3168,9 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         FAC2AssetReader R(MoveTemp(B));
         if (R.Word() != CellId)
             continue;
+        TGuardValue<uint32> CellContext(Impl->DrawingCell, CellId);
+        const int32 FirstDraw = Impl->Draws.Num(), FirstSource = Impl->Sources.Num();
+        Impl->Cells.Links.FindOrAdd(CellId);
         const FVector Origin = R.Vector() * 100;
         const FQuat Rotation = R.Quaternion();
         const uint32 Flags = R.Word(), MeshId = R.Word();
@@ -3166,7 +3204,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
             Floors.SetNum(256);
         Impl->InteriorPositions.Add(CellId, MoveTemp(Floors));
         Impl->InteriorFloorTriangles.Add(CellId,MoveTemp(FloorTriangles));
-        Impl->InteriorBounds.Add(Bounds);
+        Impl->InteriorBounds.Add(CellId, Bounds);
         if (Impl->Preparing)
         {
             Impl->Draws.Add({G, Frame, true, false, -1, 0, true});
@@ -3180,12 +3218,17 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         else
             Impl->RenderDraw({G, Frame, true, false, -1, 0, true}, Owner, Root);
         ++Impl->Stats.InteriorCells;
-        // Portal lists are still consumed to locate the cell's own scenery group.
+        // CEnvCell::StreamPack portal links, not XY overlap, join dungeon rooms.
+        if (Flags & 1) Impl->Cells.Outside.Add(CellId);
         const int32 NP = R.Count(8, 4096);
         for (int32 J = 0; J < NP && R.Good; ++J)
         {
             uint16 Bits = R.Short();
-            R.Take(6);
+            R.Short(); // portal polygon
+            const uint16 Other = R.Short();
+            R.Short(); // other portal
+            if (Bits & 2) Impl->Cells.Outside.Add(CellId);
+            else Impl->Cells.Connect(CellId, (CellId & 0xffff0000) | Other);
             if (Bits & 4)
             {
                 int32 N = R.Short();
@@ -3197,7 +3240,11 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         for (int32 J = 0; J < 2; ++J)
         {
             int32 N = R.Count(2, 16384);
-            R.Take(int64(N) * 2);
+            for (int32 K = 0; K < N; ++K)
+            {
+                const uint16 Other = R.Short();
+                if (J == 1) Impl->Cells.Connect(CellId, (CellId & 0xffff0000) | Other);
+            }
             R.Align();
         }
         if (Flags & 2)
@@ -3212,6 +3259,8 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
                 Impl->DrawEntity(E, Owner, Root, FVector::ZeroVector, false);
             }
         }
+        for (int32 J = FirstDraw; J < Impl->Draws.Num(); ++J) Impl->Draws[J].Cell = CellId;
+        for (int32 J = FirstSource; J < Impl->Sources.Num(); ++J) Impl->Sources[J].Cell = CellId;
     }
     for (FBox &Box : Impl->PlacedBounds)
     {

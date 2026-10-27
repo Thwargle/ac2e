@@ -186,6 +186,7 @@ bool AAC2GameMode::LoadBlock(uint32 Block)
     }
     PendingCell = 0;
     InteriorBlock = 0;
+    Stream->SetInteriorCell(0);
     bTeleport = true;
     bWaiting = true;
     Notice = TEXT("Traveling...");
@@ -322,10 +323,11 @@ void AAC2GameMode::Tick(float Delta)
         return;
     if (Network)
     {
-        if(Network->IsWorld()&&!bWaiting)
+        if(Network->IsWorld()&&!bWaiting&&!Network->NeedsPlacement)
         {
             uint32 Cell;
-            if(Stream->InteriorCellAt(P->GetActorLocation()-FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()),Cell))Network->SetCell(Cell);
+            if(Stream->InteriorCellAt(P->GetActorLocation()-FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()),Cell))
+            {Network->SetCell(Cell);Stream->SetInteriorCell(Cell);}
             else if(!InteriorBlock && AC2::WorldBlock(P->GetActorLocation(),Cell))Network->SetCell((Cell<<16)|1);
         }
         if (!Network->HasPlayerPose) return;
@@ -336,6 +338,7 @@ void AAC2GameMode::Tick(float Delta)
             { Notice=Error; return; }
             NetworkTravel=true; bWaiting=true; bTeleport=false; PendingCell=0;
             InteriorBlock=(Network->Cell & 65535)>=256 ? Network->Cell>>16 : 0;
+            Stream->SetInteriorCell(Network->Cell);
             StreamFocus=AC2::BlockOrigin(Network->Cell>>16)+FVector(8000,8000,Network->Feet.Z);
             P->SetHeld(true); P->SetActorLocation(Network->Feet+FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()));
         }
@@ -343,7 +346,17 @@ void AAC2GameMode::Tick(float Delta)
         {
             Stream->Tick(StreamFocus);
             if (!Stream->PlacementReadyAt(StreamFocus)) return;
-            FVector Center=Network->Feet+FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()+2);
+            const auto* Capsule = P->GetCapsuleComponent();
+            FVector Center;
+            if (!Stream->NetworkLanding(Network->Feet, Network->Cell, Capsule->GetScaledCapsuleRadius(),
+                                        Capsule->GetScaledCapsuleHalfHeight(), Center, P))
+            { Notice=TEXT("No clear arrival space near the server position."); return; }
+            const FVector LandedFeet = Center - FVector(0,0,Capsule->GetScaledCapsuleHalfHeight());
+            UE_LOG(LogTemp, Display, TEXT("AC2 network landing: cell=%08X correction=%s capsule=%g/%g"),
+                   Network->Cell, *(LandedFeet-Network->Feet).ToString(), Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
+            Network->Feet = LandedFeet;
+            uint32 ArrivalCell;
+            if (InteriorBlock && Stream->InteriorCellAt(LandedFeet, ArrivalCell)) Network->SetCell(ArrivalCell);
             P->GetCharacterMovement()->StopMovementImmediately();
             P->SetActorLocation(Center,false,nullptr,ETeleportType::TeleportPhysics);
             P->SetActorRotation(FRotator(0,90-Network->Heading,0));
@@ -386,6 +399,9 @@ void AAC2GameMode::Tick(float Delta)
         {
             InteriorBlock = Inside;
             InteriorGrace = 2;
+            uint32 Cell;
+            if (Stream->InteriorCellAt(Here - FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight()), Cell))
+                Stream->SetInteriorCell(Cell);
 
             StreamFocus = AC2::BlockOrigin(Inside) + FVector(8000, 8000, Here.Z);
         }
@@ -393,7 +409,7 @@ void AAC2GameMode::Tick(float Delta)
         {
             InteriorGrace -= Delta;
             if (InteriorGrace <= 0)
-                InteriorBlock = 0;
+            { InteriorBlock = 0; Stream->SetInteriorCell(0); }
         }
         if (InteriorBlock)
         {
@@ -507,6 +523,7 @@ void AAC2GameMode::Tick(float Delta)
     if (Far)
     {
         Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
+        Far->SetVisible(Stream->ExteriorVisible());
         uint32 Center = 0;
         AC2::WorldBlock(StreamFocus, Center);
         Stream->SetDrawRadius(Far->Center() == Center ? ViewRadius : ViewRadius + 1);
@@ -1041,6 +1058,7 @@ void AAC2GameMode::LoadCell(uint32 Id)
     if ((Id & 65535) < 256 || !LoadBlock(Id >> 16))
         return;
     PendingCell = Id;
+    Stream->SetInteriorCell(Id);
 }
 void AAC2GameMode::Weather(int32 Index)
 {

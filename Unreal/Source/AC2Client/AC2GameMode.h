@@ -44,6 +44,7 @@ class AAC2GameMode : public AGameModeBase
     void UIAction(FName Action);
     bool PlaceCharacter();
     bool InWorld() const { return !FrontEnd; }
+    bool CellVisible(uint32 Cell) const { return Stream && Stream->CellVisible(Cell); }
     bool OpenWorld();
     void LeaveWorld();
     void ShowLogin(const FString& Message=FString());

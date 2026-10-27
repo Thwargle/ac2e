@@ -15,6 +15,11 @@ class FAC2WorldStream
     void Shutdown();
     bool ReadyAt(const FVector &Position) const;
     bool PlacementReadyAt(const FVector &Position) const;
+    void SetInteriorCell(uint32 Cell);
+    bool NetworkLanding(const FVector& Feet, uint32 Cell, float CapsuleRadius, float HalfHeight,
+                        FVector& Center, const AActor* Ignore) const;
+    bool ExteriorVisible() const;
+    bool CellVisible(uint32 Cell) const;
     bool LandingPosition(const FVector &Preferred, FVector &Position, float CapsuleRadius, float HalfHeight) const;
     bool SpawnPosition(const FVector &Preferred, uint32 InteriorOwner, FVector &Position, float CapsuleRadius = 34,
                        float HalfHeight = 103, const AActor *Ignore = nullptr) const;

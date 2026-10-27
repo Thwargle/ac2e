@@ -55,4 +55,5 @@ struct FAC2ParticleSource
     uint32 Descriptor = 0;
     FTransform Frame;
     float ParticleScale = 1;
+    uint32 Cell = 0; // Owning interior, or zero for outdoor scenery.
 };

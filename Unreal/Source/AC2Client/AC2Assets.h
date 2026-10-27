@@ -52,6 +52,9 @@ class FAC2AssetLibrary : public FGCObject
     bool UploadScenery(AActor *Owner, USceneComponent *Root, int32 MeshBudget = 4);
     void ReleaseCPUData();
     bool CollisionReady() const;
+    void SetActiveCell(uint32 Cell);
+    bool CellVisible(uint32 Cell) const;
+    bool CellReachesOutside(uint32 Cell) const;
     void InteriorSpawnPoints(const FVector &Near, float Radius, TArray<FVector> &Out) const;
     bool DrawSky(uint32 ObjectId, AActor *Owner, USceneComponent *Root);
     bool DrawModel(uint32 ObjectId, AActor *Owner, USceneComponent *Root,

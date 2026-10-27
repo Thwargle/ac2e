@@ -11,6 +11,7 @@ class FAC2FarTerrain
     void Tick(const FVector &Viewer, int32 NearRadius, bool NearReady);
     int32 TileCount() const;
     uint32 Center() const;
+    void SetVisible(bool Visible);
 
   private:
     struct FImpl;

@@ -970,7 +970,8 @@ void FAC2Network::Tick(float Delta)
             if(!Obj.Missile)A->SetActorRotation(
                 FMath::RInterpTo(A->GetActorRotation(), FRotator(0, Obj.Yaw - 90, 0), Delta, 12));
             const bool Visible =
-                P && !Obj.MissileFinished && FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
+                P && !Obj.MissileFinished && Mode->CellVisible(Obj.Cell ? Obj.Cell : Cell) &&
+                FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
             A->SetActorHiddenInGame(!Visible);
             if (Visible && Obj.Model)
             {
@@ -988,7 +989,7 @@ void FAC2Network::Tick(float Delta)
         FTransform Socket; bool Attached=false;
         if(Obj.Parent==PlayerId && P) Attached=P->HoldingTransform(Obj.Holding,Socket);
         else if(auto Parent=Objects.Find(Obj.Parent))
-            if((*Parent)->Actor.IsValid() && (*Parent)->Model && (*Parent)->Model->AnimatedHoldingLocation(Obj.Holding,Socket))
+            if((*Parent)->Actor.IsValid() && !(*Parent)->Actor->IsHidden() && (*Parent)->Model && (*Parent)->Model->AnimatedHoldingLocation(Obj.Holding,Socket))
             {Socket=Socket*(*Parent)->Actor->GetActorTransform();Attached=true;}
         Obj.Actor->SetActorHiddenInGame(!Attached);
         if(Attached)
