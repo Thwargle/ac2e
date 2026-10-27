@@ -30,6 +30,7 @@ pub enum Request {
     Resurrect,
     Emote(u32),
     InventoryMove(crate::inventory_request::MoveRequest),
+    InventoryDrop(crate::inventory_request::DropRequest),
     UseObject(crate::equipment::UseRequest),
     Equip(crate::equipment::EquipRequest),
     UnEquip(crate::equipment::UnEquipRequest),
@@ -111,6 +112,10 @@ pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
     }
     let mut r = Reader { bytes, pos: 0 };
     let request = match function {
+        crate::inventory_request::DROP => {
+            let request=crate::inventory_request::DropRequest::arguments(bytes)?;
+            r.pos=bytes.len();Request::InventoryDrop(request)
+        }
         crate::allegiance::QUERY => {
             let query = crate::allegiance::Query::decode(bytes)?;
             r.pos = bytes.len();

@@ -6,12 +6,56 @@ use crate::{
 };
 
 pub const MOVE: u32 = 0x820e0049;
+pub const DROP: u32 = 0x820e0036;
 pub const MESSAGE_BYTES: usize = 296;
 const TAGS: [u8; 51] = [
     2, 2, 0x84, 0xcd, 2, 2, 4, 2, 0x84, 0xcd, 2, 4, 2, 2, 2, 2, 0x84, 0xcd, 0x82, 0xcd, 2, 2, 4, 2,
     4, 2, 4, 2, 0x84, 0xcd, 1, 2, 0x84, 0xcd, 2, 2, 0x84, 0xcd, 4, 4, 2, 2, 2, 2, 0x84, 0xcd, 2, 2,
     2, 2, 4,
 ];
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DropRequest {pub moved: MoveRequest, pub landblock: u32}
+impl DropRequest {
+    pub fn arguments(bytes: &[u8]) -> Result<Self, WorldError> {
+        if bytes.len()!=MESSAGE_BYTES-12 {return Err(WorldError::InvalidValue);}
+        let word=|i:usize|u32::from_le_bytes(bytes[28+i*4..32+i*4].try_into().unwrap());
+        let landblock=word(2);
+        if landblock==0 || landblock & 0xffff !=0 || word(3)!=0 {return Err(WorldError::InvalidValue);}
+        for i in [8,32] {if word(i)!=landblock || word(i+1)!=0 {return Err(WorldError::InvalidValue);}}
+        for i in [11,24,50] {if word(i)!=u32::MAX {return Err(WorldError::InvalidValue);}}
+        let mut normalized=bytes.to_vec();
+        for i in [2,8,32] {
+            normalized[28+i*4..36+i*4].copy_from_slice(&bytes[28+16*4..36+16*4]);
+        }
+        for i in [11,24,50] {normalized[28+i*4..32+i*4].fill(0);}
+        Ok(Self {moved:MoveRequest::arguments(&normalized)?,landblock})
+    }
+}
+
+#[cfg(test)]
+mod drop_tests {
+    use super::*;
+    #[test]
+    fn drop_descriptor_checks_all_repeated_fields_and_truncations() {
+        let mut fields=[0u32;51];
+        for i in [0,10,13,23,25,26,35,47,49] {fields[i]=1;}
+        for i in [2,8,32] {fields[i]=0x02990000;}
+        for i in [16,36] {fields[i]=7;}
+        for i in [28,44] {fields[i]=42;fields[i+1]=0x81300000;}
+        for i in [11,24,30,50] {fields[i]=u32::MAX;}
+        let mut bytes=Vec::new();
+        for v in [5u32,1,1,0x44000100,0,0x01f80000,51] {bytes.extend(v.to_le_bytes());}
+        for v in fields {bytes.extend(v.to_le_bytes());}bytes.extend(TAGS);bytes.push(0);
+        let request=DropRequest::arguments(&bytes).unwrap();
+        assert_eq!(request.landblock,0x02990000);assert_eq!(request.moved.owner,7);
+        for end in 0..bytes.len() {assert!(DropRequest::arguments(&bytes[..end]).is_err());}
+        for field in [2,3,8,16,24,25,32,36,39,44,50] {
+            let mut bad=bytes.clone();bad[28+field*4]^=1;
+            assert!(DropRequest::arguments(&bad).is_err(),"accepted inconsistent field {field}");
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveRequest {

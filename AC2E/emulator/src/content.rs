@@ -87,6 +87,29 @@ pub struct Content {
     cells: BTreeMap<u32, Vec<u64>>,
 }
 impl Content {
+    pub fn validate_drop(&self,dropped:&crate::store::DroppedItem) -> io::Result<()> {
+        if !dropped.placement.valid() || self.objects.contains_key(&dropped.id()) || self.objects.len()>=MAX_OBJECTS {
+            return Err(invalid("Ground item capacity exhausted"));
+        }
+        Ok(())
+    }
+    pub fn insert_drop(&mut self, dropped: &crate::store::DroppedItem) -> io::Result<()> {
+        self.validate_drop(dropped)?;
+        let id=dropped.id();let p=dropped.placement;
+        let spawn=world::create_stationary_object(&StationaryObject {
+            character_id:id,parent_visual_did:dropped.item.visual,entity_did:dropped.item.definition,
+            cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,
+            visual_ordering_stamp:1,timestamps:[0;4]}).map_err(io::Error::other)?;
+        self.objects.insert(id,Object {id,entity:dropped.item.definition,placement:p,home:p,spawn:spawn.into(),
+            destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new()});
+        self.cells.entry(p.cell).or_default().push(id);Ok(())
+    }
+    pub fn remove_drop(&mut self,id:u64) -> io::Result<Arc<[u8]>> {
+        if id>>48!=0x8180 {return Err(invalid("Not a ground item"));}
+        let object=self.objects.remove(&id).ok_or_else(||invalid("Ground item unavailable"))?;
+        if let Some(cell)=self.cells.get_mut(&object.placement.cell) {cell.retain(|v|*v!=id);}
+        Ok(object.destroy)
+    }
     /// Bounded same-cell creature pursuit. Retain the new pose in CreateObject
     /// too, so late observers receive the same location as existing observers.
     pub fn move_creature(&mut self, id: u64, placement: Placement, now: u64) -> io::Result<Arc<[u8]>> {

@@ -55,7 +55,7 @@ def main():
         assert 'AC2 combat world pointer selected' in client
         assert 'AC2 network smoke PASS' in client
         if '--gameplay' in os.sys.argv:
-            assert all(f'AC2 inventory input step {step} passed' in client for step in range(8))
+            assert all(f'AC2 inventory input step {step} passed' in client for step in range(14))
             assert 'AC2 world props passed:' in client
             assert 'grounded NPCs=0' not in client
         if '--mouse' in os.sys.argv:
@@ -68,6 +68,7 @@ def main():
             report['checks'] += ['native portal hull picking', 'placed NPC foot alignment',
                 'mouse double-click replaces equipped weapons', 'native layered item icons and tooltip screenshot',
                 'all 78 backpack slots accessible', 'mouse drag sorts both directions without duplicate cells',
+                'drag survives rendered frames, adjacent-slot moves, world drop/pickup and capture loss',
                 'selection follows item identity across recreation and reordering']
         if '--mouse' in os.sys.argv:
             report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',

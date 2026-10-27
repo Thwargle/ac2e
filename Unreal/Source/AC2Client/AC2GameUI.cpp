@@ -440,7 +440,23 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
     }
     Layer = MapUI.Paint(Out, Layer + 1, P, Fonts);
     Layer=SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
-    return Native.Paint(Out,Layer+1,P,Fonts,{},PointerNodesStart);
+    Layer=Native.Paint(Out,Layer+1,P,Fonts,{},PointerNodesStart);
+    // Draw the native layered icon above panels while captured. Keeping it
+    // tied to the item identity also survives inventory updates during a drag.
+    if(!DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
+        if(const auto* Profile=Mode->Characters.Active())
+            for(int32 Index=0;Index<Profile->Items.Num();++Index)
+                if(Profile->Items[Index].NetworkId==DragItem)
+                {
+                    const auto& I=Profile->Items[Index];
+                    const auto* R=Buttons.Find(*(I.Equipped?FString::Printf(TEXT("Item%d"),Index):FString::Printf(TEXT("Cell%d"),I.Cell)));
+                    if(R)for(const auto& Icon:Icons)
+                        if(R->ContainsPoint(FVector2D(Icon.Rect.Min)+FVector2D(Icon.Rect.Size())*.5))
+                            if(const auto* Brush=Native.Brush(Icon.Image))
+                                FSlateDrawElement::MakeBox(Out,++Layer,P.ToPaintGeometry(FVector2D(32,32),FSlateLayoutTransform(Mouse-FVector2D(16,16))),Brush,ESlateDrawEffect::None,Icon.Tint);
+                    break;
+                }
+    return Layer;
 }
 FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 {
@@ -560,6 +576,7 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
                 if(!P->Items[Index].Equipped)for(int32 Bit=0;Bit<11;++Bit)
                     if(Native.Bounds(*(FString(SlotNames[Bit])+TEXT("_Slot"))).Contains(FIntPoint(Mouse.X,Mouse.Y)))
                         {Mode->Network->UseItem(Index,1u<<Bit);break;}
+                if(Mouse.X>=0 && Mouse.Y>=0 && Mouse.X<Size.X && Mouse.Y<Size.Y && !OwnsPointer(Mouse))Mode->Network->DropItem(Index);
             }
             DragItem.Reset();PressedAction=NAME_None;Native.Pressed=0;
             return FReply::Handled().ReleaseMouseCapture();

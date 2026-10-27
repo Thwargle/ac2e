@@ -15,17 +15,27 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
     if(!Profile || !Net)return Fail(TEXT("No network inventory"));
     auto Item=[&](uint32 Definition){return Profile->Items.IndexOfByPredicate([&](const auto& I){return I.Definition==Definition;});};
     static int32 OriginalSwordCell=0;
-    auto DragCell=[&](int32 From,int32 To){
+    static FVector2D DragStart,DragEnd;
+    static FString DroppedId;
+    auto ReleaseDrag=[&](){
+        auto& App=FSlateApplication::Get();auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
+        auto Path=App.LocateWindowUnderMouse(DragEnd,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
+        App.SetCursorPos(DragEnd);
+        App.RoutePointerUpEvent(Path,FPointerEvent(0,DragEnd,DragStart,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
+    };
+    auto DragCell=[&](int32 From,int32 To,bool Hold=false){
         Pack=0;PackRow=0;Rebuild();
         const auto* A=Buttons.Find(*FString::Printf(TEXT("Cell%d"),From));
-        const auto* B=Buttons.Find(*FString::Printf(TEXT("Cell%d"),To));if(!A||!B)return false;
+        const auto* B=Buttons.Find(*FString::Printf(TEXT("Cell%d"),To));if(!A||(To>=0&&!B))return false;
         auto Point=[&](const FSlateRect& R){return GetCachedGeometry().LocalToAbsolute(FVector2D((R.Left+R.Right)*.5,(R.Top+R.Bottom)*.5)*Scale);};
-        const auto Start=Point(*A),End=Point(*B);auto& App=FSlateApplication::Get();
+        const auto Start=Point(*A),End=To<0?GetCachedGeometry().LocalToAbsolute(FVector2D(Size.X*.55,Size.Y*.35)*Scale):Point(*B);auto& App=FSlateApplication::Get();
+        DragStart=Start;DragEnd=End;
         auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
         auto Path=App.LocateWindowUnderMouse(Start,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
         App.RoutePointerDownEvent(Path,FPointerEvent(0,Start,Start,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
         App.RoutePointerMoveEvent(Path,FPointerEvent(0,End,Start,{EKeys::LeftMouseButton},FKey(),0,FModifierKeysState()),false);
-        App.RoutePointerUpEvent(Path,FPointerEvent(0,End,Start,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
+        App.SetCursorPos(End);
+        return Hold || ReleaseDrag();
     };
     auto ClickItem=[&](int32 Index){
         if(!Profile->Items.IsValidIndex(Index))return false;
@@ -41,7 +51,7 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
     };
     const int32 Sword=Item(0x470007ee),Staff=Item(0x470007e0);
-    if(Sword==INDEX_NONE || Staff==INDEX_NONE)return Fail(TEXT("Starter equipment is missing"));
+    if((Sword==INDEX_NONE && Step!=11) || Staff==INDEX_NONE)return Fail(TEXT("Starter equipment is missing"));
     switch(Step)
     {
     case 0: Net->SetCombat(false);break;
@@ -71,18 +81,41 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         Pack=0;PackRow=0;Rebuild();break;
     case 5:
         OriginalSwordCell=Profile->Items[Sword].Cell;
-        if(OriginalSwordCell<=0 || !DragCell(OriginalSwordCell,0))return Fail(TEXT("Native bag drag did not route"));break;
+        if(OriginalSwordCell<=0 || !DragCell(OriginalSwordCell,0,true))return Fail(TEXT("Native bag drag did not route"));
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-drag.png"),true,false);break;
     case 6:
-        if(Profile->Items[Sword].Cell!=0)return Fail(TEXT("Bag drag did not update final cell"));
-        if(!DragCell(0,OriginalSwordCell+1))return Fail(TEXT("Reverse bag drag did not route"));break;
+        if(!HasMouseCapture() || DragItem.IsEmpty())return Fail(TEXT("Inventory drag did not survive frames and HUD rebuilds"));
+        if(!ReleaseDrag())return Fail(TEXT("Held inventory release did not route"));break;
     case 7:
+        if(Profile->Items[Sword].Cell!=0)return Fail(TEXT("Bag drag did not update final cell"));
+        if(!DragCell(0,1))return Fail(TEXT("Adjacent bag drag did not route"));break;
+    case 8:
+        if(Profile->Items[Sword].Cell!=1)return Fail(TEXT("Adjacent drag was incorrectly a no-op"));
+        if(!DragCell(1,OriginalSwordCell))return Fail(TEXT("Reverse bag drag did not route"));break;
+    case 9:
     {
         if(Profile->Items[Sword].Cell!=OriginalSwordCell)return Fail(TEXT("Reverse bag drag has wrong final cell"));
         TSet<int32> Cells;
         for(const auto& I:Profile->Items)if(!I.Equipped){if(Cells.Contains(I.Cell))return Fail(TEXT("Bag contains overlapping item cells"));Cells.Add(I.Cell);}
         if(SelectedItem==INDEX_NONE || Profile->Items[SelectedItem].NetworkId!=SelectedNetworkItem)return Fail(TEXT("Selected item changed during object recreation"));
-        ClosePanels();break;
+        DroppedId=LexToString(0x8180000000000000ull | (FCString::Strtoui64(*Profile->Items[Sword].NetworkId,nullptr,10)&0x0000ffffffffffffull));
+        if(!DragCell(OriginalSwordCell,-1,true))return Fail(TEXT("World drag did not start"));
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-world-drag.png"),true,false);break;
     }
+    case 10:
+        if(!HasMouseCapture() || DragItem.IsEmpty())return Fail(TEXT("World drag lost capture while held"));
+        if(!ReleaseDrag())return Fail(TEXT("World drop release did not route"));break;
+    case 11:
+        if(Sword!=INDEX_NONE || !Net->RadarContacts().ContainsByPredicate([&](const auto& C){return C.Id==DroppedId && C.Actor.IsValid();}))return Fail(TEXT("World drop did not transfer the owned item to a rendered object"));
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-world-drop.png"),true,false);
+        Net->SelectTarget(DroppedId);Net->UseTarget();break;
+    case 12:
+        if(Sword==INDEX_NONE || Net->RadarContacts().ContainsByPredicate([&](const auto& C){return C.Id==DroppedId;}))return Fail(TEXT("Ground item pickup did not restore inventory and remove its world object"));
+        if(!DragCell(Profile->Items[Sword].Cell,0,true))return Fail(TEXT("Cancel test drag did not start"));
+        FSlateApplication::Get().ReleaseAllPointerCapture();break;
+    case 13:
+        if(!DragItem.IsEmpty() || HasMouseCapture())return Fail(TEXT("Capture loss left an inventory drag active"));
+        ClosePanels();break;
     }
     UE_LOG(LogTemp,Display,TEXT("AC2 inventory input step %d passed"),Step);return true;
 }

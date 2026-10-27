@@ -13,6 +13,8 @@ use std::{
 const MAX_JOURNAL_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_PHYSICAL_VALUES: usize = 256;
 mod compaction;
+mod drops;
+pub use drops::DroppedItem;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Character {
@@ -43,6 +45,7 @@ pub struct Store {
     compact_after: u64,
     lock: PathBuf,
     pub characters: BTreeMap<u64, Character>,
+    pub drops: BTreeMap<u64, DroppedItem>,
     poisoned: bool,
     positions_path: PathBuf,
     positions: BTreeMap<u64, Placement>,
@@ -112,6 +115,7 @@ impl Store {
                 compact_after: MAX_JOURNAL_BYTES / 2,
                 lock: lock.clone(),
                 characters,
+                drops: journal.drops,
                 poisoned: false,
                 positions_path,
                 positions,
@@ -1031,7 +1035,7 @@ impl Store {
                 return Err(error);
             }
         };
-        if before.characters != self.characters || before.revision != self.revision {
+        if before.characters != self.characters || before.drops != self.drops || before.revision != self.revision {
             self.poisoned = true;
             return Err(invalid("journal differs from active character state"));
         }
@@ -1060,6 +1064,7 @@ impl Store {
             }
         };
         if after.characters != before.characters
+            || after.drops != before.drops
             || after.revision != before.revision
             || after.relocations.len() != before.relocations.len()
             || before.relocations.iter().any(|(id, (_, position))| {
@@ -1172,6 +1177,7 @@ pub fn decode_journal(bytes: &[u8]) -> io::Result<BTreeMap<u64, Character>> {
 }
 struct JournalState {
     characters: BTreeMap<u64, Character>,
+    drops: BTreeMap<u64, DroppedItem>,
     relocations: BTreeMap<u64, (u64, Placement)>,
     revision: u64,
 }
@@ -1228,6 +1234,7 @@ fn decode_journal_collect(
     let text =
         std::str::from_utf8(bytes).map_err(|_| invalid("invalid character journal encoding"))?;
     let mut records: BTreeMap<u64, Character> = BTreeMap::new();
+    let mut drops = BTreeMap::new();
     let mut relocations = BTreeMap::new();
     let mut revision = 0u64;
     let mut run = compaction::Run::default();
@@ -1737,6 +1744,10 @@ fn decode_journal_collect(
             character.progression = progression;
             continue;
         }
+        if fields.len() == 4 && matches!(fields[0], "wd1" | "wp1") {
+            drops::replay(&fields,&mut records,&mut drops)?;
+            continue;
+        }
         if fields.len() == 3 && fields[0] == "i1" {
             let id = fields[1]
                 .parse::<u64>()
@@ -1904,6 +1915,7 @@ fn decode_journal_collect(
     }
     Ok(JournalState {
         characters: records,
+        drops,
         relocations,
         revision,
     })

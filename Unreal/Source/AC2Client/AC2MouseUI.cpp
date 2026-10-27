@@ -200,6 +200,14 @@ void SAC2GameUI::BuildPointerFeedback()
         for(int32 I=Start;I<Native.Nodes.Num();++I)
             if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text")))Native.Nodes[I].Text=Text;
     };
+    if(!DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
+    {
+        if(const auto* Profile=Mode->Characters.Active())
+            if(const auto* Item=Profile->Items.FindByPredicate([&](const auto& I){return I.NetworkId==DragItem;}))
+                if(const auto* Definition=Mode->CharacterCatalog.Items.Find(Item->Definition))
+                    Label(Definition->Name,Mouse+FVector2D(20,22));
+        return;
+    }
     if(auto* Net=Mode->Network.Get())
     {
         FBox2D Bounds;

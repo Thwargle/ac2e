@@ -52,6 +52,8 @@ class FAC2Network
     void UseTarget();
     void UseItem(int32 Index, uint32 EquipSlot=0);
     void MoveItem(int32 Index, int32 Slot);
+    void DropItem(int32 Index);
+    bool ArrivalCollisionReady() const;
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
     bool Dead = false, Combat = false;
@@ -95,7 +97,7 @@ class FAC2Network
         FAC2Appearance Aspects;
         TWeakObjectPtr<AActor> Actor;
         TWeakObjectPtr<USceneComponent> Body;
-        bool Content=false, GroundedContent=false, Solid=false;
+        bool Content=false, GroundedContent=false, Solid=false, GroundItem=false;
         float FootZ=0;
         double NextGroundCheck=0;
         TUniquePtr<FAC2AssetLibrary> Model;

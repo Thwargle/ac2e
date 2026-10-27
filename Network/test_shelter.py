@@ -86,18 +86,25 @@ def main():
         start=use(glyph['id'],0x8140000000030044);until(a,start,'chat',lambda e:'Target the Menhir Portal' in str(e))
         start=use(glyph['id'],0x8140000000030047)
         arrival=until(a,start,'position',lambda e:e['id']==a.id and e['cell']==0x03f40154)
+        assert math.dist(arrival['position'],[176,62,15.32])<.01,arrival
         until(a,start,'inventory_remove',lambda e:e['id']==glyph['id'])
         a.pos=list(arrival['position']);a.bag.remove(glyph['id'])
         scout=until(a,start,'object',lambda e:e.get('entity')==0x4700157f and e.get('placement',{}).get('cell')==0x03f40154)
         start=use(scout['id']);until(a,start,'chat',lambda e:e['text']['key']==0x8b6b1863)
+        # Approach the shard from the clear side instead of spawning inside it.
+        move(a,[178,64,15.25],0x03f40154)
         start=use(0x8140000000030048);until(a,start,'chat',lambda e:'Shelter Hold complete' in str(e))
         result['glyph_target_checked_consumed_and_vault_completed']=True
+        # Simulate a character saved at the previous obstructed arrival.
+        move(a,[178.730484,62.94236,15.121846],0x03f40154)
         hero=a.id
         for p in peers:p.close()
         (run/'world/stop.request').write_text('stop');assert server.wait(timeout=10)==0
         server=subprocess.Popen(args,env=env,stdout=log,stderr=log,creationflags=0x08000000);time.sleep(1)
         p=Peer();peers.append(p);p.send('connect',host='127.0.0.1',port=19360,account='local');p.wait('characters');p.send('enter',id=hero);p.wait('player');p.send('ready')
         spawn=until(p,0,'object',lambda e:e['id']==hero);assert spawn['placement']['cell']==0x03f40154
+        assert math.dist(spawn['placement']['position'],[176,62,15.32])<.01,spawn
+        result['legacy_obstructed_arrival_recovered']=True
         p.send('chat',channel='say',text='@quest shelter');until(p,0,'chat',lambda e:'Shelter Hold complete' in str(e))
         result['completion_inventory_and_vault_survive_restart']=True
         (run/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result,indent=2));print(run)

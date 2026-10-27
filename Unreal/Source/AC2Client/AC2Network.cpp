@@ -303,15 +303,16 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     }
     else
     {
-        const FBox FeetBounds=Obj.Model->ModelBounds(0x81000001);
+        const bool GroundItem=Obj.GroundItem;
+        const FBox FeetBounds=Obj.Model->ModelBounds(GroundItem?0:0x81000001);
         const auto Motion=Obj.Model->MotionData().Values(AC2Motion::Ground);
-        const bool GroundedBody=FeetBounds.IsValid && Motion.Gravity && FMath::IsNearlyZero(Motion.Hover);
+        const bool GroundedBody=FeetBounds.IsValid && (GroundItem || (Motion.Gravity && FMath::IsNearlyZero(Motion.Hover)));
         Obj.GroundedContent=Obj.Content && Obj.Parent.IsEmpty() && GroundedBody;
         // Feet are a mesh-type in the DAT. Do not use an effect's bounding box
         // or a tail tip as the humanoid's standing plane.
         Obj.FootZ=GroundedBody?FeetBounds.Min.Z:0;
         if(GroundedBody && Obj.Parent.IsEmpty())Body->SetRelativeLocation(FVector(0,0,-Obj.FootZ));
-        Obj.Solid=Obj.Content && Obj.Parent.IsEmpty() && Obj.Model->EnableWorldObjectCollision()>0;
+        Obj.Solid=!GroundItem && Obj.Content && Obj.Parent.IsEmpty() && Obj.Model->EnableWorldObjectCollision()>0;
         A->SetActorEnableCollision(Obj.Solid);
         if(Smoke)
         {
@@ -741,9 +742,31 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
     auto J = Command(TEXT("move_item"));
     J->SetStringField(TEXT("id"), I.NetworkId);
     J->SetNumberField(TEXT("from"), I.Cell);
-    J->SetNumberField(TEXT("to"), Slot);
+    // The UI names the final cell; native sorting uses a boundary in the list
+    // before removing the source. Otherwise dragging to the next cell is a no-op.
+    J->SetNumberField(TEXT("to"), FMath::Min(Slot + (Slot > I.Cell ? 1 : 0), Count));
     J->SetNumberField(TEXT("quantity"), I.Quantity);
     Send(J);
+}
+void FAC2Network::DropItem(int32 Index)
+{
+    const auto* P=Mode->Characters.Active();
+    if(!IsWorld() || !P || !P->Items.IsValidIndex(Index))return;
+    const auto& I=P->Items[Index];
+    if(I.Equipped){Mode->Notice=TEXT("Move equipped items to your backpack before dropping them.");return;}
+    auto J=Command(TEXT("drop_item"));J->SetStringField(TEXT("id"),I.NetworkId);
+    J->SetNumberField(TEXT("from"),I.Cell);J->SetNumberField(TEXT("quantity"),I.Quantity);
+    J->SetNumberField(TEXT("landblock"),Cell & 0xffff0000);Send(J);
+}
+bool FAC2Network::ArrivalCollisionReady() const
+{
+    for(const auto& Pair:Objects)
+    {
+        const auto& O=*Pair.Value;
+        if(O.Content && O.Solid && O.Model && O.Placed && Mode->CellVisible(O.Cell) &&
+            !O.Model->CollisionReady())return false;
+    }
+    return true;
 }
 void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
@@ -1121,7 +1144,9 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
         Obj.Entity = N(J, TEXT("entity"));
-        Obj.Content=(FCString::Strtoui64(*Id,nullptr,10)>>48)==0x8140;
+        const uint64 Namespace=FCString::Strtoui64(*Id,nullptr,10)>>48;
+        Obj.Content=Namespace==0x8140 || Namespace==0x8180;
+        Obj.GroundItem=Namespace==0x8180;
         Obj.EntityScale = FMath::Clamp(float(N(J, TEXT("scale"), 1)), .01f, 100.f);
         if (Obj.Name.IsEmpty() && Obj.Entity)
         {
@@ -1484,7 +1509,7 @@ void FAC2Network::Tick(float Delta)
             bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0 && SmokeCastParticles>0));
             if(VerifyEquipment)OK &= SmokeMissiles>0 && SmokeMissileUpdates>0 && SmokeMissileParticles>0;
             FString Report = FPaths::ProjectSavedDir() / TEXT("Diagnostics/AC2Network-smoke.txt");
-            if(OK && VerifyEquipment && InventorySmokeStep<8)
+            if(OK && VerifyEquipment && InventorySmokeStep<14)
             {
                 if(Time<InventorySmokeNext)return;
                 FString Error;auto H=HUD(Mode);

@@ -1673,6 +1673,43 @@ fn craft_item(
     Ok(updates)
 }
 
+fn drop_ground_item(peer:&mut Peer, character:u64, request:&crate::inventory_request::DropRequest,
+    store:&mut Store, scene:&mut crate::scene::Scene,
+    metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,now_ms:u64) -> io::Result<Vec<crate::scene::Delivery>> {
+    if peer.last_inventory_ms.is_some_and(|last|now_ms.saturating_sub(last)<100) {return Err(invalid("Please wait before moving another item."));}
+    let position=scene.player_placement(character).ok_or_else(||invalid("Wait until you arrive in the world."))?;
+    if request.landblock != position.cell & 0xffff0000 {return Err(invalid("Your destination has changed. Try dropping the item again."));}
+    let saved=&store.characters[&character];
+    request.moved.checked_command(character,&saved.inventory).map_err(other)?;
+    let dropped=store.drop_candidate(&peer.session.account,character,request.moved.item,position)?;
+    scene.validate_drop(&dropped)?;
+    let info=metadata.get(&dropped.item.definition).and_then(|m|*m).ok_or_else(||invalid("This item's ground profile is unavailable."))?;
+    // Validate the return-to-inventory profile before removing any ownership.
+    crate::item_services::acquired(character,&dropped.item,info).map_err(other)?;
+    let instance=scene.inventory_instance(character,dropped.item.id).map_err(other)?;
+    let events=vec![crate::item_services::removed(dropped.item.id).map_err(other)?,
+        world::destroy_inventory_item(dropped.item.id,instance),script::chat("Item dropped. Double-click it in the world to pick it up.",1).map_err(other)?];
+    peer.validate_scene_batch(&events)?;
+    store.drop_item(&peer.session.account,character,dropped.item.id,position)?;
+    scene.inventory_removed(character,dropped.item.id).map_err(other)?;
+    let deliveries=scene.add_drop(&dropped)?;
+    peer.last_inventory_ms=Some(now_ms);peer.queue_ordered_batch(events)?;Ok(deliveries)
+}
+fn pickup_ground_item(peer:&mut Peer,character:u64,id:u64,store:&mut Store,scene:&mut crate::scene::Scene,
+    metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,now_ms:u64) -> io::Result<Vec<crate::scene::Delivery>> {
+    if peer.last_inventory_ms.is_some_and(|last|now_ms.saturating_sub(last)<100) {return Err(invalid("Please wait before moving another item."));}
+    if !scene.combat_distance(character,id).is_some_and(|d|d<=4.) {return Err(invalid("Move within four meters to pick up the item."));}
+    let item=store.pickup_candidate(&peer.session.account,character,id)?;
+    let info=metadata.get(&item.definition).and_then(|m|*m).ok_or_else(||invalid("Item metadata is unavailable."))?;
+    let instance=scene.admit_inventory_grant(character,item.id).map_err(other)?;
+    let events=vec![world::create_inventory_item(&item,character,instance).map_err(other)?,
+        crate::item_services::acquired(character,&item,info).map_err(other)?,script::chat("Item picked up.",1).map_err(other)?];
+    peer.validate_scene_batch(&events)?;
+    store.pickup_item(&peer.session.account,character,id)?;
+    let deliveries=scene.remove_drop(id)?;
+    scene.inventory_granted(character,item.id,instance).map_err(other)?;
+    peer.last_inventory_ms=Some(now_ms);peer.queue_ordered_batch(events)?;Ok(deliveries)
+}
 pub fn run(config: Config) -> io::Result<()> {
     run_with_auth(config, None)
 }
@@ -1804,8 +1841,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 let vigor = crate::crafting::validate_vigor(&mut portal)?;
                 inventory_metadata.insert(crate::crafting::VIGOR_OUTPUT, Some(vigor));
             }
-            for character in store.characters.values().filter(|c| !c.deleted) {
-                for item in character.inventory.items() {
+            for item in store.characters.values().filter(|c|!c.deleted).flat_map(|c|c.inventory.items()).chain(store.drops.values().map(|d|&d.item)) {
                     portal.read(item.definition)?;
                     portal.read(item.visual)?;
                     if !inventory_metadata.contains_key(&item.definition) {
@@ -1822,7 +1858,6 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         }
                         inventory_metadata.insert(item.definition, metadata.ok());
                     }
-                }
             }
         }
         println!(
@@ -1957,6 +1992,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
     if let Some(directory) = config.game_data.as_deref() {
         scene = scene.with_visibility(crate::visibility::Visibility::open(directory)?);
     }
+    for dropped in store.drops.values() {scene.add_drop(dropped)?;}
     if let Some(runtime) = &encounters {
         for (id, health) in runtime.initial_health() {
             scene.content_stat(id, 0x107, health)?;
@@ -2924,6 +2960,14 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             }
                                         }
                                         script::Request::UseObject(request) => {
+                                            if request.item>>48==0x8180 {
+                                                if !config.initialize_ui || request.owner!=character || request.target!=0 {return Err(invalid("Invalid ground item pickup."));}
+                                                match pickup_ground_item(peer,character,request.item,&mut store,&mut scene,&inventory_metadata,now_ms) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>peer.queue_ordered_batch(vec![script::chat(&format!("Pickup rejected: {error}"),1).map_err(other)?])?,
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if request.target!=0 && !(unreal_gameplay && store.characters[&character].inventory.items().any(|i|i.id==request.item && i.definition==crate::shelter::GLYPH)) {
                                                 return Err(invalid("Targeted use is only supported for your Menhir Glyph."));
                                             }
@@ -3302,6 +3346,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         now,
                                                     )?,
                                                 ),
+                                            }
+                                        }
+                                        script::Request::InventoryDrop(request) => {
+                                            if !config.initialize_ui {return Err(invalid("Inventory is not initialized."));}
+                                            match drop_ground_item(peer,character,&request,&mut store,&mut scene,&inventory_metadata,now_ms) {
+                                                Ok(updates)=>deliveries.extend(updates),
+                                                Err(error)=>peer.queue_ordered_batch(vec![script::chat(&format!("Drop rejected: {error}"),1).map_err(other)?])?,
                                             }
                                         }
                                         script::Request::InventoryMove(request) => {
@@ -4282,9 +4333,17 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 .filter(|r| profile.supports(r))
                                                 .cloned()
                                             {
-                                                let placement = store
+                                                let saved_placement = store
                                                     .placement(character_id)
                                                     .unwrap_or(profile.start(&request));
+                                                let placement=if store.characters[&character_id].progression.alive() &&
+                                                    scene.content_placement(0x8140000000030048).is_some() {
+                                                    crate::shelter::recover_vault_arrival(saved_placement)
+                                                } else {saved_placement};
+                                                if placement!=saved_placement {
+                                                    store.relocate(&peer.session.account,character_id,placement)?;
+                                                    eprintln!("Recovered character {character_id} from obstructed Vault arrival");
+                                                }
                                                 if !profile.contains_cell(placement.cell) {
                                                     return Err(invalid(
                                                         "saved placement references unavailable cell",

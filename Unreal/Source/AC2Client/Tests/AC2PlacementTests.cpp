@@ -2,6 +2,7 @@
 #include "AC2CellConnectivity.h"
 #include "AC2WorldStream.h"
 #include "AC2WorldGrid.h"
+#include "AC2Assets.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Components/BoxComponent.h"
@@ -143,4 +144,63 @@ bool FAC2NativeDungeonLandingTest::RunTest(const FString&)
     ADD_LATENT_AUTOMATION_COMMAND(FNativeDungeonLandingCommand(this));
     return true;
 }
+class FVaultArrivalCommand : public IAutomationLatentCommand
+{
+    FAutomationTestBase* Test;
+    UWorld* World=nullptr;
+    TUniquePtr<FAC2WorldStream> Stream;
+    TArray<TUniquePtr<FAC2AssetLibrary>> Props;
+    double Started=FPlatformTime::Seconds();
+public:
+    explicit FVaultArrivalCommand(FAutomationTestBase* In):Test(In){}
+    ~FVaultArrivalCommand(){Props.Reset();Stream.Reset();if(World){World->DestroyWorld(false);GEngine->DestroyWorldContext(World);}}
+    bool Update() override
+    {
+        const FVector Origin=AC2::BlockOrigin(0x03f4);
+        if(!World)
+        {
+            const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false).CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false).EnableTraceCollision(true);
+            World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+            GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+            Stream=MakeUnique<FAC2WorldStream>();FString Error;
+            if(!Test->TestTrue(TEXT("Open Vault arrival DATs"),Stream->Open(World,AC2::ResolveDatDirectory(TEXT("")),Error)))return true;
+            Stream->SetInteriorCell(0x03f40154);
+        }
+        Stream->Tick(Origin+FVector(8000,8000,1512.1846));
+        if(!Stream->AllReady()){if(FPlatformTime::Seconds()-Started<90)return false;Test->AddError(TEXT("Vault collision timed out"));return true;}
+        if(Props.IsEmpty())
+        {
+            for(auto Visual:{0x1f00031eu,0x1f0012beu,0x1f000d76u})
+            {
+                auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();
+                auto Model=MakeUnique<FAC2AssetLibrary>();FString Error;
+                if(!Test->TestTrue(TEXT("Open Vault prop DATs"),Model->Open(AC2::ResolveDatDirectory(TEXT("")),Error)))return true;
+                if(!Test->TestTrue(TEXT("Load Vault prop geometry"),Model->DrawModel(Visual,Actor,Root)))return true;
+                const int32 Solid=Model->EnableWorldObjectCollision();
+                if(Visual==0x1f0012be)Test->TestTrue(TEXT("Menhir shard has solid collision"),Solid>0);
+                Actor->SetActorLocation(Origin+(Visual==0x1f00031e?FVector(17873.0484,6594.236,1512.1846):Visual==0x1f0012be?FVector(18173.0484,6294.236,1512.1846):FVector(17700,6400,1529)));
+                UE_LOG(LogTemp,Display,TEXT("AC2 Vault prop %08X solid=%d bounds=%s"),Visual,Solid,*Actor->GetComponentsBoundingBox(true).GetSize().ToString());
+                Props.Add(MoveTemp(Model));
+            }
+            return false;
+        }
+        for(auto& Model:Props)if(!Model->CollisionReady()){if(FPlatformTime::Seconds()-Started<90)return false;Test->AddError(TEXT("Vault prop collision timed out"));return true;}
+        for(auto Size:{FVector2D(24,93),FVector2D(55,165)})
+        {
+            for(auto Hint:{FVector(17600,6200,1532),FVector(17700,6400,1529)})
+            {
+                Hint+=Origin;FVector Center;uint32 Cell=0;
+                Test->TestTrue(TEXT("Vault landing/scout remain inside native room"),Stream->InteriorCellAt(Hint,Cell)&&Cell==0x03f40154);
+                if(!Test->TestTrue(TEXT("Vault landing/scout stand outside the shard"),AC2::StandingPosition(World,Hint,Size.X,Size.Y,Center)))continue;
+                Test->TestTrue(TEXT("No lateral landing correction needed"),FVector::Dist2D(Hint,Center)<1);
+                FHitResult Hit;FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2VaultExit));
+                const bool Blocked=World->SweepSingleByChannel(Hit,Center,Center-FVector(0,100,0),FQuat::Identity,ECC_Pawn,FCollisionShape::MakeCapsule(Size.X,Size.Y),Query);
+                Test->TestTrue(TEXT("Avatar can walk away from arrival and scout"),!Blocked || Hit.Time>.95f);
+            }
+        }
+        return true;
+    }
+};
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVaultArrivalTest,"AC2.Data.VaultPortalArrival",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FVaultArrivalTest::RunTest(const FString&){ADD_LATENT_AUTOMATION_COMMAND(FVaultArrivalCommand(this));return true;}
 #endif

@@ -141,3 +141,18 @@ full retail quest or spell parity.
 - Upstream native-client launcher assets and launcher-specific startup scripts are omitted. The `deploy/` templates and upstream documentation remain reference material for porting; use the AC2E scripts above for this Windows/Legions setup.
 
 Build the server independently with `Build-AC2E.ps1 -Test`, or build the server and Unreal transport bridge with `../Build-AC2Network.ps1 -Test`. Protocol/render integration tests are in `../Network`; they use isolated temporary stores. The source archive can be regenerated with Python `export_source.py`, then `cargo build --release --locked --manifest-path emulator/Cargo.toml --target-dir target`.
+
+Inventory drags reorder the native dense backpack list, including adjacent slots.
+Release a backpack item over the world to drop the whole item or stack at your feet;
+double-click it within four meters to pick it up. Unequip worn items first. Nearby
+players see the same dropped model and may pick it up. Drops and pickups commit
+atomically in the character journal and survive server restart. Ground items are
+bounded to 512 per server; partial-stack drops and corpse containers remain unfinished.
+
+The reconstructed Vault arrival and Advance Scout now use floor positions clear
+of the authored Menhir Shard. Logging in at the old obstructed arrival moves the
+character to that clear landing. The client also waits for received world-object
+collision before releasing a portal arrival. Native DAT collision tests cover
+both supported capsule extremes and walking away from the landing/scout.
+`Network/test_world_drops.py` checks two-player ownership and restart recovery;
+`test_shelter.py` covers the tutorial continuation and old-arrival recovery.

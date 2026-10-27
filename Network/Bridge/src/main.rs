@@ -414,6 +414,12 @@ impl Session {
                     )),
                 )?;
             }
+            "drop_item" if self.ready => {
+                let mut event=reorganize_item(InvMoveDesc::new(id(v,"id")?,self.player,
+                    word(v,"from")? as i32,u64::from(word(v,"landblock")?),-1,word(v,"quantity")? as i32));
+                if let ClientEvent::Interp {function,..}=&mut event {*function=0x820e0036;}
+                send(&mut self.client,event)?;
+            }
             "equip" if self.ready => {
                 send(
                     &mut self.client,

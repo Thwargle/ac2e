@@ -179,6 +179,20 @@ pub struct Scene {
     content: crate::content::Content,
 }
 impl Scene {
+    pub fn validate_drop(&mut self,dropped:&crate::store::DroppedItem) -> std::io::Result<()> {
+        self.prepare_cell(dropped.placement.cell)?;self.content.validate_drop(dropped)
+    }
+    pub fn add_drop(&mut self, dropped:&crate::store::DroppedItem) -> std::io::Result<Vec<Delivery>> {
+        self.prepare_cell(dropped.placement.cell)?;
+        self.content.insert_drop(dropped)?;
+        let object=self.content.object(dropped.id()).unwrap();
+        Ok(self.neighbor_ids(object.placement.cell,0).map(|recipient|Delivery{recipient,data:object.spawn.clone()}).collect())
+    }
+    pub fn remove_drop(&mut self,id:u64) -> std::io::Result<Vec<Delivery>> {
+        let cell=self.content.cell(id).ok_or_else(||std::io::Error::other("Ground item unavailable"))?;
+        let data=self.content.remove_drop(id)?;
+        Ok(self.neighbor_ids(cell,0).map(|recipient|Delivery{recipient,data:data.clone()}).collect())
+    }
     pub fn with_visibility(mut self, visibility: crate::visibility::Visibility) -> Self {
         self.visibility = Some(visibility);
         self

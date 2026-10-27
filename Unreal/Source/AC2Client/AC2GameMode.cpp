@@ -373,7 +373,7 @@ void AAC2GameMode::Tick(float Delta)
         if (NetworkTravel)
         {
             Stream->Tick(StreamFocus);
-            if (!Stream->PlacementReadyAt(StreamFocus)) return;
+            if (!Stream->PlacementReadyAt(StreamFocus) || !Network->ArrivalCollisionReady()) return;
             const auto* Capsule = P->GetCapsuleComponent();
             FVector Center;
             if (!Stream->NetworkLanding(Network->Feet, Network->Cell, Capsule->GetScaledCapsuleRadius(),

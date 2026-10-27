@@ -15,9 +15,16 @@ pub const GLYPH: u32 = 0x47001582;
 pub const DIGGER: u32 = 0x4700158b;
 pub const SENTINEL: u32 = 0x4700158c;
 pub const PORTAL: u64 = 0x8140000000030047;
-// Retained Advance Scout placement in a supported Vault cell.
+// Clear arrival beside the scout, outside the authored seven-meter Menhir Shard.
+// Verified against the native room, shard collision, and the largest avatar capsule.
 pub const VAULT: crate::movement::Placement = crate::movement::Placement {
-    cell:0x03f40154, coordinates:[178.730484,62.94236,15.121846], heading:0 };
+    cell:0x03f40154, coordinates:[176.,62.,15.32], heading:0 };
+pub fn recover_vault_arrival(point:crate::movement::Placement) -> crate::movement::Placement {
+    let [x,y,z]=point.coordinates;
+    if point.cell==VAULT.cell && (178.3..180.5).contains(&x) && (62.2..63.7).contains(&y) && (14.5..17.).contains(&z) {
+        VAULT
+    } else {point}
+}
 pub const JOURNAL: u32 = 0x4000ff05; // AC2E identity; original quest ID not recovered.
 pub fn supported(entity: u32) -> bool {
     matches!(entity, GUARD | LIEUTENANT | SENTRY | SCOUT | ADVANCE | SHARD | 0x47001573..=0x4700157c)
@@ -121,6 +128,14 @@ pub fn text(table: u32, key: u32) -> Result<Vec<u8>, WorldError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn vault_recovery_only_moves_the_old_obstructed_arrival() {
+        let mut p=VAULT;p.coordinates=[178.730484,62.94236,15.121846];
+        assert_eq!(recover_vault_arrival(p),VAULT);
+        assert_eq!(recover_vault_arrival(VAULT),VAULT);
+        p.coordinates=[178.,64.,15.25];assert_eq!(recover_vault_arrival(p),p);
+        p.cell=0x02990109;p.coordinates=[178.730484,62.94236,15.121846];assert_eq!(recover_vault_arrival(p),p);
+    }
     #[test]
     fn introductions_are_ordered_repeatable_and_keep_native_strings() {
         let mut book = Book::default();
