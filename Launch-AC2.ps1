@@ -35,6 +35,23 @@ $editor = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor.exe'
 $commandlet = Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe'
 if (!(Test-Path -LiteralPath $build)) { throw "Unreal Engine 5.8 not found: $EngineRoot" }
 if (!$SkipBuild) {
+    # Only this project's game windows can be closed automatically. An editor may
+    # contain unsaved work; fail before linking rather than forcing it to exit.
+    $projectKey = [IO.Path]::GetFullPath($project).Replace('/', '\').ToLowerInvariant()
+    $clients = @(Get-CimInstance Win32_Process -Filter "Name='UnrealEditor.exe'" | Where-Object {
+        $_.CommandLine -and $_.CommandLine.Replace('/', '\').ToLowerInvariant().Contains($projectKey)
+    })
+    if ($clients | Where-Object { $_.CommandLine -notmatch '(?i)(?:^|\s)-game(?:\s|$)' }) {
+        throw 'Close this project in Unreal Editor before rebuilding, or launch with -SkipBuild to use the current binary.'
+    }
+    foreach ($client in $clients) {
+        $running = Get-Process -Id $client.ProcessId -ErrorAction SilentlyContinue
+        if (!$running) { continue }
+        Write-Output 'Closing the running AC2 game window so its client DLL can be rebuilt...'
+        if (!$running.CloseMainWindow() -or !$running.WaitForExit(15000)) {
+            throw 'AC2 is still running. Close its game window and try again; the launcher will not force it to exit.'
+        }
+    }
     & $build AC2UnrealEditor Win64 Development "-Project=$project" -WaitMutex -NoHotReloadFromIDE
     if ($LASTEXITCODE -ne 0) { throw "AC2 editor build failed ($LASTEXITCODE)." }
 }
@@ -52,10 +69,10 @@ if ($Mode -eq 'Inspect') {
     return
 }
 $materialRoot = Join-Path $PSScriptRoot 'Unreal/Content/AC2/Materials'
-$missingMaterials = @('M_AC2Opaque','M_AC2Cutout','M_AC2Sky','M_AC2SkyAlpha','M_AC2SkyAdd','M_AC2Water','M_AC2Far','M_AC2Particle','M_AC2SceneryAlpha','M_AC2SceneryAdd','M_AC2ParticleAdd','M_AC2Grass') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
+$missingMaterials = @('M_AC2Opaque','M_AC2Cutout','M_AC2Sky','M_AC2SkyAlpha','M_AC2SkyAdd','M_AC2Water','M_AC2Far','M_AC2Particle','M_AC2SceneryAlpha','M_AC2SceneryAdd','M_AC2ParticleAdd','M_AC2Grass','M_AC2UIOpaque','M_AC2UICutout','M_AC2UIAlpha','M_AC2UIAdd') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $materialVersion = Join-Path $materialRoot 'template-version.txt'
 $needsMaterialUpdate = !(Test-Path -LiteralPath $materialVersion)
-if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '4' }
+if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '6' }
 if ($missingMaterials -or $needsMaterialUpdate) {
     & $commandlet $project -run=AC2Inspect -MaterialsOnly -unattended -nop4 -NullRHI -stdout -FullStdOutLogOutput
     if ($LASTEXITCODE -ne 0) { throw "AC2 material preparation failed ($LASTEXITCODE)." }

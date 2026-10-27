@@ -14,6 +14,7 @@
 #include "Materials/MaterialExpressionVectorParameter.h"
 #include "Materials/MaterialExpressionVertexColor.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
+#include "Materials/MaterialExpressionVertexInterpolator.h"
 #include "Materials/MaterialExpressionWorldPosition.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
@@ -26,9 +27,9 @@
 bool PrepareAC2Materials(FString &Error)
 {
 #if WITH_EDITOR
-    for (int32 Kind = 0; Kind < 12; ++Kind)
+    for (int32 Kind = 0; Kind < 16; ++Kind)
     {
-        const bool Grass = Kind == 11, Masked = Kind == 1 || Grass, Sky = Kind >= 2 && Kind <= 4;
+        const bool Preview = Kind >= 12, Grass = Kind == 11, Masked = Kind == 1 || Kind == 13 || Grass, Sky = Kind >= 2 && Kind <= 4;
         const FString Name = Kind == 0    ? TEXT("M_AC2Opaque")
                              : Kind == 1  ? TEXT("M_AC2Cutout")
                              : Kind == 2  ? TEXT("M_AC2Sky")
@@ -40,15 +41,18 @@ bool PrepareAC2Materials(FString &Error)
                              : Kind == 8  ? TEXT("M_AC2SceneryAlpha")
                              : Kind == 9  ? TEXT("M_AC2SceneryAdd")
                              : Kind == 10 ? TEXT("M_AC2ParticleAdd")
-                                          : TEXT("M_AC2Grass");
+                             : Kind == 11 ? TEXT("M_AC2Grass")
+                             : Kind == 12 ? TEXT("M_AC2UIOpaque")
+                             : Kind == 13 ? TEXT("M_AC2UICutout")
+                             : Kind == 14 ? TEXT("M_AC2UIAlpha") : TEXT("M_AC2UIAdd");
         const FString Path = TEXT("/Game/AC2/Materials/") + Name;
         auto *Existing = LoadObject<UMaterial>(nullptr, *(Path + TEXT(".") + Name));
         bool Updated = false;
         if (Existing)
             for (const auto &E : Existing->GetExpressions())
                 if (auto *P = Cast<UMaterialExpressionVectorParameter>(E))
-                    Updated |= P->ParameterName ==
-                               ((Kind == 1 || Kind == 8 || Kind == 9) ? TEXT("AC2Opacity") : TEXT("AC2UVRowU"));
+                    Updated |= P->ParameterName == (Preview ? TEXT("AC2UIFlags") :
+                               ((Kind == 1 || Kind == 8 || Kind == 9) ? TEXT("AC2Opacity") : TEXT("AC2UVRowU")));
         const bool NativeNormals = Existing && !Existing->bTangentSpaceNormal &&
             Cast<UMaterialExpressionVertexNormalWS>(Existing->GetEditorOnlyData()->Normal.Expression) != nullptr;
         if (Updated && (!Masked || NativeNormals))
@@ -57,12 +61,12 @@ bool PrepareAC2Materials(FString &Error)
         auto *Material = Existing ? Existing : NewObject<UMaterial>(Package, *Name, RF_Public | RF_Standalone);
         Material->GetExpressionCollection().Empty();
         Material->bIsSky = Kind == 2;
-        Material->BlendMode = Kind == 3 || Kind == 5 || Kind == 7 || Kind == 8 ? BLEND_Translucent
-                              : (Kind == 4 || Kind == 9 || Kind == 10)         ? BLEND_Additive
+        Material->BlendMode = Kind == 3 || Kind == 5 || Kind == 7 || Kind == 8 || Kind == 14 ? BLEND_Translucent
+                              : (Kind == 4 || Kind == 9 || Kind == 10 || Kind == 15) ? BLEND_Additive
                               : Masked                                         ? BLEND_Masked
                                                                                : BLEND_Opaque;
-        Material->TwoSided = Masked || Sky || Kind >= 5;
-        if (Sky || Kind == 7 || Kind == 10)
+        Material->TwoSided = Masked || Sky || (Kind >= 5 && Kind != 12);
+        if (Sky || Kind == 7 || Kind == 10 || Preview)
             Material->SetShadingModel(MSM_Unlit);
         Material->OpacityMaskClipValue = 0.4f;
         auto *Texture = NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
@@ -120,7 +124,7 @@ bool PrepareAC2Materials(FString &Error)
             Material->bTangentSpaceNormal = false;
             Material->GetEditorOnlyData()->Normal.Connect(0, Normal);
         }
-        if (Kind == 1 || Kind == 8 || Kind == 9 || Grass)
+        if (Kind == 1 || Kind == 8 || Kind == 9 || Grass || Preview)
         {
             auto *Opacity = NewObject<UMaterialExpressionVectorParameter>(Material);
             Opacity->ParameterName = TEXT("AC2Opacity");
@@ -184,6 +188,64 @@ bool PrepareAC2Materials(FString &Error)
         }
         else
             Material->GetEditorOnlyData()->BaseColor.Connect(0, Multiply);
+        if (Preview)
+        {
+            // Retail UIScene uses vertex diffuse lighting and gamma-space RGB,
+            // not UE's physical light units, ACES tone curve or automatic exposure.
+            auto* Lighting = NewObject<UMaterialExpressionCustom>(Material);
+            Lighting->OutputType = CMOT_Float3;
+            auto Input = [&](UMaterialExpressionCustom* Node, const TCHAR* Name, UMaterialExpression* Value) {
+                FCustomInput I; I.InputName = Name; I.Input.Connect(0, Value); Node->Inputs.Add(I);
+            };
+            auto Param = [&](FString Name, FLinearColor Value) {
+                auto* P = NewObject<UMaterialExpressionVectorParameter>(Material);
+                P->ParameterName = *Name; P->DefaultValue = Value; Expressions.AddExpression(P); return P;
+            };
+            auto* Position = NewObject<UMaterialExpressionWorldPosition>(Material);
+            auto* Normal = NewObject<UMaterialExpressionVertexNormalWS>(Material);
+            Expressions.AddExpression(Position); Expressions.AddExpression(Normal);
+            auto* Vertex = NewObject<UMaterialExpressionVertexColor>(Material);
+            Expressions.AddExpression(Vertex);
+            Input(Lighting, TEXT("Position"), Position); Input(Lighting, TEXT("Normal"), Normal);
+            Input(Lighting, TEXT("Ambient"), Param(TEXT("AC2UIAmbient"), FLinearColor(.1f, .1f, .1f)));
+            Input(Lighting, TEXT("MaterialAmbient"), Param(TEXT("AC2UIMaterialAmbient"), FLinearColor::White));
+            Input(Lighting, TEXT("Tint"), Tint); Input(Lighting, TEXT("Vertex"), Vertex);
+            auto* Flags = Param(TEXT("AC2UIFlags"), FLinearColor(1,1,0,0));
+            FCustomInput FlagInput; FlagInput.InputName = TEXT("Flags"); FlagInput.Input.Connect(5, Flags); Lighting->Inputs.Add(FlagInput);
+            Input(Lighting, TEXT("Ignore"), Param(TEXT("AC2UIIgnore"), FLinearColor::Black));
+            Lighting->Code = TEXT("float3 n=normalize(Normal); float3 lit=0;\n");
+            for (int32 I = 0; I < 8; ++I)
+            {
+                const FString L = FString::Printf(TEXT("Light%d"), I), C = FString::Printf(TEXT("Color%d"), I);
+                auto* P = Param(TEXT("AC2UI") + L, FLinearColor(0,0,0,0));
+                // Custom inputs use RGBA; output 0 of a vector parameter is RGB.
+                FCustomInput In; In.InputName = *L; In.Input.Connect(5, P); Lighting->Inputs.Add(In);
+                Input(Lighting, *C, Param(TEXT("AC2UI") + C, FLinearColor::Black));
+                Lighting->Code += FString::Printf(TEXT(
+                    "{ float3 d=%s.w>0 ? %s.xyz-Position : %s.xyz; float d2=dot(d,d); "
+                    "float a=%s.w>0 ? 1.0/(1.0+10.0*d2/(%s.w*%s.w)) : 1.0; "
+                    "lit+=%s.rgb*a*max(0,dot(n,d*rsqrt(max(d2,0.000001))))*(1-(%s.w>0?Ignore.y:Ignore.x)); }\n"), *L,*L,*L,*L,*L,*L,*C,*L);
+            }
+            Lighting->Code += TEXT(
+                "float3 diffuse=Flags.y>0?Tint.rgb:float3(1,1,1);"
+                "if(Flags.x==0) return saturate(diffuse*(Flags.z>0?Vertex.rgb:float3(1,1,1)));"
+                "if(Flags.z>0) return saturate(Flags.w>0?lit*Vertex.rgb:lit+Vertex.rgb);"
+                "return saturate(lit*diffuse+Ambient.rgb*MaterialAmbient.rgb);");
+            Expressions.AddExpression(Lighting);
+            auto* Interpolate = NewObject<UMaterialExpressionVertexInterpolator>(Material);
+            Interpolate->Input.Connect(0, Lighting); Expressions.AddExpression(Interpolate);
+            auto* NativeColor = NewObject<UMaterialExpressionCustom>(Material);
+            NativeColor->OutputType = CMOT_Float3;
+            Input(NativeColor, TEXT("Albedo"), Texture); Input(NativeColor, TEXT("Tint"), Tint);
+            Input(NativeColor, TEXT("Light"), Interpolate);
+            NativeColor->Code = TEXT(
+                "float3 tex=select(Albedo<=0.0031308,Albedo*12.92,1.055*pow(max(Albedo,0),1.0/2.4)-0.055);"
+                "float3 c=saturate(tex*Light);"
+                "return select(c<=0.04045,c/12.92,pow((c+0.055)/1.055,2.4));");
+            Expressions.AddExpression(NativeColor);
+            Material->GetEditorOnlyData()->BaseColor.Expression = nullptr;
+            Material->GetEditorOnlyData()->EmissiveColor.Connect(0, NativeColor);
+        }
         if (Kind == 5)
         {
             auto *Pan = NewObject<UMaterialExpressionPanner>(Material);
@@ -236,7 +298,7 @@ bool PrepareAC2Materials(FString &Error)
         UE_LOG(LogTemp, Display, TEXT("AC2 material template saved: %s"), *File);
     }
     if (!FFileHelper::SaveStringToFile(
-            TEXT("4"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
+            TEXT("6"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
     {
         Error = TEXT("Cannot save AC2 material template version");
         return false;

@@ -39,11 +39,11 @@ class AAC2Portrait : public AActor
     UPROPERTY() TObjectPtr<class USceneCaptureComponent2D> Capture;
     UPROPERTY() TObjectPtr<USceneComponent> Body;
     UPROPERTY() TObjectPtr<USceneComponent> Stage;
-    UPROPERTY() TObjectPtr<class UPointLightComponent> KeyLight;
     bool Ready = false;
 
   private:
     TUniquePtr<FAC2AssetLibrary> Model, Backdrop;
+    FAC2PreviewLighting Lighting;
     TArray<TWeakObjectPtr<UActorComponent>> StageComponents;
     uint32 SceneId = 0;
     struct FReference { FBox Body{ForceInit}, Head{ForceInit}; float Feet = 0; };

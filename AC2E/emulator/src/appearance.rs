@@ -7,7 +7,8 @@
 //! 0x122, parent 1f000024, scale (Build, Build, Height), part group 0x21 /
 //! 40000002 and aspect 2000000F {1: SkinTone}, 20000010 {3: HeadDetail,
 //! 0B: FrillColor}, 20000011 {4100001C: FaceDetail} and clothing 20000013 /
-//! 20000017 / 20000019 {2: colour, 10: 1.0}, omitting zero-valued traits.
+//! 20000017 / 20000019 {2: colour, 10: 1.0}. Preserve explicitly selected
+//! zero-valued traits: zero selects the first DAT color, not an absent modifier.
 use crate::{movement::Placement, world::WorldError};
 
 pub const HUMAN: u32 = 1;
@@ -114,7 +115,7 @@ const BODIES: [Body; 6] = [
             (SKIN_DETAIL, 0x20000011),
             (FACE_DETAIL, 0x20000011),
         ],
-        clothing: &[(PANTS, 0x20000013), (SHIRT, 0x20000017), (BOOTS, 0x20000019)],
+        clothing: &[(PANTS, 0x20000013), (SHIRT, 0x20000017), (BOOTS, 0x2000001a)],
         starters: [0xb0, 0xcf, 0x60],
     },
     Body {
@@ -236,15 +237,13 @@ impl Body {
         for &(physique, aspect) in self.aspects {
             if let (Some(value), Some(id)) = (get(physique), trait_id(physique)) {
                 let traits = aspects.entry(aspect).or_default();
-                if value != 0.0 {
-                    traits.insert(id, value);
-                }
+                traits.insert(id, value);
             }
         }
         for &(physique, aspect) in self.clothing {
             let slot = match physique { SHIRT => 2, PANTS => 8, BOOTS => 0x10, _ => 0 };
             let traits = aspects.entry(aspect).or_default();
-            if let Some(colour) = get(physique).filter(|value| *value != 0.0) {
+            if let Some(colour) = get(physique) {
                 traits.insert(CLOTHING_COLOR, colour);
             }
             traits.insert(CLOTHING_WORN, if worn & slot != 0 {1.0} else {0.0});
@@ -313,4 +312,37 @@ fn bucket_order<T>(map: &std::collections::BTreeMap<u32, T>) -> Vec<(u32, &T)> {
     let mut entries: Vec<_> = map.iter().map(|(&key, value)| (key, value)).collect();
     entries.sort_unstable_by_key(|(key, _)| (key % BUCKETS, *key));
     entries
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn explicit_first_colors_survive_selection_and_equipment_visuals() {
+        for body in bodies() {
+            let physical: Vec<_> = PHYSIQUES.iter().copied().filter(|k| !matches!(*k, BUILD | HEIGHT))
+                .map(|k| (k, 0f32.to_bits())).collect();
+            let bytes = body.visual_desc_equipped(&physical, 0x1a, &[]).unwrap();
+            let word = |i| u32::from_le_bytes(bytes[i..i+4].try_into().unwrap());
+            let mut at = 32;
+            let mut actual = std::collections::BTreeMap::new();
+            for _ in 0..(word(28) & 0xffffff) {
+                let table = word(at); let count = word(at+4) & 0xffffff; at += 8;
+                for _ in 0..count {
+                    actual.insert((table,word(at)),word(at+4)); at += 8;
+                }
+            }
+            assert_eq!(at, bytes.len());
+            for &(_, table) in body.clothing {
+                assert_eq!(actual.get(&(table,CLOTHING_COLOR)),Some(&0f32.to_bits()));
+                assert_eq!(actual.get(&(table,CLOTHING_WORN)),Some(&1f32.to_bits()));
+            }
+            for &(physique, table) in body.aspects {
+                if let Some(key) = trait_id(physique) {
+                    assert_eq!(actual.get(&(table,key)),Some(&0f32.to_bits()));
+                }
+            }
+        }
+        assert!(body(HUMAN,FEMALE).unwrap().clothing.contains(&(BOOTS,0x2000001a)));
+    }
 }

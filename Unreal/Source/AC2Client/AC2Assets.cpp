@@ -74,6 +74,8 @@ struct FAC2DecodedLayer
     TArray<FAC2AlphaStage> AlphaStages;
     TArray<FAC2UVModifier> Modifiers;
     FLinearColor Tint = FLinearColor::White;
+    FLinearColor Ambient = FLinearColor::White;
+    bool DynamicLighting = false, IgnoreDirectional = false, IgnorePoint = false;
     bool Masked = false;
     bool MaterialDiffuse = false, VertexDiffuse = false, ModulateVertexDiffuse = false;
 };
@@ -87,6 +89,8 @@ struct FAC2DecodedEntity
     uint32 Data = 0, Type = 0;
     FVector Origin = FVector::ZeroVector, Scale = FVector::OneVector;
     FQuat Rotation = FQuat::Identity;
+    FString Name;
+    TMap<uint32, TArray<uint8>> Properties;
 };
 struct FAC2FXNode
 {
@@ -213,6 +217,29 @@ uint32 Random(uint32 X, uint32 Y, uint32 K)
 
 struct FAC2AssetLibrary::FImpl
 {
+    bool PreviewMode = false;
+    FAC2PreviewLighting PreviewLighting;
+    FTransform PreviewToWorld;
+    void LightPreview(UMaterialInstanceDynamic* M)
+    {
+        M->SetVectorParameterValue(TEXT("AC2UIAmbient"), PreviewLighting.Ambient);
+        for (int32 I = 0; I < 8; ++I)
+        {
+            FVector P = FVector::ZeroVector;
+            FLinearColor C(0, 0, 0, 0);
+            float Range = 0;
+            if (PreviewLighting.Lights.IsValidIndex(I))
+            {
+                const auto& L = PreviewLighting.Lights[I];
+                P = L.Directional ? -PreviewToWorld.TransformVectorNoScale(L.Direction).GetSafeNormal()
+                                  : PreviewToWorld.TransformPosition(L.Position);
+                Range = L.Directional ? 0 : FMath::Max(L.Range, .02f);
+                C = L.Diffuse * L.Intensity;
+            }
+            M->SetVectorParameterValue(*FString::Printf(TEXT("AC2UILight%d"), I), FLinearColor(P.X, P.Y, P.Z, Range));
+            M->SetVectorParameterValue(*FString::Printf(TEXT("AC2UIColor%d"), I), C);
+        }
+    }
     FAC2Appearance CharacterAppearance;
     TMap<uint32, TSharedPtr<FAC2AppearanceTable>> AppearanceTables;
     uint32 NextMaterialVariant = 0xfe000000, AppearanceHash = 0;
@@ -509,6 +536,8 @@ struct FAC2AssetLibrary::FImpl
                     L.Textures[F.Index] = V.Word();
                 if (F.Kind == 1 && V.Left() >= 16)
                     L.Tint = Color(V);
+                if (F.Kind == 0 && V.Left() >= 16)
+                    L.Ambient = Color(V);
                 if (F.Kind == 8 && V.Left() >= 4)
                     L.Masked = V.Word() != 0;
                 if (F.Kind >= 33 && F.Kind <= 37 && L.Modifiers.IsValidIndex(F.Index) && V.Left() >= 44)
@@ -603,11 +632,18 @@ struct FAC2AssetLibrary::FImpl
             R.Take(12);
             const uint32 AlphaMode = R.Word();
             L.Masked = AlphaMode != 0 && AlphaMode != 8;
-            R.Take(44 + 28);
+            R.Take(44); // alpha-test waveform
+            R.Word(); // particle lighting
+            L.DynamicLighting = R.Word() != 0;
+            R.Word(); // per-pixel lighting
+            L.IgnoreDirectional = R.Word() != 0;
+            L.IgnorePoint = R.Word() != 0;
+            R.Take(8); // specular switches
             L.MaterialDiffuse = R.Word() != 0;
             L.VertexDiffuse = R.Word() != 0;
             L.ModulateVertexDiffuse = R.Word() != 0;
-            R.Take(16 + 16);
+            R.Take(16); // additional lighting/fog switches
+            L.Ambient = Color(R);
             L.Tint = Color(R);
             R.Take(16 + 44 + 20);
             int32 Shader = R.Count(1, 1024 * 1024);
@@ -878,7 +914,27 @@ struct FAC2AssetLibrary::FImpl
         if (!HasAlpha)
             Masked = false;
         UMaterialInterface *Result = nullptr;
-        if (Grass)
+        if (PreviewMode)
+        {
+            const uint32 Dest = Layer ? Layer->DestBlend : 1;
+            const TCHAR* Name = Masked ? TEXT("M_AC2UICutout") : Dest == 2 ? TEXT("M_AC2UIAdd")
+                : Dest > 2 && HasAlpha ? TEXT("M_AC2UIAlpha") : TEXT("M_AC2UIOpaque");
+            auto* Parent = LoadObject<UMaterialInterface>(nullptr, *FString::Printf(TEXT("/Game/AC2/Materials/%s.%s"), Name, Name));
+            if (Parent)
+            {
+                auto* MID = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
+                Objects.Add(MID);
+                if (I) MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I));
+                MID->SetVectorParameterValue(TEXT("Tint"), Tint);
+                MID->SetVectorParameterValue(TEXT("AC2UIMaterialAmbient"), Layer ? Layer->Ambient : FLinearColor::White);
+                MID->SetVectorParameterValue(TEXT("AC2UIFlags"), Layer ? FLinearColor(Layer->DynamicLighting, Layer->MaterialDiffuse,
+                    Layer->VertexDiffuse, Layer->ModulateVertexDiffuse) : FLinearColor(0,1,0,0));
+                MID->SetVectorParameterValue(TEXT("AC2UIIgnore"), Layer ? FLinearColor(Layer->IgnoreDirectional, Layer->IgnorePoint,0,0) : FLinearColor::Black);
+                LightPreview(MID);
+                Result = MID;
+            }
+        }
+        else if (Grass)
         {
             // Frill cards must write depth; sorting merged translucent patches by
             // their centres makes whole clumps swap order as the camera moves.
@@ -954,7 +1010,7 @@ struct FAC2AssetLibrary::FImpl
         return Result;
     }
 
-    void SkipProperties(FAC2AssetReader &R)
+    void SkipProperties(FAC2AssetReader &R, TMap<uint32, TArray<uint8>>* Out = nullptr)
     {
         const int32 NG = R.Count(8);
         for (int32 I = 0; I < NG && R.Good; ++I)
@@ -964,6 +1020,7 @@ struct FAC2AssetLibrary::FImpl
             for (int32 J = 0; J < NP && R.Good; ++J)
             {
                 const uint32 Name = R.Word();
+                const int32 Start = R.Pos;
                 const uint32 *Type = PropertyTypes.Find(Name);
                 if (!Type)
                 {
@@ -1009,6 +1066,8 @@ struct FAC2AssetLibrary::FImpl
                     R.Good = false;
                     break;
                 }
+                if (Out && R.Good)
+                    Out->FindOrAdd(Name).Append(R.Data.GetData() + Start, R.Pos - Start);
             }
         }
     }
@@ -1035,11 +1094,28 @@ struct FAC2AssetLibrary::FImpl
         if (Bits & 0x20)
             E.Scale = R.Vector();
         if (Bits & 0x80)
-            SkipProperties(R);
+            SkipProperties(R, E.Type == 0x40000005 || E.Type == 0x40000006 ? &E.Properties : nullptr);
         if (Bits & 0x40)
             R.Word();
         if (Bits & 0x100)
-            R.String();
+        {
+            uint32 N = R.Short();
+            if (N == 65535) N = R.Word();
+            const int32 Start = R.Pos;
+            if (R.Take(N))
+            {
+                TArray<uint8> B;
+                B.Append(R.Data.GetData() + Start, N);
+                const uint32 Keys[] = {0xe5849238,0xeb2d767d,0xfc0fdd03,0xcb45a6a6,0x7f21e6bb,0xf5a6cdc8,0x22d9ad12,0xb2a3d4de,
+                    0x3b834db7,0xc406c91c,0x8392305e,0x0a9f0099,0x0943b90c,0xa66d953c,0x0d929e1f,0x0e2e9ad4};
+                for (int32 I = 0; I + 4 <= B.Num(); I += 4)
+                { const uint32 W = AC2::U32(B.GetData() + I) ^ Keys[(I / 4) & 15]; FMemory::Memcpy(B.GetData() + I, &W, 4); }
+                for (auto& V : B) V = uint8((V << 4) | (V >> 4));
+                B.Add(0);
+                E.Name = UTF8_TO_TCHAR(reinterpret_cast<const char*>(B.GetData()));
+            }
+            R.Align();
+        }
         return E;
     }
     FAC2FXNode FXNode(FAC2AssetReader &R)
@@ -1765,7 +1841,7 @@ struct FAC2AssetLibrary::FImpl
                 Stats.GrassDepthSections += Material && Material->GetBlendMode() == BLEND_Masked ? 1 : 0;
                 Stats.GrassSortedSections += !Material || Material->GetBlendMode() != BLEND_Masked ? 1 : 0;
             }
-            auto Authored = SkyMode ? this->Material(F.Material) : nullptr;
+            auto Authored = SkyMode || PreviewMode ? this->Material(F.Material) : nullptr;
             const bool VertexColors =
                 Authored && Authored->Layers.Num() &&
                 (Authored->Layers[0].VertexDiffuse || Authored->Layers[0].ModulateVertexDiffuse);
@@ -2169,6 +2245,30 @@ bool FAC2AssetLibrary::DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Ro
     R.Take(16); // fog colour, enabled, near and far
     if (!R.End())
         return false;
+    FAC2UISceneInfo Scene;
+    for (const auto& E : Entities)
+    {
+        auto Word = [&](uint32 Key, uint32 Default) { const auto* P = E.Properties.Find(Key); return P && P->Num() >= 4 ? AC2::U32(P->GetData()) : Default; };
+        auto Float = [&](uint32 Key, float Default, int32 Offset = 0) { const auto* P = E.Properties.Find(Key); return P && P->Num() >= Offset + 4 ? AC2::F32(P->GetData() + Offset) : Default; };
+        if (E.Type == 0x40000005)
+        {
+            Scene.Camera = FTransform(E.Rotation, E.Origin * 100);
+            Scene.VerticalFOV = Float(0x4000001f, 65);
+        }
+        if (E.Type != 0x40000006) continue;
+        FAC2PreviewLight L;
+        L.Name = E.Name; L.Position = E.Origin * 100;
+        L.Directional = Word(0x40000002, 0x40000001) == 0x40000002;
+        L.Direction = FVector(Float(0x40000003, 0), Float(0x40000003, 0, 4), Float(0x40000003, 0, 8)).GetSafeNormal();
+        L.Range = Float(0x40000004, 5, 4) * 100;
+        L.Intensity = Float(0x40000009, .5f, 4);
+        const FColor Color(Word(0x40000008, 0xffffffff));
+        L.Diffuse = Color.ReinterpretAsLinear(); // Native values are not sRGB-decoded.
+        Scene.Lighting.Lights.Add(L);
+    }
+    Scene.Lighting.UseDefault();
+    if (Info) *Info = Scene;
+    if (Impl->PreviewMode) SetPreviewLighting(Scene.Lighting, Owner->GetActorTransform());
     bool Drawn = false;
     for (const auto &E : Entities)
     {
@@ -2208,6 +2308,14 @@ bool FAC2AssetLibrary::DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Ro
         }
     }
     return Drawn;
+}
+void FAC2AssetLibrary::SetPreviewLighting(const FAC2PreviewLighting& Lighting, const FTransform& SceneToWorld)
+{
+    Impl->PreviewMode = true;
+    Impl->PreviewLighting = Lighting;
+    Impl->PreviewToWorld = SceneToWorld;
+    for (const auto& Pair : Impl->RuntimeMaterials)
+        if (auto* MID = Cast<UMaterialInstanceDynamic>(Pair.Value)) Impl->LightPreview(MID);
 }
 uint32 FAC2AssetLibrary::AppearanceFingerprint() const
 {

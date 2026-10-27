@@ -58,7 +58,8 @@ def main():
         assert all(c['id']!=discard for c in peer.wait('characters')['characters'])
         peer.send('create',name='Second Hero',start_area=0,race=2,sex=4096,physical=[[1,1],[2,1]])
         second=peer.wait('created')['character']['id'];assert second!='0'
-        peer.send('create',name='Controller Hero',start_area=0,race=1,sex=4096,physical=[[1,1],[2,1]])
+        peer.send('create',name='Controller Hero',start_area=0,race=1,sex=4096,
+            physical=[[1,1],[2,1],[4,0],[0x100,0],[0x200,0],[0x400,0]])
         character=peer.wait('created')['character']['id'];assert character!='0'
         peer.send('enter',id=character);peer.wait('player')
         spawn=peer.wait('object',lambda e:e['id']==character)['placement']
@@ -83,6 +84,10 @@ def main():
         peer.send('connect',host=login['game_host'],port=login['game_port'],account=login['account'],ticket=login['ticket']);login=None
         created=peer.wait('characters')['characters']
         assert any(c['name']=='Created Hero' for c in created),created
+        controller=next(c for c in created if c['name']=='Controller Hero')
+        aspects={(a['table'],a['key']):a['value'] for a in controller['visual']['aspects']}
+        for table,key in [(0x2000000c,1),(0x20000016,2),(0x20000014,2),(0x20000019,2)]:
+            assert aspects.get((table,key))==0,(hex(table),key,aspects)
         peer.close();peer=None;password=None
         report={'result':'PASS','checks':['first sign-in creates account through mouse-driven UI','repeat password login through in-client WinHTTP form','short-password feedback','wrong-password feedback and successful retry','centered button captions and stable message layout','mouse hover, pressed state and click routing','character names painted in native list','native carousel and 3D selection','options and credits','delete cancellation','create and cancel buttons','enter selected character before environment',
             'mouse-driven native avatar selection, appearance and naming','UI creation accepted and persisted across login','native character deletion','lifestone bind','native recall skill','server-driven attacks, hits and death','loot and vitals'], 'directory':str(directory)}

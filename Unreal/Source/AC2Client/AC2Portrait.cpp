@@ -1,7 +1,6 @@
 #include "AC2Portrait.h"
 #include "AC2CharacterData.h"
 #include "Components/SceneCaptureComponent2D.h"
-#include "Components/PointLightComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "ProceduralMeshComponent.h"
 
@@ -23,17 +22,10 @@ AAC2Portrait::AAC2Portrait()
     Capture->ShowFlags.SetFog(false);
     Capture->ShowFlags.SetMotionBlur(false);
     Capture->ShowFlags.SetTemporalAA(false);
-    Capture->PostProcessSettings.bOverride_AutoExposureMethod = true;
-    Capture->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
-    Capture->PostProcessSettings.bOverride_AutoExposureBias = true;
-    Capture->PostProcessSettings.AutoExposureBias = 9;
-    KeyLight = CreateDefaultSubobject<UPointLightComponent>(TEXT("PortraitLight"));
-    auto *Light = KeyLight.Get();
-    Light->SetupAttachment(RootComponent);
-    Light->SetRelativeLocation(FVector(100, 300, 200));
-    Light->SetIntensity(60000);
-    Light->SetAttenuationRadius(6000);
-    Light->SetCastShadows(false);
+    Capture->ShowFlags.SetTonemapper(false);
+    Capture->ShowFlags.SetEyeAdaptation(false);
+    Capture->ShowFlags.SetBloom(false);
+    Capture->ShowFlags.SetColorGrading(false);
     SetActorEnableCollision(false);
 }
 bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, float Build,
@@ -64,13 +56,17 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
         SceneId = Scene;
         Floor = 0;
         StageFloors.Reset();
+        Lighting = FAC2PreviewLighting();
         if (Scene)
         {
             TInlineComponentArray<UActorComponent *> BeforeStage(this);
             Backdrop = MakeUnique<FAC2AssetLibrary>();
+            Backdrop->SetPreviewLighting(Lighting, GetActorTransform());
             FString Error;
-            if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(Scene, this, Stage))
+            FAC2UISceneInfo SceneInfo;
+            if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(Scene, this, Stage, &SceneInfo))
                 UE_LOG(LogTemp, Warning, TEXT("AC2 creator stage %08X could not be drawn"), Scene);
+            Lighting = SceneInfo.Lighting;
             TInlineComponentArray<UActorComponent *> AfterStage(this);
             for (auto *C : AfterStage)
                 if (!BeforeStage.Contains(C))
@@ -99,6 +95,8 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
     Body->SetRelativeTransform(FTransform::Identity);
     TInlineComponentArray<UActorComponent *> Before(this);
     Model = MakeUnique<FAC2AssetLibrary>();
+    Lighting.UseDefault();
+    Model->SetPreviewLighting(Lighting, GetActorTransform());
     FString Error;
     Ready = Model->Open(Directory, Error) && Model->DrawModel(Physics, this, Body, Appearance);
     TInlineComponentArray<UActorComponent *> After(this);
@@ -179,8 +177,9 @@ void AAC2Portrait::SetCamera(bool Head, float Rotation)
     Capture->FOVAngle = FMath::RadiansToDegrees(2 * FMath::Atan(FitTan));
     Capture->SetRelativeLocation(Target + FVector(0, Distance, 0));
     Capture->SetRelativeRotation(FRotator(0, -90, 0));
-    KeyLight->SetRelativeLocation(Target + FVector(80, Distance + 100, Height * .4f));
-    KeyLight->SetIntensity(50000 * FMath::Square((Distance + 100) / 200));
+    Lighting.FollowCamera(Capture->GetRelativeRotation().Vector());
+    if (Backdrop) Backdrop->SetPreviewLighting(Lighting, GetActorTransform());
+    if (Model) Model->SetPreviewLighting(Lighting, GetActorTransform());
 }
 bool AAC2Portrait::AuditFraming(FString& Error) const
 {
@@ -265,10 +264,12 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();
+    Backdrop->SetPreviewLighting({}, GetActorTransform());
     FString Error;
     FAC2UISceneInfo Scene;
     if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(0x2100000b, this, Stage, &Scene))
         return false;
+    Lighting = Scene.Lighting;
     for (const auto &A : Catalog.Avatars)
     {
         const auto *At = Scene.Locations.Find(A.HoldingLocation);
@@ -280,6 +281,7 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         Root->SetRelativeTransform(*At);
         Root->RegisterComponent();
         auto Library = MakeUnique<FAC2AssetLibrary>();
+        Library->SetPreviewLighting(Lighting, GetActorTransform());
         if (!Library->Open(Directory, Error) ||
             !Library->DrawModel(A.Physics, this, Root, A.Resolve(A.Defaults())))
             return false;
@@ -291,10 +293,7 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
     Capture->SetRelativeLocation(Scene.Camera.GetLocation());
     Capture->SetRelativeRotation((Scene.Camera.GetRotation() * FQuat(FVector::UpVector, PI / 2)).Rotator());
     Capture->FOVAngle =
-        FMath::RadiansToDegrees(2 * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(65.f / 2)) * 1024 / 619));
-    KeyLight->SetRelativeLocation(Scene.Camera.GetLocation() + FVector(0, 100, 100));
-    KeyLight->SetIntensity(300000);
-    KeyLight->SetAttenuationRadius(7000);
+        FMath::RadiansToDegrees(2 * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Scene.VerticalFOV / 2)) * 1024 / 619));
     return Ready = LineupModels.Num() == Catalog.Avatars.Num();
 }
 int32 AAC2Portrait::PickAvatar(FVector2D Point) const
@@ -345,9 +344,11 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();
+    Backdrop->SetPreviewLighting({}, GetActorTransform());
     FString Error;
     FAC2UISceneInfo Scene;
     if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(0x21000001,this,Stage,&Scene)) return false;
+    Lighting = Scene.Lighting;
     FTransform Holding;
     if (!Backdrop->HoldingLocation(0x1f000068,1,Holding)) return false;
     Slots=FMath::Max(3,FMath::Max(Slots,Figures.Num()));
@@ -361,6 +362,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
         Arm->SetRelativeRotation(FRotator(0,Angle,0));
         Arms.Add(Arm); ArmStart.Add(Arm->GetRelativeRotation().Quaternion()); ArmEnd.Add(ArmStart.Last());
         auto ArmModel = MakeUnique<FAC2AssetLibrary>();
+        ArmModel->SetPreviewLighting(Lighting, GetActorTransform());
         if (!ArmModel->Open(Directory,Error) || !ArmModel->DrawModel(0x1f000068,this,Arm)) return false;
         LineupModels.Add(MoveTemp(ArmModel));
         if (!Figures.IsValidIndex(I)) continue;
@@ -371,6 +373,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
         At.MultiplyScale3D(FVector(Figure.Build,Figure.Build,Figure.Height));
         Root->SetRelativeTransform(At); Root->RegisterComponent(); FigureFrames.Add(At);
         auto Library=MakeUnique<FAC2AssetLibrary>();
+        Library->SetPreviewLighting(Lighting, GetActorTransform());
         if (!Library->Open(Directory,Error) || !Library->DrawModel(Figure.Physics,this,Root,Figure.Appearance)) return false;
         const FBox Box = Library->ModelBounds();
         if (!Box.IsValid) return false;
@@ -378,8 +381,6 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
     }
     Capture->SetRelativeLocation(Scene.Camera.GetLocation());
     Capture->SetRelativeRotation((Scene.Camera.GetRotation()*FQuat(FVector::UpVector,PI/2)).Rotator());
-    Capture->FOVAngle=FMath::RadiansToDegrees(2*FMath::Atan(FMath::Tan(FMath::DegreesToRadians(32.5f))*706/768));
-    KeyLight->SetRelativeLocation(Scene.Camera.GetLocation()+FVector(0,100,100));
-    KeyLight->SetIntensity(300000); KeyLight->SetAttenuationRadius(7000);
+    Capture->FOVAngle=FMath::RadiansToDegrees(2*FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Scene.VerticalFOV/2))*706/768));
     return Ready=true;
 }

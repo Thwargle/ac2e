@@ -1,5 +1,6 @@
 #pragma once
 #include "AC2Appearance.h"
+#include "AC2PreviewLighting.h"
 #include "AC2Particle.h"
 #include "AC2Terrain.h"
 #include "AC2Water.h"
@@ -31,6 +32,8 @@ struct FAC2AssetStats
 struct FAC2UISceneInfo
 {
     FTransform Camera;
+    float VerticalFOV = 65;
+    FAC2PreviewLighting Lighting;
     TMap<uint32, FTransform> Locations;
 };
 
@@ -58,6 +61,8 @@ class FAC2AssetLibrary : public FGCObject
     // Optional MeshType uses the native MeshType enum (feet/head/body etc.).
     FBox ModelBounds(uint32 MeshType = 0) const;
     bool DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Root, FAC2UISceneInfo *Info = nullptr);
+    // Call before drawing a preview, and again when its camera light changes.
+    void SetPreviewLighting(const FAC2PreviewLighting& Lighting, const FTransform& SceneToWorld);
     bool HoldingLocation(uint32 Object, uint32 Location, FTransform &Out);
     bool AnimatedHoldingLocation(uint32 Location, FTransform &Out) const;
     void Animate(float Time, float Speed, const FVector *LocalViewer = nullptr,
