@@ -1031,6 +1031,17 @@ void FAC2Network::Tick(float Delta)
                 FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-spell-impact.png"),true,false);
             }
         }
+        if(IsSelection() && FParse::Param(FCommandLine::Get(),TEXT("AC2LoginSmoke")) &&
+            !FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_LOGIN_REGISTER_SMOKE")).IsEmpty() && Started>2)
+        {
+            if(Mode->InWorld()||!Mode->Characters.Characters.IsEmpty()){
+                UE_LOG(LogTemp,Error,TEXT("AC2 first-login smoke: expected an empty character selection before the world"));
+                FPlatformMisc::RequestExitWithStatus(false,1);return;
+            }
+            UE_LOG(LogTemp,Display,TEXT("AC2 first-login mouse smoke: account created and authenticated character selection received"));
+            FFileHelper::SaveStringToFile(TEXT("PASS"),*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+            FPlatformMisc::RequestExit(false);return;
+        }
         if (IsSelection() && !SmokeEntered && !Mode->Characters.Characters.IsEmpty())
         {
             if(FParse::Param(FCommandLine::Get(),TEXT("AC2LoginSmoke")))
