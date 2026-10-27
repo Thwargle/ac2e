@@ -34,7 +34,7 @@ void SAC2GameUI::ToggleOptions()
     if(ShowOptions){ShowStats=false;Mode->bMap=false;MapUI.Close();}
     if(OptionValues.IsEmpty())RestoreOptions();
     OptionValues=AppliedOptions;
-    if(auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))PC->SetCursor(ShowOptions||ShowInventory);
+    if(auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))PC->SetCursor(!PC->WantsMouseLook()||ShowOptions||ShowInventory);
     Rebuild();
 }
 void SAC2GameUI::RestoreOptions()
@@ -51,7 +51,7 @@ void SAC2GameUI::RestoreOptions()
     }
     auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     if(auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr)
-    {P->Camera->SetFieldOfView(AppliedOptions[0]);P->MouseSensitivity=AppliedOptions[1];P->InvertMouse=AppliedOptions[2]>.5;P->Boom->TargetArmLength=AppliedOptions[3];}
+    {P->Camera->SetFieldOfView(AppliedOptions[0]);P->MouseSensitivity=AppliedOptions[1];P->InvertMouse=AppliedOptions[2]>.5;P->SetCameraDistance(AppliedOptions[3]);}
     HealthNumbers=AppliedOptions[10]>.5;VigorNumbers=AppliedOptions[11]>.5;
     ChatFont=Fonts.Body(AppliedOptions[12]);if(Entry)Entry->SetFont(ChatFont);
 }
@@ -113,7 +113,7 @@ void SAC2GameUI::ApplyOptions()
     if(OptionValues.Num()!=UE_ARRAY_COUNT(Settings))return;
     auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     if(auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr)
-    {P->Camera->SetFieldOfView(OptionValues[0]);P->MouseSensitivity=OptionValues[1];P->InvertMouse=OptionValues[2]>.5;P->Boom->TargetArmLength=OptionValues[3];}
+    {P->Camera->SetFieldOfView(OptionValues[0]);P->MouseSensitivity=OptionValues[1];P->InvertMouse=OptionValues[2]>.5;P->SetCameraDistance(OptionValues[3]);}
     if(auto* U=GEngine->GetGameUserSettings())
     {
         U->SetVSyncEnabled(OptionValues[4]>.5);U->SetFullscreenMode(OptionValues[5]>.5?EWindowMode::WindowedFullscreen:EWindowMode::Windowed);

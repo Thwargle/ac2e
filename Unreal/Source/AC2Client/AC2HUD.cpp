@@ -1,4 +1,6 @@
 #include "AC2CharacterUI.h"
+#include "AC2Cursor.h"
+#include "Framework/Application/SlateApplication.h"
 #include "AC2GameUI.h"
 #include "Engine/GameViewportClient.h"
 #include "AC2GameMode.h"
@@ -13,6 +15,19 @@ void AAC2HUD::BeginPlay()
         return;
     if (auto *Viewport = GetWorld()->GetGameViewport())
     {
+        SAssignNew(MouseCursor,SAC2Cursor).Directory(M->DatDirectory).Icon_Lambda([Weak=TWeakObjectPtr<AAC2HUD>(this)]() {
+            if(!Weak.IsValid())return FAC2CursorIcon();
+            const FVector2D Point=FSlateApplication::Get().GetCursorPos();
+            if(Weak->CharacterUI && Weak->CharacterUI->IsOpen())return Weak->CharacterUI->CursorAt(Point);
+            return Weak->GameUI?Weak->GameUI->CursorAt(Point):FAC2CursorIcon();
+        });
+        if(MouseCursor->Ready())
+        {
+            Viewport->SetUseSoftwareCursorWidgets(true);
+            for(auto Type:{EMouseCursor::Default,EMouseCursor::Hand,EMouseCursor::TextEditBeam,
+                EMouseCursor::GrabHand,EMouseCursor::GrabHandClosed,EMouseCursor::Crosshairs})
+                Viewport->SetSoftwareCursorWidget(Type,MouseCursor);
+        }
         SAssignNew(GameUI, SAC2GameUI).Mode(M);
         Viewport->AddViewportWidgetContent(GameUI.ToSharedRef(), 10);
     }
@@ -20,6 +35,12 @@ void AAC2HUD::BeginPlay()
 }
 void AAC2HUD::EndPlay(const EEndPlayReason::Type Reason)
 {
+    if(auto* Viewport=GetWorld()->GetGameViewport())
+        for(auto Type:{EMouseCursor::Default,EMouseCursor::Hand,EMouseCursor::TextEditBeam,
+            EMouseCursor::GrabHand,EMouseCursor::GrabHandClosed,EMouseCursor::Crosshairs})
+            if(Viewport->GetSoftwareCursorWidget(Type)==MouseCursor)
+                Viewport->SetSoftwareCursorWidget(Type,TSharedPtr<SWidget>());
+    MouseCursor.Reset();
     if (GameUI)
     {
         if (auto *Viewport = GetWorld()->GetGameViewport())

@@ -95,7 +95,7 @@ void AAC2GameMode::MapSmokeTick(float Delta)
         break;
     case 14:
         PC->CloseUI();
-        OK = !bMap && !PC->bShowMouseCursor && !PC->IsMoveInputIgnored();
+        OK = !bMap && PC->bShowMouseCursor!=PC->WantsMouseLook() && !PC->IsMoveInputIgnored();
         Finish(OK, OK ? TEXT("") : TEXT("Closing maps did not restore world input"));
         return;
     }

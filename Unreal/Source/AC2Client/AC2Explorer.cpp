@@ -37,7 +37,7 @@ AAC2Explorer::AAC2Explorer(const FObjectInitializer& ObjectInitializer)
     M->BrakingDecelerationFlying = 12000;
     M->MaxAcceleration = 18000;
     M->bOrientRotationToMovement = false;
-    M->bUseControllerDesiredRotation = true;
+    M->bUseControllerDesiredRotation = false;
     M->RotationRate = FRotator(0, 540, 0);
     UpdateSpeed();
 }
@@ -50,6 +50,10 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
         Added = true;
         for (auto Map : {FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::W, 1),
                          FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::S, -1),
+                         FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::Up, 1),
+                         FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::Down, -1),
+                         FInputAxisKeyMapping(TEXT("AC2KeyboardTurn"), EKeys::Right, 1),
+                         FInputAxisKeyMapping(TEXT("AC2KeyboardTurn"), EKeys::Left, -1),
                          FInputAxisKeyMapping(TEXT("AC2Right"), EKeys::D, 1),
                          FInputAxisKeyMapping(TEXT("AC2Right"), EKeys::A, -1),
                          FInputAxisKeyMapping(TEXT("AC2Up"), EKeys::E, 1),
@@ -63,6 +67,9 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
     Input->BindAxis(TEXT("AC2Up"), this, &AAC2Explorer::Up);
     Input->BindAxis(TEXT("AC2Turn"), this, &AAC2Explorer::Turn);
     Input->BindAxis(TEXT("AC2Look"), this, &AAC2Explorer::Look);
+    Input->BindAxis(TEXT("AC2KeyboardTurn"), this, &AAC2Explorer::KeyboardTurn);
+    Input->BindKey(EKeys::MouseScrollUp,IE_Pressed,this,&AAC2Explorer::ZoomIn);
+    Input->BindKey(EKeys::MouseScrollDown,IE_Pressed,this,&AAC2Explorer::ZoomOut);
     Input->BindKey(EKeys::Tab, IE_Pressed, this, &AAC2Explorer::ToggleView);
     Input->BindKey(EKeys::F, IE_Pressed, this, &AAC2Explorer::ToggleFly);
     Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &AAC2Explorer::Sprint);
@@ -72,6 +79,9 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
 }
 void AAC2Explorer::Forward(float V)
 {
+    // Camera orbit alone must not rotate the character or send a different network heading.
+    MovementSteersCamera=!FMath::IsNearlyZero(V);
+    GetCharacterMovement()->bUseControllerDesiredRotation=MovementSteersCamera;
     if (!bHeld && Controller)
     {
         FRotator R = GetControlRotation();
@@ -82,6 +92,7 @@ void AAC2Explorer::Forward(float V)
 }
 void AAC2Explorer::Right(float V)
 {
+    GetCharacterMovement()->bUseControllerDesiredRotation|=!FMath::IsNearlyZero(V);
     if (!bHeld && Controller)
         AddMovementInput(FRotationMatrix(FRotator(0, GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), V);
 }
@@ -97,6 +108,14 @@ void AAC2Explorer::Turn(float V)
 void AAC2Explorer::Look(float V)
 {
     AddControllerPitchInput(V*MouseSensitivity*(InvertMouse?-1:1));
+}
+void AAC2Explorer::KeyboardTurn(float V)
+{
+    if(bHeld || bDead || FMath::IsNearlyZero(V) || !Controller || Controller->IsMoveInputIgnored())return;
+    auto R=Controller->GetControlRotation();
+    R.Yaw+=V*GetCharacterMovement()->RotationRate.Yaw*GetWorld()->GetDeltaSeconds();
+    Controller->SetControlRotation(R);
+    GetCharacterMovement()->bUseControllerDesiredRotation=true;
 }
 void AAC2Explorer::Sprint()
 {
@@ -253,9 +272,24 @@ void AAC2Explorer::Tick(float Delta)
 void AAC2Explorer::ToggleView()
 {
     bThirdPerson = !bThirdPerson;
-    Boom->TargetArmLength =
-        bThirdPerson ? FMath::Max(380.f, GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 3.7f) : 0;
+    Boom->TargetArmLength = bThirdPerson ? ThirdPersonDistance : 0;
     Body->SetVisibility(bThirdPerson, true);
+}
+void AAC2Explorer::ZoomCamera(float Delta)
+{
+    if(!FMath::IsFinite(Delta) || FMath::IsNearlyZero(Delta))return;
+    // CameraManager zoom uses a bounded distance. Tab restores the saved shoulder distance.
+    float Distance=bThirdPerson?ThirdPersonDistance:Delta<0?50:0;
+    Distance=FMath::Clamp(Distance-Delta*50.f,0.f,1000.f);
+    bThirdPerson=Distance>=100;
+    if(bThirdPerson)ThirdPersonDistance=Distance;
+    Boom->TargetArmLength=bThirdPerson?Distance:0;
+    Body->SetVisibility(bThirdPerson,true);
+}
+void AAC2Explorer::SetCameraDistance(float Distance)
+{
+    ThirdPersonDistance=FMath::Clamp(Distance,100.f,1000.f);
+    if(bThirdPerson)Boom->TargetArmLength=ThirdPersonDistance;
 }
 void AAC2Explorer::SetWater(bool InWater, double Level)
 {

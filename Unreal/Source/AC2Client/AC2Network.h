@@ -35,6 +35,14 @@ class FAC2Network
     };
     TArray<FRadarContact> RadarContacts() const;
     void SelectTarget(const FString &Id);
+    void ClearTarget();
+    FString ObjectName(const FString& Id) const;
+    bool ObjectScreenBounds(const FString& Id,FBox2D& Bounds) const;
+    void Examine(const FString& Id);
+    struct FExaminationRow { FString Text; uint32 Appearance=0, Image=0; };
+    FString ExaminationId, ExaminationError;
+    TArray<FExaminationRow> ExaminationRows;
+    bool ExaminationPending=false;
     bool SelectWorldRay(const FVector &Origin, const FVector &Direction);
     FString WorldTargetAtRay(const FVector &Origin, const FVector &Direction) const;
     void Attack();
@@ -101,6 +109,7 @@ class FAC2Network
     TMap<FString, TSharedPtr<FJsonObject>> CharacterVisuals;
     TUniquePtr<FAC2DatArchive> Locale;
     double Time = 0, LastMovement = 0, Started = 0;
+    double ExaminationStarted=0;
     bool Smoke = false, SmokeEntered = false, SmokeChat = false;
     int32 ReceivedChats = 0;
     double SmokeFinish = 0;
@@ -111,6 +120,7 @@ class FAC2Network
     bool SmokeSelection=false;
     int32 SelectionSmokeStep=0;
     int32 CombatSmokeStep=0;
+    int32 MouseSmokeStep=0;
     int32 MapTravelSmokeStep=0;
     double MapTravelSmokeNext=0;
     int32 PlayedBehaviors=0,HitEvents=0,DeathBehaviors=0,PlayerAttacks=0,MobAttacks=0,FailedAttacks=0;

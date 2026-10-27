@@ -129,7 +129,7 @@ void AAC2GameMode::UISmokeTick(float Delta)
         }
         UI->Close();
         HUD->GameUI->ClosePanels();
-        if (PC->IsMoveInputIgnored() || PC->bShowMouseCursor ||
+        if (PC->IsMoveInputIgnored() || PC->bShowMouseCursor==Cast<AAC2PlayerController>(PC)->WantsMouseLook() ||
             !Cast<AAC2Explorer>(PC->GetPawn())->HasModel())
         {
             Finish(false, TEXT("World input or model not restored"));
@@ -215,7 +215,7 @@ void AAC2GameMode::UISmokeTick(float Delta)
         UI->Close();
         HUD->GameUI->ClosePanels();
         Characters.Active()->Health = Characters.Active()->Vigor = 100;
-        if (PC->IsMoveInputIgnored() || PC->bShowMouseCursor)
+        if (PC->IsMoveInputIgnored() || PC->bShowMouseCursor==Cast<AAC2PlayerController>(PC)->WantsMouseLook())
         {
             Finish(false, TEXT("World input remained captured"));
             return;

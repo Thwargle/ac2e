@@ -38,6 +38,8 @@ class AAC2Explorer : public ACharacter
     bool HoldingTransform(uint32 Location,FTransform& Out) const
     { if(!Model || !Model->AnimatedHoldingLocation(Location,Out)) return false; Out=Out*Body->GetComponentTransform();return true; }
     void ToggleView();
+    void ZoomCamera(float Delta);
+    void SetCameraDistance(float Distance);
     void SetWater(bool InWater, double Level);
     void UpdateWater(bool Present,double Level);
     bool IsSwimming() const
@@ -66,6 +68,8 @@ class AAC2Explorer : public ACharacter
     TArray<TWeakObjectPtr<UActorComponent>> ModelComponents;
     float AnimationTime = 0;
     bool bThirdPerson = true, bSwim = false, bWade=false, bModel = false;
+    float ThirdPersonDistance=380;
+    bool MovementSteersCamera=false;
     double WaterLevel = 0;
     bool bFast = false, bHeld = false, bFly = false;
     bool bDead=false;
@@ -78,6 +82,9 @@ class AAC2Explorer : public ACharacter
     void Up(float V);
     void Turn(float V);
     void Look(float V);
+    void KeyboardTurn(float V);
+    void ZoomIn() { ZoomCamera(1); }
+    void ZoomOut() { ZoomCamera(-1); }
     void ToggleFly();
     void Sprint();
     void StopSprint();

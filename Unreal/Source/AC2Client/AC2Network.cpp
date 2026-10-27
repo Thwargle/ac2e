@@ -193,6 +193,7 @@ void FAC2Network::ClearWorld()
     WornSlots.Reset();
     PlayerId.Reset();
     TargetId.Reset();
+    ExaminationId.Reset();ExaminationRows.Reset();ExaminationError.Reset();ExaminationPending=false;
     HasPlayerPose = NeedsPlacement = false;
     Dead = Combat = false;
     MapTravelEnabled = false;
@@ -475,7 +476,7 @@ bool FAC2Network::Targetable(const FString &Id, const FObject &O) const
 bool FAC2Network::SelectWorldRay(const FVector &Origin, const FVector &Direction)
 {
     const FString Id=WorldTargetAtRay(Origin,Direction);
-    if(Id.IsEmpty())return false;
+    if(Id.IsEmpty()){ClearTarget();return false;}
     SelectTarget(Id);return true;
 }
 FString FAC2Network::WorldTargetAtRay(const FVector &Origin, const FVector &Direction) const
@@ -535,6 +536,38 @@ void FAC2Network::SelectTarget(const FString &Id)
     J->SetStringField(TEXT("id"), TargetId);
     Send(J);
     Mode->Notice = TEXT("Target: ") + Objects[TargetId]->Name;
+}
+void FAC2Network::ClearTarget()
+{
+    if(!IsWorld() || TargetId.IsEmpty())return;
+    TargetId.Reset();auto J=Command(TEXT("target"));J->SetStringField(TEXT("id"),TEXT("0"));Send(J);
+}
+FString FAC2Network::ObjectName(const FString& Id) const
+{
+    const auto* O=Objects.Find(Id);
+    return O?(*O)->Name:FString();
+}
+bool FAC2Network::ObjectScreenBounds(const FString& Id,FBox2D& Bounds) const
+{
+    const auto* O=Objects.Find(Id);auto* PC=Mode->GetWorld()->GetFirstPlayerController();
+    if(!O || !Targetable(Id,**O) || !PC)return false;
+    const auto Box=(*O)->Actor->GetComponentsBoundingBox(true);
+    Bounds=FBox2D(ForceInit);
+    if(!Box.IsValid)return false;
+    for(int32 I=0;I<8;++I)
+    {
+        FVector2D Point;
+        if(!PC->ProjectWorldLocationToScreen(FVector(I&1?Box.Max.X:Box.Min.X,I&2?Box.Max.Y:Box.Min.Y,I&4?Box.Max.Z:Box.Min.Z),Point))return false;
+        Bounds+=Point;
+    }
+    return Bounds.bIsValid;
+}
+void FAC2Network::Examine(const FString& Id)
+{
+    if(!IsWorld() || Id.IsEmpty() || !Objects.Contains(Id))return;
+    ExaminationId=Id;ExaminationRows.Reset();ExaminationError.Reset();ExaminationPending=true;
+    ExaminationStarted=FPlatformTime::Seconds();
+    auto J=Command(TEXT("examine"));J->SetStringField(TEXT("id"),Id);Send(J);
 }
 void FAC2Network::Attack()
 {
@@ -637,6 +670,39 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
 void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
+    if(Event==TEXT("examination_error"))
+    {ExaminationPending=false;ExaminationError=S(J,TEXT("message"));return;}
+    if(Event==TEXT("examination"))
+    {
+        if(Id!=ExaminationId)return; // A slower reply must never replace a newer inspection.
+        ExaminationPending=false;ExaminationRows.Reset();ExaminationError.Reset();
+        FExaminationRow Row;
+        auto Flush=[&](){if(!Row.Text.IsEmpty() || Row.Image)ExaminationRows.Add(Row);Row={};};
+        const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;
+        if(J->TryGetArrayField(TEXT("nodes"),Nodes))for(const auto& Value:*Nodes)
+        {
+            const auto Node=Value->AsObject();if(!Node)continue;
+            const uint32 Kind=N(Node,TEXT("kind"));
+            if(Kind==0x40000006){Flush();continue;}
+            if(Kind==0x40000005){Flush();Row.Image=N(Node,TEXT("image"));Flush();continue;}
+            if(!Row.Appearance)Row.Appearance=N(Node,TEXT("appearance"));
+            if(Kind==0x40000004)
+            {
+                const auto Info=Node->GetObjectField(TEXT("text"));
+                FString Text=StringInfo(Info);
+                // Localized noun annotations are grammar metadata, not part of the display name.
+                if(Row.Appearance==0xbe5b6513 && N(Info,TEXT("table")))while(Text.EndsWith(TEXT("]")))
+                {int32 Start;if(!Text.FindLastChar('[',Start) || Text.Len()-Start>8)break;Text.LeftInline(Start);}
+                Row.Text+=Text;
+            }
+            else if(Kind==0x40000007)Row.Text+=TEXT("  ");
+            else if(Kind==0x40000003)Row.Text+=Node->GetBoolField(TEXT("value"))?TEXT("Yes"):TEXT("No");
+            else if(Kind==0x4000000a)Row.Text+=S(Node,TEXT("value"));
+            else if(Kind==0x40000001 || Kind==0x40000002 || Kind==0x40000008)
+                Row.Text+=FString::SanitizeFloat(N(Node,TEXT("value")));
+        }
+        Flush();return;
+    }
     if (Event == TEXT("combat"))
     {
         Combat = J->GetBoolField(TEXT("enabled"));
@@ -998,6 +1064,8 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 }
 void FAC2Network::Tick(float Delta)
 {
+    if(ExaminationPending && FPlatformTime::Seconds()-ExaminationStarted>8)
+    {ExaminationPending=false;ExaminationError=TEXT("The server did not provide examination information. Right-click to retry.");}
     Time += Delta;
     Started += Delta;
     if (Process.IsValid())
@@ -1240,6 +1308,17 @@ void FAC2Network::Tick(float Delta)
                         ++CombatSmokeStep;Started=0;return;
                     }
                     FString RadarError;
+                    if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MOUSE_SMOKE"))==TEXT("1") && MouseSmokeStep<6)
+                    {
+                        auto H=HUD(Mode);
+                        if(!H || !H->GameUI || !H->GameUI->SmokeMouseControls(MouseSmokeStep,E.Key,RadarError))
+                        {
+                            UE_LOG(LogTemp,Error,TEXT("AC2 mouse controls smoke: %s"),*RadarError);
+                            FFileHelper::SaveStringToFile(TEXT("FAIL: ")+RadarError,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                            FPlatformMisc::RequestExitWithStatus(false,1);return;
+                        }
+                        ++MouseSmokeStep;Started=0;return;
+                    }
                     if(auto H=HUD(Mode); !H || !H->GameUI || !H->GameUI->SmokeWorldTarget(E.Key,RadarError))
                     {
                         UE_LOG(LogTemp,Error,TEXT("AC2 combat pointer smoke: %s"),*RadarError);

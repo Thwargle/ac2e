@@ -177,6 +177,14 @@ void SAC2CharacterUI::Open(EScreen Next,const FString& InitialMessage)
     }
     FSlateApplication::Get().SetKeyboardFocus(AsShared());
 }
+FAC2CursorIcon SAC2CharacterUI::CursorAt(FVector2D Point) const
+{
+    if(ShowSelectionOptions && SelectionOptions)return SelectionOptions->CursorAt(Point);
+    FAC2CursorIcon Cursor;
+    if(CreatorView && Screen!=EScreen::Login)
+        CreatorLayout.CursorAt(CreatorView->GetCachedGeometry().AbsoluteToLocal(Point),Cursor.Image,Cursor.Hotspot);
+    return Cursor;
+}
 void SAC2CharacterUI::Close()
 {
     if(Screen==EScreen::Login)return;
@@ -204,7 +212,7 @@ void SAC2CharacterUI::Close()
     if (auto *PC = Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))
     {
         PC->ResetIgnoreMoveInput();
-        PC->SetCursor(false);
+        PC->RestoreCursor();
     }
 }
 FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)

@@ -114,6 +114,7 @@ class SAC2CreatorLayout : public SLeafWidget
     SLATE_ARGUMENT(TFunction<void(FVector2D, bool)>, Avatar)
     SLATE_ARGUMENT(TFunction<void(FVector2D)>, Activate)
     SLATE_ARGUMENT(TFunction<void(float)>, Wheel)
+    SLATE_ARGUMENT(TFunction<void(float)>, Rotate)
     SLATE_ARGUMENT(
         TFunction<int32(const FAC2NativeNode &, FSlateWindowElementList &, int32, const FGeometry &)>, Scene)
     SLATE_END_ARGS()
@@ -127,6 +128,7 @@ class SAC2CreatorLayout : public SLeafWidget
         Avatar = A._Avatar;
         Activate = A._Activate;
         Wheel = A._Wheel;
+        Rotate = A._Rotate;
         Scene = A._Scene;
     }
     virtual FVector2D ComputeDesiredSize(float) const override
@@ -147,6 +149,8 @@ class SAC2CreatorLayout : public SLeafWidget
     virtual FReply OnMouseMove(const FGeometry &G, const FPointerEvent &E) override
     {
         FVector2D P = G.AbsoluteToLocal(E.GetScreenSpacePosition());
+        if(Rotating)
+        {Rotate((P.X-RotationPoint.X)*.6f);RotationPoint=P;return FReply::Handled();}
         UI->Hovered = 0;
         auto Order = UI->PaintOrder();
         for (int32 I = Order.Num() - 1; I >= 0; --I)
@@ -183,6 +187,8 @@ class SAC2CreatorLayout : public SLeafWidget
                 MoveSlider(P);
                 return FReply::Handled().CaptureMouse(SharedThis(this));
             }
+        if(UI->Bounds(TEXT("MouseRotationOverField")).Contains(FIntPoint(P.X,P.Y)))
+        {Rotating=true;RotationPoint=P;return FReply::Handled().CaptureMouse(SharedThis(this));}
         Avatar(P, true);
         return FReply::Handled();
     }
@@ -194,6 +200,7 @@ class SAC2CreatorLayout : public SLeafWidget
         uint32 Id = UI->Pressed;
         UI->Pressed = 0;
         Dragging = 0;
+        Rotating = false;
         if (Id && Id == UI->Hovered)
             Click(Id);
         return FReply::Handled().ReleaseMouseCapture();
@@ -201,7 +208,7 @@ class SAC2CreatorLayout : public SLeafWidget
     virtual void OnMouseLeave(const FPointerEvent &E) override
     { SLeafWidget::OnMouseLeave(E); UI->Hovered=0; }
     virtual void OnMouseCaptureLost(const FCaptureLostEvent &) override
-    { UI->Pressed=0; Dragging=0; }
+    { UI->Pressed=0; Dragging=0; Rotating=false; }
     virtual FReply OnMouseButtonDoubleClick(const FGeometry &G,const FPointerEvent &E) override
     {
         if(E.GetEffectingButton()!=EKeys::LeftMouseButton)return FReply::Unhandled();
@@ -212,6 +219,9 @@ class SAC2CreatorLayout : public SLeafWidget
     FAC2NativeUI *UI = nullptr;
     FAC2Fonts *Fonts = nullptr;
     uint32 Dragging = 0;
+    bool Rotating=false;
+    FVector2D RotationPoint;
+    TFunction<void(float)> Rotate;
     TFunction<void()> Update;
     TFunction<void(uint32)> Click;
     TFunction<void(uint32, float)> Slide;
@@ -565,6 +575,11 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
             .Update([this]() { BuildCreatorLayout(); })
             .Click([this](uint32 Id) { CreatorAction(Id); })
             .Slide([this](uint32 Id, float V) { CreatorSlider(Id, V); })
+            .Rotate([this](float Degrees) {
+                if(Screen!=EScreen::Create || CreationStep!=1 || !Portrait.IsValid())return;
+                Rotation=FRotator::NormalizeAxis(Rotation+Degrees);
+                Portrait->SetCamera(HeadZoom,Rotation);
+            })
             .Wheel([this](float V) {
                 if (Screen == EScreen::Select)
                     Page = FMath::Clamp(Page - FMath::RoundToInt(V), 0,

@@ -14,6 +14,9 @@ class FAC2MapUI
     bool Release(FVector2D Point, bool Right, bool Shift);
     bool DoubleClick(FVector2D Point);
     bool Wheel(FVector2D Point, float Delta);
+    bool OwnsPointer(FVector2D Point) const { return Contains(Point); }
+    bool CursorAt(FVector2D Point, uint32& Image,FIntPoint& Hotspot) const
+    { return Contains(Point) && Native.CursorAt(Point,Image,Hotspot); }
     void Close()
     {
         Overview = 0;

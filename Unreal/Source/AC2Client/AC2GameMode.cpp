@@ -219,7 +219,7 @@ bool AAC2GameMode::TravelToMap(FVector2D Land)
     Notice = TEXT("Traveling...");
     PositionViewer(GetWorld()->GetFirstPlayerController());
     if (auto* PC = Cast<AAC2PlayerController>(GetWorld()->GetFirstPlayerController()))
-        PC->SetCursor(bMap);
+        PC->SetCursor(bMap || !PC->WantsMouseLook());
     return true;
 }
 void AAC2GameMode::PositionViewer(APlayerController *PC)
@@ -234,8 +234,7 @@ void AAC2GameMode::PositionViewer(APlayerController *PC)
         P->SetFlying(false);
     }
     PC->SetControlRotation(FRotator(-5, 45, 0));
-    PC->SetInputMode(FInputModeGameOnly());
-    PC->bShowMouseCursor = false;
+    if(auto* Controller=Cast<AAC2PlayerController>(PC))Controller->RestoreCursor();
 }
 void AAC2GameMode::CompleteTravel(const FVector &Position)
 {
@@ -1305,10 +1304,22 @@ void AAC2GameMode::SetCombat(bool Enabled)
 void AAC2PlayerController::SelectUnderCursor()
 {
     auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>();
-    if(!M || !M->InWorld() || !bShowMouseCursor)return;
+    if(!M || !M->InWorld())return;
+    if(!bShowMouseCursor)
+    {if(auto* H=Cast<AAC2HUD>(GetHUD());H && H->GameUI)H->GameUI->ClickWorldCenter(EKeys::LeftMouseButton);return;}
     FVector Origin, Direction;
     if(M->Network && DeprojectMousePositionToWorld(Origin,Direction))
         M->Network->SelectWorldRay(Origin,Direction);
+}
+void AAC2PlayerController::InspectUnderCursor()
+{
+    if(bShowMouseCursor)return; // Visible-pointer events belong to the Slate panel under it.
+    if(auto* H=Cast<AAC2HUD>(GetHUD());H && H->GameUI)H->GameUI->ClickWorldCenter(EKeys::RightMouseButton);
+}
+void AAC2PlayerController::UseUnderCursor()
+{
+    if(bShowMouseCursor)return;
+    if(auto* H=Cast<AAC2HUD>(GetHUD());H && H->GameUI)H->GameUI->ClickWorldCenter(EKeys::LeftMouseButton,true);
 }
 void AAC2PlayerController::UseTarget()
 {
@@ -1324,6 +1335,8 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::M, IE_Pressed, this, &AAC2PlayerController::Map);
     InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AAC2PlayerController::Select);
     InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
+    InputComponent->BindKey(EKeys::LeftMouseButton, IE_DoubleClick, this, &AAC2PlayerController::UseUnderCursor);
+    InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AAC2PlayerController::InspectUnderCursor);
     InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AAC2PlayerController::Attack);
     InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AAC2PlayerController::Burst);
     InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AAC2PlayerController::MissileSkill);
@@ -1331,6 +1344,7 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AAC2PlayerController::UseTarget);
     InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &AAC2PlayerController::AC2Recall);
     InputComponent->BindKey(EKeys::LeftAlt, IE_Pressed, this, &AAC2PlayerController::Cursor);
+    InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Pressed, this, &AAC2PlayerController::Cursor);
     InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AAC2PlayerController::CloseUI);
     InputComponent->BindKey(EKeys::I, IE_Pressed, this, &AAC2PlayerController::Inventory);
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &AAC2PlayerController::CharacterStats);
@@ -1340,6 +1354,10 @@ void AAC2PlayerController::SetupInputComponent()
 
 void AAC2PlayerController::SetCursor(bool Enabled)
 {
+    const bool Changed=bShowMouseCursor!=Enabled;
+    if(Changed)RotationInput=FRotator::ZeroRotator;
+    if(Changed && !Enabled)
+    {float X=0,Y=0;if(GetMousePosition(X,Y))SavedPointer=FIntPoint(FMath::RoundToInt(X),FMath::RoundToInt(Y));}
     bShowMouseCursor = Enabled;
     bEnableClickEvents = Enabled;
     bEnableMouseOverEvents = Enabled;
@@ -1351,13 +1369,19 @@ void AAC2PlayerController::SetCursor(bool Enabled)
         Mode.SetHideCursorDuringCapture(false);
         Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
         SetInputMode(Mode);
+        if(Changed && SavedPointer.IsSet())SetMouseLocation(SavedPointer->X,SavedPointer->Y);
     }
     else
         SetInputMode(FInputModeGameOnly());
 }
 void AAC2PlayerController::Cursor()
 {
-    SetCursor(!bShowMouseCursor);
+    auto* M=GetWorld()->GetAuthGameMode<AAC2GameMode>();
+    auto* H=Cast<AAC2HUD>(GetHUD());
+    if(!M || !M->InWorld() || (H && ((H->CharacterUI && H->CharacterUI->IsOpen()) ||
+        (H->GameUI && H->GameUI->ChatActive()))))return;
+    MouseLook=bShowMouseCursor;
+    SetCursor(!MouseLook);
 }
 void AAC2PlayerController::CloseUI()
 {

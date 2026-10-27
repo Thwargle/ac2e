@@ -56,6 +56,19 @@ it preserves the old marker and never deletes characters or account records.
 Use offline exploration or connect to an AC2E/Pyrealium server. See the guides for
 account setup, hosting, supported gameplay, and remaining implementation limits.
 
+The world starts with the DAT mouse pointer visible. **Left-click** selects a
+world object; **double-click** uses it; **right-click** opens the native examination
+panel with information supplied by the server. Hovering a selectable object shows
+the DAT usage cursor and its name. Right-clicking inventory items inspects them;
+double-clicking equips/uses them. **Middle-click** or **Alt** toggles mouse look,
+**wheel** zooms the camera, and **Tab** switches first/third person. In mouse look,
+the native center crosshair selects/uses/examines the object you aim at. The pointer
+returns to its previous position when leaving mouse look. UI scrolling stays in
+the hovered panel, and stationary camera orbit does not rotate the character.
+Drag the character preview or inventory paperdoll to rotate it. Cursor artwork
+and hotspots come from the installed DATs; map zoom and preview rotation retain
+their native pointers. WASD movement and the existing combat hotkeys remain available.
+
 Open the native world map with **M** and double-click a point to travel there for
 testing. Single-click zoom, dragging, map notes and radar targeting still work.
 This works offline and with the default local `start-ac2e.bat` server. Local map
@@ -95,6 +108,7 @@ python .\Network\test_armor.py
 python .\Network\test_shelter.py
 python .\Network\test_login_ui.py --gameplay
 python .\Network\test_server_launcher.py
+python .\Network\test_combat_ui.py --mouse
 python .\Network\test_map_travel.py
 python .\Network\test_map_travel.py --disabled
 python .\Network\test_map_travel.py --render

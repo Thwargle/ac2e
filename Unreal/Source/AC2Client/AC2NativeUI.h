@@ -14,6 +14,7 @@ struct FAC2NativeNode
     TMap<uint32, uint32> Attributes;
     TArray<FAC2UIArt> Media;
     FString Text;
+    float Rotation=0;
     uint32 Attr(const TCHAR *Name, uint32 Default = 0) const;
     float Float(const TCHAR *Name, float Default = 0) const;
 };
@@ -42,6 +43,7 @@ class FAC2NativeUI
     FIntRect Bounds(const TCHAR *Name) const;
     void ConstrainRoot(const TCHAR *Name, FIntRect Area);
     TArray<int32> PaintOrder() const;
+    bool CursorAt(FVector2D Point, uint32& Image, FIntPoint& Hotspot) const;
     void Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts);
     int32 Paint(FSlateWindowElementList &, int32 Layer, const FGeometry &, FAC2Fonts &,
                 TFunction<int32(const FAC2NativeNode &, int32)> Content = {}) const;

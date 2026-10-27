@@ -129,6 +129,8 @@ class AAC2PlayerController : public APlayerController
     void Map();
     void Select();
     void SelectUnderCursor();
+    void InspectUnderCursor();
+    void UseUnderCursor();
     void Attack();
     void Burst();
     void CombatMode();
@@ -141,6 +143,11 @@ class AAC2PlayerController : public APlayerController
     void CharacterStats();
     void CharacterSelect();
     void SetCursor(bool Enabled);
+    void RestoreCursor() { SetCursor(!MouseLook); }
+    bool WantsMouseLook() const { return MouseLook; }
+  private:
+    bool MouseLook=false;
+    TOptional<FIntPoint> SavedPointer;
 };
 UCLASS()
 class AAC2HUD : public AHUD
@@ -153,4 +160,5 @@ class AAC2HUD : public AHUD
     void InitializeCharacterUI();
     TSharedPtr<class SAC2CharacterUI> CharacterUI;
     TSharedPtr<class SAC2GameUI> GameUI;
+    TSharedPtr<class SAC2Cursor> MouseCursor;
 };

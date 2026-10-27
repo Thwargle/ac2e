@@ -205,6 +205,10 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                     }
                 }
             }
+            if function==0x820a0009 {
+                return vec![crate::examination::convert(&arguments).unwrap_or_else(||
+                    json!({"event":"examination_error","message":"Unsupported examination profile from server"}))];
+            }
             match ScriptMessage::decode(function, &arguments) {
                 Some(Ok(ScriptMessage::ContainerContents(c))) => {
                     json!({"event":"bag","id":object.map(|o|o.id.to_string()),"items":c.items.iter().map(u64::to_string).collect::<Vec<_>>()})

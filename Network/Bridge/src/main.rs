@@ -2,6 +2,7 @@
 // Separate process adapter for AC2_Rusted's native protocol. Stdio is private IPC, never a listener.
 #![forbid(unsafe_code)]
 mod events;
+mod examination;
 use ac2_net::{protocol::*, Credential, Logon, NetClient, NetClientConfig, NetEvent};
 use serde_json::{json, Value};
 use std::{
@@ -306,6 +307,9 @@ impl Session {
                     &mut self.client,
                     ScriptRequest::SetTarget(id(v, "id")?).to_event(),
                 )?;
+            }
+            "examine" if self.ready => {
+                send(&mut self.client, examination::request(id(v,"id")?))?;
             }
             "attack" if self.ready => {
                 let target = id(v, "id")?;

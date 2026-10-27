@@ -4,6 +4,7 @@
 #include "AC2UILayout.h"
 #include "AC2Font.h"
 #include "AC2NativeUI.h"
+#include "AC2Cursor.h"
 #include "Widgets/SCompoundWidget.h"
 
 class AAC2GameMode;
@@ -41,6 +42,7 @@ class SAC2CharacterUI : public SCompoundWidget
         return Screen == EScreen::Create || Screen == EScreen::Select || Screen==EScreen::Login || Screen==EScreen::Credits;
     }
     bool PreviewReady() const;
+    FAC2CursorIcon CursorAt(FVector2D ScreenPoint) const;
     virtual bool SupportsKeyboardFocus() const override
     {
         return true;

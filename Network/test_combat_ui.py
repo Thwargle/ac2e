@@ -17,6 +17,8 @@ def main():
             check.bind(('127.0.0.1', port))
     content = prepare_test_content(directory)
     env = dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1')
+    if '--mouse' in os.sys.argv:
+        env['AC2_MOUSE_SMOKE'] = '1'
     if '--gameplay' in os.sys.argv:
         env['AC2_GAMEPLAY_SMOKE'] = '1'
     log = (directory / 'server.log').open('w', encoding='utf-8')
@@ -48,10 +50,17 @@ def main():
         assert all(f'AC2 combat input step {step} passed' in client for step in range(8))
         assert 'AC2 combat world pointer selected' in client
         assert 'AC2 network smoke PASS' in client
+        if '--mouse' in os.sys.argv:
+            assert all(f'AC2 mouse controls step {step} passed' in client for step in range(6))
         report = {'result': 'PASS', 'directory': str(directory), 'equipped_magic': '--gameplay' in os.sys.argv,
             'checks': ['native start/stop mouse buttons and ghosted states', 'Z toggles server and avatar stance',
                 'chat focus isolation and restored attack key', 'missing-target feedback',
                 'world creature mouse selection', 'server attack/hit/death animations, damage and loot']}
+        if '--mouse' in os.sys.argv:
+            report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',
+                'double-click use without attacking', 'world zoom and panel scroll isolation',
+                'middle-click capture and pointer restoration', 'camera orbit preserves network heading',
+                'native mouse-look crosshair and center inspection', 'wheel first/third-person transitions']
         (directory / 'result.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report))
     finally:

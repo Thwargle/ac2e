@@ -4,6 +4,7 @@
 #include "AC2Font.h"
 #include "AC2NativeUI.h"
 #include "AC2MapUI.h"
+#include "AC2Cursor.h"
 #include "Widgets/SCompoundWidget.h"
 class AAC2GameMode;
 class AAC2HUD;
@@ -52,7 +53,11 @@ class SAC2GameUI : public SCompoundWidget
     bool MapSmokeStep(int32 Step, FString &Error) { return MapUI.SmokeStep(Step, Error); }
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
     bool SmokeCombatInput(int32 Step, FString &Error);
-    bool SmokeWorldTarget(const FString &Id, FString &Error);
+    bool SmokeWorldTarget(const FString &Id, FString &Error,FKey Button=EKeys::LeftMouseButton,bool DoubleClick=false,bool CenterAim=false);
+    bool SmokeMouseControls(int32 Step,const FString& Id,FString& Error);
+    FAC2CursorIcon CursorAt(FVector2D ScreenPoint) const;
+    void InspectTarget(const FString& Id);
+    void ClickWorldCenter(FKey Button,bool DoubleClick=false);
     bool ClosePanels();
     bool InventoryOpen() const
     {
@@ -73,6 +78,8 @@ class SAC2GameUI : public SCompoundWidget
     FAC2NativeUI Native;
     FAC2MapUI MapUI;
     bool MapCaptured = false;
+    bool RotatingPortrait=false;
+    FVector2D PortraitPointer;
     TSharedPtr<FAC2Font> BodyFont, TitleFont, ChatFont;
     TSharedPtr<SAC2TextEntry> Entry;
     FAC2ChatLog Log;
@@ -81,6 +88,14 @@ class SAC2GameUI : public SCompoundWidget
     TMap<FName, FName> ButtonActions;
     mutable TMap<FName, FString> Hints;
     FVector2D Mouse = FVector2D(-100, -100);
+    FString HoverObject, InspectedObject;
+    TWeakObjectPtr<class AAC2Mob> HoverMob, InspectedMob;
+    double NextHover=0;
+    int32 ExamineScroll=0, ExamineMaxScroll=0;
+    bool OwnsPointer(FVector2D Point) const;
+    void UpdateHover(const FGeometry&,double Time);
+    void BuildPointerFeedback();
+    bool WorldClick(FKey Button,bool DoubleClick);
     int32 Filter = 0, Scroll = 0;
     mutable int32 MaxScroll = 0;
     TWeakObjectPtr<class AAC2Portrait> Portrait;

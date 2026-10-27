@@ -1,6 +1,7 @@
 #include "AC2GameUI.h"
 #include "AC2CharacterUI.h"
 #include "AC2Explorer.h"
+#include "AC2Mob.h"
 #include "AC2GameMode.h"
 #include "AC2Portrait.h"
 #include "AC2WorldGrid.h"
@@ -82,7 +83,7 @@ void SAC2GameUI::Construct(const FArguments &Args)
         return PC && PC->bShowMouseCursor ? EVisibility::Visible : EVisibility::HitTestInvisible;
     }));
     Log.Add(EAC2ChatType::System, TEXT("Welcome to Dereth. Enter opens local chat; /help lists commands."));
-    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Z: combat/peace. Alt: cursor, click a creature or T: target. 1: attack; 2: magic; 3: missile; E: use. /stop ends combat.") : TEXT("Offline world: messages stay in this session."));
+    Log.Add(EAC2ChatType::System, Mode->Network ? TEXT("Mouse: click selects, double-click uses, right-click examines. Middle or Alt: mouse look. Wheel: camera zoom. Z: combat; 1: attack; 2: magic; 3: missile; E: use.") : TEXT("Offline world: messages stay in this session."));
     if (Frontend) RestoreOptions();
     Rebuild();
 }
@@ -116,6 +117,7 @@ void SAC2GameUI::Tick(const FGeometry &G, double Time, float Delta)
                     : EAC2ChatType::System,
                 LastNotice);
     }
+    UpdateHover(G, Time);
     Rebuild();
 }
 void SAC2GameUI::Bind(const TCHAR *Control, FName Action)
@@ -290,7 +292,23 @@ void SAC2GameUI::Rebuild()
     {
         const FIntRect List = Native.Bounds(TEXT("ExaminationListBox"));
         TArray<FString> Lines;
-        if (P->Items.IsValidIndex(SelectedItem))
+        const auto* Net=Mode->Network.Get();
+        const bool Inspecting=Net && !InspectedObject.IsEmpty();
+        TArray<uint32> Appearances, RowImages;
+        if(Inspecting)
+        {
+            if(Net->ExaminationId==InspectedObject && !Net->ExaminationPending && Net->ExaminationError.IsEmpty())
+                for(const auto& Row:Net->ExaminationRows)
+                {Lines.Add(Row.Text);Appearances.Add(Row.Appearance);RowImages.Add(Row.Image);}
+            if(Lines.IsEmpty())
+            {
+                Lines.Add(Net->ObjectName(InspectedObject));
+                Lines.Add(Net->ExaminationPending?TEXT("Examining..."):!Net->ExaminationError.IsEmpty()?Net->ExaminationError:TEXT("No examination information is available."));
+            }
+        }
+        else if(!Net && InspectedMob.IsValid())
+            Lines={InspectedMob->DisplayName,FString::Printf(TEXT("Health: %.0f"),InspectedMob->Health)};
+        else if (P->Items.IsValidIndex(SelectedItem))
         {
             const auto &Item = P->Items[SelectedItem];
             const auto &D = Mode->CharacterCatalog.Items[Item.Definition];
@@ -315,12 +333,24 @@ void SAC2GameUI::Rebuild()
                      FString::Printf(TEXT("Known armor: %d"), P->Armor(Mode->CharacterCatalog)),
                      Mode->Network ? TEXT("Server character profile") : TEXT("Offline character profile")};
         }
-        int32 Y = List.Min.Y;
+        int32 Y = List.Min.Y-ExamineScroll, RowIndex=0;
         for (const FString &Line : Lines)
         {
             const int32 Start = Native.Nodes.Num();
             FIntRect R(List.Min.X, Y, List.Max.X, Y + 20);
-            Native.Template(0x22000001, TEXT("ExaminationTextTemplate"), R, List);
+            const uint32 Image=RowImages.IsValidIndex(RowIndex)?RowImages[RowIndex]:0;
+            const uint32 Appearance=Appearances.IsValidIndex(RowIndex)?Appearances[RowIndex]:0;
+            ++RowIndex;
+            if(Image)
+            {
+                Native.LoadImage(Image,*Assets);
+                if(const auto* Brush=Native.Brush(Image))
+                {const FIntRect ImageRect(List.Min.X,Y,List.Min.X+Brush->ImageSize.X,Y+Brush->ImageSize.Y);
+                    Icons.Add({ImageRect,List,Image});Y+=Brush->ImageSize.Y;}
+                continue;
+            }
+            if(!Appearance || !Native.Template(0x22000001,Appearance,R,List))
+                Native.Template(0x22000001, TEXT("ExaminationTextTemplate"), R, List);
             if (Native.Nodes.IsValidIndex(Start))
             {
                 auto &N = Native.Nodes[Start];
@@ -332,11 +362,15 @@ void SAC2GameUI::Rebuild()
                 Y += Height;
             }
         }
+        ExamineMaxScroll=FMath::Max(0,Y+ExamineScroll-List.Max.Y);
+        ExamineScroll=FMath::Clamp(ExamineScroll,0,ExamineMaxScroll);
     }
     for (auto &Icon : Icons)
         Native.LoadImage(Icon.Image, *Assets);
     Native.Prepare(*Assets, Fonts);
     MapUI.Update(*Mode.Get(), FIntPoint(FMath::RoundToInt(Size.X), FMath::RoundToInt(Size.Y)), *Assets, Fonts);
+    BuildPointerFeedback();
+    Native.Prepare(*Assets, Fonts);
 }
 int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSlateRect &Cull,
                           FSlateWindowElementList &Out, int32 Layer, const FWidgetStyle &Style,
@@ -393,6 +427,11 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
 FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(RotatingPortrait)
+    {
+        if(Portrait.IsValid())Portrait->Rotate((Mouse.X-PortraitPointer.X)*.6f);
+        PortraitPointer=Mouse;return FReply::Handled();
+    }
     if(DraggingOption!=INDEX_NONE){DragOption(Mouse.X);return FReply::Handled();}
     MapUI.Move(Mouse);
     Native.Hovered = 0;
@@ -407,12 +446,16 @@ FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
 {
     DraggingOption=INDEX_NONE;PressedAction=NAME_None;Native.Pressed=0;
+    RotatingPortrait=false;
     if(MapCaptured){MapCaptured=false;MapUI.Release(Mouse,false,false);}
     SCompoundWidget::OnMouseCaptureLost(E);
 }
 FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
 {
     OnMouseMove(G, E);
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && ShowInventory && Portrait.IsValid() &&
+        Native.Bounds(TEXT("PaperDollViewport")).Contains(FIntPoint(Mouse.X,Mouse.Y)))
+    {RotatingPortrait=true;PortraitPointer=Mouse;return FReply::Handled().CaptureMouse(SharedThis(this));}
     if(ShowOptions && E.GetEffectingButton()==EKeys::LeftMouseButton)
         for(const auto& Slider:OptionSliders)if(Inside(Slider.Value,Mouse))
         {DraggingOption=Slider.Key;DragOption(Mouse.X);return FReply::Handled().CaptureMouse(SharedThis(this));}
@@ -431,22 +474,37 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
                 Native.Pressed = Native.Hovered;
                 return FReply::Handled().CaptureMouse(SharedThis(this));
             }
-        // Blank parts of native panels still own the pointer. Outside them, the
-        // rendered world is selectable even though network models have no collision.
-        for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
-            TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel")})
-            if(Inside(SlateRect(Native.Bounds(Panel)),Mouse))
-            {UE_LOG(LogTemp,Verbose,TEXT("AC2 pointer captured by %s"),Panel);return FReply::Handled();}
-        auto* PC=Controller(Mode);
-        FVector Origin,Direction;
-        if(PC && Mode->Network && PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction) &&
-            Mode->Network->SelectWorldRay(Origin,Direction))return FReply::Handled();
+    }
+    if(E.GetEffectingButton()==EKeys::RightMouseButton)
+        for(const auto& B:Buttons)
+            if(Inside(B.Value,Mouse) && (B.Key.ToString().StartsWith(TEXT("Item")) || B.Key.ToString().StartsWith(TEXT("Cell"))))
+            {
+                // Inspect only populated slots; never move an item as a side effect of right-click.
+                auto* P=Mode->Characters.Active();
+                const FString Key=B.Key.ToString();
+                const int32 Index=Key.StartsWith(TEXT("Item"))?FCString::Atoi(*Key.Mid(4)):
+                    P?P->Items.IndexOfByPredicate([&](const auto& I){return !I.Equipped && I.Cell==FCString::Atoi(*Key.Mid(4));}):INDEX_NONE;
+                if(P && P->Items.IsValidIndex(Index))SelectItem(Index);
+                return FReply::Handled();
+            }
+    if(E.GetEffectingButton()==EKeys::MiddleMouseButton)
+    {
+        if(!OwnsPointer(Mouse))if(auto* PC=Controller(Mode))PC->Cursor();
+        return FReply::Handled();
+    }
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton || E.GetEffectingButton()==EKeys::RightMouseButton)
+    {
+        if(OwnsPointer(Mouse))return FReply::Handled();
+        if(WorldClick(E.GetEffectingButton(),false))return FReply::Handled();
     }
     return FReply::Unhandled();
 }
+
 FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(RotatingPortrait && E.GetEffectingButton()==EKeys::LeftMouseButton)
+    {RotatingPortrait=false;return FReply::Handled().ReleaseMouseCapture();}
     if(DraggingOption!=INDEX_NONE && E.GetEffectingButton()==EKeys::LeftMouseButton)
     {DragOption(Mouse.X);DraggingOption=INDEX_NONE;return FReply::Handled().ReleaseMouseCapture();}
     if (MapCaptured)
@@ -475,7 +533,8 @@ FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEv
         MapCaptured = false;
         return FReply::Handled().ReleaseMouseCapture();
     }
-    if (MapUI.Press(Mouse, E.GetEffectingButton() == EKeys::RightMouseButton, E.IsShiftDown()))
+    if ((E.GetEffectingButton()==EKeys::LeftMouseButton || E.GetEffectingButton()==EKeys::RightMouseButton) &&
+        MapUI.Press(Mouse, E.GetEffectingButton() == EKeys::RightMouseButton, E.IsShiftDown()))
     {
         MapCaptured = true;
         return FReply::Handled().CaptureMouse(SharedThis(this));
@@ -485,11 +544,16 @@ FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEv
             if (Inside(B.Value, Mouse) &&
                 (B.Key.ToString().StartsWith(TEXT("Item")) || B.Key.ToString().StartsWith(TEXT("Cell"))))
             {
-                Action(B.Key);
-                EquipSelected();
+                const auto* P=Mode->Characters.Active();
+                const FString Key=B.Key.ToString();
+                const int32 Index=Key.StartsWith(TEXT("Item"))?FCString::Atoi(*Key.Mid(4)):
+                    P?P->Items.IndexOfByPredicate([&](const auto& I){return !I.Equipped && I.Cell==FCString::Atoi(*Key.Mid(4));}):INDEX_NONE;
+                if(P && P->Items.IsValidIndex(Index)){SelectItem(Index);EquipSelected();}
                 return FReply::Handled();
             }
-    return FReply::Unhandled();
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && WorldClick(E.GetEffectingButton(),true))
+        return FReply::Handled();
+    return OwnsPointer(Mouse)?FReply::Handled():FReply::Unhandled();
 }
 FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
 {
@@ -502,12 +566,16 @@ FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
         PackRow = FMath::Clamp(PackRow - FMath::RoundToInt(E.GetWheelDelta()), 0, 1);
         return FReply::Handled();
     }
+    if(ShowStats && Inside(SlateRect(Native.Bounds(TEXT("ExaminationListBox"))),P))
+    {ExamineScroll=FMath::Clamp(ExamineScroll-FMath::RoundToInt(E.GetWheelDelta()*40),0,ExamineMaxScroll);return FReply::Handled();}
     if (Inside(ChatRect(), P))
     {
         Scroll = FMath::Clamp(Scroll + FMath::RoundToInt(E.GetWheelDelta() * 3), 0, MaxScroll);
         return FReply::Handled();
     }
-    return FReply::Unhandled();
+    if(!OwnsPointer(P))if(auto* PC=Controller(Mode))
+        if(auto* Pawn=Cast<AAC2Explorer>(PC->GetPawn()))Pawn->ZoomCamera(E.GetWheelDelta());
+    return FReply::Handled();
 }
 FReply SAC2GameUI::OnKeyDown(const FGeometry &, const FKeyEvent &E)
 {
@@ -615,17 +683,18 @@ void SAC2GameUI::ToggleInventory()
         Portrait->Capture->bCaptureEveryFrame = ShowInventory;
     }
     if (auto *PC = Controller(Mode))
-        PC->SetCursor(ShowInventory || ShowStats || (Mode.IsValid() && Mode->bMap));
+        PC->SetCursor(!PC->WantsMouseLook() || ShowInventory || ShowStats || (Mode.IsValid() && Mode->bMap));
     Rebuild();
 }
 void SAC2GameUI::ToggleStats()
 {
     EndChat();
     SelectedItem = INDEX_NONE;
+    InspectedObject.Reset();InspectedMob.Reset();ExamineScroll=0;
     ShowStats = !ShowStats;
     if (ShowStats && Mode.IsValid()) { ShowOptions=false; Mode->bMap = false; MapUI.Close(); }
     if (auto *PC = Controller(Mode))
-        PC->SetCursor(ShowInventory || ShowStats || (Mode.IsValid() && Mode->bMap));
+        PC->SetCursor(!PC->WantsMouseLook() || ShowInventory || ShowStats || (Mode.IsValid() && Mode->bMap));
     Rebuild();
 }
 bool SAC2GameUI::ClosePanels()
@@ -642,7 +711,7 @@ bool SAC2GameUI::ClosePanels()
         Portrait->Capture->bCaptureEveryFrame = false;
     }
     if (auto *PC = Controller(Mode))
-        PC->SetCursor(false);
+        PC->RestoreCursor();
     return true;
 }
 void SAC2GameUI::ToggleMap()
@@ -652,12 +721,13 @@ void SAC2GameUI::ToggleMap()
     Mode->bMap = !Mode->bMap;
     if (Mode->bMap) ShowStats = ShowOptions = false;
     else MapUI.Close();
-    if (auto *PC = Controller(Mode)) PC->SetCursor(ShowInventory || ShowStats || Mode->bMap);
+    if (auto *PC = Controller(Mode)) PC->SetCursor(!PC->WantsMouseLook() || ShowInventory || ShowStats || Mode->bMap);
     Rebuild();
 }
 void SAC2GameUI::SelectItem(int32 Index)
 {
     SelectedItem = Index;
+    InspectedObject.Reset();InspectedMob.Reset();ExamineScroll=0;
     ShowStats = true;
     if (Mode.IsValid()) { Mode->bMap = false; MapUI.Close(); }
 }

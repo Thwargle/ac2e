@@ -102,4 +102,28 @@ bool FAC2NativeWindowsTest::RunTest(const FString &)
     TestTrue(TEXT("character row belongs to native list, above its background"),Row && Row->Parent!=INDEX_NONE && UI.Nodes[Row->Parent].Id==T(TEXT("CharacterListBox")) && Row->Text==TEXT("Selection Test"));
     return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2NativeCursorTest,"AC2.Data.NativeCursors",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2NativeCursorTest::RunTest(const FString&)
+{
+    FAC2NativeUI UI;FString Error;
+    if(!UI.Open(AC2::ResolveDatDirectory(TEXT("../Asheron's Call 2 - Legions")),Error)){AddError(Error);return false;}
+    UI.Begin(FIntPoint(1024,768));
+    TestTrue(TEXT("native mouse-look crosshair"),UI.Root(0x22000005,TEXT("MouseLookCursorField")));
+    TestEqual(TEXT("crosshair center"),UI.Bounds(TEXT("MouseLookCursorField")).Min,FIntPoint(501,373));
+    UI.Begin(FIntPoint(1024,768));
+    UI.Root(0x22000007,TEXT("AvatarModificationField"));
+    const auto* Rotate=UI.Find(TEXT("MouseRotationOverField"));
+    if(!TestNotNull(TEXT("native rotation field"),Rotate))return false;
+    uint32 Image=0;FIntPoint Hotspot;
+    TestTrue(TEXT("rotation field cursor inherited through children"),UI.CursorAt(FVector2D(Rotate->Rect.Min+FIntPoint(10,10)),Image,Hotspot));
+    TestEqual(TEXT("native rotation cursor"),Image,0x41000d0du);
+    TestEqual(TEXT("native rotation hotspot"),Hotspot,FIntPoint(17,14));
+    // A topmost control with no cursor must restore the default, never leak a covered sibling's cursor.
+    FAC2NativeNode Cover;Cover.Id=123;Cover.Rect=Cover.Clip=Rotate->Rect;Cover.Z=-100;
+    UI.Nodes.Add(Cover);
+    TestFalse(TEXT("covered cursor does not bleed through"),UI.CursorAt(FVector2D(Cover.Rect.Min+FIntPoint(10,10)),Image,Hotspot));
+    return true;
+}
 #endif

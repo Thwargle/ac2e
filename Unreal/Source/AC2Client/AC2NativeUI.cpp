@@ -402,6 +402,24 @@ void FAC2NativeUI::Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts)
             Fonts.Get(N.Attr(TEXT("font"), 0x4200000c));
     }
 }
+bool FAC2NativeUI::CursorAt(FVector2D Point,uint32& Image,FIntPoint& Hotspot) const
+{
+    auto Order=PaintOrder();
+    for(int32 I=Order.Num()-1;I>=0;--I)
+    {
+        int32 Index=Order[I];
+        if(!Nodes[Index].Clip.Contains(FIntPoint(FMath::FloorToInt(Point.X),FMath::FloorToInt(Point.Y))))continue;
+        // Children inherit the pointer from their owning field. Never use a covered sibling's cursor.
+        for(int32 Depth=0;Nodes.IsValidIndex(Index)&&Depth<64;++Depth)
+        {
+            for(const auto& Art:Nodes[Index].Media)
+                if(Art.Kind==10 && Art.Image){Image=Art.Image;Hotspot=Art.Offset;return true;}
+            Index=Nodes[Index].Parent;
+        }
+        return false;
+    }
+    return false;
+}
 int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSlateWindowElementList &Out,
                               int32 Layer, const FGeometry &G, FAC2Fonts &Fonts) const
 {
@@ -461,10 +479,17 @@ int32 FAC2NativeUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeom
                 if (Step.X > 0 && Step.Y > 0)
                     for (float Y = Origin.Y; Y < N.Rect.Max.Y; Y += Step.Y)
                         for (float X = Origin.X; X < N.Rect.Max.X; X += Step.X)
+                        {
+                            if(!FMath::IsNearlyZero(N.Rotation))
+                                FSlateDrawElement::MakeRotatedBox(Out,++Layer,
+                                    G.ToPaintGeometry(Step,FSlateLayoutTransform(FVector2D(X,Y))),B,
+                                    ESlateDrawEffect::None,N.Rotation,Step*.5f,FSlateDrawElement::RelativeToElement);
+                            else
                             FSlateDrawElement::MakeBox(
                                 Out, ++Layer, G.ToPaintGeometry(Step, FSlateLayoutTransform(FVector2D(X, Y))),
                                 B, ESlateDrawEffect::None,
                                 FLinearColor(1, 1, 1, N.Float(TEXT("alpha_value"), 1)));
+                        }
             }
         if (Content)
             Layer = Content(N, Layer);
