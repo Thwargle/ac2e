@@ -370,14 +370,13 @@ impl Encounters {
             return Err(invalid("dead or unavailable character cannot attack"));
         }
         let category = crate::starter_gear::equipped_category(&store.characters[&player].inventory);
-        if !scene.can_observe(player, target)
-            || !in_range(
-                scene.player_placement(player),
-                scene.content_placement(target),
-                if category == 0 { self.range } else { 18.0 },
-            )
-        {
-            return Err(invalid("target is out of attack range"));
+        let range = if category == 0 { self.range } else { 18.0 };
+        let distance = scene.combat_distance(player, target)
+            .ok_or_else(|| invalid("Target is not in a visible, shared area."))?;
+        if distance > range {
+            return Err(invalid(&format!(
+                "Target is out of attack range ({distance:.1} m away; reach {range:.1} m). Move closer, or return to peace with Z to equip a ranged weapon."
+            )));
         }
         if actor.respawn_at.is_some()
             || self.attacks.len() >= 64 && !self.attacks.contains_key(&player)
@@ -449,11 +448,8 @@ impl Encounters {
                 .is_some_and(|c| !c.deleted && c.progression.alive());
             if !available
                 || !alive
-                || !in_range(
-                    scene.player_placement(player),
-                    scene.content_placement(attack.target),
-                    if attack.category == 0 { self.range } else { 18.0 },
-                )
+                || !scene.combat_distance(player, attack.target).is_some_and(|distance|
+                    distance <= if attack.category == 0 { self.range } else { 18.0 })
             {
                 if alive {
                     events.push(Event::Note {
@@ -663,11 +659,7 @@ impl Encounters {
                     .characters
                     .get(&player)
                     .is_some_and(|c| !c.deleted && c.progression.alive())
-                    && in_range(
-                        scene.player_placement(player),
-                        scene.content_placement(id),
-                        actor.rule.range,
-                    )
+                    && scene.combat_distance(player, id).is_some_and(|distance| distance <= actor.rule.range)
             };
             if !eligible(target) {
                 if let Some((&other, _)) = self

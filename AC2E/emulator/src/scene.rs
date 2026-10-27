@@ -441,6 +441,14 @@ impl Scene {
             .filter(|_| self.content.cell(id).is_some())
             .map(|object| object.placement)
     }
+    /// Shared native coordinate space plus PVS membership; this is not a wall
+    /// collision/line-of-sight test. Never compare unrelated dungeon instances.
+    pub fn combat_distance(&self, player: u64, creature: u64) -> Option<f32> {
+        if !self.can_observe(player, creature) {
+            return None;
+        }
+        self.player_placement(player)?.distance(self.content_placement(creature)?)
+    }
     pub fn move_creature(&mut self,id:u64,placement:Placement,now:u64) -> std::io::Result<Vec<Delivery>> {
         let wire=self.content.move_creature(id,placement,now)?;
         Ok(self.bodies.keys().filter(|observer| self.can_observe(**observer,id))

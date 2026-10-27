@@ -13,6 +13,26 @@ pub struct Placement {
     pub heading: u8,
 }
 impl Placement {
+    /// PositionPack coordinates share a landblock origin, not a room origin.
+    /// Callers must separately validate native visibility before interacting.
+    pub fn distance(self, other: Self) -> Option<f32> {
+        if !self.valid() || !other.valid() {
+            return None;
+        }
+        let outdoor = |cell: u32| (1..=64).contains(&(cell & 0xffff));
+        let same_block = self.cell >> 16 == other.cell >> 16;
+        let both_outdoor = outdoor(self.cell) && outdoor(other.cell);
+        let both_indoor = self.cell & 0xffff >= 256 && other.cell & 0xffff >= 256;
+        if !(both_outdoor || both_indoor && same_block) {
+            return None;
+        }
+        let mut delta = std::array::from_fn::<_, 3, _>(|i| self.coordinates[i] - other.coordinates[i]);
+        if both_outdoor {
+            delta[0] += ((self.cell >> 24) as i32 - (other.cell >> 24) as i32) as f32 * 160.0;
+            delta[1] += (((self.cell >> 16) & 255) as i32 - ((other.cell >> 16) & 255) as i32) as f32 * 160.0;
+        }
+        Some(delta.iter().map(|v| v * v).sum::<f32>().sqrt())
+    }
     pub const HUMAN_START: Self = Self {
         cell: 0x02990109,
         coordinates: [59.060577, 240.199, -44.606205],
@@ -225,6 +245,23 @@ impl Motion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn distances_use_landblock_origins_and_keep_interior_spaces_separate() {
+        let a = Placement { cell: 0x12340100, coordinates: [10.0, 20.0, -5.0], heading: 0 };
+        let b = Placement { cell: 0x12340101, coordinates: [11.0, 22.0, -3.0], ..a };
+        assert_eq!(a.distance(b), Some(3.0));
+        assert_eq!(a.distance(Placement { cell: 0x12350101, ..b }), None);
+        assert_eq!(a.distance(Placement { cell: 0x12340001, ..b }), None);
+        assert_eq!(a.distance(Placement { coordinates: [f32::NAN, 0.0, 0.0], ..b }), None);
+        let west = Placement { cell: 0x12340039, coordinates: [159.0, 10.0, 0.0], ..a };
+        let east = Placement { cell: 0x13340001, coordinates: [1.0, 10.0, 0.0], ..a };
+        assert_eq!(west.distance(east), Some(2.0));
+        assert_eq!(east.distance(west), Some(2.0));
+        let south = Placement { cell: 0x12340008, coordinates: [10.0, 159.0, 0.0], ..a };
+        let north = Placement { cell: 0x12350001, coordinates: [10.0, 1.0, 0.0], ..a };
+        assert_eq!(south.distance(north), Some(2.0));
+        assert_eq!(west.distance(Placement { cell: 0x12340031, coordinates: [158.0, 10.0, 0.0], ..west }), Some(1.0));
+    }
     #[test]
     fn heading_matches_original_x86_rotation_axes() {
         // tools/movement_binary_vectors.py executes Frame::cache_matrix 00619f70.

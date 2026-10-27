@@ -65,6 +65,18 @@ checkout; no pre-existing `Saved` files are needed.
 
 `Network/test_gameplay.py` uses two real UDP clients on 19320/19321 to exercise weapon equip/unequip, combat modes, rejected wrong-weapon casting, melee/magic/missile attacks, creature pursuit and shared locations, incoming damage, kills, the starter reward, portal visibility removal and recall. It also tests player death/resurrection and journal replay of equipment and quest completion. `Network/test_login_ui.py --gameplay` additionally renders Unreal with a server-equipped staff and checks native magic animation playback, animated attachment and global appearance alongside the existing login/selection/inventory tests. Both use disposable stores under `Saved/AC2NetworkTests`.
 
+`Network/test_combat_recovery.py` uses two authenticated accounts on isolated ports
+19490/19492/19493. It checks that a rejected combat-button or attack request returns
+both local and remote avatars to peace, allows immediate equipment changes, and
+does no damage. Synthetic placements in DAT-visible neighboring rooms verify
+cross-cell melee, retaliation and death; overlapping hidden rooms stay excluded.
+Range uses shared landblock coordinates (including outdoor block offsets) plus
+native visibility. This does not implement server wall collision or line of sight.
+Out-of-range feedback reports distance and weapon reach. Z or Stop Combat returns
+to peace before changing equipment; an out-of-range combat-button attack now
+returns to peace automatically. Set `AC2_TEST_SERVER` to test a separately built
+server binary.
+
 The login UI test also drives the native combat buttons through Slate's hit-test
 grid and sends Z/1 through viewport keyboard input. It checks server stance,
 model mode, disabled button states, chat input isolation/restoration, world

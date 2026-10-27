@@ -936,8 +936,11 @@ fn change_hand_item(
         return Err(invalid("Wait briefly before changing equipment again."));
     }
     let saved = &store.characters[&character];
-    if !saved.progression.alive() || peer.combat {
-        return Err(invalid("Change equipment while alive and out of combat."));
+    if !saved.progression.alive() {
+        return Err(invalid("You cannot change equipment while dead. Recall to safety first."));
+    }
+    if peer.combat {
+        return Err(invalid("Return to peace with Z or the Stop Combat button, then change equipment."));
     }
     if !saved.inventory.dense_bags() {
         return Err(invalid("This equipment profile requires a dense bag list."));
@@ -3512,6 +3515,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     false
                                                 }
                                                 script::Request::Combat(enabled) => {
+                                                    let mut enabled = enabled;
                                                     if enabled
                                                         && !store.characters[&character]
                                                             .progression
@@ -3541,6 +3545,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         if let Err(error) = encounters.as_mut().unwrap().start(
                                                             character, target, now_ms, &scene, &store,
                                                         ) {
+                                                            // A rejected combat-button attack must follow
+                                                            // the same recovery as a rejected Attack request:
+                                                            // stop any previous target and publish peace to
+                                                            // the owner, observers and saved appearance.
+                                                            encounters.as_mut().unwrap().stop(character);
+                                                            enabled = false;
                                                             replies.extend(peer.send_event(
                                                                 &script::chat(&error.to_string(), 1)
                                                                     .map_err(other)?,
