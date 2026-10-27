@@ -62,6 +62,8 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
         StageComponents.Reset();
         Backdrop.Reset();
         SceneId = Scene;
+        Floor = 0;
+        StageFloors.Reset();
         if (Scene)
         {
             TInlineComponentArray<UActorComponent *> BeforeStage(this);
@@ -73,6 +75,25 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
             for (auto *C : AfterStage)
                 if (!BeforeStage.Contains(C))
                     StageComponents.Add(C);
+            for (auto& Component : StageComponents)
+                if (auto* Mesh = Cast<UProceduralMeshComponent>(Component.Get()))
+                    for (int32 S = 0; S < Mesh->GetNumSections(); ++S)
+                    {
+                        const auto* Sec = Mesh->GetProcMeshSection(S);
+                        if (!Sec || !Sec->bSectionVisible) continue;
+                        for (int32 I = 0; I + 2 < Sec->ProcIndexBuffer.Num(); I += 3)
+                        {
+                            FVector P[3];
+                            for (int32 J = 0; J < 3; ++J)
+                                P[J] = Mesh->GetRelativeTransform().TransformPosition(Sec->ProcVertexBuffer[Sec->ProcIndexBuffer[I + J]].Position);
+                            const FVector N = FVector::CrossProduct(P[1] - P[0], P[2] - P[0]);
+                            if (FMath::Abs(N.Z) <= .7 * N.Size() || FMath::Abs(N.Z) < SMALL_NUMBER) continue;
+                            const double Z = FVector::DotProduct(N, P[0]) / N.Z;
+                            const FVector At(0, 0, Z);
+                            if (FMath::ClosestPointOnTriangleToPoint(At, P[0], P[1], P[2]).Equals(At, .01))
+                                StageFloors.Add(Z);
+                        }
+                    }
         }
     }
     Body->SetRelativeTransform(FTransform::Identity);
@@ -84,30 +105,38 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
     for (auto *C : After)
         if (!Before.Contains(C))
             Generated.Add(C);
-    FBox Box(ForceInit);
-    TInlineComponentArray<UProceduralMeshComponent *> Meshes(this);
-    for (auto *M : Meshes)
+    if (!Ready) return false;
+    if (!References.Contains(Physics))
     {
-        if (M->GetAttachParent() != Body)
-            continue;
-        M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        for (int32 S = 0; S < M->GetNumSections(); ++S)
-            if (auto *Section = M->GetProcMeshSection(S))
-                for (const auto &V : Section->ProcVertexBuffer)
-                    Box += M->GetRelativeTransform().TransformPosition(V.Position);
+        FReference Ref;
+        Ref.Body = Model->ModelBounds();
+        Ref.Head = Model->ModelBounds(0x8100001b); // Native MeshType::Head.
+        const FBox Feet = Model->ModelBounds(0x81000001);
+        if (!Ref.Body.IsValid) return Ready = false;
+        Ref.Feet = Feet.IsValid ? Feet.Min.Z : Ref.Body.Min.Z;
+        if (!Ref.Head.IsValid)
+        {
+            // Drudge has a single body mesh rather than a separate head part.
+            Ref.Head = Ref.Body;
+            Ref.Head.Min.Z = FMath::Lerp(Ref.Body.Min.Z, Ref.Body.Max.Z, .72);
+        }
+        References.Add(Physics, Ref);
     }
-    if (!Ready || !Box.IsValid)
-        return Ready = false;
-    // Hair, boots and the current idle pose must not reframe the camera or move the floor.
-    // Cache an unscaled reference per native race/sex entity; height/build change the body only.
-    if (!ReferenceBounds.Contains(Physics))
-        ReferenceBounds.Add(Physics, Box);
-    const FBox &Reference = ReferenceBounds[Physics];
+    Reference = References[Physics];
+    // A short downward trace around the authored avatar origin hits the top of
+    // the stand, excluding its lower floors and the Empyrean sky dome overhead.
+    const double Reach = Reference.Body.GetSize().Z;
+    double Support = -BIG_NUMBER;
+    for (float Z : StageFloors)
+        if (Z >= -Reach && Z <= Reach) Support = FMath::Max(Support, double(Z));
+    Floor = Support > -BIG_NUMBER ? Support : 0;
+    HeadBounds = Model->ModelBounds(0x8100001b);
+    if (!HeadBounds.IsValid) HeadBounds = Reference.Head;
+    for (uint32 Type : {0x81000003u, 0x81000004u})
+    { const FBox Part = Model->ModelBounds(Type); if (Part.IsValid) HeadBounds += Part; }
     Body->SetRelativeScale3D(FVector(Build, Build, Height));
-    Body->SetRelativeLocation(FVector(0, 0, -Reference.Min.Z * Height));
-    ModelHeight = Reference.GetSize().Z;
-    ModelWidth = FMath::Max(Reference.GetSize().X, Reference.GetSize().Y);
-    // Keep the animation at the same time when rebuilding for a slider change.
+    Body->SetRelativeLocation(FVector(0, 0, Floor - Reference.Feet * Height));
+    // Preserve the idle phase and framing while changing hair, face or clothes.
     Model->Animate(Time, 0);
     SetCamera(HeadCamera, Yaw);
     return true;
@@ -117,11 +146,69 @@ void AAC2Portrait::SetCamera(bool Head, float Rotation)
     HeadCamera = Head;
     Yaw = Rotation;
     Body->SetRelativeRotation(FRotator(0, Yaw, 0));
-    const float Distance = Head ? ModelHeight * .5f : FMath::Max(ModelHeight * 1.75f, ModelWidth * 2.3f);
-    Capture->SetRelativeLocation(FVector(0, Distance, ModelHeight * (Head ? .88f : .52f)));
+    if (!Reference.Body.IsValid) return;
+    const float Height = Reference.Body.GetSize().Z * Body->GetRelativeScale3D().Z;
+    FBox Focus = Head ? HeadBounds + Reference.Head : Reference.Body;
+    // Reserve idle-motion margins. The face target stays fixed; larger native
+    // crests can widen the head view without shifting the target or the feet.
+    Focus = Focus.ExpandBy(Head ? FVector(4, 4, 8) : FVector(3, 3, 8));
+    const FVector LocalTarget = Head ? Reference.Head.GetCenter() : FVector(0, 0, Focus.GetCenter().Z);
+    // A rotation-invariant envelope avoids zooming in/out as the rotation slider turns.
+    float Radius = 0;
+    for (int32 C = 0; C < 4; ++C)
+        Radius = FMath::Max(Radius, float(FVector2D((C & 1 ? Focus.Max.X : Focus.Min.X) - LocalTarget.X,
+                                                   (C & 2 ? Focus.Max.Y : Focus.Min.Y) - LocalTarget.Y).Size()));
+    const FVector Target = Body->GetRelativeTransform().TransformPosition(LocalTarget);
+    Radius *= Body->GetRelativeScale3D().X;
+    const float Low = Body->GetRelativeTransform().TransformPosition(Focus.Min).Z;
+    const float High = Body->GetRelativeTransform().TransformPosition(Focus.Max).Z;
+    const float Fill = Head ? .8f : .7f;
+    const float Aspect = float(Image->SizeY) / Image->SizeX;
+    const float TanH = FMath::Tan(FMath::DegreesToRadians(35.f * .5f));
+    const float Vertical = FMath::Max(Target.Z - Low, High - Target.Z);
+    // Fit the rotation envelope in the usable part of the native viewport,
+    // leaving the arch and title clear. A circle avoids a box's fictitious corners.
+    float Distance = FMath::Max(FMath::Sqrt(FMath::Square(Radius) + FMath::Square(Radius / (Fill * TanH))),
+                               Radius + Vertical / (Fill * TanH * Aspect));
+    // The native stages are enclosed sets. Widen the lens rather than pulling
+    // the camera into a foreground tree when fitting a broad body or long tail.
+    Distance = FMath::Max(Radius + 1, FMath::Min(Distance, Height * (Head ? 1.f : 1.75f)));
+    const float FitTan = FMath::Max3(TanH,
+        Radius / (Fill * FMath::Sqrt(FMath::Square(Distance) - FMath::Square(Radius))),
+        Vertical / (Fill * (Distance - Radius) * Aspect));
+    Capture->FOVAngle = FMath::RadiansToDegrees(2 * FMath::Atan(FitTan));
+    Capture->SetRelativeLocation(Target + FVector(0, Distance, 0));
     Capture->SetRelativeRotation(FRotator(0, -90, 0));
-    KeyLight->SetRelativeLocation(FVector(80, Distance + 100, ModelHeight * .9f));
+    KeyLight->SetRelativeLocation(Target + FVector(80, Distance + 100, Height * .4f));
     KeyLight->SetIntensity(50000 * FMath::Square((Distance + 100) / 200));
+}
+bool AAC2Portrait::AuditFraming(FString& Error) const
+{
+    if (!Ready || !Model) { Error = TEXT("Portrait unavailable"); return false; }
+    FBox Feet = Model->ModelBounds(0x81000001);
+    if (!Feet.IsValid) Feet = Model->ModelBounds();
+    const float FootZ = Body->GetRelativeTransform().TransformPosition(Feet.Min).Z;
+    if (FMath::Abs(FootZ - Floor) > 5)
+    { Error = FString::Printf(TEXT("Feet are %g cm from pedestal"), FootZ - Floor); return false; }
+    FBox Visible = HeadCamera ? Model->ModelBounds(0x8100001b) : Model->ModelBounds();
+    if (HeadCamera)
+    {
+        for (uint32 Type : {0x81000003u, 0x81000004u})
+        { const FBox Part = Model->ModelBounds(Type); if (Part.IsValid) Visible += Part; }
+    }
+    if (!Visible.IsValid) Visible = Reference.Head;
+    const FTransform View = Capture->GetRelativeTransform().Inverse();
+    const float TanH = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
+    const float TanV = TanH * Image->SizeY / Image->SizeX;
+    for (int32 C = 0; C < 8; ++C)
+    {
+        FVector P(C & 1 ? Visible.Max.X : Visible.Min.X, C & 2 ? Visible.Max.Y : Visible.Min.Y, C & 4 ? Visible.Max.Z : Visible.Min.Z);
+        P = View.TransformPosition(Body->GetRelativeTransform().TransformPosition(P));
+        const FVector2D UV(.5 + P.Y / (2 * P.X * TanH), .5 - P.Z / (2 * P.X * TanV));
+        if (P.X <= 0 || UV.X < .07 || UV.X > .93 || UV.Y < .1 || UV.Y > .93)
+        { Error = FString::Printf(TEXT("%s clipped at %s"), HeadCamera ? TEXT("Head") : TEXT("Body"), *UV.ToString()); return false; }
+    }
+    return true;
 }
 void AAC2Portrait::Rotate(float Degrees)
 {
@@ -193,19 +280,10 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         Root->SetRelativeTransform(*At);
         Root->RegisterComponent();
         auto Library = MakeUnique<FAC2AssetLibrary>();
-        TInlineComponentArray<UActorComponent *> Before(this);
         if (!Library->Open(Directory, Error) ||
             !Library->DrawModel(A.Physics, this, Root, A.Resolve(A.Defaults())))
             return false;
-        FBox Box(ForceInit);
-        TInlineComponentArray<UProceduralMeshComponent *> Meshes(this);
-        for (auto *M : Meshes)
-            if (!Before.Contains(M))
-                for (int32 S = 0; S < M->GetNumSections(); ++S)
-                    if (auto *Section = M->GetProcMeshSection(S))
-                        for (const auto &V : Section->ProcVertexBuffer)
-                            Box += (*At).TransformPosition(
-                                M->GetRelativeTransform().TransformPosition(V.Position));
+        const FBox Box = Library->ModelBounds().TransformBy(*At);
         LineupBounds.Add(Box);
         LineupModels.Add(MoveTemp(Library));
     }
@@ -293,13 +371,8 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
         At.MultiplyScale3D(FVector(Figure.Build,Figure.Build,Figure.Height));
         Root->SetRelativeTransform(At); Root->RegisterComponent(); FigureFrames.Add(At);
         auto Library=MakeUnique<FAC2AssetLibrary>();
-        TInlineComponentArray<UActorComponent*> Before(this);
         if (!Library->Open(Directory,Error) || !Library->DrawModel(Figure.Physics,this,Root,Figure.Appearance)) return false;
-        FBox Box(ForceInit);
-        TInlineComponentArray<UProceduralMeshComponent*> Meshes(this);
-        for (auto *Mesh:Meshes) if (!Before.Contains(Mesh))
-            for (int32 S=0;S<Mesh->GetNumSections();++S) if (auto *Section=Mesh->GetProcMeshSection(S))
-                for (const auto &V:Section->ProcVertexBuffer) Box+=Mesh->GetRelativeTransform().TransformPosition(V.Position);
+        const FBox Box = Library->ModelBounds();
         if (!Box.IsValid) return false;
         LineupBounds.Add(Box); LineupModels.Add(MoveTemp(Library));
     }

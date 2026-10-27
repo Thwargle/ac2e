@@ -56,6 +56,8 @@ class SAC2CharacterUI : public SCompoundWidget
         return SmokeAppearance(Error);
     }
     void SmokeCreatorPage(int32 Tab, bool Confirm = false);
+    bool SmokeFraming(int32 Avatar, bool Tall, bool Head, FString& Error);
+    bool AuditPortrait(FString& Error) const;
     bool SmokeEyes(bool Last);
     bool SmokeSelection(int32 Step, FString &Error);
 

@@ -204,26 +204,19 @@ bool AAC2Explorer::ApplyAvatar(uint32 Physics, float Height, float Build, const 
     for (auto *C : After)
         if (!Before.Contains(C))
             ModelComponents.Add(C);
-    FBox Bounds(ForceInit);
-    TInlineComponentArray<UProceduralMeshComponent *> Meshes(this);
-    for (auto *M : Meshes)
-    {
-        M->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        for (int32 I = 0; I < M->GetNumSections(); ++I)
-            if (auto *S = M->GetProcMeshSection(I))
-                for (const auto &V : S->ProcVertexBuffer)
-                    Bounds += M->GetRelativeTransform().TransformPosition(V.Position);
-    }
+    const FBox Bounds = Model->ModelBounds();
+    const FBox Feet = Model->ModelBounds(0x81000001);
+    const float FootZ = Feet.IsValid ? Feet.Min.Z : Bounds.Min.Z;
     if (Bounds.IsValid)
     {
         const float OldHalf = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
         const float Radius =
             FMath::Clamp(float(FMath::Min(Bounds.GetSize().X, Bounds.GetSize().Y) * Build * .3), 24.f, 70.f);
-        const float Half = FMath::Max(Radius, float(Bounds.GetSize().Z * Height * .5));
+        const float Half = FMath::Max(Radius, float((Bounds.Max.Z - FootZ) * Height * .5));
         GetCapsuleComponent()->SetCapsuleSize(Radius, Half);
         AddActorWorldOffset(FVector(0, 0, Half - OldHalf), false, nullptr, ETeleportType::TeleportPhysics);
         Body->SetRelativeScale3D(FVector(Build, Build, Height));
-        Body->SetRelativeLocation(FVector(0, 0, -Half - Bounds.Min.Z * Height));
+        Body->SetRelativeLocation(FVector(0, 0, -Half - FootZ * Height));
         Boom->SetRelativeLocation(FVector(0, 0, Half * .75));
     }
     UE_LOG(LogTemp, Display, TEXT("AC2 player native model: %s %s"), bModel ? TEXT("loaded") : TEXT("failed"),

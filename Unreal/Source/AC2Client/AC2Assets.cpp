@@ -330,6 +330,7 @@ struct FAC2AssetLibrary::FImpl
             MovingMaterials.Add({MID, Decoded->Layers[0].Modifiers});
     }
     TMap<uint64, UMaterialInterface *> RuntimeMaterials;
+    TSet<uint32> InvisibleMaterials;
     TArray<TObjectPtr<UObject>> Objects;
     TSet<uint32> Warnings;
     UMaterialInterface *Opaque = nullptr;
@@ -871,6 +872,9 @@ struct FAC2AssetLibrary::FImpl
         // Untextured red/white cell helper materials have diffuse alpha zero.
         // The alpha combiner applies to constant colour as well as texture pixels.
         const bool HasAlpha = FMath::Min(Alpha(MinAlpha / 255.f), Alpha(MaxAlpha / 255.f)) < .98f;
+        if (Layer && (Masked || Layer->DestBlend > 2) &&
+            FMath::Max(Alpha(MinAlpha / 255.f), Alpha(MaxAlpha / 255.f)) <= SMALL_NUMBER)
+            InvisibleMaterials.Add(Id);
         if (!HasAlpha)
             Masked = false;
         UMaterialInterface *Result = nullptr;
@@ -1773,6 +1777,8 @@ struct FAC2AssetLibrary::FImpl
                                  VertexColors ? G->Colors : TArray<FColor>(), TArray<FProcMeshTangent>(),
                                  Collision);
             C->SetMaterial(J, Material);
+            if (InvisibleMaterials.Contains(F.Material))
+                C->SetMeshSectionVisible(J, false);
             ++Stats.ScenerySections;
             Stats.SceneryTriangles += F.Indices.Num() / 3;
         }
@@ -2206,6 +2212,30 @@ bool FAC2AssetLibrary::DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Ro
 uint32 FAC2AssetLibrary::AppearanceFingerprint() const
 {
     return Impl->AppearanceHash;
+}
+FBox FAC2AssetLibrary::ModelBounds(uint32 MeshType) const
+{
+    FBox Bounds(ForceInit);
+    for (const auto& Group : Impl->Animated)
+        for (const auto& Mesh : Group.Meshes)
+        {
+            if (MeshType && Mesh.Data->Type != MeshType) continue;
+            for (int32 S = 0; S < Mesh.Component->GetNumSections(); ++S)
+            {
+                const auto* Section = Mesh.Component->GetProcMeshSection(S);
+                if (!Section || !Section->bSectionVisible) continue;
+                const FTransform Frame = Mesh.Component->GetRelativeTransform();
+                for (int32 I = 0; I + 2 < Section->ProcIndexBuffer.Num(); I += 3)
+                {
+                    FVector P[3];
+                    for (int32 J = 0; J < 3; ++J)
+                        P[J] = Frame.TransformPosition(Section->ProcVertexBuffer[Section->ProcIndexBuffer[I + J]].Position);
+                    if (FVector::CrossProduct(P[1] - P[0], P[2] - P[0]).SizeSquared() > SMALL_NUMBER)
+                        for (const auto& V : P) Bounds += V;
+                }
+            }
+        }
+    return Bounds;
 }
 const FAC2MotionData& FAC2AssetLibrary::MotionData() const { return Impl->Movement; }
 bool FAC2AssetLibrary::SetMotionDescriptor(uint32 Id)

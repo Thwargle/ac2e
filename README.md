@@ -61,6 +61,7 @@ account setup, hosting, supported gameplay, and remaining implementation limits.
 ```powershell
 .\Launch-AC2.ps1 -Mode Build
 .\Launch-AC2.ps1 -Mode Test -SkipBuild
+.\Launch-AC2.ps1 -PortraitSmoke -SkipBuild
 .\Build-AC2Network.ps1 -Test
 python .\AC2E\test_export_source.py
 ```
@@ -68,6 +69,11 @@ python .\AC2E\test_export_source.py
 The launcher creates Unreal material assets from C++ on first play. Build output,
 generated materials, accounts, and characters are ignored by Git. The server
 creates its compatible placement file from the local DATs when it starts.
+
+`-PortraitSmoke` renders all ten character-creation avatars at their height/build
+extremes in Body and Head views, checks rotation, framing and foot placement, and
+saves screenshots under `Unreal/Saved/Screenshots/AC2Portrait-*`. It uses an isolated
+offline test session and does not create server accounts or characters.
 
 Network integration tests prepare their own content and isolated stores:
 

@@ -11,6 +11,7 @@ param(
     [switch]$Dx11,
     [switch]$Smoke,
     [switch]$UISmoke,
+    [switch]$PortraitSmoke,
     [switch]$MapSmoke,
     [switch]$ControllerSmoke,
     [switch]$LoginSmoke,
@@ -23,6 +24,7 @@ param(
     [switch]$NetworkSmoke
 )
 $ErrorActionPreference = 'Stop'
+if ($PortraitSmoke) { $UISmoke = $true }
 # Windows PowerShell 5.1 does not populate PSScriptRoot while binding defaults.
 if ([string]::IsNullOrWhiteSpace($DatDirectory)) {
     $DatDirectory = Join-Path $PSScriptRoot "Asheron's Call 2 - Legions"
@@ -91,6 +93,7 @@ $launchArgs = @(('"' + $project + '"'), ('-AC2DatDir="' + $DatDirectory + '"'), 
 if($Online){$launchArgs+=@('-AC2Online',"-AC2Server=$Server","-AC2Port=$Port");if($Account){$launchArgs+="-AC2Account=$Account"}}
 if($AccountUrl){$launchArgs+=('-AC2AccountUrl="'+$AccountUrl+'"')}
 if ($Mode -eq 'Play') { $launchArgs += @('-game', '-windowed', '-ResX=1600', '-ResY=900') }
+if ($PortraitSmoke) { $launchArgs += '-AC2PortraitSmoke' }
 if ($Dx11) { $launchArgs += '-d3d11' }
 if ($Smoke -and $UISmoke) { throw 'Choose -Smoke or -UISmoke for a single verification run.' }
 if ($MapSmoke -and ($Smoke -or $UISmoke -or $NetworkSmoke -or $Online)) { throw '-MapSmoke requires a separate offline verification run.' }
@@ -142,6 +145,7 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     if($ControllerSmoke){Write-Output 'AC2 frontend/controller smoke passed. Screenshots: Unreal/Saved/Screenshots/AC2Controller-*.'}
     elseif($NetworkSmoke -or $LoginSmoke){Write-Output 'AC2 network render smoke passed: server character, world objects, chat, combat, loot and native inventory/vitals.'}
     elseif ($MapSmoke) { Write-Output 'AC2 map smoke passed: DAT world/detail/continent maps, pan, player marker, radar targeting, coordinate toggle, interior handling and input restoration.' }
+    elseif ($PortraitSmoke) { Write-Output 'AC2 portrait smoke passed: all ten avatars at height/build extremes, head/body framing, rotation and grounded feet. Screenshots: Unreal/Saved/Screenshots/AC2Portrait-*.' }
     elseif ($UISmoke) {
         Write-Output 'AC2 UI smoke passed: ten native avatars, stable appearance camera, DAT fonts, eye FX, vitals, local chat, inventory, stats, persistence and input restoration.'
     } else {

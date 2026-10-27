@@ -38,6 +38,28 @@ void AAC2GameMode::UISmokeTick(float Delta)
         FScreenshotRequest::RequestScreenshot(
             FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Screenshots"), Name), true, false);
     };
+    if (FParse::Param(FCommandLine::Get(), TEXT("AC2PortraitSmoke")))
+    {
+        if (UITime < (UIStage + 1) * .75f) return;
+        if (UIStage >= CharacterCatalog.Avatars.Num() * 8)
+        { Finish(true, TEXT("Every race/sex at both height/build extremes; body/head framing, rotation and grounded feet")); return; }
+        if (!UIStage) UI->Open(SAC2CharacterUI::EScreen::Create);
+        const int32 Avatar = UIStage / 8;
+        const bool Tall = (UIStage % 8) >= 4, Head = (UIStage % 4) >= 2;
+        FString Error;
+        if (!(UIStage % 2))
+        {
+            if (!UI->SmokeFraming(Avatar, Tall, Head, Error))
+            { Finish(false, FString::Printf(TEXT("Avatar %d: %s"), Avatar, *Error)); return; }
+        }
+        else
+        {
+            if (!UI->AuditPortrait(Error)) { Finish(false, Error); return; }
+            Capture(*FString::Printf(TEXT("AC2Portrait-%02d-%s-%s.png"), Avatar, Tall ? TEXT("max") : TEXT("min"), Head ? TEXT("head") : TEXT("body")));
+        }
+        ++UIStage;
+        return;
+    }
     if (UITime < (UIStage + 1) * 3.f)
         return;
     if (UIStage < 10)

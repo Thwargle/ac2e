@@ -28,6 +28,7 @@ class AAC2Portrait : public AActor
     FVector2D AvatarPoint(int32 Index) const;
     int32 PickAvatar(FVector2D Point) const;
     void SetCamera(bool Head, float Rotation);
+    bool AuditFraming(FString& Error) const;
     uint32 Fingerprint() const
     {
         return Model ? Model->AppearanceFingerprint() : 0;
@@ -45,7 +46,12 @@ class AAC2Portrait : public AActor
     TUniquePtr<FAC2AssetLibrary> Model, Backdrop;
     TArray<TWeakObjectPtr<UActorComponent>> StageComponents;
     uint32 SceneId = 0;
-    TMap<uint32, FBox> ReferenceBounds;
+    struct FReference { FBox Body{ForceInit}, Head{ForceInit}; float Feet = 0; };
+    TMap<uint32, FReference> References;
+    FReference Reference;
+    FBox HeadBounds{ForceInit};
+    TArray<float> StageFloors;
+    float Floor = 0;
     TArray<TUniquePtr<FAC2AssetLibrary>> LineupModels;
     TArray<FBox> LineupBounds;
     TArray<TWeakObjectPtr<USceneComponent>> Arms;
@@ -54,6 +60,6 @@ class AAC2Portrait : public AActor
     int32 ArmCurrent = 0, ArmTarget = 0;
     float ArmTime = 1.5f;
     TArray<TWeakObjectPtr<UActorComponent>> Generated;
-    float Time = 0, ModelHeight = 180, ModelWidth = 80, Yaw = 0;
+    float Time = 0, Yaw = 0;
     bool HeadCamera = false;
 };

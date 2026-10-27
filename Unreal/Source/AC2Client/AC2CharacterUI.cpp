@@ -434,6 +434,7 @@ bool SAC2CharacterUI::SmokePreview(int32 Index)
     PreviewDraft();
     if (!PreviewReady())
         return false;
+    Portrait->SetCamera(false, 0);
     const FTransform Camera = Portrait->Capture->GetRelativeTransform();
     // Exercise actual rendered geometry/material changes for each race and sex, not just stored indices.
     for (auto &Choice : Appearance)
@@ -462,12 +463,50 @@ bool SAC2CharacterUI::SmokePreview(int32 Index)
     HeightIndex = A.Heights.Num() - 1;
     BuildIndex = A.Builds.Num() - 1;
     PreviewDraft();
-    if (!PreviewReady() || !Portrait->Capture->GetRelativeTransform().Equals(Camera) ||
+    if (!PreviewReady() ||
         !FMath::IsNearlyEqual(Portrait->Body->GetRelativeScale3D().Z, double(A.Heights.Last())) ||
         !FMath::IsNearlyEqual(Portrait->Body->GetRelativeScale3D().X, double(A.Builds.Last())))
         return false;
+    FString Error;
+    for (bool Tall : {false, true})
+        for (bool Head : {false, true})
+            if (!SmokeFraming(Index, Tall, Head, Error))
+            { UE_LOG(LogTemp, Error, TEXT("AC2 framing avatar %d: %s"), Index, *Error); return false; }
     ResetAppearance();
     PreviewDraft();
+    HeadZoom = false;
+    Portrait->SetCamera(false, 0);
     Refresh();
     return PreviewReady();
+}
+bool SAC2CharacterUI::AuditPortrait(FString& Error) const
+{
+    return Portrait.IsValid() && Portrait->AuditFraming(Error);
+}
+bool SAC2CharacterUI::SmokeFraming(int32 Index, bool Tall, bool Head, FString& Error)
+{
+    if (!Mode->CharacterCatalog.Avatars.IsValidIndex(Index)) return false;
+    const auto& A = Mode->CharacterCatalog.Avatars[Index];
+    Race = A.Race; Sex = A.Sex;
+    ResetAppearance();
+    auto Extreme = [Tall](const TArray<float>& Values) {
+        int32 Best = 0;
+        for (int32 I = 1; I < Values.Num(); ++I)
+            if (Tall ? Values[I] > Values[Best] : Values[I] < Values[Best]) Best = I;
+        return Best;
+    };
+    HeightIndex = Extreme(A.Heights);
+    BuildIndex = Extreme(A.Builds);
+    // Include the outer appearance choices, not just the default bald head.
+    if (Tall) for (auto& Choice : Appearance) Choice.Value = A.Choices[Choice.Key].Num() - 1;
+    PreviewDraft();
+    SmokeCreatorPage(Head ? 0 : 1);
+    for (float Angle : {0.f, 90.f, 180.f, 270.f})
+    {
+        Portrait->SetCamera(Head, Angle);
+        if (!AuditPortrait(Error)) return false;
+    }
+    Portrait->SetCamera(Head, 0);
+    UE_LOG(LogTemp, Display, TEXT("AC2 portrait framing: avatar=%d height=%g build=%g head=%d"), Index, A.Heights[HeightIndex], A.Builds[BuildIndex], Head);
+    return true;
 }

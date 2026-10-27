@@ -54,6 +54,9 @@ class FAC2AssetLibrary : public FGCObject
     bool DrawModel(uint32 ObjectId, AActor *Owner, USceneComponent *Root,
                    const FAC2Appearance &Appearance = {});
     uint32 AppearanceFingerprint() const;
+    // Posed, rendered triangles in model-root coordinates, excluding invisible DAT helpers.
+    // Optional MeshType uses the native MeshType enum (feet/head/body etc.).
+    FBox ModelBounds(uint32 MeshType = 0) const;
     bool DrawUIScene(uint32 Id, AActor *Owner, USceneComponent *Root, FAC2UISceneInfo *Info = nullptr);
     bool HoldingLocation(uint32 Object, uint32 Location, FTransform &Out);
     bool AnimatedHoldingLocation(uint32 Location, FTransform &Out) const;

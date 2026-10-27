@@ -29,13 +29,7 @@ bool AAC2Mob::Initialize(const FString &D, uint32 V)
     bool OK = Model->Open(D, Error) && Model->DrawModel(V, this, Body);
     if (OK)
     {
-        FBox Bounds(ForceInit);
-        TInlineComponentArray<UProceduralMeshComponent *> Meshes(this);
-        for (auto *NativeMesh : Meshes)
-            for (int32 Section = 0; Section < NativeMesh->GetNumSections(); ++Section)
-                if (auto *S = NativeMesh->GetProcMeshSection(Section))
-                    for (const auto &Vertex : S->ProcVertexBuffer)
-                        Bounds += NativeMesh->GetRelativeTransform().TransformPosition(Vertex.Position);
+        const FBox Bounds = Model->ModelBounds();
         if (!Bounds.IsValid)
             return false;
         // Ground different native bodies by their feet and fit a conservative
