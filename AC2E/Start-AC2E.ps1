@@ -10,6 +10,7 @@ param(
     [string]$Content='',
     [string]$Python='',
     [switch]$SkipBuild,
+    [switch]$Rebuild,
     [switch]$Stop
 )
 $ErrorActionPreference='Stop'
@@ -19,7 +20,13 @@ if(!$DatDirectory){$DatDirectory=Join-Path $root "Asheron's Call 2 - Legions"}
 if(!$DataDirectory){$DataDirectory=Join-Path $PSScriptRoot 'data/world'}
 $server=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
 if($Stop){& $server stop --data $DataDirectory --seconds 20; if($LASTEXITCODE){throw 'Server stop failed.'};return}
-if(!$SkipBuild){& (Join-Path $PSScriptRoot 'Build-AC2E.ps1') -Python $Python}
+if($SkipBuild -and $Rebuild){throw 'Choose either -SkipBuild or -Rebuild.'}
+if($Rebuild -or (!(Test-Path -LiteralPath $server -PathType Leaf) -and !$SkipBuild)){
+    & (Join-Path $PSScriptRoot 'Build-AC2E.ps1') -Python $Python
+}
+if(!(Test-Path -LiteralPath $server -PathType Leaf)){
+    throw 'AC2E server binary is missing. Run AC2E/Build-AC2E.ps1, or start without -SkipBuild to build it.'
+}
 if(!$Content){
     $Content=Join-Path $DataDirectory 'legions-world.tsv'
     & $Python (Join-Path $root 'Network/prepare_content.py') $DatDirectory $Content

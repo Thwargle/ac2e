@@ -18,7 +18,7 @@ it to the latest upstream commit as part of a normal build.
 
 Install Unreal Engine 5.8, Visual Studio's C++/Windows SDK and Unreal workloads
 (see `.vsconfig`), Rust through rustup with `cargo` on PATH, and Python 3.10 or
-newer. The verified Rust toolchain is 1.96.1. Windows is the supported client
+newer. The verified Rust toolchain is 1.99.1. Windows is the supported client
 build platform. No Unreal Engine binaries are included.
 
 Supply your own retail Legions installation in `Asheron's Call 2 - Legions/`,

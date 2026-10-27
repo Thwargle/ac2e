@@ -4,9 +4,9 @@ AC2E is this workspace's persistent multiplayer server project, derived from Pyr
 
 ## Running
 
-Run `start-ac2e.bat` from the workspace root, or `AC2E/Start-AC2E.ps1`. This builds AC2E, prepares a compatible world placement file from the installed DATs, and listens on 127.0.0.1 UDP 9000 and 9001. In another terminal run `Launch-AC2.ps1 -Online`. The client builds its native bridge if missing. The server owns character creation, progression and inventory. All local-development clients use account `local` by default.
+Run `start-ac2e.bat` from the workspace root, or `AC2E/Start-AC2E.ps1`. This uses the existing AC2E binary (building it if missing), prepares a compatible world placement file from the installed DATs, and listens on 127.0.0.1 UDP 9000 and 9001. Rust is needed for builds, not for starting an existing binary. After changing server source, run `start-ac2e.bat -Rebuild` or `Build-AC2E.ps1`. In another terminal run `Launch-AC2.ps1 -Online`. The client builds its native bridge if missing. The server owns character creation, progression and inventory. All local-development clients use account `local` by default.
 
-Parameters: `-Port`, `-Account`, `-DatDirectory`, `-DataDirectory`, `-Content`, `-Python`, `-SkipBuild`. Defaults resolve relative to the project directory, regardless of the current working directory. Graceful shutdown: `Start-AC2E.ps1 -Stop`. Back up `data/world` with the server stopped. The store uses append-only journals with exclusive writer locks, validated replay, atomic transactions and persisted placements; it is not a MySQL schema. The CLI also exposes store inspection and compaction commands inherited from Pyrealium.
+Parameters: `-Port`, `-Account`, `-DatDirectory`, `-DataDirectory`, `-Content`, `-Python`, `-SkipBuild`, `-Rebuild`. `-SkipBuild` also prevents the first build when no binary exists; it cannot be combined with `-Rebuild`. Defaults resolve relative to the project directory, regardless of the current working directory. Graceful shutdown: `Start-AC2E.ps1 -Stop`. Back up `data/world` with the server stopped. The store uses append-only journals with exclusive writer locks, validated replay, atomic transactions and persisted placements; it is not a MySQL schema. The CLI also exposes store inspection and compaction commands inherited from Pyrealium.
 
 ## Initial gameplay ruleset
 
