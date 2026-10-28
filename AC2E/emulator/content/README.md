@@ -29,9 +29,28 @@ captures and not already placed by the other packs. Most come from captures
 made on the 2012–2017 servers shortly before they closed: a human character from
 creation and the starter dungeon (landblock `0298`) through Arwic, Kehan and the
 Osteth vaults, plus two other players' sessions. The training pack loads it
-after `world-observed-expanded.tsv` and `training-world.tsv`.
+after `world-observed-expanded.tsv` and `training-world.tsv` during preparation.
 `capture-spawns-report.json` records each capture, its hash and why objects
 were skipped.
+
+The captures are **not a build-compatible spawn database**. Their visual DIDs
+can exist in a different DAT build while naming unrelated models (including a
+pavilion over an Arwic house). The launcher runs `Network/prepare_content.py`:
+it admits additional capture visuals only when they match the installed entity's
+resolved `PhysObj`/template chain or a curated entity/visual pair. Others remain
+in the source TSV and are listed in `incompatible_capture_placements` in the
+generated `.report.json`; they are not moved to invented positions or silently
+assigned a replacement model. The compiled training preset uses only curated
+observations and authored training placements. Use the prepared external content
+manifest to add the compatible portion of the capture pack.
+
+Recovering withheld placements requires the matching capture-build DAT set or
+a verified mapping of entity/visual identities and world geometry between builds.
+High-resolution textures cannot resolve this identity mismatch. The report
+distinguishes incompatible observations from genuinely absent DAT records.
+Lifestone snapshots within 12 metres are merged across outdoor subcell/block
+boundaries, keeping the earlier stable IID. Different dungeon rooms and distinct
+lifestone entity types are kept separate.
 
 Regenerate it with `python tools/import_capture_corpus.py`; edit `ROOTS` in that
 script to point at your capture folders. It uses the same decoder as the

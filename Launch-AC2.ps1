@@ -174,7 +174,7 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
         throw 'AC2 exited without completing the render smoke test. See Unreal/Saved/Logs.'
     }
     if($ControllerSmoke){Write-Output 'AC2 frontend/controller smoke passed. Screenshots: Unreal/Saved/Screenshots/AC2Controller-*.'}
-    elseif ($EnvironmentSmoke) { Write-Output 'AC2 environment smoke passed: sign faces, Menhir material, native foliage and textured distant terrain. Screenshots: Unreal/Saved/Screenshots/AC2Environment-*.' }
+    elseif ($EnvironmentSmoke) { Write-Output 'AC2 environment smoke passed: sign faces, Menhir material, native foliage, distant terrain and Arwic DAT building placement. Screenshots: Unreal/Saved/Screenshots/AC2Environment-*.' }
     elseif($NetworkSmoke -or $LoginSmoke){Write-Output 'AC2 network render smoke passed: server character, world objects, chat, combat, loot and native inventory/vitals.'}
     elseif ($MapSmoke) { Write-Output 'AC2 map smoke passed: DAT world/detail/continent maps, pan, player marker, radar targeting, coordinate toggle, interior handling, double-click travel and input restoration.' }
     elseif ($PortraitSmoke) { Write-Output 'AC2 portrait smoke passed: all ten avatars at height/build extremes, head/body framing, rotation and grounded feet. Screenshots: Unreal/Saved/Screenshots/AC2Portrait-*.' }

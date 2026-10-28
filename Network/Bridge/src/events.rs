@@ -32,7 +32,7 @@ fn position(p: &Position) -> Value {
     let yaw = (2. * (w * z + x * y))
         .atan2(1. - 2. * (y * y + z * z))
         .to_degrees();
-    json!({"cell":p.cell,"position":p.origin,"heading":(-yaw).rem_euclid(360.)})
+    json!({"cell":p.cell,"position":p.origin,"heading":(-yaw).rem_euclid(360.),"rotation":p.rotation})
 }
 fn quality(q: QualityUpdate) -> Option<Value> {
     let table = q.value.table();
@@ -357,5 +357,8 @@ mod tests {
         });
         assert_eq!(v["position"][2], -44.5);
         assert_eq!(v["heading"], 0.0);
+        let tilted = position(&Position {cell:0x77b80006, origin:[1.,100.,182.5],
+            rotation:[0.9238795,0.3826834,0.,0.]});
+        assert_eq!(tilted["rotation"],json!([0.9238795f32,0.3826834f32,0.,0.]));
     }
 }

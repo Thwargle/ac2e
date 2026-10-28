@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Tools/AC2'))
 from dat_probe import Archive
+from content_profile import ContentProfile, nearby_landmark
 
 
 def asset_index(directory):
@@ -37,8 +38,11 @@ def prepare(directory, output, compare_directory=None):
     skipped = []
     inactive = []
     seen = set()
-    lifestones = {}
+    lifestones = []
     duplicates = []
+    incompatible = []
+    curated_pairs = set()
+    profile = ContentProfile(directory)
     candidate_regressions = []
     content = ROOT / 'AC2E/emulator/content'
     for name in ['world-observed-expanded.tsv', 'training-world.tsv', 'capture-spawns.tsv']:
@@ -58,24 +62,39 @@ def prepare(directory, output, compare_directory=None):
                 skipped.append(entry)
                 continue
             if iid not in seen:
+                if name == 'capture-spawns.tsv':
+                    expected = profile.visual(entity)
+                    if (entity, visual) not in curated_pairs and expected != visual:
+                        incompatible.append({'source': name, 'id': fields[0], 'entity': fields[1],
+                            'visual': fields[2], 'cell': fields[3],
+                            'dat_visual': f'{expected:08x}' if expected else None,
+                            'reason': 'visual differs from installed entity template' if expected else
+                                      'capture visual cannot be verified against installed templates'})
+                        continue
+                else:
+                    # The curated observation and authored training packs supply
+                    # known profiles for script-only templates (e.g. lifestones).
+                    curated_pairs.add((entity, visual))
                 if entity == 0x470007de:
                     position = tuple(float(v) for v in fields[4:7])
-                    previous = lifestones.setdefault(cell, [])
-                    duplicate = next((old for old, p in previous if sum((a-b)**2 for a,b in zip(position,p)) <= 64), None)
+                    duplicate = next((old for old, c, p in lifestones
+                                      if nearby_landmark(cell, position, c, p)), None)
                     if duplicate is not None:
                         duplicates.append({'source': name, 'id': fields[0], 'retained': f'{duplicate:016x}'})
                         continue
-                    previous.append((iid, position))
+                    lifestones.append((iid, cell, position))
                 lines.append(line)
                 seen.add(iid)
                 if comparison is not None:
                     absent = missing_records(fields, comparison)
                     if absent:
                         candidate_regressions.append({'id': fields[0], 'source': name, 'missing_records': absent})
+    profile.close()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    report = {'included': len(seen), 'excluded': len(skipped), 'missing_assets': skipped,
+    report = {'included': len(seen), 'excluded': len(skipped)+len(incompatible)+len(duplicates), 'missing_assets': skipped,
               'inactive_training_services': inactive, 'duplicate_landmarks': duplicates,
+              'incompatible_capture_placements': incompatible,
               'dat_directory': str(directory.resolve()),
               'missing_record_counts': {kind: len({r['record'] for e in skipped for r in e['missing_records'] if r['kind'] == kind})
                                        for kind in ('entity', 'visual', 'cell')}}
@@ -86,6 +105,7 @@ def prepare(directory, output, compare_directory=None):
                                 'note': 'Presence check only; dependent assets and protocol compatibility must also be verified.'}
     output.with_suffix('.report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
     print(f'Compatible server placements: {len(seen)}; placements missing DAT records: {len(skipped)}; duplicate landmarks: {len(duplicates)}; inactive training service props: {len(inactive)}')
+    print(f'Unverified or incompatible capture placements withheld: {len(incompatible)}. Source captures are unchanged; see {output.with_suffix(".report.json")}')
     if skipped:
         print(f'Missing unique records: {report["missing_record_counts"]}. Details: {output.with_suffix(".report.json")}')
     if comparison is not None:

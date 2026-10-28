@@ -13,7 +13,8 @@ SOURCE_SUFFIXES = {
 }
 SOURCE_NAMES = {'LICENSE', 'NOTICE', 'Cargo.lock', 'Caddyfile', '.gitignore', '.gitattributes'}
 EXCLUDED_PARTS = {'target', 'dist', 'data', '__pycache__', '.git', 'source'}
-SUPPORT_FILES = ('Network/prepare_content.py', 'Tools/AC2/dat_probe.py')
+SUPPORT_FILES = ('Network/prepare_content.py', 'Network/content_profile.py',
+                 'Tools/AC2/dat_probe.py', 'Tools/AC2/population_probe.py')
 
 
 def source_files(root):

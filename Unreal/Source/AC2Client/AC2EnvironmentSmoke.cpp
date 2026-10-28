@@ -72,8 +72,17 @@ void AAC2GameMode::EnvironmentSmokeTick(float Delta)
         View(LookAt+FVector(0,0,140),LookAt+FVector(1300,200,-50));
         break;
     }
-    case 9: Capture(TEXT("AC2Environment-foliage.png")); break;
-    default: Finish(Stream->GrassBatchCount()>0 && Stream->GrassDepthReady()); return;
+    case 9:
+        if(Stream->GrassBatchCount()==0 || !Stream->GrassDepthReady()) { Finish(false); return; }
+        Capture(TEXT("AC2Environment-foliage.png")); break;
+    case 10: if(!LoadBlock(0x77b8)) { Finish(false); return; } break;
+    case 11: {
+        const FVector Origin=AC2::BlockOrigin(0x77b8);
+        View(Origin+FVector(-700,7900,18700),Origin+FVector(1325,10716,18550));
+        break;
+    }
+    case 12: Capture(TEXT("AC2Environment-arwic-placement.png")); break;
+    default: Finish(true); return;
     }
     ++SmokeStage; StageTime=0;
 }

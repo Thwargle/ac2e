@@ -95,6 +95,7 @@ class FAC2Network
         uint32 Holding=0;
         FVector Scale = FVector::OneVector, Goal = FVector::ZeroVector;
         float Yaw = 0;
+        FQuat Rotation = FQuat::Identity;
         uint32 AnimMode=AC2Motion::Peace;
         FAC2Appearance Aspects;
         TWeakObjectPtr<AActor> Actor;

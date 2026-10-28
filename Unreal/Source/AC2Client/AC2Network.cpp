@@ -289,7 +289,7 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     Root->RegisterComponent();
     A->SetActorEnableCollision(false);
     A->SetActorLocation(Obj.Goal);
-    A->SetActorRotation(FRotator(0, Obj.Yaw - 90, 0));
+    A->SetActorRotation(Obj.Rotation);
     A->SetActorScale3D(Obj.Scale * Obj.EntityScale);
     auto Body=NewObject<USceneComponent>(A);
     Body->SetupAttachment(Root);Body->RegisterComponent();Obj.Body=Body;
@@ -307,7 +307,10 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
         const bool GroundItem=Obj.GroundItem;
         const FBox FeetBounds=Obj.Model->ModelBounds(GroundItem?0:0x81000001);
         const auto Motion=Obj.Model->MotionData().Values(AC2Motion::Ground);
-        const bool GroundedBody=FeetBounds.IsValid && (GroundItem || (Motion.Gravity && FMath::IsNearlyZero(Motion.Hover)));
+        // Default motion values include gravity even for visuals with no native
+        // motion descriptor. Static props must retain their authored pivot.
+        const bool GroundedBody=FeetBounds.IsValid && (GroundItem ||
+            (!Obj.Model->MotionData().Lists.IsEmpty() && Motion.Gravity && FMath::IsNearlyZero(Motion.Hover)));
         Obj.GroundedContent=Obj.Content && Obj.Parent.IsEmpty() && GroundedBody;
         // Feet are a mesh-type in the DAT. Do not use an effect's bounding box
         // or a tail tip as the humanoid's standing plane.
@@ -1183,6 +1186,14 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         Obj.Cell = uint32(N(Pose, TEXT("cell")));
         Obj.Goal = AC2::BlockOrigin(Obj.Cell >> 16) + V(Pose, TEXT("position")) * 100;
         Obj.Yaw = 90 - N(Pose, TEXT("heading"));
+        Obj.Rotation=FRotator(0,Obj.Yaw-90,0).Quaternion();
+        const TArray<TSharedPtr<FJsonValue>>* Rotation;
+        if(Pose->TryGetArrayField(TEXT("rotation"),Rotation) && Rotation->Num()==4)
+        {
+            const FQuat Native((*Rotation)[1]->AsNumber(),(*Rotation)[2]->AsNumber(),
+                (*Rotation)[3]->AsNumber(),(*Rotation)[0]->AsNumber());
+            if(!Native.ContainsNaN() && Native.SizeSquared()>SMALL_NUMBER)Obj.Rotation=Native.GetNormalized();
+        }
         Obj.Placed = true;
         if (Event == TEXT("object") && (Obj.Entity == 0x4700084d || Obj.Entity == 0x47001454) &&
             (Obj.Name.IsEmpty() || Obj.Name == TEXT("Portal") || Obj.Name.StartsWith(TEXT("Item "))))
@@ -1269,7 +1280,7 @@ void FAC2Network::Tick(float Delta)
             if(Obj.Missile)Next=Obj.Goal;
             A->SetActorLocation(Next);
             if(!Obj.Missile)A->SetActorRotation(
-                FMath::RInterpTo(A->GetActorRotation(), FRotator(0, Obj.Yaw - 90, 0), Delta, 12));
+                FMath::QInterpTo(A->GetActorQuat(), Obj.Rotation, Delta, 12));
             const bool Visible =
                 P && !Obj.MissileFinished && Mode->CellVisible(Obj.Cell ? Obj.Cell : Cell) &&
                 FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);

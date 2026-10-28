@@ -12,6 +12,29 @@ use std::{
     sync::Arc,
 };
 
+fn duplicate_landmark(a: Placement, b: Placement) -> bool {
+    // Different outdoor subcells (and blocks) can contain one revised snapshot
+    // of a landmark. Never merge overlapping but unrelated dungeon rooms.
+    let outdoors = |p: Placement| (1..=64).contains(&(p.cell & 0xffff));
+    (a.cell == b.cell || outdoors(a) && outdoors(b))
+        && a.distance(b).is_some_and(|distance| distance <= 12.0)
+}
+
+#[cfg(test)]
+mod landmark_tests {
+    use super::*;
+    #[test]
+    fn arwic_snapshots_cross_cell_boundary_but_separate_rooms_do_not_merge() {
+        let a = Placement {cell:0x76b80022,coordinates:[85.5575,29.5398,182.505],heading:0};
+        let b = Placement {cell:0x76b8001a,coordinates:[77.260666,27.62573,182.5],heading:0};
+        assert!(duplicate_landmark(a,b));
+        assert!(!duplicate_landmark(a,Placement {coordinates:[100.,29.5,182.5],..a}));
+        assert!(!duplicate_landmark(Placement {cell:0x02990109,..a},Placement {cell:0x0299010a,..a}));
+        assert!(duplicate_landmark(Placement {cell:0x76b80040,coordinates:[159.,20.,182.5],..a},
+            Placement {cell:0x77b80001,coordinates:[1.,20.,182.5],..a}));
+    }
+}
+
 #[cfg(test)]
 mod motion_tests {
     use super::*;
@@ -171,13 +194,9 @@ impl Content {
             combined.push_str(line);
             combined.push('\n');
         }
-        for line in include_str!("../content/capture-spawns.tsv")
-            .lines()
-            .skip(1)
-        {
-            combined.push_str(line);
-            combined.push('\n');
-        }
+        // Raw captures span client builds with reused visual DIDs. They must go
+        // through Network/prepare_content.py against the operator's DAT set.
+        // The normal launcher passes that validated manifest via --content.
         Self::parse(&combined, game_data)
     }
     pub fn len(&self) -> usize {
@@ -453,11 +472,9 @@ impl Content {
             // Expanded and captured snapshots contain the same lifestones with
             // different IIDs and slightly revised coordinates. Keep the first
             // IID so persisted bindings remain valid; never coalesce creatures.
-            if entity == 0x470007de && content.cells.get(&placement.cell).is_some_and(|ids| ids.iter().any(|other| {
-                let old = &content.objects[other];
-                old.entity == entity && old.placement.coordinates.iter().zip(placement.coordinates)
-                    .map(|(a,b)| (a-b)*(a-b)).sum::<f32>() <= 64.0
-            })) { continue; }
+            if entity == 0x470007de && content.objects.values().any(|old| {
+                old.entity == entity && duplicate_landmark(old.placement, placement)
+            }) { continue; }
             let cell_ids = content.cells.entry(placement.cell).or_default();
             if cell_ids.len() >= MAX_CELL_OBJECTS {
                 return Err(invalid("world content exceeds 64 objects in one cell"));
