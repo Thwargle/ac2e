@@ -47,3 +47,4 @@ pub mod ui;
 pub mod visibility;
 pub mod wire;
 pub mod world;
+pub mod services;

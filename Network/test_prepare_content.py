@@ -1,14 +1,25 @@
 """Content comparisons must explain both recovery and regressions without mixing DAT sets."""
 import json
+import struct
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 import prepare_content
-from content_profile import ContentProfile, nearby_landmark
+from content_profile import ContentProfile, nearby_landmark, door_physical
 
 
 class ContentComparisonTest(unittest.TestCase):
+    def test_door_defaults_respect_nested_strings_and_truncated_tables(self):
+        words = lambda *values: struct.pack('<'+'I'*len(values), *values)
+        # Display name contains a tagged nested StringInfo, followed by a DID table.
+        name = words(0,0,1,0x41000001) + struct.pack('<HH',9,0) + words(0,0,0)
+        data = words(0x21,0x8100114a,4) + name + words(1,1,0x47001145)
+        self.assertEqual(door_physical(data),0x47001145)
+        for end in range(len(data)):
+            with self.assertRaises((ValueError,AssertionError,struct.error)):
+                door_physical(data[:end])
+
     def test_existing_did_with_wrong_model_is_withheld_not_repositioned(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -47,6 +58,8 @@ class ContentComparisonTest(unittest.TestCase):
             self.assertEqual(profile.visual(0x4700334c),0x1f0010a6)
             self.assertEqual(profile.visual(0x47002224),0x1f000bf9)  # Child PhysObj overrides its Gurog parent.
             self.assertIsNone(profile.visual(0x470007de))  # Script-only lifestone uses curated pair.
+            self.assertEqual(profile.visual(0x4700114a),0x1f00006c)  # Human door class default.
+            self.assertEqual(profile.visual(0x4700079c),0x1f00034a)  # Barred door class default.
         finally:
             profile.close()
 

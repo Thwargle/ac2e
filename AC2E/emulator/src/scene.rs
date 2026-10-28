@@ -477,9 +477,21 @@ impl Scene {
             .then(|| self.content.object(target))
             .flatten()
     }
-    /// Find an active, visible service of the pinned entity type within reach.
-    /// Coordinates are only comparable inside the same cell; this does not
-    /// infer reach through walls or between unrelated interior coordinate spaces.
+    /// Find an active, visible DAT vendor within reach in a shared coordinate
+    /// space. Visibility does not supply server geometry line-of-sight checks.
+    pub fn nearby_vendor(&self, observer:u64, target:Option<u64>)->Option<u64> {
+        let player=self.player_placement(observer)?;
+        self.content.objects().filter(|o|o.service==Some(crate::services::Service::Vendor) && target.is_none_or(|id|id==o.id) && self.can_observe(observer,o.id))
+            .filter_map(|o|player.distance(o.placement).filter(|d|*d<=4.).map(|d|(d,o.id)))
+            .min_by(|a,b|a.0.total_cmp(&b.0).then_with(||a.1.cmp(&b.1))).map(|(_,id)|id)
+    }
+    pub fn use_door(&mut self,observer:u64,target:u64)->std::io::Result<Vec<Delivery>> {
+        let player=self.player_placement(observer).ok_or_else(||std::io::Error::other("Player is not ready."))?;
+        let door=self.examination_content(observer,target).ok_or_else(||std::io::Error::other("Door is not visible."))?;
+        if !player.distance(door.placement).is_some_and(|d|d<=4.) {return Err(std::io::Error::other("Move within four metres of the door."));}
+        let wire=self.content.toggle_door(target)?;
+        Ok(self.bodies.keys().filter(|id|self.can_observe(**id,target)).map(|id|Delivery{recipient:*id,data:wire.clone()}).collect())
+    }
     pub fn nearby_service(&self, observer: u64, entity: u32, target: Option<u64>) -> Option<u64> {
         let player = self.player_placement(observer)?;
         self.content.at(player.cell)

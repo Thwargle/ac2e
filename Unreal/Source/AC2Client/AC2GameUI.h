@@ -56,6 +56,7 @@ class SAC2GameUI : public SCompoundWidget
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
     bool SmokeCombatInput(int32 Step, FString &Error);
     bool SmokeInventoryInput(int32 Step, FString &Error);
+    bool SmokeShopInput(int32 Step,FString& Error);
     bool SmokeWorldTarget(const FString &Id, FString &Error,FKey Button=EKeys::LeftMouseButton,bool DoubleClick=false,bool CenterAim=false);
     bool SmokeMouseControls(int32 Step,const FString& Id,FString& Error);
     FAC2CursorIcon CursorAt(FVector2D ScreenPoint) const;
@@ -123,6 +124,9 @@ class SAC2GameUI : public SCompoundWidget
     int32 Pack = 0, PackRow = 0, SelectedItem = INDEX_NONE;
     FString SelectedNetworkItem;
     int32 PointerNodesStart=MAX_int32;
+    int32 ShopNodesStart=MAX_int32,ShopIconsStart=MAX_int32;
+    bool ShopOwnsPointer(FVector2D Point) const;
+    bool ShopButton(FName Name) const;
     int32 PackStart() const {return ModeHasNetwork ? (Pack?42+(Pack-1)*12:0) : Pack*24;}
     int32 PackCount() const {return ModeHasNetwork ? (Pack?12:42) : 24;}
     bool ModeHasNetwork=false;
@@ -138,6 +142,10 @@ class SAC2GameUI : public SCompoundWidget
     };
     TArray<FIcon> Icons;
     void Rebuild();
+    void BuildShop();
+    bool ShopAction(FName Name);
+    int32 SelectedOffer=INDEX_NONE,ShopPage=0;
+    FString LastShopVendor;
     void UpdatePortrait();
     void EquipSelected();
     void SelectItem(int32 Index);

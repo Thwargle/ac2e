@@ -91,7 +91,7 @@ bool SAC2GameUI::OwnsPointer(FVector2D Point) const
 {
     if(Frontend || MapUI.OwnsPointer(Point))return true;
     for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
-        TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel")})
+        TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("Shop")})
         if(Native.Bounds(Panel).Contains(FIntPoint(Point.X,Point.Y)))return true;
     return false;
 }
@@ -231,6 +231,6 @@ void SAC2GameUI::BuildPointerFeedback()
     }
     if(!Mode->Network && HoverMob.IsValid())Label(HoverMob->DisplayName,Mouse+FVector2D(18,22));
     if(OwnsPointer(Mouse))for(const auto& Hint:Hints)
-        if(const auto* R=Buttons.Find(Hint.Key);R && Mouse.X>=R->Left && Mouse.X<R->Right && Mouse.Y>=R->Top && Mouse.Y<R->Bottom)
+        if(const auto* R=Buttons.Find(Hint.Key);R && (!ShopOwnsPointer(Mouse) || ShopButton(Hint.Key)) && Mouse.X>=R->Left && Mouse.X<R->Right && Mouse.Y>=R->Top && Mouse.Y<R->Bottom)
         {Label(Hint.Value,Mouse+FVector2D(18,22));break;}
 }

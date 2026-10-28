@@ -33,6 +33,10 @@ pub fn is_apparel(definition: u32) -> bool {
         .iter()
         .any(|profile| profile.definition == definition && profile.worn != 0)
 }
+/// Authored buyback eligibility. Preserve the immutable gear profile and reject quest items.
+pub fn tradable(item:&Item)->bool {
+    item.quantity==1 && item.stack_limit==1 && PROFILES.iter().any(|p|p.definition==item.definition && p.visual==item.visual && p.mask==item.equipment_mask)
+}
 pub fn apparel_slot(item: &Item, race: u32) -> Option<u16> {
     PROFILES.iter().find(|p| p.race == race && p.definition == item.definition
         && p.visual == item.visual && p.worn != 0 && p.mask == item.equipment_mask

@@ -6,6 +6,50 @@ stay in the source manifest and are reported for later recovery.
 """
 from population_probe import Reader, entity
 from dat_probe import Archive
+import struct
+
+
+def door_physical(data):
+    """CBaseQualities prefix including nested StringInfo substitutions.
+
+    Door visuals often live in class defaults instead of EntityDesc::PhysObj.
+    Read DID quality 1; never guess the last word or use a captured visual.
+    """
+    r = Reader(data)
+    mask, did, desc = r.word(), r.word(), r.word()
+    assert mask & 1 and did >> 24 == 0x81 and not desc & 0x80000000
+    def string_info(depth=0):
+        assert depth < 8
+        r.take(8); flags = r.word(); count = flags & 65535
+        assert count <= 256
+        if flags >> 16: r.string(2)
+        for _ in range(count):
+            r.word(); kind = struct.unpack('<H', r.take(2))[0]; r.align()
+            if kind == 9: string_info(depth + 1)
+            elif kind in (2, 6): r.take(4)
+            elif kind in (3, 4, 7): r.take(10)
+            elif kind == 5: r.take(16)
+            elif kind in (10, 12): r.take(8)
+            elif kind in (11, 13): r.take(14)
+            else: assert kind in (0, 1, 8)
+            r.align()
+    for bit in (1, 0x2000000, 2):
+        if desc & bit: r.word()
+    for bit in (4, 8):
+        if desc & bit: string_info()
+    for bit in (0x10, 0x20, 0x40, 0x100, 0x200, 0x20000000, 0x40000000, 0x4000000,
+                0x80, 0x800, 0x1000, 0x2000, 0x200000, 0x400000, 0x8000,
+                0x10000, 0x20000, 0x40000, 0x80000, 0x100000, 0x8000000, 0x10000000):
+        if desc & bit: r.take(8 if bit in (0x20, 0x40, 0x100, 0x200, 0x20000000, 0x40000000, 0x4000000) else 4)
+    for bit, width in ((2, 8), (4, 8), (8, 8), (0x10, 12)):
+        if mask & bit:
+            count = r.word() & 0xffffff; assert count <= 512; r.take(count * width)
+    if mask & 0x20:
+        count = r.word() & 0xffffff; assert count <= 512
+        for _ in range(count):
+            key, value = r.word(), r.word()
+            if key == 1: return value
+    return None
 
 
 class ContentProfile:
@@ -34,10 +78,17 @@ class ContentProfile:
         return self.cache[did]
 
     def resolve_visual(self, did):
+        original = did
         seen = set()
         for _ in range(32):
             if did >> 24 == 0x1f:
                 return did
+            if did in range(3756, 3765) or did == 3922:
+                try:
+                    physical = door_physical(self.portal.read(0x81000000 | (original & 0xffffff)))
+                    return self.visual(physical) if physical and physical != original else None
+                except (KeyError, ValueError, AssertionError):
+                    return None
             if did >> 24 != 0x47 or did in seen:
                 return None
             seen.add(did)

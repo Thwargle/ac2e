@@ -1519,8 +1519,8 @@ fn use_training_mentor(
 }
 
 fn merchant_ready(character: u64, scene: &crate::scene::Scene, target: Option<u64>) -> io::Result<u64> {
-    scene.nearby_service(character, crate::merchants::MERCHANT_ENTITY, target)
-        .ok_or_else(|| invalid("Move within four metres of the quartermaster whose shop you opened."))
+    scene.nearby_vendor(character, target)
+        .ok_or_else(|| invalid("Move within four metres of the vendor whose shop you opened."))
 }
 
 fn merchant_action(
@@ -1562,7 +1562,7 @@ fn merchant_action(
                 character,
                 merchant,
                 scene,
-                "Tebor the Armorer",
+                "Merchant",
                 &crate::merchants::listing(),
             )?
         } else {
@@ -1831,13 +1831,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                     inventory_metadata.insert(definition, Some(metadata));
                 }
             }
-            if config.training_kit {
-                let catalog = crate::merchants::Catalog::validate(&mut portal)?;
+            if config.training_kit || unreal_gameplay {
+                let catalog = if unreal_gameplay {crate::merchants::Catalog::validate_legions(&mut portal)?}else{crate::merchants::Catalog::validate(&mut portal)?};
                 for (definition, metadata) in catalog.entries() {
                     inventory_metadata.insert(definition, Some(metadata));
                 }
                 merchant_catalog = Some(catalog);
-                crate::crafting::validate_assets(&mut portal)?;
+                if config.training_kit {crate::crafting::validate_assets(&mut portal)?;}
                 let vigor = crate::crafting::validate_vigor(&mut portal)?;
                 inventory_metadata.insert(crate::crafting::VIGOR_OUTPUT, Some(vigor));
             }
@@ -2457,7 +2457,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         script::Request::MerchantSell(request) => {
                                             let result =
                                                 (|| -> io::Result<Vec<crate::scene::Delivery>> {
-                                                    if !config.training_kit
+                                                    if merchant_catalog.is_none()
                                                         || !peer.merchant_open_ms.is_some_and(
                                                             |last| {
                                                                 now_ms.saturating_sub(last)
@@ -2466,7 +2466,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         )
                                                     {
                                                         return Err(invalid(
-                                                            "Open the nearby training quartermaster before selling.",
+                                                            "Open the nearby vendor before selling.",
                                                         ));
                                                     }
                                                     merchant_ready(character, &scene, peer.native_shop.as_ref().map(|shop| shop.merchant()))?;
@@ -2478,6 +2478,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         ));
                                                     }
                                                     let saved = &store.characters[&character];
+                                                    if peer.combat {return Err(invalid("Leave combat before trading."));}
                                                     let plan = crate::merchants::plan_native_sell(
                                                         character,
                                                         &request,
@@ -2520,7 +2521,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         script::Request::MerchantBuy(request) => {
                                             let result =
                                                 (|| -> io::Result<Vec<crate::scene::Delivery>> {
-                                                    if !config.training_kit
+                                                    if merchant_catalog.is_none()
                                                         || !peer.merchant_open_ms.is_some_and(
                                                             |last| {
                                                                 now_ms.saturating_sub(last)
@@ -2544,6 +2545,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         ));
                                                     }
                                                     let saved = &store.characters[&character];
+                                                    if peer.combat {return Err(invalid("Leave combat before trading."));}
                                                     let plan = shop
                                                         .plan_buy(
                                                             character,
@@ -2973,6 +2975,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             }
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
+                                            if scene.examination_content(character,request.item).is_some_and(|o|matches!(o.service,Some(crate::services::Service::Door{..}))) {
+                                                let result=(||->io::Result<Vec<crate::scene::Delivery>>{
+                                                    if request.owner!=character || !store.characters[&character].progression.alive() {return Err(invalid("Use a door with your living character."));}
+                                                    if peer.last_world_use_ms.is_some_and(|last|now_ms.saturating_sub(last)<750) {return Err(invalid("Wait for the door to finish moving."));}
+                                                    let updates=scene.use_door(character,request.item)?;peer.last_world_use_ms=Some(now_ms);Ok(updates)
+                                                })();
+                                                match result {Ok(updates)=>deliveries.extend(updates),Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,}
+                                                return Ok(replies);
+                                            }
                                             if unreal_gameplay && service_entity.is_some_and(crate::shelter::supported) {
                                                 if request.owner != character {return Err(invalid("Shelter use owner mismatch."));}
                                                 match use_shelter_guide(peer,character,request.item,&mut store,&mut scene,&inventory_metadata,now_ms) {
@@ -3009,8 +3020,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 }
                                                 return Ok(replies);
                                             }
-                                            if service_entity == Some(crate::merchants::MERCHANT_ENTITY)
-                                                && config.training_kit
+                                            if scene.examination_content(character,request.item).is_some_and(|o|o.service==Some(crate::services::Service::Vendor))
+                                                && merchant_catalog.is_some()
                                             {
                                                 if request.owner != character {
                                                     return Err(invalid(
@@ -3221,6 +3232,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         )?,
                                                     ),
                                                 }
+                                                return Ok(replies);
+                                            }
+                                            if service_entity.is_some() {
+                                                peer.queue_ordered_batch(vec![script::chat("This world object's interaction is not implemented yet.",1).map_err(other)?])?;
                                                 return Ok(replies);
                                             }
                                             let result = if config.initialize_ui {
@@ -3780,7 +3795,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     {
                                                         peer.last_chat_ms = Some(now_ms);
                                                         let result = action.map_err(io::Error::other).and_then(|action| {
-                                                            if !config.training_kit { return Err(invalid("The training quartermaster is not enabled.")); }
+                                                            if merchant_catalog.is_none() { return Err(invalid("Vendors are not enabled for this content profile.")); }
                                                             merchant_action(peer, character, action, &mut store, &mut scene, &inventory_metadata, merchant_catalog.as_ref().ok_or_else(|| invalid("Merchant catalog is not enabled."))?, &mut next_offer, now_ms, None)
                                                         });
                                                         match result {
@@ -4625,7 +4640,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         }
                                         if first && unreal_gameplay {
                                             deliveries.push(crate::scene::Delivery {recipient:character,data:script::chat(
-                                                "Starter circuit: I opens inventory; double-click a weapon to equip. Z changes combat/peace; 1 attacks; 2 uses your magic skill; 3 uses your missile skill. Match the skill to your weapon. T selects a target; E uses it. Defeat three Idol Spawn and speak to the mentor, bind the lifestone, then leave through the gateway. Home recalls. Merchant/crafting lessons are not enabled in this Legions profile.",1).map_err(other)?.into()});
+                                                "Starter circuit: I opens inventory; double-click a weapon to equip. Z changes combat/peace; 1 attacks; 2 uses your magic skill; 3 uses your missile skill. Match the skill to your weapon. T selects a target; E uses it. Defeat three Idol Spawn and speak to the mentor, bind the lifestone, then leave through the gateway. Home recalls. Double-click nearby vendors to trade; crafting lessons remain unfinished.",1).map_err(other)?.into()});
                                         }
                                         eprintln!(
                                             "Scene ready for character {character}: cell={:08x}, visible content={}",

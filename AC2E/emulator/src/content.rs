@@ -51,7 +51,7 @@ mod motion_tests {
         let mut content=Content::default();
         content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,placement:home,home,
             spawn:spawn(home,1).into(),destroy:vec![0;16].into(),active:true,instance:1,
-            visual_stamp:0,position_stamp:0,stats:BTreeMap::new()});
+            visual_stamp:0,position_stamp:0,stats:BTreeMap::new(),service:None,door_open:false,door_mode:None});
         let mut next=home;next.coordinates[0]+=1.5;next.heading=64;
         content.move_creature(id,next,2500).unwrap();
         assert_eq!(&*content.object(id).unwrap().spawn,spawn(next,1));
@@ -74,6 +74,9 @@ fn invalid(message: impl Into<String>) -> io::Error {
 pub struct Object {
     pub id: u64,
     pub entity: u32,
+    pub service: Option<crate::services::Service>,
+    door_open: bool,
+    door_mode: Option<Arc<[u8]>>,
     pub placement: Placement,
     home: Placement,
     pub spawn: Arc<[u8]>,
@@ -89,7 +92,7 @@ impl Object {
         self.stats.get(&key).map(|(value, _)| *value)
     }
     pub fn updates(&self) -> impl Iterator<Item = &Arc<[u8]>> {
-        self.stats
+        self.door_mode.iter().chain(self.stats
             .get(&0x107)
             .map(|(_, wire)| wire)
             .into_iter()
@@ -98,7 +101,7 @@ impl Object {
                     .iter()
                     .filter(|(key, _)| **key != 0x107)
                     .map(|(_, (_, wire))| wire),
-            )
+            ))
     }
     fn stat_wire(&self, key: u32, value: u32) -> Arc<[u8]> {
         world::visual_int(self.id, self.instance, key, value).into()
@@ -110,6 +113,19 @@ pub struct Content {
     cells: BTreeMap<u32, Vec<u64>>,
 }
 impl Content {
+    pub fn toggle_door(&mut self,id:u64)->io::Result<Arc<[u8]>> {
+        let object=self.objects.get_mut(&id).filter(|o|o.active).ok_or_else(||invalid("Door unavailable."))?;
+        match object.service {
+            Some(crate::services::Service::Door{locked:false})=>{},
+            Some(crate::services::Service::Door{locked:true})=>return Err(invalid("This door is locked or requires a quest/key.")),
+            _=>return Err(invalid("This object is not a door.")),
+        }
+        object.visual_stamp=object.visual_stamp.checked_add(2).ok_or_else(||invalid("Door state limit reached."))?;
+        object.door_open=!object.door_open;
+        let wire:Arc<[u8]>=crate::services::door_mode(id,object.instance,object.visual_stamp,object.door_open).into();
+        object.door_mode=Some(wire.clone());Ok(wire)
+    }
+
     pub fn validate_drop(&self,dropped:&crate::store::DroppedItem) -> io::Result<()> {
         if !dropped.placement.valid() || self.objects.contains_key(&dropped.id()) || self.objects.len()>=MAX_OBJECTS {
             return Err(invalid("Ground item capacity exhausted"));
@@ -124,7 +140,7 @@ impl Content {
             cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,
             visual_ordering_stamp:1,timestamps:[0;4]}).map_err(io::Error::other)?;
         self.objects.insert(id,Object {id,entity:dropped.item.definition,placement:p,home:p,spawn:spawn.into(),
-            destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new()});
+            destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new(),service:None,door_open:false,door_mode:None});
         self.cells.entry(p.cell).or_default().push(id);Ok(())
     }
     pub fn remove_drop(&mut self,id:u64) -> io::Result<Arc<[u8]>> {
@@ -378,6 +394,7 @@ impl Content {
         };
         let mut content = Self::default();
         let mut portal = Dat::open(game_data.join("portal.dat"))?;
+        let mut profiles=if portal.find(0x34000000)?.is_some(){Some(crate::services::Profiles::open(&mut portal)?)}else{None};
         let mut cells = Dat::open(game_data.join("cell_1.dat"))?;
         let mut assets = BTreeSet::new();
         let mut checked_cells = BTreeSet::new();
@@ -521,6 +538,8 @@ impl Content {
             destroy.extend(id.to_le_bytes());
             destroy.extend(1u16.to_le_bytes());
             destroy.extend(0u16.to_le_bytes());
+            let service=profiles.as_mut().and_then(|p|p.get(&mut portal,entity));
+            let door_mode=matches!(service,Some(crate::services::Service::Door{..})).then(||crate::services::door_mode(id,1,1,false).into());
             content.objects.insert(
                 id,
                 Object {
@@ -534,7 +553,7 @@ impl Content {
                     instance: 1,
                     visual_stamp: 0,
                     position_stamp: 0,
-                    stats: BTreeMap::new(),
+                    stats: BTreeMap::new(),service,door_open:false,door_mode,
                 },
             );
             cell_ids.push(id);

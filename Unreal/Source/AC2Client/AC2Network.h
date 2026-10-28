@@ -53,6 +53,12 @@ class FAC2Network
     void UseItem(int32 Index, uint32 EquipSlot=0);
     void MoveItem(int32 Index, int32 Slot);
     void DropItem(int32 Index);
+    struct FShopOffer { FString Id,Name; uint32 Entity=0,Icon=0,Currency=0,Stock=0; float Price=0; };
+    FString ShopVendor;
+    TArray<FShopOffer> ShopOffers;
+    void BuyOffer(int32 Index);
+    void SellItem(int32 Index);
+    void CloseShop();
     bool ArrivalCollisionReady() const;
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
@@ -101,6 +107,7 @@ class FAC2Network
         TWeakObjectPtr<AActor> Actor;
         TWeakObjectPtr<USceneComponent> Body;
         bool Content=false, GroundedContent=false, Solid=false, GroundItem=false;
+        bool Door=false,DoorOpen=false;
         float FootZ=0;
         double NextGroundCheck=0;
         TUniquePtr<FAC2AssetLibrary> Model;
@@ -119,6 +126,7 @@ class FAC2Network
     TMap<FString, TSharedPtr<FJsonObject>> CharacterVisuals;
     TUniquePtr<FAC2DatArchive> Locale;
     double Time = 0, LastMovement = 0, Started = 0;
+    double LastShopRefresh=0;
     double ExaminationStarted=0;
     bool Smoke = false, SmokeEntered = false, SmokeChat = false;
     int32 ReceivedChats = 0;
@@ -132,6 +140,9 @@ class FAC2Network
     int32 CombatSmokeStep=0;
     int32 MouseSmokeStep=0;
     int32 InventorySmokeStep=0;
+    int32 ShopSmokeStep=0;
+    double ShopSmokeNext=0;
+    FBox ShopClosedDoorBounds=FBox(ForceInit);
     double InventorySmokeNext=0;
     int32 MapTravelSmokeStep=0;
     double MapTravelSmokeNext=0;

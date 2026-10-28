@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 mod events;
 mod examination;
+mod shop;
 use ac2_net::{protocol::*, Credential, Logon, NetClient, NetClientConfig, NetEvent};
 use serde_json::{json, Value};
 use std::{
@@ -443,6 +444,10 @@ impl Session {
                     ),false),
                 )?;
             }
+            "shop_buy" if self.ready => send(&mut self.client,shop::buy(self.player,id(v,"vendor")?,id(v,"offer")?))?,
+            "shop_sell" if self.ready => send(&mut self.client,shop::sell(self.player,id(v,"item")?,word(v,"slot")?,word(v,"quantity")?))?,
+            "shop_close" if self.ready => send(&mut self.client,shop::close(id(v,"vendor")?))?,
+            "shop_refresh" if self.ready => send(&mut self.client,ClientEvent::Interp{function:0xb83a0066,arguments:pack_values(&[PackValue::LongInt(id(v,"vendor")?)]),encrypted:false})?,
             "use" if self.ready => {
                 let event = use_item(self.player, id(v, "item")?, id(v, "target")?);
                 send(&mut self.client, event)?;

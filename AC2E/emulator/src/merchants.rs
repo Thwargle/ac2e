@@ -124,20 +124,24 @@ impl Stock {
 
 pub struct Catalog {
     metadata: BTreeMap<u32, Metadata>,
+    store_template:u32,
 }
 impl Catalog {
-    pub fn validate(portal: &mut Dat) -> io::Result<Self> {
+    pub fn validate(portal: &mut Dat) -> io::Result<Self> {Self::validate_profile(portal,false)}
+    pub fn validate_legions(portal:&mut Dat)->io::Result<Self>{Self::validate_profile(portal,true)}
+    fn validate_profile(portal: &mut Dat, legions:bool) -> io::Result<Self> {
         // The retained catalog loads this native StoreTemplate for its title,
         // description and portrait. Stock and prices below are authored policy.
-        let template = portal.read(STORE_TEMPLATE)?;
+        let store_template=if legions {0x6f0036e8}else{STORE_TEMPLATE};
+        let template = portal.read(store_template)?;
         let gold = portal.read(GOLD_DEFINITION)?;
         let fingerprint = |bytes: &[u8]| {
             bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
                 (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
             })
         };
-        if template.len() != 760
-            || fingerprint(&template) != 0x67688aec506e3138
+        if template.len() != if legions {1996}else{760}
+            || fingerprint(&template) != if legions {0xbf0c05857e7e02fd}else{0x67688aec506e3138}
             || gold.len() != 84
             || fingerprint(&gold) != 0x8f7c1215933eab75
         {
@@ -145,7 +149,7 @@ impl Catalog {
                 "unsupported native store template or gold definition",
             ));
         }
-        for texture in [0x41006f81, 0x4100034b, 0x410082d6] {
+        for texture in [0x41006f81, 0x4100432b, 0x41006fb0, 0x410082d6] {
             portal.read(texture)?;
         }
         portal.read(MERCHANT_ENTITY)?;
@@ -155,6 +159,7 @@ impl Catalog {
         let mucor = validate_mucor(portal)?;
         let tallow = crate::crafting::validate_tallow(portal)?;
         Ok(Self {
+            store_template,
             metadata: BTreeMap::from([
                 (Stock::Potion.definition(), potion),
                 (Stock::Weapon.definition(), weapon),
@@ -202,7 +207,7 @@ impl fmt::Display for MerchantError {
             Self::SparseBag => "This trade requires a dense bag list. Sort or restore your bag first.",
             Self::FullBag => "You need a free bag slot before buying an item.",
             Self::NotOwned => "There is no owned bag item in that slot.",
-            Self::NotForSale => "The training merchant buys only its supported unstacked stock items. Unequip an item before selling it.",
+            Self::NotForSale => "This merchant buys supported stock, starter gear and recovered armor. Unequip an item before selling it; quest items cannot be sold.",
             Self::InsufficientGold => "You do not have enough gold for that item.",
             Self::InvalidIdentity => "The trade owner, item identity or bag position is invalid.",
         })
@@ -244,7 +249,7 @@ pub fn parse_command(text: &str) -> Option<Result<Action, MerchantError>> {
 }
 
 pub fn listing() -> String {
-    "Training quartermaster: potion costs 5 gold (sell 1); weapon costs 12 gold (sell 3); mushroom costs 2 gold (sell 1); tallow bundle (100) costs 2 gold (sell 1). Use @buy potion|weapon|mushroom|tallow, or @sell SLOT (bag slots 1..78). Prices are authored development rules.".into()
+    "Welcome. Select an item and press Purchase to buy it. Drag an unequipped supported item from your backpack onto the shop to sell it. This server currently supplies a limited stock of potions, weapons and crafting materials.".into()
 }
 
 pub fn mucor(id: u64, slot: u16) -> Item {
@@ -354,7 +359,9 @@ pub fn plan_sell(
         .items()
         .find(|item| item.location == Location::Bag(slot))
         .ok_or(MerchantError::NotOwned)?;
-    let stock = Stock::for_item(item).ok_or(MerchantError::NotForSale)?;
+    let (name,price)=if let Some(stock)=Stock::for_item(item) {(stock.name(),stock.sell_price())}
+        else if crate::starter_gear::tradable(item) || crate::apparel::tradable(item) {("equipment",3)}
+        else {return Err(MerchantError::NotForSale);};
     let items = vec![if item.quantity > 1 {
         inventory::Command::ConsumeStackDense {
             item: item.id,
@@ -363,7 +370,7 @@ pub fn plan_sell(
     } else {
         inventory::Command::ConsumeDense { item: item.id }
     }];
-    let changes = vec![progression::Command::AwardGold(stock.sell_price())];
+    let changes = vec![progression::Command::AwardGold(price)];
     let (next_inventory, next_progression) =
         crate::player_transaction::candidate(inventory, state, &items, &changes, None)
             .map_err(|_| MerchantError::InvalidState)?;
@@ -371,7 +378,7 @@ pub fn plan_sell(
         items,
         changes,
         events: Vec::new(),
-        message: format!("Sold {} for {} gold.", stock.name(), stock.sell_price()),
+        message: format!("Sold {name} for {price} gold."),
         next_inventory,
         next_progression,
     })
@@ -479,7 +486,7 @@ impl Shop {
     pub fn open(&self, _validated_catalog: &Catalog) -> Result<Vec<u8>, WorldError> {
         let mut objects = vec![ShopObject::interpreted(
             0x385d,
-            vec![(2, 1), (STORE_TEMPLATE, 4), (4, 4), (0, 2)],
+            vec![(2, 1), (_validated_catalog.store_template, 4), (4, 4), (0, 2)],
         )];
         let mut list = 4u32.to_le_bytes().to_vec();
         for index in 0..4 {
@@ -490,7 +497,9 @@ impl Shop {
             let identity = self.offers[index];
             let texture = match stock {
                 Stock::Potion => 0x41006f81,
-                Stock::Weapon | Stock::Mucor => 0x4100034b,
+                // Foreground icon layers in the validated physical visuals.
+                Stock::Weapon => 0x4100432b,
+                Stock::Mucor => 0x41006fb0,
                 Stock::Tallow => 0x410082d6,
             };
             objects.push(ShopObject::interpreted(

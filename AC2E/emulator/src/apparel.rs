@@ -22,6 +22,7 @@ fn profile(item:&Item,race:u32)->Option<&'static Profile> {
         && p.slot==item.equipment_mask && item.quantity==1 && item.stack_limit==1)
 }
 pub fn slot(item:&Item,race:u32)->Option<u16> {profile(item,race).map(|p|p.slot)}
+pub fn tradable(item:&Item)->bool { [1,2,4,8,16].iter().any(|race|profile(item,*race).is_some()) }
 pub fn aspects(inventory:&Inventory,race:u32,sex:u32)->Vec<(u32,u32,f32)> {
     inventory.items().filter_map(|i|profile(i,race).filter(|p|i.location==Location::Equipped(p.slot)))
         .flat_map(|p|[(if sex==0x1000 {p.male}else{p.female},0x10,1.0),(if sex==0x1000 {p.male}else{p.female},2,0.0)]).collect()

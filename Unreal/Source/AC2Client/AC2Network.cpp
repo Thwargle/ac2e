@@ -190,6 +190,7 @@ void FAC2Network::ClearWorld()
         if (Pair.Value->Actor.IsValid())
             Pair.Value->Actor->Destroy();
     Objects.Reset();
+    ShopVendor.Reset();ShopOffers.Reset();
     BagSlots.Reset();
     WornSlots.Reset();
     PlayerId.Reset();
@@ -752,6 +753,24 @@ void FAC2Network::MoveItem(int32 Index, int32 Slot)
     J->SetNumberField(TEXT("quantity"), I.Quantity);
     Send(J);
 }
+void FAC2Network::BuyOffer(int32 Index)
+{
+    if(!IsWorld() || ShopVendor.IsEmpty() || !ShopOffers.IsValidIndex(Index))return;
+    const auto& Offer=ShopOffers[Index];
+    if(Offer.Currency!=0x47001108 || !FMath::IsFinite(Offer.Price) || Offer.Price<0 || Offer.Price>Gold){Mode->Notice=TEXT("You cannot afford that item.");return;}
+    auto J=Command(TEXT("shop_buy"));J->SetStringField(TEXT("vendor"),ShopVendor);J->SetStringField(TEXT("offer"),Offer.Id);Send(J);
+}
+void FAC2Network::SellItem(int32 Index)
+{
+    const auto* P=Mode->Characters.Active();if(!IsWorld() || ShopVendor.IsEmpty() || !P || !P->Items.IsValidIndex(Index))return;
+    const auto& Item=P->Items[Index];if(Item.Equipped){Mode->Notice=TEXT("Unequip the item before selling it.");return;}
+    auto J=Command(TEXT("shop_sell"));J->SetStringField(TEXT("item"),Item.NetworkId);J->SetNumberField(TEXT("slot"),Item.Cell);J->SetNumberField(TEXT("quantity"),Item.Quantity);Send(J);
+}
+void FAC2Network::CloseShop()
+{
+    if(ShopVendor.IsEmpty())return;
+    auto J=Command(TEXT("shop_close"));J->SetStringField(TEXT("vendor"),ShopVendor);Send(J);ShopVendor.Reset();ShopOffers.Reset();
+}
 void FAC2Network::DropItem(int32 Index)
 {
     const auto* P=Mode->Characters.Active();
@@ -854,6 +873,23 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server FX %08X played=%d player=%d"),Fx,Played,Player!=nullptr);
         if(Played)++PlayedEffects;return;
     }
+    if(Event==TEXT("shop"))
+    {
+        const TArray<TSharedPtr<FJsonValue>>* Offers=nullptr;
+        if(!J->TryGetArrayField(TEXT("offers"),Offers) || Offers->Num()>512)return;
+        ShopVendor=S(J,TEXT("vendor"));ShopOffers.Reset();LastShopRefresh=Time;
+        for(const auto& Value:*Offers)if(auto O=Value->AsObject())
+        {
+            FShopOffer Offer;Offer.Id=S(O,TEXT("id"));Offer.Entity=N(O,TEXT("entity"));Offer.Icon=N(O,TEXT("icon"));
+            Offer.Currency=N(O,TEXT("currency"));Offer.Price=N(O,TEXT("price"));Offer.Stock=N(O,TEXT("stock"));
+            Offer.Name=StringInfo(O->GetObjectField(TEXT("name")));
+            if(!Offer.Id.IsEmpty() && FMath::IsFinite(Offer.Price) && Offer.Price>=0)ShopOffers.Add(Offer);
+        }
+        if(auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))PC->SetCursor(true);
+        return;
+    }
+    if(Event==TEXT("shop_close")) {if(ShopVendor==S(J,TEXT("vendor"))){ShopVendor.Reset();ShopOffers.Reset();}return;}
+    if(Event==TEXT("shop_stock")) {if(ShopVendor==S(J,TEXT("vendor")))for(auto& O:ShopOffers)if(O.Id==Id)O.Stock=N(J,TEXT("stock"));return;}
     if(Event==TEXT("behavior")||Event==TEXT("mode")||Event==TEXT("stop_behavior")||Event==TEXT("hit")||Event==TEXT("impulse")||Event==TEXT("motion"))
     {
         auto* Found=Objects.Find(Id);
@@ -861,6 +897,16 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         auto& Obj=**Found;
         auto* Player=Id==PlayerId?Pawn(Mode):nullptr;
         const uint32 B=uint32(N(J,TEXT("behavior"))), M=uint32(N(J,TEXT("mode")));
+        if(Event==TEXT("mode") && (M==0x41000002 || M==0x41000003))
+        {
+            const bool WasDoor=Obj.Door,WasOpen=Obj.DoorOpen;Obj.Door=true;Obj.DoorOpen=M==0x41000002;
+            if(Obj.Model)
+            {
+                Obj.Model->SetAnimationState(AC2Motion::Ground,M);
+                if(WasDoor && WasOpen!=Obj.DoorOpen)Obj.Model->PlayBehavior(Obj.DoorOpen?0x41000008:0x41000007,M,1,false);
+            }
+            if(Obj.Actor.IsValid())Obj.Actor->SetActorEnableCollision(!Obj.DoorOpen && Obj.Solid);
+        }
         if(M){Obj.AnimMode=M;if(Player)Player->SetNativeMode(M);}
         if(Obj.Model)Obj.Model->SetAnimationState(AC2Motion::Ground,Obj.AnimMode);
         if(Event==TEXT("behavior"))
@@ -1144,6 +1190,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         // Behavior/mode stamps are instance stamps. Retain the create stamp so
         // valid server actions are not compared against an uninitialized zero.
         Obj.Instance=int32(N(J,TEXT("instance")));
+        Obj.Door=Obj.DoorOpen=false;
         Obj.Missile=Obj.MissileFinished=Obj.MissilePointKnown=false;Obj.MissileAge=0;
         Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
@@ -1221,6 +1268,9 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 }
 void FAC2Network::Tick(float Delta)
 {
+    if(IsWorld() && !ShopVendor.IsEmpty() && Time-LastShopRefresh>10)
+    {auto J=Command(TEXT("shop_refresh"));J->SetStringField(TEXT("vendor"),ShopVendor);Send(J);LastShopRefresh=Time;}
+
     if(ExaminationPending && FPlatformTime::Seconds()-ExaminationStarted>8)
     {ExaminationPending=false;ExaminationError=TEXT("The server did not provide examination information. Right-click to retry.");}
     Time += Delta;
@@ -1285,7 +1335,7 @@ void FAC2Network::Tick(float Delta)
                 P && !Obj.MissileFinished && Mode->CellVisible(Obj.Cell ? Obj.Cell : Cell) &&
                 FVector::DistSquared(Next, P->GetActorLocation()) < FMath::Square(30000.);
             A->SetActorHiddenInGame(!Visible);
-            A->SetActorEnableCollision(Visible && Obj.Solid);
+            A->SetActorEnableCollision(Visible && Obj.Solid && !Obj.DoorOpen);
             if(Visible && Obj.GroundedContent && Obj.Body.IsValid() && Time>=Obj.NextGroundCheck)
             {
                 Obj.NextGroundCheck=Time+.25;
@@ -1405,6 +1455,73 @@ void FAC2Network::Tick(float Delta)
             }
             SmokeEntered = true;
             Enter(Mode->Characters.Characters[0].Id);
+        }
+        if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_SHOP_SMOKE"))==TEXT("1"))
+        {
+            auto Finish=[&](bool OK,const FString& Error){
+                UE_LOG(LogTemp,Display,TEXT("AC2 services render smoke %s: %s"),OK?TEXT("PASS"):TEXT("FAIL"),*Error);
+                FFileHelper::SaveStringToFile(OK?TEXT("PASS"):TEXT("FAIL: ")+Error,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                Smoke=false;FPlatformMisc::RequestExitWithStatus(false,OK?0:1);
+            };
+            if(Started>95){Finish(false,TEXT("Timed out waiting for shop/door acknowledgement"));return;}
+            if(!IsWorld() || NeedsPlacement || Started<10 || Time<ShopSmokeNext)return;
+            auto H=HUD(Mode);if(!H || !H->GameUI)return;
+            const FString Vendor=LexToString(0x8140000000030900ull),Door=LexToString(0x8140000000030901ull);
+            FString Error;auto* Found=Objects.Find(Door);
+            auto DoorBlocksPassage=[&]()
+            {
+                if(!Found || !(*Found)->Body.IsValid())return false;
+                const auto& O=**Found;
+                const auto Transform=O.Body->GetComponentTransform();
+                const auto Center=ShopClosedDoorBounds.GetCenter();
+                const FVector Across=ShopClosedDoorBounds.GetSize().X>ShopClosedDoorBounds.GetSize().Y?FVector(0,100,0):FVector(100,0,0);
+                TArray<FHitResult> Hits;
+                Mode->GetWorld()->LineTraceMultiByObjectType(Hits,Transform.TransformPosition(Center-Across),Transform.TransformPosition(Center+Across),
+                    FCollisionObjectQueryParams(ECC_WorldDynamic),FCollisionQueryParams(SCENE_QUERY_STAT(AC2DoorSmoke),true));
+                return Hits.ContainsByPredicate([&](const auto& Hit){return Hit.GetActor()==O.Actor.Get();});
+            };
+            if(ShopSmokeStep==0)
+            {
+                if(P && Found && (*Found)->Actor.IsValid())if(auto PC=P->GetController())
+                {
+                    P->SetCameraDistance(700);
+                    const auto Forward=(*Found)->Body->GetComponentTransform().TransformVectorNoScale(FVector(0,1,0)).Rotation();
+                    PC->SetControlRotation(FRotator(-8,Forward.Yaw,0));
+                }
+                SelectTarget(Vendor);UseTarget();
+            }
+            else if(ShopSmokeStep==1)
+            {
+                if(ShopVendor.IsEmpty())return;
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Shop-native.png"),true,false);
+                if(!H->GameUI->SmokeShopInput(0,Error)){Finish(false,Error);return;}
+            }
+            else if(ShopSmokeStep==2){if(Gold!=3)return;if(!H->GameUI->SmokeShopInput(1,Error)){Finish(false,Error);return;}}
+            else if(ShopSmokeStep==3)
+            {
+                if(Gold!=1)return;
+                if(!H->GameUI->SmokeShopInput(2,Error)){Finish(false,Error);return;}
+                if(!Found || !(*Found)->Model){Finish(false,TEXT("Door model unavailable"));return;}
+                ShopClosedDoorBounds=(*Found)->Model->ModelBounds();
+                if(!DoorBlocksPassage()){Finish(false,TEXT("Closed door lacks a blocking collision surface"));return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Door-closed.png"),true,false);
+                SelectTarget(Door);UseTarget();
+            }
+            else if(ShopSmokeStep==4)
+            {
+                if(!Found || !(*Found)->DoorOpen)return;
+                auto& O=**Found;const auto Bounds=O.Model->ModelBounds();
+                UE_LOG(LogTemp,Display,TEXT("AC2 native door closed=%s open=%s collision=%d"),*ShopClosedDoorBounds.ToString(),*Bounds.ToString(),O.Actor->GetActorEnableCollision());
+                if(O.Actor->GetActorEnableCollision() || DoorBlocksPassage() || Bounds.Equals(ShopClosedDoorBounds,1.0)) {Finish(false,TEXT("Door did not animate and release collision"));return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Door-open.png"),true,false);SelectTarget(Door);UseTarget();
+            }
+            else if(ShopSmokeStep==5)
+            {
+                if(!Found || (*Found)->DoorOpen)return;
+                if(!(*Found)->Actor->GetActorEnableCollision() || !DoorBlocksPassage()){Finish(false,TEXT("Closed door collision missing"));return;}
+                Finish(true,TEXT("DAT shop pointer sale/purchase/close and native door animation/collision"));return;
+            }
+            ++ShopSmokeStep;ShopSmokeNext=Time+2;return;
         }
         if (FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MAP_TRAVEL_SMOKE")) == TEXT("1"))
         {

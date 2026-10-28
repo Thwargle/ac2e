@@ -168,6 +168,7 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             arguments,
             object,
         } => {
+            if let Some(event)=crate::shop::decode(function,&arguments) {return vec![event];}
             if function==0x820e0058 {
                 if let Ok(values)=unpack_values(&arguments) {
                     if let [PackValue::LongInt(item)]=values.as_slice() {

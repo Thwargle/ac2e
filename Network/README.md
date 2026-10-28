@@ -139,6 +139,38 @@ and entry before loading the environment. It also verifies native character dele
 attack/hit/death animation playback, XP/loot and native inventory/vitals. It uses a
 random temporary password passed only through the child environment and fresh stores.
 
+## Doors and vendors
+
+Double-click a nearby door or vendor, or select it and press E. Normal doors use
+native open/closed modes and opening/closing animations. AC2E replicates their
+state to current and newly arriving observers; the Unreal client releases the
+door's collision while open. Door state resets when the server restarts.
+Key/quest-locked doors report their restriction; unlocking scripts are unfinished.
+Use requires a living character within four metres of a visible object.
+
+Vendors are identified by installed EntityDesc StoreTemplate/StoreGroup properties.
+The native DAT Shop/Sale window supports selection, Purchase, double-click buying,
+and dragging unequipped backpack items onto the shop to sell. Escape or the native
+close button closes it. The server rechecks ownership, price, funds, bag capacity,
+range, combat state and the active offer identity before committing inventory and
+gold together. Purchases use server-issued offer IDs, never client prices.
+
+This is an authored AC2E stock profile: health potion (5 gold), training weapon
+(12), Mucor mushroom (2), and a 100-unit tallow bundle (2). Supported starter gear
+and recovered armor sell for 3 gold. Quest items are excluded. Retail vendor-specific
+inventories, dynamic prices, consignment, and partial-stack sales remain unfinished.
+The shop uses DAT frames, fonts and item icons; vendor portrait rendering is pending.
+Only verified placements are spawned; this does not restore missing town population.
+
+`Network/test_services.py` uses two native UDP clients and a disposable store on
+19386/19387 to check door replication, late observers, locked doors, purchases,
+gear sales, insufficient funds, stale offers, ownership and combat restrictions.
+`Network/test_services_ui.py` runs separately on the same ports, drives real Slate
+drag/select/Purchase/close input, and checks animated door bounds and collision
+traces through closed/open/closed states. Its three native-asset placements are
+test fixtures, not additions to the production world. Screenshots are written to
+`Unreal/Saved/Screenshots/AC2Shop-native.png` and `AC2Door-{closed,open}.png`.
+
 ## Sources and licenses
 
 AC2E derives from Pyrealium commit `7c2e856840b04302d1c78f057dcf8094326472a4`. The separate bridge and both upstream projects are AGPL-3.0-only. Their original notices and licenses are preserved. AC2E's account backend serves the corresponding server source at `/source.zip`; rebuild it after source changes. The original game DATs are read-only local inputs and are excluded from the source archive. See `AC2E/AC2E-README.md` and `Network/Bridge/NOTICE.md`.

@@ -118,6 +118,11 @@ void SAC2GameUI::Tick(const FGeometry &G, double Time, float Delta)
                 LastNotice);
     }
     UpdateHover(G, Time);
+    if(Mode.IsValid() && Mode->Network && LastShopVendor!=Mode->Network->ShopVendor)
+    {
+        LastShopVendor=Mode->Network->ShopVendor;SelectedOffer=INDEX_NONE;ShopPage=0;
+        if(!LastShopVendor.IsEmpty()){ShowInventory=true;ShowStats=ShowOptions=false;UpdatePortrait();}
+    }
     Rebuild();
 }
 void SAC2GameUI::Bind(const TCHAR *Control, FName Action)
@@ -379,6 +384,8 @@ void SAC2GameUI::Rebuild()
         ExamineMaxScroll=FMath::Max(0,Y+ExamineScroll-List.Max.Y);
         ExamineScroll=FMath::Clamp(ExamineScroll,0,ExamineMaxScroll);
     }
+    ShopNodesStart=Native.Nodes.Num();ShopIconsStart=Icons.Num();
+    BuildShop();
     for (auto &Icon : Icons)
         Native.LoadImage(Icon.Image, *Assets);
     Native.Prepare(*Assets, Fonts);
@@ -394,8 +401,12 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
     if (!Mode.IsValid() || !VisibleWorld())
         return Layer;
     const FGeometry P = G.MakeChild(Size, FSlateLayoutTransform(Scale));
-    Layer = Native.Paint(Out, Layer, P, Fonts,{},0,PointerNodesStart);
-    for (const auto &I : Icons)
+    Layer = Native.Paint(Out, Layer, P, Fonts,{},0,ShopNodesStart);
+    auto PaintIcons=[&](int32 First,int32 End)
+    {
+    for (int32 Index=First;Index<FMath::Min(End,Icons.Num());++Index)
+    {
+        const auto& I=Icons[Index];
         if (const auto *B = Native.Brush(I.Image))
         {
             Out.PushClip(FSlateClippingZone(
@@ -407,6 +418,9 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
                 BodyFont->Draw(Out,++Layer,P,FString::FromInt(I.Quantity),FVector2D(I.Rect.Min)+FVector2D(1,16),FLinearColor::White);
             Out.PopClip();
         }
+    }
+    };
+    PaintIcons(0,ShopIconsStart);
     if (ShowInventory && Portrait.IsValid() && Portrait->Ready)
     {
         auto R = Native.Bounds(TEXT("PaperDollViewport"));
@@ -438,8 +452,11 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
         }
         Out.PopClip();
     }
-    Layer = MapUI.Paint(Out, Layer + 1, P, Fonts);
     Layer=SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
+    // The shop owns its whole rectangle, including where it overlaps chat.
+    Layer=Native.Paint(Out,Layer+1,P,Fonts,{},ShopNodesStart,PointerNodesStart);
+    PaintIcons(ShopIconsStart,Icons.Num());
+    Layer = MapUI.Paint(Out, Layer + 1, P, Fonts);
     Layer=Native.Paint(Out,Layer+1,P,Fonts,{},PointerNodesStart);
     // Draw the native layered icon above panels while captured. Keeping it
     // tied to the item identity also survives inventory updates during a drag.
@@ -471,7 +488,7 @@ FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
     MapUI.Move(Mouse);
     Native.Hovered = 0;
     for (int32 I = Native.Nodes.Num() - 1; I >= 0; --I)
-        if (Native.Nodes[I].Kind == Token(TEXT("button")) && Inside(SlateRect(Native.Nodes[I].Clip), Mouse))
+        if ((!ShopOwnsPointer(Mouse) || I>=ShopNodesStart) && Native.Nodes[I].Kind == Token(TEXT("button")) && Inside(SlateRect(Native.Nodes[I].Clip), Mouse))
         {
             Native.Hovered = Native.Nodes[I].Id;
             break;
@@ -509,7 +526,7 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
     if (E.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         for (const auto &B : Buttons)
-            if (Inside(B.Value, Mouse))
+            if ((!ShopOwnsPointer(Mouse) || ShopButton(B.Key)) && Inside(B.Value, Mouse))
             {
                 PressedAction = B.Key;
                 ItemPressPoint=Mouse;DragItem.Reset();
@@ -526,7 +543,7 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
     }
     if(E.GetEffectingButton()==EKeys::RightMouseButton)
         for(const auto& B:Buttons)
-            if(Inside(B.Value,Mouse) && (B.Key.ToString().StartsWith(TEXT("Item")) || B.Key.ToString().StartsWith(TEXT("Cell"))))
+            if(!ShopOwnsPointer(Mouse) && Inside(B.Value,Mouse) && (B.Key.ToString().StartsWith(TEXT("Item")) || B.Key.ToString().StartsWith(TEXT("Cell"))))
             {
                 // Inspect only populated slots; never move an item as a side effect of right-click.
                 auto* P=Mode->Characters.Active();
@@ -569,6 +586,11 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
         {
             const auto* P=Mode->Characters.Active();
             const int32 Index=P?P->Items.IndexOfByPredicate([&](const auto& I){return I.NetworkId==DragItem;}):INDEX_NONE;
+            if(Index!=INDEX_NONE && Native.Bounds(TEXT("Shop")).Contains(FIntPoint(Mouse.X,Mouse.Y)))
+            {
+                Mode->Network->SellItem(Index);DragItem.Reset();PressedAction=NAME_None;Native.Pressed=0;
+                return FReply::Handled().ReleaseMouseCapture();
+            }
             if(Index!=INDEX_NONE)
             {
                 for(const auto& B:Buttons)if(B.Key.ToString().StartsWith(TEXT("Cell")) && Inside(B.Value,Mouse))
@@ -606,6 +628,10 @@ FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEv
         MapCaptured = true;
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton)
+        for(const auto& B:Buttons)if(B.Key.ToString().StartsWith(TEXT("Offer")) && Inside(B.Value,Mouse))
+        {SelectedOffer=FCString::Atoi(*B.Key.ToString().Mid(5));Mode->Network->BuyOffer(SelectedOffer);return FReply::Handled();}
+    if(ShopOwnsPointer(Mouse))return FReply::Handled();
     if (E.GetEffectingButton() == EKeys::LeftMouseButton)
         for (const auto &B : Buttons)
             if (Inside(B.Value, Mouse) &&
@@ -628,6 +654,7 @@ FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
     if(ShowOptions&&OptionsTab==1&&Inside(SlateRect(Native.Bounds(TEXT("ClientList"))),P))
     {OptionsScroll=FMath::Clamp(OptionsScroll-FMath::RoundToInt(E.GetWheelDelta()),0,1);Rebuild();return FReply::Handled();}
     if (MapUI.Wheel(P, E.GetWheelDelta())) return FReply::Handled();
+    if(ShopOwnsPointer(P)){ShopPage=FMath::Max(0,ShopPage-FMath::RoundToInt(E.GetWheelDelta()));return FReply::Handled();}
     if (ShowInventory && Inside(SlateRect(Native.Bounds(TEXT("ContainerListBox"))), P))
     {
         const int32 Rows=FMath::DivideAndRoundUp(PackCount(),6);
@@ -659,7 +686,7 @@ void SAC2GameUI::Action(FName Name)
 {
     if (const FName *Bound = ButtonActions.Find(Name))
         Name = *Bound;
-    if(OptionAction(Name))return;
+    if(OptionAction(Name) || ShopAction(Name))return;
     if (Name == TEXT("ChatEntry"))
     {
         BeginChat();
@@ -768,6 +795,7 @@ void SAC2GameUI::ToggleStats()
 }
 bool SAC2GameUI::ClosePanels()
 {
+    if(Mode.IsValid() && Mode->Network && !Mode->Network->ShopVendor.IsEmpty()){Mode->Network->CloseShop();return true;}
     if (!ShowInventory && !ShowStats && !ShowOptions && (!Mode.IsValid() || !Mode->bMap))
         return false;
     if (Mode.IsValid()) Mode->bMap = false;
