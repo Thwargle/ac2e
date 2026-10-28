@@ -72,12 +72,13 @@ struct FAC2DecodedLayer
 {
     uint32 SourceBlend = 0, DestBlend = 0;
     TArray<uint32> Textures;
-    TArray<FAC2AlphaStage> AlphaStages;
+    TArray<FAC2AlphaStage> AlphaStages, ColorStages;
+    TArray<uint32> TextureCoordinates, SpecialTextures;
     TArray<FAC2UVModifier> Modifiers;
     FLinearColor Tint = FLinearColor::White;
     FLinearColor Ambient = FLinearColor::White;
     bool DynamicLighting = false, IgnoreDirectional = false, IgnorePoint = false;
-    bool Masked = false;
+    bool Masked = false, SpecularHighlights = false;
     bool MaterialDiffuse = false, VertexDiffuse = false, ModulateVertexDiffuse = false;
 };
 struct FAC2DecodedMaterial
@@ -150,6 +151,7 @@ struct FAC2DecodedVisual
     TArray<FAC2IconLayer> Icons;
     uint32 Parent = 0, MotionDesc = 0, BehaviorTable = 0;
     FVector Scale = FVector::OneVector;
+    bool LocalizedSign = false;
     TArray<FAC2DecodedPart> Parts;
     FAC2DecodedPart FX;
     float ParticleScale = 1;
@@ -169,7 +171,7 @@ struct FAC2DecodedGeometry
     };
     TArray<FInfluence> Skin;
     TArray<FVector> Vertices, Normals;
-    TArray<FVector2D> UVs;
+    TArray<FVector2D> UVs, DetailUVs;
     TArray<FColor> Colors;
     TArray<FAC2DecodedFragment> Fragments;
 };
@@ -625,13 +627,16 @@ struct FAC2AssetLibrary::FImpl
             for (int32 J = 0; J < NS; ++J)
             {
                 L.Textures.Add(R.Word());
-                R.Take(12); // colour operation and arguments
+                L.ColorStages.Add({R.Word(), R.Word(), R.Word()});
                 FAC2AlphaStage Alpha;
                 Alpha.Operation = R.Word();
                 Alpha.Argument1 = R.Word();
                 Alpha.Argument2 = R.Word();
                 L.AlphaStages.Add(Alpha);
-                R.Take(28);
+                R.Take(16); // address and filter modes
+                L.TextureCoordinates.Add(R.Word());
+                R.Word(); // projected coordinates
+                L.SpecialTextures.Add(R.Word());
             }
             const int32 NM = R.Count(8, 256);
             for (int32 J = 0; J < NM && R.Good; ++J)
@@ -665,7 +670,8 @@ struct FAC2AssetLibrary::FImpl
             R.Word(); // per-pixel lighting
             L.IgnoreDirectional = R.Word() != 0;
             L.IgnorePoint = R.Word() != 0;
-            R.Take(8); // specular switches
+            L.SpecularHighlights = R.Word() != 0;
+            R.Word(); // per-pixel specular
             L.MaterialDiffuse = R.Word() != 0;
             L.VertexDiffuse = R.Word() != 0;
             L.ModulateVertexDiffuse = R.Word() != 0;
@@ -881,6 +887,8 @@ struct FAC2AssetLibrary::FImpl
         {
             Tint = M->Layers[0].Tint;
             Masked = M->Layers[0].Masked;
+            if (M->Layers[0].Textures.Num() > 1 && M->Layers[0].SpecialTextures[1] == 0 && M->Layers[0].Textures[1])
+                Image(M->Layers[0].Textures[1]);
         }
         for (const FAC2DecodedLayer &L : M->Layers)
             for (uint32 TextureId : L.Textures)
@@ -918,6 +926,8 @@ struct FAC2AssetLibrary::FImpl
         }
         auto Native = Material(Id);
         const auto *Layer = Native && !Native->Layers.IsEmpty() ? &Native->Layers[0] : nullptr;
+        UE_LOG(LogTemp, VeryVerbose, TEXT("AC2 material %08X image=%08X tint=%s blend=%u/%u"),
+            Id, I ? I->Id : 0, *Tint.ToString(), Layer ? Layer->SourceBlend : 0, Layer ? Layer->DestBlend : 0);
         const float DiffuseAlpha = Layer && Layer->MaterialDiffuse ? Tint.A : 1.f;
         auto Alpha = [&](float A) {
             return Layer ? EvaluateAC2Alpha(Layer->AlphaStages, A, DiffuseAlpha, Tint.A) : 1.f;
@@ -1030,8 +1040,23 @@ struct FAC2AssetLibrary::FImpl
                 Result = Instance(I.Get(), Tint, Masked);
         }
         if (auto *MID = Cast<UMaterialInstanceDynamic>(Result))
+        {
             MID->SetVectorParameterValue(TEXT("AC2Opacity"),
                                          FLinearColor(Alpha(1) - Alpha(0), Alpha(0), 0, 0));
+            MID->SetScalarParameterValue(TEXT("AC2Specular"), Layer && Layer->SpecularHighlights ? .5f : 0.f);
+            // The crystal/cloud materials combine an independently scrolling
+            // second texture with CURRENT. Special reflection/light stages need
+            // their own renderer inputs and are not ordinary colour textures.
+            if (!PreviewMode && !SkyMode && Layer && Layer->Textures.Num() > 1 &&
+                Layer->ColorStages[1].Argument1 == 2 && Layer->ColorStages[1].Argument2 == 1 &&
+                Layer->SpecialTextures[1] == 0)
+                if (auto Detail = Image(Layer->Textures[1]))
+                {
+                    MID->SetTextureParameterValue(TEXT("AC2Detail"), Texture(*Detail));
+                    MID->SetScalarParameterValue(TEXT("AC2DetailOperation"), float(Layer->ColorStages[1].Operation));
+                    MID->SetScalarParameterValue(TEXT("AC2DetailChannel"), Layer->TextureCoordinates[1] == 1 ? 1.f : 0.f);
+                }
+        }
         TrackMaterial(Id, Result);
         RuntimeMaterials.Add(CacheKey, Result);
         return Result;
@@ -1540,6 +1565,20 @@ struct FAC2AssetLibrary::FImpl
             F.Material = AppearanceMaterial(F.Material, Type, Atoms);
         return G;
     }
+    TMap<FString, TSharedPtr<FAC2DecodedGeometry>> SceneAppearanceMeshes;
+    TSharedPtr<FAC2DecodedGeometry> SceneAppearanceMesh(uint32 Id, const FAC2Atoms &Atoms)
+    {
+        if (Atoms.Materials.IsEmpty() && Atoms.Meshes.IsEmpty()) return Mesh(Id);
+        FString Key = FString::Printf(TEXT("%08X"), Id);
+        for (const auto &A : Atoms.Materials)
+            Key += FString::Printf(TEXT("M%08X:%08X:%08X:%08X"), A.Template, A.Modifier, A.MeshType, A.MaterialType);
+        for (const auto &A : Atoms.Meshes)
+            Key += FString::Printf(TEXT("G%08X:%08X"), A.Type, A.Mesh);
+        if (const auto *Found = SceneAppearanceMeshes.Find(Key)) return *Found;
+        auto G = AppearanceMesh(Id, Atoms);
+        SceneAppearanceMeshes.Add(Key, G);
+        return G;
+    }
     bool Visual(uint32 Id, FAC2DecodedVisual &V, int32 Depth = 0)
     {
         if (Depth > 8)
@@ -1553,6 +1592,7 @@ struct FAC2AssetLibrary::FImpl
         if (!Read(Id, B))
             return false;
         FAC2AssetReader R(MoveTemp(B));
+        V.LocalizedSign = Id == 0x1f000e4a; // shared localized town-sign visual
         const uint32 Bits = R.Word();
         if (Bits & 1)
         {
@@ -1599,6 +1639,7 @@ struct FAC2AssetLibrary::FImpl
             FAC2DecodedVisual Parent;
             if (!Visual(V.Parent, Parent, Depth + 1))
                 return false;
+            V.LocalizedSign |= Parent.LocalizedSign;
             for(const auto& Icon:Parent.Icons)
                 if(!V.Icons.ContainsByPredicate([&](const auto& Child){return Child.Layer==Icon.Layer;}))V.Icons.Add(Icon);
             if(!(Bits&4))V.MotionDesc=Parent.MotionDesc;
@@ -1798,6 +1839,9 @@ struct FAC2AssetLibrary::FImpl
             if (T.ContainsNaN())
                 return nullptr;
             G->UVs.Add(T);
+            const FVector2D Detail = UVCount > 1 ? FVector2D(AC2::F32(P + UV + 8), AC2::F32(P + UV + 12)) : T;
+            if (Detail.ContainsNaN()) return nullptr;
+            G->DetailUVs.Add(Detail);
         }
         R.Align();
         R.Take(40);
@@ -1883,7 +1927,7 @@ struct FAC2AssetLibrary::FImpl
             const bool Collision = Draw.Solid && !SkyMode && !Animating && Material && !F.Indices.IsEmpty() &&
                                    (Draw.Structural || Material->GetBlendMode() == BLEND_Opaque);
             HasCollision |= Collision;
-            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs,
+            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs, G->DetailUVs, {}, {},
                                  VertexColors ? G->Colors : TArray<FColor>(), TArray<FProcMeshTangent>(),
                                  Collision);
             C->SetMaterial(J, Material);
@@ -1937,7 +1981,7 @@ struct FAC2AssetLibrary::FImpl
         Animated.Add(MoveTemp(Group));
         return true;
     }
-    bool PrepareMovingSetup(const FAC2DecodedPart &P, const FTransform &Frame)
+    bool PrepareMovingSetup(const FAC2DecodedPart &P, const FTransform &Frame, const FAC2Atoms &Atoms)
     {
         if (!Preparing || Decoration || !P.AnimMap || Animated.Num() >= 32)
             return false;
@@ -1955,7 +1999,7 @@ struct FAC2AssetLibrary::FImpl
         bool Any = false;
         const int32 Group = Animated.Num();
         for (int32 I = 0; I < G.Setup.Meshes.Num(); ++I)
-            if (auto GeometryData = Mesh(G.Setup.Meshes[I]))
+            if (auto GeometryData = SceneAppearanceMesh(G.Setup.Meshes[I], Atoms))
             {
                 if (Draws.Num() >= 4096)
                     break;
@@ -1973,7 +2017,7 @@ struct FAC2AssetLibrary::FImpl
         return Any;
     }
     bool DrawSetup(uint32 Id, const FTransform &Placement, AActor *Owner, USceneComponent *Root,
-                   bool RecordBounds)
+                   bool RecordBounds, const FAC2Atoms &Atoms = {})
     {
         TArray<uint8> B;
         if (!Read(Id, B))
@@ -2021,7 +2065,7 @@ struct FAC2AssetLibrary::FImpl
         {
             if (!Meshes[I])
                 continue;
-            auto G = Mesh(Meshes[I]);
+            auto G = SceneAppearanceMesh(Meshes[I], Atoms);
             if (!G)
                 continue;
             if (Stats.ScenerySections >= 12000)
@@ -2097,6 +2141,7 @@ struct FAC2AssetLibrary::FImpl
                 G.Vertices.Add(Frame.TransformPosition(Source->Vertices[V]) - Draw.Transform.GetLocation());
                 G.Normals.Add(FrillNormal);
                 G.UVs.Add(Source->UVs[V]);
+                G.DetailUVs.Add(Source->DetailUVs[V]);
                 G.Colors.Add(Source->Colors[V]);
             }
             for (int32 I : Fragment.Indices)
@@ -2156,7 +2201,10 @@ struct FAC2AssetLibrary::FImpl
             Startup(V.FX);for(const auto& P:V.Parts)Startup(P);
         }
         FTransform Scaled = Placement;
-        Scaled.SetScale3D(E.Scale * V.Scale);
+        // The localized sign's lateral model axis is right-handed. Convert the
+        // complete sign at its root, including the back face and collision, so
+        // both sides remain readable without mirroring a texture atlas.
+        Scaled.SetScale3D(E.Scale * V.Scale * (V.LocalizedSign ? FVector(-1,1,1) : FVector::OneVector));
         StartFX(V, Scaled);
         bool Drawn = false;
         TMap<uint32, int32> Done;
@@ -2205,8 +2253,10 @@ struct FAC2AssetLibrary::FImpl
                 }
                 else
                 {
-                    Drawn |=
-                        PrepareMovingSetup(P, Frame) || DrawSetup(P.Setup, Frame, Owner, Root, RecordBounds);
+                    FAC2Atoms Atoms;
+                    for (const auto &Key : V.FX.Appearance) CollectAtoms(Key, Atoms);
+                    for (const auto &Key : P.Appearance) CollectAtoms(Key, Atoms);
+                    Drawn |= PrepareMovingSetup(P, Frame, Atoms) || DrawSetup(P.Setup, Frame, Owner, Root, RecordBounds, Atoms);
                     TArray<uint8> D;
                     FAC2Setup S;
                     if (Read(P.Setup, D) && S.Decode(P.Setup, D))
@@ -2951,6 +3001,7 @@ void FAC2AssetLibrary::ReleaseCPUData()
     Impl->Draws.Empty();
     Impl->FrillBatches.Empty();
     Impl->Geometry.Empty();
+    Impl->SceneAppearanceMeshes.Empty();
     Impl->Visuals.Empty();
     Impl->Images.Empty();
     Impl->Materials.Empty();
@@ -3183,9 +3234,10 @@ bool FAC2AssetLibrary::Open(const FString &Directory, FString &Error)
     return Impl->Scenery->Initialize(Error);
 }
 
-UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &Defs,
-                                                      const FAC2LandBlock &Land, const FAC2TerrainMesh &Mesh)
+TArray<FColor> FAC2AssetLibrary::TerrainPixels(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Land,
+    const FAC2TerrainMesh &Mesh, int32 Resolution)
 {
+    check(Resolution > 0 && Resolution <= 2048);
     struct FCorner
     {
         TSharedPtr<FAC2DecodedImage> Image;
@@ -3228,11 +3280,8 @@ UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &D
             Corners[I].Tile = FMath::Max(0.1f, Choice->Tile);
             Corners[I].Tint = Tint * Band->Tint;
         }
-    constexpr int32 Resolution = 2048;
-    FAC2DecodedImage Atlas;
-    Atlas.W = Resolution;
-    Atlas.H = Resolution;
-    Atlas.Pixels.SetNumUninitialized(Resolution * Resolution);
+    TArray<FColor> Pixels;
+    Pixels.SetNumUninitialized(Resolution * Resolution);
     ParallelFor(
         TEXT("AC2TerrainAtlas"), Resolution, 32,
         [&](int32 Y) {
@@ -3250,10 +3299,19 @@ UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &D
                     FMath::Lerp(Sample(IX, IY), Sample(IX + 1, IY), float(LX - IX)),
                     FMath::Lerp(Sample(IX, IY + 1), Sample(IX + 1, IY + 1), float(LX - IX)), float(LY - IY));
                 Color.A = 1;
-                Atlas.Pixels[Y * Resolution + X] = Color.ToFColorSRGB();
+                Pixels[Y * Resolution + X] = Color.ToFColorSRGB();
             }
         },
         EParallelForFlags::BackgroundPriority);
+    return Pixels;
+}
+
+UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &Defs,
+                                                      const FAC2LandBlock &Land, const FAC2TerrainMesh &Mesh)
+{
+    FAC2DecodedImage Atlas;
+    Atlas.W = Atlas.H = 2048;
+    Atlas.Pixels = TerrainPixels(Defs, Land, Mesh, Atlas.W);
     if (Impl->Preparing)
     {
         Impl->TerrainAtlas = MoveTemp(Atlas);
@@ -3447,10 +3505,12 @@ void FAC2AssetLibrary::UpdateMaterials(float Time)
 {
     for (auto &M : Impl->MovingMaterials)
     {
+        for (uint32 Stage = 0; Stage < 2; ++Stage)
+        {
         FMatrix UV = FMatrix::Identity;
         for (const auto &Op : M.Modifiers)
         {
-            if (Op.Index != 0)
+            if (Op.Index != Stage)
                 continue;
             FMatrix T = FMatrix::Identity;
             const float U = Op.U.Value(Time), V = Op.V.Value(Time);
@@ -3476,10 +3536,11 @@ void FAC2AssetLibrary::UpdateMaterials(float Time)
                 T = Op.Matrix;
             UV = UV * T;
         }
-        M.Material->SetVectorParameterValue(TEXT("AC2UVRowU"),
+        M.Material->SetVectorParameterValue(Stage ? TEXT("AC2DetailUVRowU") : TEXT("AC2UVRowU"),
                                             FLinearColor(UV.M[0][0], UV.M[1][0], UV.M[3][0], 0));
-        M.Material->SetVectorParameterValue(TEXT("AC2UVRowV"),
+        M.Material->SetVectorParameterValue(Stage ? TEXT("AC2DetailUVRowV") : TEXT("AC2UVRowV"),
                                             FLinearColor(UV.M[0][1], UV.M[1][1], UV.M[3][1], 0));
+        }
     }
 }
 

@@ -83,6 +83,8 @@ class FAC2Network
     }
 
   private:
+    TUniquePtr<class FAC2MapData> PortalMap;
+    bool PortalMapAttempted = false;
     bool SmokeWorldProps(FString& Error) const;
     struct FObject
     {

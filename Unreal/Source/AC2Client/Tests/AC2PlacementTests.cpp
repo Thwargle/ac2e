@@ -73,6 +73,7 @@ bool FAC2CellConnectivityTest::RunTest(const FString&)
 // Exercise real DAT rooms and cooked collision at the reported human start.
 class FNativeDungeonLandingCommand : public IAutomationLatentCommand
 {
+    bool ChangedDungeon = false;
     FAutomationTestBase* Test;
     UWorld* World = nullptr;
     TUniquePtr<FAC2WorldStream> Stream;
@@ -103,6 +104,14 @@ public:
             if (FPlatformTime::Seconds()-Started<60) return false;
             Test->AddError(TEXT("Starter dungeon collision did not finish loading")); return true;
         }
+        if (ChangedDungeon)
+        {
+            Test->TestTrue(TEXT("Changing dungeon streams and activates its own rooms"),Stream->CellVisible(0x0297013e));
+            Stream->SetInteriorCell(0);
+            Test->TestTrue(TEXT("Leaving dungeon restores exterior"),Stream->ExteriorVisible());
+            Test->TestFalse(TEXT("Sealed dungeon is not an outdoor room"),Stream->CellVisible(0x02990109));
+            return true;
+        }
         Test->TestTrue(TEXT("Requested starter room visible"),Stream->CellVisible(0x02990109));
         Test->TestFalse(TEXT("Overlapping room 0297013E hidden"),Stream->CellVisible(0x0297013e));
         Test->TestFalse(TEXT("Sealed starter dungeon hides exterior terrain"),Stream->ExteriorVisible());
@@ -130,11 +139,8 @@ public:
         Wall->Destroy();
         Stream->SetInteriorCell(0x0297013e);
         Test->TestFalse(TEXT("Changing dungeon hides previous rooms"),Stream->CellVisible(0x02990109));
-        Test->TestTrue(TEXT("Changing dungeon activates its own rooms"),Stream->CellVisible(0x0297013e));
-        Stream->SetInteriorCell(0);
-        Test->TestTrue(TEXT("Leaving dungeon restores exterior"),Stream->ExteriorVisible());
-        Test->TestFalse(TEXT("Sealed dungeon is not an outdoor room"),Stream->CellVisible(0x02990109));
-        return true;
+        ChangedDungeon = true;
+        return false;
     }
 };
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2NativeDungeonLandingTest,"AC2.Data.NativeDungeonLanding",
@@ -170,6 +176,8 @@ public:
         if(!Stream->AllReady()){if(FPlatformTime::Seconds()-Started<90)return false;Test->AddError(TEXT("Vault collision timed out"));return true;}
         if(Props.IsEmpty())
         {
+            Test->TestEqual(TEXT("Closed Vault does not load adjacent dungeons"),Stream->ResidentCount(),1);
+            Test->TestTrue(TEXT("Interior coordinate outside its owner's grid square is ready"),Stream->ReadyAt(Origin+FVector(18173,6294,1512)));
             for(auto Visual:{0x1f00031eu,0x1f0012beu,0x1f000d76u})
             {
                 auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();

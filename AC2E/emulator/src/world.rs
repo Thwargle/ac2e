@@ -496,6 +496,15 @@ pub fn create_stationary_object_with_scale(
     object: &StationaryObject,
     scale: Option<f32>,
 ) -> Result<Vec<u8>, WorldError> {
+    create_named_stationary_object(object, scale, None)
+}
+
+/// Native gmWeenieDesc StringInfo (bit 4), before the optional scale field.
+pub fn create_named_stationary_object(
+    object: &StationaryObject,
+    scale: Option<f32>,
+    name: Option<&str>,
+) -> Result<Vec<u8>, WorldError> {
     if scale.is_some_and(|scale| !scale.is_finite() || scale <= 0.0 || scale > 100.0) {
         return Err(WorldError::InvalidValue);
     }
@@ -562,8 +571,11 @@ pub fn create_stationary_object_with_scale(
     for stamp in object.timestamps {
         bytes.extend(stamp.to_le_bytes());
     }
-    bytes.extend((0x02000000_u32 | if scale.is_some() { 0x80 } else { 0 }).to_le_bytes());
+    bytes.extend((0x02000000_u32 | if scale.is_some() { 0x80 } else { 0 } | if name.is_some() { 4 } else { 0 }).to_le_bytes());
     bytes.extend(object.entity_did.to_le_bytes());
+    if let Some(name) = name {
+        bytes.extend(literal_name(name)?);
+    }
     if let Some(scale) = scale {
         bytes.extend(scale.to_le_bytes());
     }
@@ -781,6 +793,12 @@ mod tests {
         };
         let bytes = create_stationary_object(&object).unwrap();
         assert_eq!(bytes.len(), 76);
+        let named = create_named_stationary_object(&object, Some(1.25), Some("Menhir Vault Portal")).unwrap();
+        assert_eq!(&named[..68], &bytes[..68]);
+        assert_eq!(&named[68..72], &0x02000084u32.to_le_bytes());
+        let (name, consumed) = read_literal_name(&named[76..]).unwrap();
+        assert_eq!(name, "Menhir Vault Portal");
+        assert_eq!(&named[76+consumed..], &1.25f32.to_le_bytes());
         assert_eq!(
             &bytes[..32],
             &[

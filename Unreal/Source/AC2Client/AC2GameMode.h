@@ -106,6 +106,10 @@ class AAC2GameMode : public AGameModeBase
     int32 MapStage = 0;
     float MapTime = 0, MapNext = 3;
     void MapSmokeTick(float DeltaTime);
+    bool bEnvironmentSmoke = false;
+    TUniquePtr<FAC2AssetLibrary> EnvironmentModel;
+    TWeakObjectPtr<AActor> EnvironmentCamera, EnvironmentProp;
+    void EnvironmentSmokeTick(float DeltaTime);
     void PositionViewer(APlayerController *PC);
     void CompleteTravel(const FVector &Position);
     void SmokeTick(float DeltaTime);

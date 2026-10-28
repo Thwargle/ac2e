@@ -168,7 +168,11 @@ void FAC2WorldStream::Tick(const FVector &Position)
 {
     if (Impl->Stopping || !AC2::WorldBlock(Position, Impl->Center))
         return;
-    Impl->Wanted = AC2::NearbyBlocks(Impl->Center, Radius);
+    // Closed dungeons occupy their own cell graph. Adjacent grid blocks are
+    // unrelated dungeons and must not delay entering this one.
+    const bool ClosedInterior = Impl->InteriorCell && !Impl->ExteriorVisible;
+    if (ClosedInterior) Impl->Center = Impl->InteriorCell >> 16;
+    Impl->Wanted = ClosedInterior ? TArray<uint32>{Impl->Center} : AC2::NearbyBlocks(Impl->Center, Radius);
     for (auto It = Impl->Blocks.CreateIterator(); It; ++It)
         if (AC2::BlockDistance(It.Key(), Impl->Center) > Radius + 1)
         {
@@ -205,7 +209,7 @@ void FAC2WorldStream::Tick(const FVector &Position)
         if (auto *B = Impl->Blocks.Find(Id))
             if (!(*B)->Complete)
             {
-                (*B)->Complete = (*B)->Assets->UploadScenery((*B)->Actor, (*B)->Actor->GetRootComponent(), 4);
+                (*B)->Complete = (*B)->Assets->UploadScenery((*B)->Actor, (*B)->Actor->GetRootComponent(), 16);
                 if ((*B)->Complete)
                     (*B)->Assets->ReleaseCPUData();
                 break;
@@ -245,6 +249,8 @@ void FAC2WorldStream::Tick(const FVector &Position)
 }
 bool FAC2WorldStream::ReadyAt(const FVector &P) const
 {
+    if (Impl->InteriorCell && !Impl->ExteriorVisible)
+        return Impl->Blocks.Contains(Impl->InteriorCell >> 16);
     uint32 Id;
     return AC2::WorldBlock(P, Id) && Impl->Blocks.Contains(Id);
 }
@@ -253,7 +259,9 @@ bool FAC2WorldStream::PlacementReadyAt(const FVector &P) const
     uint32 Id;
     if (!AC2::WorldBlock(P, Id))
         return false;
-    for (uint32 Neighbor : AC2::NearbyBlocks(Id, 1))
+    const bool ClosedInterior = Impl->InteriorCell && !Impl->ExteriorVisible;
+    if (ClosedInterior) Id = Impl->InteriorCell >> 16;
+    for (uint32 Neighbor : ClosedInterior ? TArray<uint32>{Id} : AC2::NearbyBlocks(Id, 1))
     {
         const auto *B = Impl->Blocks.Find(Neighbor);
         if (!B || !(*B)->Complete || !(*B)->Assets->CollisionReady())

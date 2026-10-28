@@ -73,6 +73,8 @@ bool FAC2MapResourcesTest::RunTest(const FString &)
     for (uint32 Id : Images)
         TestNotNull(*FString::Printf(TEXT("DAT map texture %08X"), Id), Assets.Texture(Id));
     TestTrue(TEXT("map note localized labels"), Labeled > 10);
+    TestEqual(TEXT("Native gateway destination label"),Data.PortalLabel(FVector2D(945,1475)),FString(TEXT("Gateway: Cragstone")));
+    TestTrue(TEXT("No invented label far from a native gateway"),Data.PortalLabel(FVector2D(1,1)).IsEmpty());
     TestNull(TEXT("out of world cells have no tile"), Data.At(FIntPoint(-1, 0)));
     const auto *Tile = Data.At(FIntPoint(692, 828));
     TestNotNull(TEXT("starter landscape detail map"), Tile);

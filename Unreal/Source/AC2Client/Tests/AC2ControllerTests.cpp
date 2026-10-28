@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "ProceduralMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #if WITH_DEV_AUTOMATION_TESTS
@@ -218,6 +219,21 @@ bool FAC2WorldPropTest::RunTest(const FString&)
         FHitResult Hit;
         TestTrue(TEXT("Pawn cannot pass through fountain base"),World->LineTraceSingleByChannel(Hit,FVector(-1000,0,40),FVector(1000,0,40),ECC_Pawn));
         TestTrue(TEXT("Walking capsule is blocked by fountain"),World->SweepSingleByChannel(Hit,FVector(-1000,0,100),FVector(1000,0,100),FQuat::Identity,ECC_Pawn,FCollisionShape::MakeCapsule(34,88)));
+        Actor->Destroy();
+        FAC2AssetLibrary Shard;Shard.Open(AC2::ResolveDatDirectory(TEXT("")),Error);
+        Actor=World->SpawnActor<AActor>();Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();
+        TestTrue(TEXT("Vault shard native visual"),Shard.DrawModel(0x1f0012be,Actor,Root));
+        bool HasCrystalLayer=false;
+        TInlineComponentArray<UProceduralMeshComponent*> CrystalMeshes(Actor);
+        for(auto* Mesh:CrystalMeshes) for(int32 S=0;S<Mesh->GetNumSections();++S)
+            if(auto* Material=Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(S)))
+                if(Material->K2_GetScalarParameterValue(TEXT("AC2DetailOperation"))==8.f)
+                {
+                    HasCrystalLayer=true;
+                    TestNotNull(TEXT("Crystal's second native texture is bound"),Material->K2_GetTextureParameterValue(TEXT("AC2Detail")));
+                    TestEqual(TEXT("Crystal's independently transformed stage samples native UV0"),Material->K2_GetScalarParameterValue(TEXT("AC2DetailChannel")),0.f);
+                }
+        TestTrue(TEXT("Crystal uses native signed-add layer"),HasCrystalLayer);
         Actor->Destroy();
         FAC2AssetLibrary NPC;NPC.Open(AC2::ResolveDatDirectory(TEXT("")),Error);
         Actor=World->SpawnActor<AActor>();Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();

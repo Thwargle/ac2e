@@ -32,6 +32,7 @@ class FAC2MapData
     static FVector2D DetailOrigin(FVector2D Center);
     static FVector2D RadarOffset(FVector Delta, float ActorYaw, float RangeMetres);
     static FString Coordinates(FVector2D Cell);
+    FString PortalLabel(FVector2D Cell) const;
 
   private:
     uint32 Width = 0, Height = 0;

@@ -14,6 +14,16 @@ missile and auto-magic projectiles, with damage after flight. Starter magic skil
 use their direct cast/impact path. Full retail spell FX, ballistic physics and the
 Menhir history/cinematic remain unfinished. See `AC2E/AC2E-README.md` for scope.
 
+Scenery now applies native appearance overrides (including the town-sign labels),
+and localized signs render readable on both faces. World materials honor the DAT
+specular switch; the Menhir's independently moving second texture is supported.
+Distant terrain uses a filtered atlas of native terrain surfaces instead of flat
+palette colors. Closed dungeons stream their own block without waiting for unrelated
+neighboring dungeons. High-resolution DAT surfaces remain preferred where available.
+Terrain cells explicitly marked without frills remain bare; this does not synthesize
+grass or replace missing retail assets. General multi-pass material/shader parity
+and full environment content coverage remain unfinished.
+
 ## First checkout
 
 ```powershell
@@ -95,13 +105,21 @@ as is the R test-spawn shortcut. Developer console commands remain available.
 .\Launch-AC2.ps1 -Mode Build
 .\Launch-AC2.ps1 -Mode Test -SkipBuild
 .\Launch-AC2.ps1 -PortraitSmoke -SkipBuild
+.\Launch-AC2.ps1 -EnvironmentSmoke -SkipBuild
 .\Build-AC2Network.ps1 -Test
+python .\Network\test_environment_content.py
 python .\AC2E\test_export_source.py
 ```
 
 The launcher creates Unreal material assets from C++ on first play. Build output,
 generated materials, accounts, and characters are ignored by Git. The server
 creates its compatible placement file from the local DATs when it starts.
+
+`-EnvironmentSmoke` captures both faces of the native Arwic sign, the Menhir Vault
+crystal, and foliage with textured distant terrain. Results and images go under
+`Unreal/Saved/Diagnostics` and `Unreal/Saved/Screenshots/AC2Environment-*`.
+`test_environment_content.py` checks native portal-name decoding and overlapping
+lifestone snapshots using an isolated UDP server and temporary account store.
 
 `-PortraitSmoke` renders all ten character-creation avatars at their height/build
 extremes in Body and Head views, checks rotation, framing and foot placement, and

@@ -5,6 +5,7 @@
 #include "AC2GameUI.h"
 #include "AC2Explorer.h"
 #include "AC2WorldGrid.h"
+#include "AC2MapData.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Serialization/JsonReader.h"
@@ -1183,6 +1184,17 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         Obj.Goal = AC2::BlockOrigin(Obj.Cell >> 16) + V(Pose, TEXT("position")) * 100;
         Obj.Yaw = 90 - N(Pose, TEXT("heading"));
         Obj.Placed = true;
+        if (Event == TEXT("object") && (Obj.Entity == 0x4700084d || Obj.Entity == 0x47001454) &&
+            (Obj.Name.IsEmpty() || Obj.Name == TEXT("Portal") || Obj.Name.StartsWith(TEXT("Item "))))
+        {
+            if (!PortalMapAttempted)
+            {
+                PortalMapAttempted = true; PortalMap = MakeUnique<FAC2MapData>(); FString Error;
+                if (!PortalMap->Open(Mode->DatDirectory, Error)) PortalMap.Reset();
+            }
+            Obj.Name = (Obj.Cell & 0xffff) < 0x100 && PortalMap ? PortalMap->PortalLabel(FAC2MapData::Landscape(Obj.Goal)) : FString();
+            if (Obj.Name.IsEmpty()) Obj.Name = TEXT("Portal");
+        }
         if (IsPlayer)
         {
             Cell = Obj.Cell;

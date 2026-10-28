@@ -4,6 +4,7 @@
 #include "Engine/Texture2D.h"
 #include "Materials/MaterialExpressionCameraPositionWS.h"
 #include "Materials/MaterialExpressionConstant.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialExpressionCustom.h"
 #include "Materials/MaterialExpressionDepthFade.h"
 #include "Materials/MaterialExpressionMultiply.h"
@@ -55,7 +56,11 @@ bool PrepareAC2Materials(FString &Error)
                                ((Kind == 1 || Kind == 8 || Kind == 9) ? TEXT("AC2Opacity") : TEXT("AC2UVRowU")));
         const bool NativeNormals = Existing && !Existing->bTangentSpaceNormal &&
             Cast<UMaterialExpressionVertexNormalWS>(Existing->GetEditorOnlyData()->Normal.Expression) != nullptr;
-        if (Updated && (!Masked || NativeNormals))
+        bool NativeDetail = false;
+        if (Existing) for (const auto &E : Existing->GetExpressions())
+            if (auto *P = Cast<UMaterialExpressionScalarParameter>(E)) NativeDetail |= P->ParameterName == TEXT("AC2DetailOperation");
+        const bool NativeSpecular = Existing && Cast<UMaterialExpressionScalarParameter>(Existing->GetEditorOnlyData()->Specular.Expression) != nullptr;
+        if (Updated && NativeSpecular && NativeDetail && (!Masked || NativeNormals))
             continue;
         UPackage *Package = CreatePackage(*Path);
         auto *Material = Existing ? Existing : NewObject<UMaterial>(Package, *Name, RF_Public | RF_Standalone);
@@ -91,6 +96,13 @@ bool PrepareAC2Materials(FString &Error)
         Expressions.AddExpression(Tint);
         Expressions.AddExpression(Multiply);
         Expressions.AddExpression(Roughness);
+        // Terrain and ordinary DAT materials have no specular term. UE's default
+        // dielectric response otherwise adds a pale reflection over baked colour.
+        auto *Specular = NewObject<UMaterialExpressionScalarParameter>(Material);
+        Specular->ParameterName = TEXT("AC2Specular");
+        Specular->DefaultValue = Kind == 5 ? .5f : 0.f;
+        Expressions.AddExpression(Specular);
+        Material->GetEditorOnlyData()->Specular.Connect(0, Specular);
         auto *Coord = NewObject<UMaterialExpressionTextureCoordinate>(Material);
         auto *RowU = NewObject<UMaterialExpressionVectorParameter>(Material);
         RowU->ParameterName = TEXT("AC2UVRowU");
@@ -113,6 +125,42 @@ bool PrepareAC2Materials(FString &Error)
         Expressions.AddExpression(RowU);
         Expressions.AddExpression(RowV);
         Expressions.AddExpression(UV);
+        auto *DetailCoord = NewObject<UMaterialExpressionTextureCoordinate>(Material);
+        DetailCoord->CoordinateIndex = 1;
+        auto *DetailRowU = NewObject<UMaterialExpressionVectorParameter>(Material);
+        DetailRowU->ParameterName = TEXT("AC2DetailUVRowU"); DetailRowU->DefaultValue = FLinearColor(1,0,0,0);
+        auto *DetailRowV = NewObject<UMaterialExpressionVectorParameter>(Material);
+        DetailRowV->ParameterName = TEXT("AC2DetailUVRowV"); DetailRowV->DefaultValue = FLinearColor(0,1,0,0);
+        auto *Channel = NewObject<UMaterialExpressionScalarParameter>(Material);
+        Channel->ParameterName = TEXT("AC2DetailChannel"); Channel->DefaultValue = 0;
+        auto *DetailUV = NewObject<UMaterialExpressionCustom>(Material);
+        DetailUV->OutputType = CMOT_Float2;
+        DetailUV->Code = TEXT("float3 t=float3(lerp(UV0,UV1,Channel),1); return float2(dot(t,RowU),dot(t,RowV));");
+        auto DetailInput = [](UMaterialExpressionCustom *Node, const TCHAR *Name, UMaterialExpression *Value) {
+            FCustomInput I; I.InputName=Name; I.Input.Connect(0,Value); Node->Inputs.Add(I);
+        };
+        DetailInput(DetailUV,TEXT("UV0"),Coord); DetailInput(DetailUV,TEXT("UV1"),DetailCoord); DetailInput(DetailUV,TEXT("Channel"),Channel);
+        DetailInput(DetailUV,TEXT("RowU"),DetailRowU); DetailInput(DetailUV,TEXT("RowV"),DetailRowV);
+        auto *Detail = NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
+        Detail->ParameterName = TEXT("AC2Detail"); Detail->Texture = Texture->Texture;
+        Detail->Coordinates.Connect(0,DetailUV);
+        auto *Operation = NewObject<UMaterialExpressionScalarParameter>(Material);
+        Operation->ParameterName = TEXT("AC2DetailOperation"); Operation->DefaultValue = 0;
+        auto *Combine = NewObject<UMaterialExpressionCustom>(Material);
+        Combine->OutputType = CMOT_Float3;
+        // Retail fixed-function texture arithmetic takes place before sRGB
+        // conversion. In particular ADDSIGNED uses a gamma-space 0.5 midpoint.
+        Combine->Code = TEXT("if(Op<2) return Base; "
+            "float3 a=select(Base<=0.0031308,Base*12.92,1.055*pow(max(Base,0),1.0/2.4)-0.055); "
+            "float3 b=select(Detail<=0.0031308,Detail*12.92,1.055*pow(max(Detail,0),1.0/2.4)-0.055); "
+            "float3 c=a; if(Op==2)c=b; if(Op==4)c=a*b; if(Op==5)c=2*a*b; if(Op==6)c=4*a*b; "
+            "if(Op==7)c=a+b; if(Op==8)c=a+b-0.5; if(Op==9)c=2*(a+b-0.5); if(Op==10)c=b-a; if(Op==11)c=a+b-a*b; "
+            "c=saturate(c); return select(c<=0.04045,c/12.92,pow((c+0.055)/1.055,2.4));");
+        DetailInput(Combine,TEXT("Base"),Texture); DetailInput(Combine,TEXT("Detail"),Detail); DetailInput(Combine,TEXT("Op"),Operation);
+        for (UMaterialExpression *E : {(UMaterialExpression*)DetailCoord,(UMaterialExpression*)DetailRowU,
+            (UMaterialExpression*)DetailRowV,(UMaterialExpression*)Channel,(UMaterialExpression*)DetailUV,
+            (UMaterialExpression*)Detail,(UMaterialExpression*)Operation,(UMaterialExpression*)Combine}) Expressions.AddExpression(E);
+        Multiply->A.Connect(0,Combine);
         if (Masked)
         {
             // Retail lights both sides of a leaf/grass card using the authored
@@ -298,7 +346,7 @@ bool PrepareAC2Materials(FString &Error)
         UE_LOG(LogTemp, Display, TEXT("AC2 material template saved: %s"), *File);
     }
     if (!FFileHelper::SaveStringToFile(
-            TEXT("6"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
+            TEXT("8"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
     {
         Error = TEXT("Cannot save AC2 material template version");
         return false;

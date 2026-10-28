@@ -32,12 +32,13 @@ void AAC2GameMode::BeginPlay()
 {
     Super::BeginPlay();
     bSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2Smoke"));
+    bEnvironmentSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2EnvironmentSmoke"));
     DatDirectory = AC2::ResolveDatDirectory(DatDirectory);
     bUISmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2UISmoke"));
     bMapSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2MapSmoke"));
     bControllerSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2ControllerSmoke"));
     CharacterSavePath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Characters/characters.json"));
-    if (bSmoke || bUISmoke || bMapSmoke || bControllerSmoke)
+    if (bSmoke || bUISmoke || bMapSmoke || bControllerSmoke || bEnvironmentSmoke)
         CharacterSavePath = FPaths::Combine(
             FPaths::ProjectSavedDir(), TEXT("Diagnostics"),
             TEXT("UI-test-") + FGuid::NewGuid().ToString(EGuidFormats::Digits) + TEXT(".json"));
@@ -49,7 +50,7 @@ void AAC2GameMode::BeginPlay()
     FParse::Value(FCommandLine::Get(), TEXT("AC2Block="), StartBlock);
     FParse::Value(FCommandLine::Get(), TEXT("AC2Radius="), ViewRadius);
     ViewRadius = FMath::Clamp(ViewRadius, 1, 6);
-    const bool Automated=bSmoke||bUISmoke||bMapSmoke||FParse::Param(FCommandLine::Get(),TEXT("AC2NetworkSmoke"));
+    const bool Automated=bSmoke||bUISmoke||bMapSmoke||bEnvironmentSmoke||FParse::Param(FCommandLine::Get(),TEXT("AC2NetworkSmoke"));
     if(!Automated)return; // No world actors, sky or default avatar before login/selection.
     FrontEnd=false;LoginStarted=true;
     if(!OpenWorld())return;
@@ -163,6 +164,7 @@ bool AAC2GameMode::EnterOfflineCharacter()
 }
 void AAC2GameMode::EndPlay(const EEndPlayReason::Type Reason)
 {
+    EnvironmentModel.Reset();
     Network.Reset();
     if (Stream)
         Stream->Shutdown();
@@ -396,7 +398,7 @@ void AAC2GameMode::Tick(float Delta)
         }
     }
     FVector Here = P->GetActorLocation();
-    if (!bWaiting && !CharacterUIStarted && !bSmoke)
+    if (!bWaiting && !CharacterUIStarted && !bSmoke && !bEnvironmentSmoke)
     {
         if (auto *HUD = Cast<AAC2HUD>(PC->GetHUD()))
         {
@@ -550,7 +552,7 @@ void AAC2GameMode::Tick(float Delta)
     Sky->Update(P->Camera->GetComponentLocation(), Delta);
     if (Far)
     {
-        Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
+        if (Stream->ExteriorVisible()) Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
         Far->SetVisible(Stream->ExteriorVisible());
         uint32 Center = 0;
         AC2::WorldBlock(StreamFocus, Center);
@@ -590,7 +592,7 @@ void AAC2GameMode::Tick(float Delta)
             Mobs[I]->SetViewerDistance(FVector::Dist(Mobs[I]->GetActorLocation(), P->GetActorLocation()));
     if (Target && (!IsValid(Target) || Target->Health <= 0))
         Target = nullptr;
-    if (!Network && !bSpawned && Stream->AllReady() && !bWaiting)
+    if (!Network && !bEnvironmentSmoke && !bSpawned && Stream->AllReady() && !bWaiting)
     {
         bSpawned = true;
         CreatureIndex = 0;
@@ -616,6 +618,8 @@ void AAC2GameMode::Tick(float Delta)
                               Effects->NativeCount());
     if (bSmoke)
         SmokeTick(Delta);
+    if (bEnvironmentSmoke)
+        EnvironmentSmokeTick(Delta);
 }
 void AAC2GameMode::SmokeTick(float Delta)
 {

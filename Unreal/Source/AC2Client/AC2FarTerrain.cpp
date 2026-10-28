@@ -4,9 +4,12 @@
 #include "ProceduralMeshComponent.h"
 #include "Async/Async.h"
 #include "Misc/Paths.h"
+#include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 
 struct FAC2FarTerrain::FImpl
 {
+    static constexpr int32 FarRadius = 14, TilePixels = 64, AtlasSize = (FarRadius * 2 + 1) * TilePixels;
     struct FJob
     {
         uint32 Center = 0;
@@ -15,12 +18,13 @@ struct FAC2FarTerrain::FImpl
         TArray<FVector2D> UVs;
         TArray<int32> Indices;
         TArray<FColor> Colors;
+        TArray<FColor> Pixels;
+        TArray<TArray<FColor>> Mips;
     };
     UWorld *World = nullptr;
     FString Directory;
     FAC2LandscapeDefs Defs;
     TUniquePtr<FAC2AssetLibrary> Assets;
-    TArray<FColor> Palette;
     TUniquePtr<FJob> Job;
     TFuture<void> Future;
     AActor *Actor = nullptr;
@@ -28,8 +32,7 @@ struct FAC2FarTerrain::FImpl
     int32 Count = 0;
     void Build(FJob &J, int32 Near)
     {
-        if (Palette.IsEmpty())
-            Palette = Assets->TerrainPalette();
+        J.Pixels.Init(FColor::White, AtlasSize * AtlasSize);
         FAC2DatArchive Cell;
         FAC2DatArchive Portal;
         FAC2WaterSource Water;
@@ -39,7 +42,6 @@ struct FAC2FarTerrain::FImpl
             !Portal.Open(FPaths::Combine(Directory, TEXT("portal.dat")), 1, Error) || !Water.Load(Portal, Error))
             return;
         const FVector Origin = AC2::BlockOrigin(J.Center);
-        constexpr int32 FarRadius = 14;
         for (int32 X = FMath::Max(0, int32(J.Center >> 8) - FarRadius);
              X <= FMath::Min(254, int32(J.Center >> 8) + FarRadius); ++X)
             for (int32 Y = FMath::Max(0, int32(J.Center & 255) - FarRadius);
@@ -53,6 +55,14 @@ struct FAC2FarTerrain::FImpl
                     continue;
                 ++J.Tiles;
                 const FVector Offset = AC2::BlockOrigin(Id) - Origin;
+                const int32 TX = X - int32(J.Center >> 8) + FarRadius;
+                const int32 TY = Y - int32(J.Center & 255) + FarRadius;
+                constexpr int32 Gutter = 2, ContentPixels = TilePixels - Gutter * 2;
+                const auto Pixels = Assets->TerrainPixels(Defs, Land, BuildAC2TerrainMesh(Defs, Land), ContentPixels);
+                for (int32 V = 0; V < TilePixels; ++V)
+                    for (int32 U = 0; U < TilePixels; ++U)
+                        J.Pixels[(TY * TilePixels + V) * AtlasSize + TX * TilePixels + U] =
+                            Pixels[FMath::Clamp(V-Gutter,0,ContentPixels-1)*ContentPixels+FMath::Clamp(U-Gutter,0,ContentPixels-1)];
                 const int32 Base = J.Vertices.Num();
                 // 8x8 quads nearby and 4x4 beyond 1.3 km. Full-resolution edge samples
                 // are unnecessary because adjoining far blocks use a short skirt.
@@ -70,8 +80,9 @@ struct FAC2FarTerrain::FImpl
                                DY = (Defs.Heights[Land.Heights[I * 17 + U]] - Defs.Heights[Land.Heights[I * 17 + D]]) /
                                     (10 * (U - D));
                         J.Normals.Add(FVector(-DX, -DY, 1).GetSafeNormal());
-                        J.UVs.Add(FVector2D(I / 16.f, K / 16.f));
-                        J.Colors.Add(Palette[Land.CellInfo[I * 17 + K] & Defs.TerrainMask]);
+                        J.UVs.Add(FVector2D((TX * TilePixels + Gutter + .5f + I / 16.f * (ContentPixels - 1)) / AtlasSize,
+                            (TY * TilePixels + Gutter + .5f + K / 16.f * (ContentPixels - 1)) / AtlasSize));
+                        J.Colors.Add(FColor::White);
                     }
                 for (int32 I = 0; I < Row - 1; ++I)
                     for (int32 K = 0; K < Row - 1; ++K)
@@ -106,11 +117,26 @@ struct FAC2FarTerrain::FImpl
                     for (int32 I = 0; I < 4; ++I)
                     {
                         J.Normals.Add(FVector::UpVector);
-                        J.UVs.Add(FVector2D::ZeroVector);
+                        // Centre tile is omitted (near terrain), leaving a white texel for water tint.
+                        J.UVs.Add(FVector2D(.5f, .5f));
                         J.Colors.Add(FColor(20, 50, 65));
                     }
                 }
             }
+        // Filter on the worker and stop before unrelated atlas cells merge.
+        // This also avoids moving the large atlas resampling cost onto a frame.
+        for (int32 Level=1, Size=AtlasSize/2; Level<=4; ++Level, Size/=2)
+        {
+            const auto& Source = Level==1 ? J.Pixels : J.Mips.Last();
+            TArray<FColor> Mip; Mip.SetNumUninitialized(Size*Size);
+            for (int32 Y=0;Y<Size;++Y) for(int32 X=0;X<Size;++X)
+            {
+                FLinearColor C(0,0,0,0);
+                for(int32 V=0;V<2;++V) for(int32 U=0;U<2;++U) C+=FLinearColor(Source[(Y*2+V)*(Size*2)+X*2+U]);
+                Mip[Y*Size+X]=(C/4).ToFColorSRGB();
+            }
+            J.Mips.Add(MoveTemp(Mip));
+        }
     }
 };
 FAC2FarTerrain::FAC2FarTerrain() : Impl(MakeUnique<FImpl>()) {}
@@ -154,7 +180,26 @@ void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
             Impl->Actor->SetActorLocation(AC2::BlockOrigin(Id));
             C->CreateMeshSection(0, J.Vertices, J.Indices, J.Normals, J.UVs, J.Colors, TArray<FProcMeshTangent>(),
                                  false);
-            C->SetMaterial(0, LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/AC2/Materials/M_AC2Far.M_AC2Far")));
+            auto* Parent = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/AC2/Materials/M_AC2Far.M_AC2Far"));
+            auto* Material = UMaterialInstanceDynamic::Create(Parent, C);
+            auto* Texture = UTexture2D::CreateTransient(FImpl::AtlasSize, FImpl::AtlasSize, PF_B8G8R8A8);
+            Texture->SRGB = true; Texture->NeverStream = true;
+            Texture->AddressX = Texture->AddressY = TA_Clamp;
+            auto& Mip = Texture->GetPlatformData()->Mips[0];
+            void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
+            FMemory::Memcpy(Data, J.Pixels.GetData(), J.Pixels.Num() * sizeof(FColor));
+            Mip.BulkData.Unlock();
+            for(int32 Level=0, Size=FImpl::AtlasSize/2;Level<J.Mips.Num();++Level,Size/=2)
+            {
+                auto* Next=new FTexture2DMipMap(); Next->SizeX=Next->SizeY=Size;
+                Texture->GetPlatformData()->Mips.Add(Next);
+                Next->BulkData.Lock(LOCK_READ_WRITE);
+                FMemory::Memcpy(Next->BulkData.Realloc(J.Mips[Level].Num()*sizeof(FColor)),J.Mips[Level].GetData(),J.Mips[Level].Num()*sizeof(FColor));
+                Next->BulkData.Unlock();
+            }
+            Texture->UpdateResource();
+            Material->SetTextureParameterValue(TEXT("Albedo"), Texture);
+            C->SetMaterial(0, Material);
             Impl->Current = Id;
             Impl->Count = J.Tiles;
             UE_LOG(LogTemp, Display, TEXT("AC2 distant terrain: %d tiles, %d triangles"), J.Tiles, J.Indices.Num() / 3);

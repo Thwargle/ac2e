@@ -91,6 +91,24 @@ bool FAC2MapData::Open(const FString &Directory, FString &Error)
             }
     return true;
 }
+FString FAC2MapData::PortalLabel(FVector2D Cell) const
+{
+    // A generic portal template has no destination name. Map notes carry the
+    // retail label of the specific gateway/ringway at this world location.
+    FString Result;
+    double Best = 16.; // Four land cells (80 metres), bounded to this landmark.
+    for (const auto &Group : Notes) for (const auto &Note : Group.Value)
+        if (Note.Label.StartsWith(TEXT("Gateway")) || Note.Label.StartsWith(TEXT("Ringway")))
+        {
+            const double D = FVector2D::DistSquared(Cell, FVector2D(Note.Cell));
+            if (D >= Best) continue;
+            Best = D; Result = Note.Label;
+            int32 Coordinate;
+            if (Result.FindChar('(', Coordinate)) Result.LeftInline(Coordinate);
+            Result.TrimEndInline();
+        }
+    return Result;
+}
 const FAC2MapTile *FAC2MapData::At(FIntPoint Cell) const
 {
     if (Cell.X < 0 || Cell.Y < 0 || Cell.X >= LandCells || Cell.Y >= LandCells)

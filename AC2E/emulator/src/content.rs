@@ -450,6 +450,14 @@ impl Content {
             if content.objects.len() >= MAX_OBJECTS || content.objects.contains_key(&id) {
                 return Err(invalid("world content object limit or duplicate IID"));
             }
+            // Expanded and captured snapshots contain the same lifestones with
+            // different IIDs and slightly revised coordinates. Keep the first
+            // IID so persisted bindings remain valid; never coalesce creatures.
+            if entity == 0x470007de && content.cells.get(&placement.cell).is_some_and(|ids| ids.iter().any(|other| {
+                let old = &content.objects[other];
+                old.entity == entity && old.placement.coordinates.iter().zip(placement.coordinates)
+                    .map(|(a,b)| (a-b)*(a-b)).sum::<f32>() <= 64.0
+            })) { continue; }
             let cell_ids = content.cells.entry(placement.cell).or_default();
             if cell_ids.len() >= MAX_CELL_OBJECTS {
                 return Err(invalid("world content exceeds 64 objects in one cell"));
@@ -467,7 +475,16 @@ impl Content {
                     invalid(format!("content cell {:#010x}: {error}", placement.cell))
                 })?;
             }
-            let spawn = world::create_stationary_object_with_scale(
+            let name = match id {
+                0x8140000000030002 | 0x8140000000030004 | 0x8140000000030049 => Some("Arwic Outland Portal"),
+                0x8140000000030005 | 0x8140000000030022 | 0x8140000000030025 => Some("Human Shelter Portal"),
+                0x8140000000030030 => Some("Lugian Shelter Portal"),
+                0x8140000000030031 => Some("Tumerok Shelter Portal"),
+                0x8140000000030047 => Some("Menhir Vault Portal"),
+                _ if entity == 0x4700084d => Some("Portal"),
+                _ => None,
+            };
+            let spawn = world::create_named_stationary_object(
                 &StationaryObject {
                     character_id: id,
                     parent_visual_did: visual,
@@ -480,6 +497,7 @@ impl Content {
                     timestamps: [0; 4],
                 },
                 scale,
+                name,
             )
             .map_err(|error| invalid(format!("content object: {error}")))?;
             let mut destroy = 0x100c2u32.to_le_bytes().to_vec();

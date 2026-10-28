@@ -100,6 +100,8 @@ class FAC2AssetLibrary : public FGCObject
     UMaterialInterface *Material(uint32 Id, bool Water = false);
     class UTexture2D *Texture(uint32 Id);
     TArray<FColor> TerrainPalette();
+    TArray<FColor> TerrainPixels(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Land,
+        const FAC2TerrainMesh &Mesh, int32 Resolution);
     FAC2BlockWater Water() const;
     const TArray<FAC2ParticleSource> &ParticleSources() const;
     bool InteriorAt(const FVector &Position) const;
