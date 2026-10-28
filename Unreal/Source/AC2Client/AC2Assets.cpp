@@ -8,6 +8,7 @@
 #include "AC2AssetReader.h"
 #include "AC2MaterialAlpha.h"
 #include "AC2NativeMaterial.h"
+#include "AC2TextureMips.h"
 #include "AC2CellLighting.h"
 #include "AC2Scenery.h"
 #include "Async/ParallelFor.h"
@@ -29,6 +30,7 @@ struct FAC2DecodedImage
     int32 W = 0, H = 0;
     TArray<FColor> Pixels;
     TArray<TArray<FColor>> Mips;
+    TArray<TArray<FColor>> CutoutMips;
     TMap<uint32,UTexture2D*> Samplers;
     FVector2D CachedAlpha=FVector2D(-1,-1);
     FVector2D AlphaRange() {
@@ -816,24 +818,31 @@ struct FAC2AssetLibrary::FImpl
         Image.Pixels = MoveTemp(Next);
     }
 
-    static void BuildMips(FAC2DecodedImage &Image)
+    static void BuildMips(FAC2DecodedImage &Image, bool PreserveMask=false)
     {
-        if (!Image.Mips.IsEmpty())
+        auto& Mips=PreserveMask?Image.CutoutMips:Image.Mips;
+        if (!Mips.IsEmpty())
             return;
         FAC2DecodedImage M;
         M.W = Image.W;
         M.H = Image.H;
         M.Pixels = Image.Pixels;
+        const float Coverage=PreserveMask?AC2TextureMips::Coverage(Image.Pixels):0;
         while (M.W > 1 || M.H > 1)
         {
-            Downsample(M);
-            Image.Mips.Add(M.Pixels);
+            M.Pixels=AC2TextureMips::Downsample(M.Pixels,M.W,M.H,PreserveMask);
+            M.W=FMath::Max(1,M.W/2);M.H=FMath::Max(1,M.H/2);
+            // Always filter the unscaled alpha, so coverage correction does not
+            // compound at subsequent levels or affect translucent/UI samplers.
+            auto Pixels=M.Pixels;
+            if(PreserveMask)AC2TextureMips::PreserveCoverage(Pixels,Coverage);
+            Mips.Add(MoveTemp(Pixels));
         }
     }
-    UTexture2D *Texture(FAC2DecodedImage &Image, bool Clamp = false, uint32 AU=0, uint32 AV=0)
+    UTexture2D *Texture(FAC2DecodedImage &Image, bool Clamp = false, uint32 AU=0, uint32 AV=0, bool PreserveMask=false)
     {
         if(!AU)AU=Clamp?3:1; if(!AV)AV=Clamp?3:1;
-        const uint32 SamplerKey=(AU&15)|((AV&15)<<4);
+        const uint32 SamplerKey=(AU&15)|((AV&15)<<4)|(uint32(PreserveMask)<<8);
         if(auto* Found=Image.Samplers.Find(SamplerKey))return *Found;
         check(IsInGameThread());
         // Weak entries don't keep distant blocks' GPU resources alive.
@@ -858,11 +867,12 @@ struct FAC2AssetLibrary::FImpl
         T->AddressX=Address(AU);T->AddressY=Address(AV);
         T->Filter = TF_Default; // texture group supplies anisotropic filtering
         auto *Platform = T->GetPlatformData();
-        BuildMips(Image);
+        BuildMips(Image,PreserveMask);
+        const auto& Mips=PreserveMask?Image.CutoutMips:Image.Mips;
         int32 W = Image.W, H = Image.H;
-        for (int32 Level = 0; Level <= Image.Mips.Num(); ++Level)
+        for (int32 Level = 0; Level <= Mips.Num(); ++Level)
         {
-            const auto &Pixels = Level ? Image.Mips[Level - 1] : Image.Pixels;
+            const auto &Pixels = Level ? Mips[Level - 1] : Image.Pixels;
             if (Level)
             {
                 auto *NewMip = new FTexture2DMipMap();
@@ -894,7 +904,7 @@ struct FAC2AssetLibrary::FImpl
         auto *M = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
         Objects.Add(M);
         if (Image)
-            M->SetTextureParameterValue(TEXT("Albedo"), Texture(*Image));
+            M->SetTextureParameterValue(TEXT("Albedo"), Texture(*Image,false,0,0,Masked));
         M->SetVectorParameterValue(TEXT("Tint"), Tint);
         return M;
     }
@@ -911,7 +921,7 @@ struct FAC2AssetLibrary::FImpl
             if(AC2MaterialLayerEnabled(M.Layers[I].TrueFlags,M.Layers[I].FalseFlags,Hardware) && FixedFunction(M.Layers[I]))return I;
         return 0;
     }
-    void ConfigureStages(UMaterialInstanceDynamic *MID,const FAC2DecodedLayer &L,int32 LayerIndex)
+    void ConfigureStages(UMaterialInstanceDynamic *MID,const FAC2DecodedLayer &L,int32 LayerIndex,bool PreserveMask)
     {
         if(!FixedFunction(L))return;
         MID->SetScalarParameterValue(TEXT("AC2NativeStages"),1);
@@ -927,7 +937,7 @@ struct FAC2AssetLibrary::FImpl
             MID->SetVectorParameterValue(*(P+TEXT("Color")),FLinearColor(AC2BoundColorOperation(C.Operation,C.Argument1,StageImage.IsValid()),C.Argument1,C.Argument2,0));
             MID->SetVectorParameterValue(*(P+TEXT("Alpha")),FLinearColor(A.Operation,A.Argument1,A.Argument2,0));
             MID->SetVectorParameterValue(*(P+TEXT("UV")),FLinearColor(L.TextureCoordinates[S],0,0,0));
-            if(StageImage) MID->SetTextureParameterValue(*(P+TEXT("Texture")),Texture(*StageImage,false,L.AddressModes[S].X,L.AddressModes[S].Y));
+            if(StageImage) MID->SetTextureParameterValue(*(P+TEXT("Texture")),Texture(*StageImage,false,L.AddressModes[S].X,L.AddressModes[S].Y,PreserveMask));
         }
     }
     TSharedPtr<FAC2DecodedImage> MaterialImage(uint32 Id, FLinearColor &Tint, bool &Masked)
@@ -1020,7 +1030,7 @@ struct FAC2AssetLibrary::FImpl
             {
                 auto* MID = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
                 Objects.Add(MID);
-                if (I) MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I));
+                if (I) MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I,false,0,0,Masked));
                 MID->SetVectorParameterValue(TEXT("Tint"), Tint);
                 MID->SetVectorParameterValue(TEXT("AC2UIMaterialAmbient"), Layer ? Layer->Ambient : FLinearColor::White);
                 MID->SetVectorParameterValue(TEXT("AC2UIFlags"), Layer ? FLinearColor(Layer->DynamicLighting, Layer->MaterialDiffuse,
@@ -1041,7 +1051,7 @@ struct FAC2AssetLibrary::FImpl
                 auto *MID = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
                 Objects.Add(MID);
                 if (I)
-                    MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I));
+                    MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I,false,0,0,true));
                 MID->SetVectorParameterValue(TEXT("Tint"), Tint);
                 Result = MID;
             }
@@ -1104,7 +1114,7 @@ struct FAC2AssetLibrary::FImpl
                                          FLinearColor(Alpha(1) - Alpha(0), Alpha(0), 0, 0));
             MID->SetScalarParameterValue(TEXT("AC2Specular"), Layer && Layer->SpecularHighlights ? .5f : 0.f);
             if (Layer) {
-                if(!SkyMode)ConfigureStages(MID,*Layer,SelectedLayer(*Native));
+                if(!SkyMode)ConfigureStages(MID,*Layer,SelectedLayer(*Native),Grass || Masked);
                 if(!FixedFunction(*Layer))Warn(Id,TEXT("native programmable/generated-coordinate material uses base fallback"));
             }
         }

@@ -31,6 +31,10 @@ class FAC2MapData
     static FVector2D Unproject(FVector2D Pixel, FVector2D Origin, FVector2D Extent, FIntRect Pixels);
     static FVector2D DetailOrigin(FVector2D Center);
     static FVector2D RadarOffset(FVector Delta, float ActorYaw, float RangeMetres);
+    // Native radar updates in whole degrees. Use one normalized heading for
+    // both the compass and contacts; camera orbit never changes this frame.
+    static float RadarYaw(float ActorYaw) { return FMath::RoundToFloat(FMath::UnwindDegrees(ActorYaw)); }
+    static float RadarRotation(float ActorYaw) { return FMath::DegreesToRadians(FMath::UnwindDegrees(RadarYaw(ActorYaw)-90.f)); }
     static FString Coordinates(FVector2D Cell);
     FString PortalLabel(FVector2D Cell) const;
 

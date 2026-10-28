@@ -510,6 +510,12 @@ void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
 FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
 {
     OnMouseMove(G, E);
+    if (E.GetEffectingButton()==EKeys::ThumbMouseButton)
+    {
+        if (auto* PC=Controller(Mode))
+            if (auto* P=Cast<AAC2Explorer>(PC->GetPawn())) P->ToggleAutoRun();
+        return FReply::Handled(); // Do not toggle again through viewport input.
+    }
     if(CameraLeft || CameraRight)return CameraButtonDown(E);
     if(E.GetEffectingButton()==EKeys::LeftMouseButton && ShowInventory && Portrait.IsValid() &&
         Native.Bounds(TEXT("PaperDollViewport")).Contains(FIntPoint(Mouse.X,Mouse.Y)))

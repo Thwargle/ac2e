@@ -23,6 +23,14 @@ neighboring dungeons. High-resolution DAT surfaces remain preferred where availa
 Terrain cells explicitly marked without frills remain bare; this does not synthesize
 grass or replace missing retail assets.
 
+The world now uses the same neutral display-gamma path as character portraits,
+without a second ACES/bloom/exposure pass over native material colors. Desktop
+rendering stays at 100% resolution with spatial AA and anisotropic filtering.
+Cutout textures have separate alpha-weighted, coverage-preserving mipmaps to keep
+thin grass/leaf silhouettes from disappearing; translucent effects and UI textures
+retain their original filtering. Grass distance fading uses a stable integer hash
+instead of a floating-point sine hash at large world coordinates.
+
 The material renderer selects authored high-detail fixed-function alternatives,
 evaluates up to four color/alpha texture stages in native order, retains four UV
 sets and independent animated UV transforms, and honors per-axis texture wrapping.
@@ -129,6 +137,11 @@ the hovered panel, and stationary camera orbit does not rotate the character.
 Drag the character preview or inventory paperdoll to rotate it. Cursor artwork
 and hotspots come from the installed DATs; map zoom and preview rotation retain
 their native pointers. WASD movement and the existing combat hotkeys remain available.
+Running is the default; hold either **Shift** key to walk. **Mouse4** (the first
+thumb/back button) toggles autorun in either cursor mode. Press it again, press
+forward/backward, or press Escape to stop. Chat, focus loss, death and travel also
+cancel autorun. The radar compass and contacts share the DAT radar center and one
+normalized character heading; stationary camera orbit does not turn the radar.
 
 Open the native world map with **M** and double-click a point to travel there for
 testing. Single-click zoom, dragging, map notes and radar targeting still work.

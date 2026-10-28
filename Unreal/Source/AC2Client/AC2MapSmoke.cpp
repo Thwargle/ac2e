@@ -96,8 +96,28 @@ void AAC2GameMode::MapSmokeTick(float Delta)
     case 14:
         PC->CloseUI();
         OK = !bMap && PC->bShowMouseCursor!=PC->WantsMouseLook() && !PC->IsMoveInputIgnored();
-        Finish(OK, OK ? TEXT("") : TEXT("Closing maps did not restore world input"));
-        return;
+        if(!OK)Error=TEXT("Closing maps did not restore world input");
+        break;
+    default:
+        if(MapStage<23)
+        {
+            const int32 Index=(MapStage-15)/2;
+            const float Yaws[]={90,0,-90,180};
+            const TCHAR* Shots[]={TEXT("AC2Map-north.png"),TEXT("AC2Map-east.png"),TEXT("AC2Map-south.png"),TEXT("AC2Map-west.png")};
+            if((MapStage-15)%2==0)
+            {
+                auto* P=Cast<AAC2Explorer>(PC->GetPawn());
+                P->GetCharacterMovement()->bUseControllerDesiredRotation=false;
+                P->SetActorRotation(FRotator(0,Yaws[Index],0));
+            }
+            else {OK=HUD->GameUI->SmokeRadarHeading(Yaws[Index],Error);Capture(Shots[Index]);}
+        }
+        else if(MapStage==23)PC->SetControlRotation(FRotator(-10,75,0));
+        else
+        {
+            OK=HUD->GameUI->SmokeRadarHeading(180,Error);
+            Finish(OK,Error);return;
+        }
     }
     if (!OK)
     {

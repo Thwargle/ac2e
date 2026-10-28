@@ -55,6 +55,10 @@ class AAC2Explorer : public ACharacter
     virtual void SetupPlayerInputComponent(UInputComponent *Input) override;
     void SetFlying(bool Flying);
     void SetRunning(bool Running) {bFast=Running;UpdateSpeed();}
+    void ToggleAutoRun();
+    void StopAutoRun() { bAutoRun=false; }
+    bool IsAutoRunning() const { return bAutoRun; }
+    bool IsRunning() const { return bFast; }
     bool IsFlying() const;
     void SetHeld(bool Held);
     bool IsHeld() const
@@ -71,7 +75,7 @@ class AAC2Explorer : public ACharacter
     float ThirdPersonDistance=380;
     bool MovementSteersCamera=false;
     double WaterLevel = 0;
-    bool bFast = false, bHeld = false, bFly = false;
+    bool bFast = true, bHeld = false, bFly = false, bAutoRun = false;
     bool bDead=false;
     uint32 NativeMode=AC2Motion::Peace;
     uint32 GlobalModifier=0,MotionDescriptor=0;
@@ -86,8 +90,7 @@ class AAC2Explorer : public ACharacter
     void ZoomIn() { ZoomCamera(1); }
     void ZoomOut() { ZoomCamera(-1); }
     void ToggleFly();
-    void Sprint();
-    void StopSprint();
+    void UpdateWalkModifier();
     void StartJump();
     void EndJump();
     bool bSwimUp=false;

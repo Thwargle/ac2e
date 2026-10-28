@@ -75,7 +75,8 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
         PlayerVisible = false;
     if (Detail && Follow && PlayerVisible)
         Zoom(LastLand);
-    Heading = Pawn ? FMath::DegreesToRadians(Pawn->GetActorRotation().Yaw - 90.f) : 0;
+    const float RadarYaw = Pawn ? FAC2MapData::RadarYaw(Pawn->GetActorRotation().Yaw) : 90.f;
+    Heading = FAC2MapData::RadarRotation(RadarYaw);
     Native.Begin(Size);
     Native.Visibility.Add(0xd740cf56, false);
     auto Show = [&](const TCHAR *Name, bool Value) { Native.Visibility.Add(T(Name), Value); };
@@ -149,6 +150,11 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
     Native.Template(0x22000005, TEXT("RadarField"), RadarPlacement(Native.Layouts[0x22000005], Size),
                     FIntRect(0, 0, Size.X, Size.Y));
     RadarRect = Native.Bounds(TEXT("RadarField"));
+    if (const auto* Field=Native.Find(TEXT("RadarField")))
+    {
+        RadarCenter=FVector2D(Field->Attr(TEXT("RadarCenter_X"),71),Field->Attr(TEXT("RadarCenter_Y"),69));
+        RadarRadius=Field->Attr(TEXT("RadarRadius"),60);
+    }
     if (!Coords)
         for (auto &N : Native.Nodes)
             if (N.Id == T(TEXT("CoordinatesText")) && N.Rect.Min.X >= RadarRect.Min.X)
@@ -162,14 +168,14 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
     if (Pawn)
     {
         const float Range = Mode->bIndoors ? 50.f : 75.f; // RadarControl 7160 defaults.
-        const FVector2D Center = FVector2D(RadarRect.Min) + FVector2D(71, 69);
+        const FVector2D Center = FVector2D(RadarRect.Min) + RadarCenter;
         auto Add = [&](AActor *Actor, FString Id, FString Name, bool Selected) {
             if (!Actor || Actor->IsHidden())
                 return;
             const FVector Delta = Actor->GetActorLocation() - Pawn->GetActorLocation();
             if (Delta.SizeSquared2D() > FMath::Square(Range * 100))
                 return;
-            Contacts.Add({Center + FAC2MapData::RadarOffset(Delta, Pawn->GetActorRotation().Yaw, Range),
+            Contacts.Add({Center + FAC2MapData::RadarOffset(Delta, RadarYaw, Range)*(RadarRadius/60.f),
                           MoveTemp(Id), MoveTemp(Name), Actor, Selected});
         };
         if (Mode->Network)
@@ -262,7 +268,7 @@ int32 FAC2MapUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometr
             if (const auto *B = Native.Brush(0x41100000))
                 FSlateDrawElement::MakeRotatedBox(
                     Out, ++L,
-                    G.ToPaintGeometry(FVector2D(143, 143), FSlateLayoutTransform(FVector2D(N.Rect.Min))), B,
+                    G.ToPaintGeometry(B->ImageSize, FSlateLayoutTransform(FVector2D(N.Rect.Min)+RadarCenter-B->ImageSize*.5)), B,
                     ESlateDrawEffect::None, Heading, TOptional<FVector2D>(),
                     FSlateDrawElement::RelativeToElement);
             for (const auto &C : Contacts)
@@ -285,6 +291,12 @@ int32 FAC2MapUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometr
             Font->Draw(Out, ++Layer, G, Tooltip, P + FVector2D(6, 4), FLinearColor::White);
         }
     return Layer;
+}
+bool FAC2MapUI::SmokeHeading(float Yaw,FString& Error) const
+{
+    if(!FMath::IsNearlyEqual(Heading,FAC2MapData::RadarRotation(Yaw),.001f))
+    {Error=TEXT("Radar followed camera heading instead of character heading");return false;}
+    return true;
 }
 bool FAC2MapUI::Contains(FVector2D Point) const
 {

@@ -31,7 +31,7 @@ bool PrepareAC2Materials(FString &Error)
 #if WITH_EDITOR
     FString SavedVersion;
     const FString VersionPath=FPaths::Combine(FPaths::ProjectContentDir(),TEXT("AC2/Materials/template-version.txt"));
-    const bool CurrentVersion=FFileHelper::LoadFileToString(SavedVersion,*VersionPath) && SavedVersion.TrimStartAndEnd()==TEXT("9");
+    const bool CurrentVersion=FFileHelper::LoadFileToString(SavedVersion,*VersionPath) && SavedVersion.TrimStartAndEnd()==TEXT("10");
     for (int32 Kind = 0; Kind < 16; ++Kind)
     {
         const bool Preview = Kind >= 12, Grass = Kind == 11, Masked = Kind == 1 || Kind == 13 || Grass, Sky = Kind >= 2 && Kind <= 4;
@@ -158,8 +158,11 @@ bool PrepareAC2Materials(FString &Error)
                 auto *Camera = NewObject<UMaterialExpressionCameraPositionWS>(Material);
                 Alpha->Code = TEXT("float a=saturate(TexAlpha); "
                                    "float fade=saturate((8000.0-distance(World,Camera))/2000.0); "
-                                   "float3 p=floor(World*0.5); "
-                                   "float noise=frac(sin(dot(p,float3(12.9898,78.233,37.719)))*43758.5453); "
+                                   // Integer hashing avoids sin() precision loss at million-cm world positions.
+                                   "uint3 p=uint3(int3(floor(World*0.5))); "
+                                   "uint h=p.x*73856093u ^ p.y*19349663u ^ p.z*83492791u; "
+                                   "h^=h>>16; h*=2246822519u; h^=h>>13; "
+                                   "float noise=float(h&65535u)/65536.0; "
                                    "return a*step(noise+0.00001,fade);");
                 Alpha->Inputs.SetNum(3);
                 Alpha->Inputs[1].InputName = TEXT("World");
@@ -322,7 +325,7 @@ bool PrepareAC2Materials(FString &Error)
         UE_LOG(LogTemp, Display, TEXT("AC2 material template saved: %s"), *File);
     }
     if (!FFileHelper::SaveStringToFile(
-            TEXT("9"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
+            TEXT("10"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
     {
         Error = TEXT("Cannot save AC2 material template version");
         return false;

@@ -28,6 +28,7 @@ class FAC2MapUI
     }
     bool Validate(FString &Error) const;
     bool SmokeStep(int32 Step, FString &Error);
+    bool SmokeHeading(float Yaw,FString& Error) const;
     bool SmokeNetworkTarget(const FString &Id, FString &Error);
     static FIntRect RadarPlacement(const FAC2UILayout &Layout, FIntPoint Display);
 
@@ -52,6 +53,8 @@ class FAC2MapUI
     FVector2D OverviewDragOrigin;
     uint32 Overview = 0, Pressed = 0;
     float Heading = 0;
+    FVector2D RadarCenter=FVector2D(71,69);
+    float RadarRadius=60;
     struct FPicture
     {
         uint32 Image;

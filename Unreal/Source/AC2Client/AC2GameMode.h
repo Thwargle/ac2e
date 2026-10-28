@@ -147,6 +147,7 @@ class AAC2PlayerController : public APlayerController
     void CharacterStats();
     void CharacterSelect();
     void SetCursor(bool Enabled);
+    virtual void FlushPressedKeys() override;
     void RestoreCursor() { SetCursor(!MouseLook); }
     bool WantsMouseLook() const { return MouseLook; }
     // Held-button camera gestures are independent of the optional Alt/MMB toggle.

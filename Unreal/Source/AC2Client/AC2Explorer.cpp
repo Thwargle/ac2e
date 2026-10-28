@@ -72,15 +72,20 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
     Input->BindKey(EKeys::MouseScrollDown,IE_Pressed,this,&AAC2Explorer::ZoomOut);
     Input->BindKey(EKeys::Tab, IE_Pressed, this, &AAC2Explorer::ToggleView);
     Input->BindKey(EKeys::F, IE_Pressed, this, &AAC2Explorer::ToggleFly);
-    Input->BindKey(EKeys::LeftShift, IE_Pressed, this, &AAC2Explorer::Sprint);
-    Input->BindKey(EKeys::LeftShift, IE_Released, this, &AAC2Explorer::StopSprint);
+    for (const FKey Key : {EKeys::LeftShift, EKeys::RightShift})
+    {
+        Input->BindKey(Key, IE_Pressed, this, &AAC2Explorer::UpdateWalkModifier);
+        Input->BindKey(Key, IE_Released, this, &AAC2Explorer::UpdateWalkModifier);
+    }
+    Input->BindKey(EKeys::ThumbMouseButton, IE_Pressed, this, &AAC2Explorer::ToggleAutoRun);
     Input->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AAC2Explorer::StartJump);
     Input->BindKey(EKeys::SpaceBar, IE_Released, this, &AAC2Explorer::EndJump);
 }
 void AAC2Explorer::Forward(float V)
 {
     const auto* PC=Cast<AAC2PlayerController>(Controller);
-    if(PC && PC->MouseForward)V=1;
+    if (!FMath::IsNearlyZero(V) || bHeld || !PC || PC->IsMoveInputIgnored()) StopAutoRun();
+    if (bAutoRun || (PC && PC->MouseForward)) V=1;
     // Camera orbit alone must not rotate the character or send a different network heading.
     MovementSteersCamera=!FMath::IsNearlyZero(V);
     GetCharacterMovement()->bUseControllerDesiredRotation=(PC && PC->CameraSteersPlayer) || (MovementSteersCamera && !(PC && PC->FreeOrbit));
@@ -121,15 +126,17 @@ void AAC2Explorer::KeyboardTurn(float V)
     Controller->SetControlRotation(R);
     GetCharacterMovement()->bUseControllerDesiredRotation=true;
 }
-void AAC2Explorer::Sprint()
+void AAC2Explorer::UpdateWalkModifier()
 {
-    bFast = true;
-    UpdateSpeed();
+    const auto* PC=Cast<APlayerController>(Controller);
+    SetRunning(!PC || (!PC->IsInputKeyDown(EKeys::LeftShift) && !PC->IsInputKeyDown(EKeys::RightShift)));
 }
-void AAC2Explorer::StopSprint()
+void AAC2Explorer::ToggleAutoRun()
 {
-    bFast = false;
-    UpdateSpeed();
+    const auto* PC=Cast<APlayerController>(Controller);
+    const auto* Mode=GetWorld()->GetAuthGameMode<AAC2GameMode>();
+    if (PC && Mode && Mode->InWorld() && !bHeld && !bDead && !PC->IsMoveInputIgnored())
+        bAutoRun=!bAutoRun;
 }
 void AAC2Explorer::StartJump()
 {
@@ -187,6 +194,7 @@ void AAC2Explorer::SetHeld(bool Held)
     bHeld = Held || bDead;
     if (bHeld)
     {
+        StopAutoRun();
         EndJump();
         GetCharacterMovement()->StopMovementImmediately();
         GetCharacterMovement()->DisableMovement();

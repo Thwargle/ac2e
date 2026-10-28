@@ -6,6 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/World.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
 #include "Engine/ExponentialHeightFog.h"
@@ -54,7 +55,7 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
         Offline();
         if(!H->CharacterUI->SmokeCreate(Error)){Finish(Error);return;}
         break;
-    case 2:
+    case 2: {
         if(!InWorld()||bWaiting){ControllerNext=ControllerTime+.5f;return;}
         if(P->IsHidden()||P->IsHeld()||!P->HasModel()||H->CharacterUI->IsOpen()) {Finish(TEXT("Entry did not restore character and input"));return;}
         if(!CheckEnvironment(1)){Finish(TEXT("Sky direction or light count incorrect on entry"));return;}
@@ -62,13 +63,19 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
            IConsoleManager::Get().FindConsoleVariable(TEXT("r.MotionBlurQuality"))->GetInt()!=0 ||
            !P->Camera->PostProcessSettings.bOverride_MotionBlurAmount || P->Camera->PostProcessSettings.MotionBlurAmount!=0)
         {Finish(TEXT("Temporal AA or motion blur enabled for CPU-skinned models"));return;}
-        UE_LOG(LogTemp,Display,TEXT("AC2 render: spatial FXAA, motion blur off, DAT sunlight direction PASS"));
+        const auto* Viewport=GetWorld()->GetGameViewport();
+        if(!Viewport || Viewport->EngineShowFlags.Tonemapper || Viewport->EngineShowFlags.Bloom ||
+           Viewport->EngineShowFlags.EyeAdaptation || Viewport->EngineShowFlags.ColorGrading ||
+           IConsoleManager::Get().FindConsoleVariable(TEXT("r.ScreenPercentage"))->GetFloat()!=100)
+        {Finish(TEXT("Native display gamma / full-resolution policy not applied"));return;}
+        UE_LOG(LogTemp,Display,TEXT("AC2 render: native display gamma, 100%% resolution, spatial FXAA, motion blur off, DAT sunlight direction PASS"));
         if(!H->GameUI->SmokeCombatInput(0,Error)){Finish(Error);return;}
         PC->SetControlRotation(FRotator(-8,P->GetActorRotation().Yaw+160,0));
         P->GetCharacterMovement()->bUseControllerDesiredRotation=false;
         P->Boom->bDoCollisionTest=false;
         P->Boom->TargetArmLength=460;
         Capture(TEXT("AC2Controller-standing.png"));break;
+    }
     case 3:
         if(!H->GameUI->SmokeCombatInput(1,Error)){Finish(Error);return;}
         SmokeStart=P->GetActorLocation();
@@ -151,6 +158,14 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
         Capture(TEXT("AC2Controller-light-night.png"));break;
     case 29:
         UE_LOG(LogTemp,Display,TEXT("AC2 render: day/zenith/night light alignment and logout/reentry cleanup PASS"));
+        Sky->SetHour(12);
+        break;
+    default:
+        if(ControllerStage<42)
+        {
+            if(!H->GameUI->SmokeMovementInput(ControllerStage-30,Error)){Finish(Error);return;}
+            break;
+        }
         Finish(TEXT(""));return;
     }
     UE_LOG(LogTemp,Display,TEXT("AC2 controller stage %d complete"),ControllerStage);

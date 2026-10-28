@@ -30,6 +30,17 @@ bool FAC2MapCoordinatesTest::RunTest(const FString &)
              FAC2MapData::RadarOffset(FVector(7500, 0, 0), 0, 75).Equals(FVector2D(0, -60), .001));
     TestTrue(TEXT("east facing: north is left"),
              FAC2MapData::RadarOffset(FVector(0, 5000, 0), 0, 50).Equals(FVector2D(-60, 0), .001));
+    for(float Yaw:{0.f,90.f,180.f,270.f,-180.f,359.9f,-.1f})
+    {
+        const float RadarYaw=FAC2MapData::RadarYaw(Yaw);
+        const float Rotation=FAC2MapData::RadarRotation(Yaw);
+        const FVector2D CompassNorth(FMath::Sin(Rotation)*60,-FMath::Cos(Rotation)*60);
+        TestTrue(TEXT("compass north and contact north share the same rotation"),
+            CompassNorth.Equals(FAC2MapData::RadarOffset(FVector(0,7500,0),RadarYaw,75),.001));
+        TestTrue(TEXT("a contact straight ahead remains at the top"),
+            FAC2MapData::RadarOffset(FRotator(0,RadarYaw,0).Vector()*7500,RadarYaw,75).Equals(FVector2D(0,-60),.001));
+    }
+    TestEqual(TEXT("heading wrap cannot cause a full spin"),FAC2MapData::RadarRotation(359.9f),FAC2MapData::RadarRotation(-.1f));
     TestEqual(TEXT("retail N/E coordinate convention"), FAC2MapData::Coordinates(FVector2D(1122, 918)),
               FString(TEXT("10.0S, 10.0E")));
     return true;

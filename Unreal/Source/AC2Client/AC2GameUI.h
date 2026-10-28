@@ -55,6 +55,8 @@ class SAC2GameUI : public SCompoundWidget
     bool MapSmokeStep(int32 Step, FString &Error) { return MapUI.SmokeStep(Step, Error); }
     bool SmokeNetworkRadar(const FString &Id, FString &Error) { return MapUI.SmokeNetworkTarget(Id, Error); }
     bool SmokeCombatInput(int32 Step, FString &Error);
+    bool SmokeMovementInput(int32 Step, FString &Error);
+    bool SmokeRadarHeading(float Yaw,FString& Error) const { return MapUI.SmokeHeading(Yaw,Error); }
     bool SmokeInventoryInput(int32 Step, FString &Error);
     bool SmokeShopInput(int32 Step,FString& Error);
     bool SmokeWorldTarget(const FString &Id, FString &Error,FKey Button=EKeys::LeftMouseButton,bool DoubleClick=false,bool CenterAim=false);

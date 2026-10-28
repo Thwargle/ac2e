@@ -12,6 +12,7 @@
 #include "Components/InputComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "HAL/FileManager.h"
@@ -33,6 +34,17 @@ AAC2GameMode::AAC2GameMode()
 void AAC2GameMode::BeginPlay()
 {
     Super::BeginPlay();
+    // DAT materials already reproduce the native gamma-space lighting cascade.
+    // Apply only the display gamma, as in our portrait captures; ACES, bloom and
+    // exposure would grade that finished image a second time.
+    if (auto* Viewport=GetWorld()->GetGameViewport())
+    {
+        Viewport->EngineShowFlags.SetTonemapper(false);
+        Viewport->EngineShowFlags.SetEyeAdaptation(false);
+        Viewport->EngineShowFlags.SetBloom(false);
+        Viewport->EngineShowFlags.SetColorGrading(false);
+        Viewport->EngineShowFlags.SetMotionBlur(false);
+    }
     bSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2Smoke"));
     bEnvironmentSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2EnvironmentSmoke"));
     DatDirectory = AC2::ResolveDatDirectory(DatDirectory);
@@ -1363,6 +1375,15 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &AAC2PlayerController::Chat);
 }
 
+void AAC2PlayerController::FlushPressedKeys()
+{
+    Super::FlushPressedKeys();
+    if (auto* P=Cast<AAC2Explorer>(GetPawn()))
+    {
+        P->StopAutoRun();
+        P->SetRunning(true);
+    }
+}
 void AAC2PlayerController::SetCursor(bool Enabled)
 {
     const bool Changed=bShowMouseCursor!=Enabled;
@@ -1396,6 +1417,7 @@ void AAC2PlayerController::Cursor()
 }
 void AAC2PlayerController::CloseUI()
 {
+    if(auto* P=Cast<AAC2Explorer>(GetPawn())) P->StopAutoRun();
     if (auto *H = Cast<AAC2HUD>(GetHUD()))
         if (H->GameUI && H->GameUI->ChatActive())
         {
