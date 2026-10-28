@@ -19,6 +19,7 @@ class FAC2WorldStream
     bool NetworkLanding(const FVector& Feet, uint32 Cell, float CapsuleRadius, float HalfHeight,
                         FVector& Center, const AActor* Ignore) const;
     bool ExteriorVisible() const;
+    bool InteriorLighting(const FVector& Viewer,FAC2PreviewLighting& Lighting) const;
     bool CellVisible(uint32 Cell) const;
     bool LandingPosition(const FVector &Preferred, FVector &Position, float CapsuleRadius, float HalfHeight) const;
     bool SpawnPosition(const FVector &Preferred, uint32 InteriorOwner, FVector &Position, float CapsuleRadius = 34,

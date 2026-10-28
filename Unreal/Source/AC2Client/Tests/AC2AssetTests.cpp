@@ -1,6 +1,8 @@
 #include "AC2AssetReader.h"
 #include "AC2Scenery.h"
 #include "AC2MaterialAlpha.h"
+#include "AC2NativeMaterial.h"
+#include "AC2CellLighting.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -98,6 +100,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2MaterialAlphaTest, "AC2.Data.NativeMaterial
                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FAC2MaterialAlphaTest::RunTest(const FString &Parameters)
 {
+    TestTrue(TEXT("High detail class one fallback passes its native gates"),AC2MaterialLayerEnabled(0x140000,0,1));
+    TestFalse(TEXT("Low detail alternative is not drawn at high detail"),AC2MaterialLayerEnabled(0x110000,0,1));
+    TestFalse(TEXT("Programmable hardware pass is not a fixed-function fallback"),AC2MaterialLayerEnabled(0x240000,0,1));
+    TestTrue(TEXT("Ungated effect pass remains enabled"),AC2MaterialLayerEnabled(0,0,2));
+    TestFalse(TEXT("Native forbidden fog bit is honored"),AC2MaterialLayerEnabled(0,0x80000,2));
+    TestEqual(TEXT("Missing optional detail stops the native cascade"),AC2BoundColorOperation(8,2,false),1u);
+    TestEqual(TEXT("Untextured diffuse multiplication continues"),AC2BoundColorOperation(5,0,false),5u);
+    TestEqual(TEXT("Present signed detail retains its operation"),AC2BoundColorOperation(8,2,true),8u);
+    const TArray<FAC2AlphaStage> OptionalDetail={{2,2,0},{8,2,1},{5,0,1}};
+    const TArray<bool> Bound={true,false,false};
+    TestEqual(TEXT("Colour cascade stops before an unbound detail stage"),AC2ActiveStageCount(OptionalDetail,Bound),1);
+    const TArray<FAC2AlphaStage> OptionalAlpha={{3,2,0},{2,2,0},{2,0,1}};
+    const TArray<float> OptionalSamples={.5f,0,0};
+    TestEqual(TEXT("Unexecuted detail alpha cannot hide an opaque character"),
+        EvaluateAC2Alpha(MakeArrayView(OptionalAlpha.GetData(),AC2ActiveStageCount(OptionalDetail,Bound)),OptionalSamples),1.f);
     // Native human material 2B000000: alpha SELECTARG2 through texture/specular/light stages.
     const TArray<FAC2AlphaStage> Body = {{3, 2, 0}, {3, 2, 1}, {3, 0, 1}};
     TestEqual(TEXT("body mask does not punch holes in skin"), EvaluateAC2Alpha(Body, 0.f), 1.f);
@@ -108,6 +125,34 @@ bool FAC2MaterialAlphaTest::RunTest(const FString &Parameters)
     TestEqual(TEXT("leaf texture alpha modulates diffuse"), EvaluateAC2Alpha(Leaves, .5f, .5f), .25f);
     const TArray<FAC2AlphaStage> Complement = {{2, 2 | 16, 0}};
     TestEqual(TEXT("complement argument"), EvaluateAC2Alpha(Complement, .25f), .75f);
+    const TArray<FAC2AlphaStage> Distinct={{2,2,0},{4,2,1}};
+    const TArray<float> TexAlpha={.8f,.25f};
+    TestEqual(TEXT("Second stage alpha comes from its own texture"),EvaluateAC2Alpha(Distinct,TexAlpha),.2f);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2CellLightingTest,"AC2.Data.NativeCellLighting",EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FAC2CellLightingTest::RunTest(const FString& Parameters)
+{
+    TArray<uint8> Data;
+    for(uint32 V:{1u,0x154u,5u,8u,0x800a0004u,0x00140003u}) AssetWord(Data,V);
+    FAC2AssetReader R(Data); TMap<uint32,TArray<uint16>> Indices;
+    TestTrue(TEXT("Native light vertex runs decode"),AC2LightIndices(R,0x03f40000,Indices));
+    TestTrue(TEXT("Indices stay in their owning room"),Indices.Contains(0x03f40154));
+    if(Indices.Contains(0x03f40154))TestTrue(TEXT("Run and literal values"),Indices[0x03f40154]==TArray<uint16>({4,10,11,12,20}));
+    Data.Pop(); FAC2AssetReader Truncated(Data); Indices.Reset();
+    TestFalse(TEXT("Truncated light runs rejected"),AC2LightIndices(Truncated,0x03f40000,Indices));
+    TArray<FVector> Positions={FVector::ZeroVector,FVector::ZeroVector};
+    TArray<FVector> Normals={FVector::UpVector,FVector::UpVector};
+    FAC2CellLight Light;Light.Position=FVector(0,0,100);Light.Range=100;Light.Intensity=1;Light.Vertices.Add(0x154,{0});
+    const TArray<FAC2CellLight> Lights={Light};
+    const auto Colors=BakeAC2CellLights(0x154,FTransform::Identity,Positions,Normals,Lights,FLinearColor(.1,.1,.1),true);
+    TestEqual(TEXT("Only listed vertex receives attenuated light"),Colors[0].R,uint8(48));
+    TestEqual(TEXT("Unlisted vertex retains quantized ambient"),Colors[1].R,uint8(25));
+    TestEqual(TEXT("Runtime placeholder alpha replaced"),Colors[0].A,uint8(255));
+    const auto Dark=BakeAC2CellLights(0x155,FTransform::Identity,Positions,Normals,Lights,FLinearColor::Black,true);
+    TestEqual(TEXT("No light leaking into unlisted room"),Dark[0],FColor(0,0,0,255));
+    const auto Fallback=BakeAC2CellLights(0x155,FTransform::Identity,Positions,Normals,Lights,FLinearColor::Black,false);
+    TestEqual(TEXT("Retail no-light-record fallback"),Fallback[0],FColor(102,102,102,255));
     return true;
 }
 #endif

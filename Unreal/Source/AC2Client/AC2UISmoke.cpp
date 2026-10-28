@@ -6,9 +6,16 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#if WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 
 void AAC2GameMode::UISmokeTick(float Delta)
 {
+#if WITH_EDITOR
+    // A screenshot of the temporary default-grey material is not visual coverage.
+    if(GShaderCompilingManager && GShaderCompilingManager->IsCompiling())return;
+#endif
     UITime += Delta;
     auto Finish = [&](bool OK, const FString &Error) {
         FFileHelper::SaveStringToFile(

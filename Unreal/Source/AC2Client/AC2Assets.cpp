@@ -7,6 +7,8 @@
 #include "GameFramework/PlayerController.h"
 #include "AC2AssetReader.h"
 #include "AC2MaterialAlpha.h"
+#include "AC2NativeMaterial.h"
+#include "AC2CellLighting.h"
 #include "AC2Scenery.h"
 #include "Async/ParallelFor.h"
 #include "Engine/Texture2D.h"
@@ -27,7 +29,16 @@ struct FAC2DecodedImage
     int32 W = 0, H = 0;
     TArray<FColor> Pixels;
     TArray<TArray<FColor>> Mips;
-    UTexture2D *Texture = nullptr;
+    TMap<uint32,UTexture2D*> Samplers;
+    FVector2D CachedAlpha=FVector2D(-1,-1);
+    FVector2D AlphaRange() {
+        if(CachedAlpha.X<0) {
+            uint8 Low=255,High=0;
+            for(const auto &P:Pixels){Low=FMath::Min(Low,P.A);High=FMath::Max(High,P.A);}
+            CachedAlpha=Pixels.IsEmpty()?FVector2D(1,1):FVector2D(Low/255.f,High/255.f);
+        }
+        return CachedAlpha;
+    }
     FLinearColor Sample(double U, double V) const
     {
         if (Pixels.IsEmpty())
@@ -70,10 +81,12 @@ struct FAC2UVModifier
 };
 struct FAC2DecodedLayer
 {
-    uint32 SourceBlend = 0, DestBlend = 0;
+    uint32 SourceBlend = 0, DestBlend = 0, TrueFlags=0, FalseFlags=0;
+    bool PixelShader=false;
     TArray<uint32> Textures;
     TArray<FAC2AlphaStage> AlphaStages, ColorStages;
     TArray<uint32> TextureCoordinates, SpecialTextures;
+    TArray<FIntPoint> AddressModes;
     TArray<FAC2UVModifier> Modifiers;
     FLinearColor Tint = FLinearColor::White;
     FLinearColor Ambient = FLinearColor::White;
@@ -171,7 +184,7 @@ struct FAC2DecodedGeometry
     };
     TArray<FInfluence> Skin;
     TArray<FVector> Vertices, Normals;
-    TArray<FVector2D> UVs, DetailUVs;
+    TArray<FVector2D> UVs, DetailUVs, UV2, UV3;
     TArray<FColor> Colors;
     TArray<FAC2DecodedFragment> Fragments;
 };
@@ -223,6 +236,8 @@ uint32 Random(uint32 X, uint32 Y, uint32 K)
 struct FAC2AssetLibrary::FImpl
 {
     bool PreviewMode = false;
+    FLinearColor InteriorAmbient=FLinearColor::Black;
+    TArray<FAC2CellLight> CellLights;
     FAC2PreviewLighting PreviewLighting;
     FTransform PreviewToWorld;
     void LightPreview(UMaterialInstanceDynamic* M)
@@ -382,8 +397,8 @@ struct FAC2AssetLibrary::FImpl
     {
         auto Decoded = this->Material(Id);
         auto *MID = Cast<UMaterialInstanceDynamic>(Material);
-        if (MID && Decoded && !Decoded->Layers.IsEmpty() && !Decoded->Layers[0].Modifiers.IsEmpty())
-            MovingMaterials.Add({MID, Decoded->Layers[0].Modifiers});
+        if (MID && Decoded && !Decoded->Layers.IsEmpty() && !Decoded->Layers[SelectedLayer(*Decoded)].Modifiers.IsEmpty())
+            MovingMaterials.Add({MID, Decoded->Layers[SelectedLayer(*Decoded)].Modifiers});
     }
     TMap<uint64, UMaterialInterface *> RuntimeMaterials;
     TSet<uint32> InvisibleMaterials;
@@ -567,6 +582,10 @@ struct FAC2AssetLibrary::FImpl
                     L.Tint = Color(V);
                 if (F.Kind == 0 && V.Left() >= 16)
                     L.Ambient = Color(V);
+                if ((F.Kind==11 || F.Kind==12) && L.AddressModes.IsValidIndex(F.Index) && V.Left()>=4) {
+                    const int32 Address=V.Word()?1:3;
+                    if(F.Kind==11)L.AddressModes[F.Index].X=Address; else L.AddressModes[F.Index].Y=Address;
+                }
                 if (F.Kind == 8 && V.Left() >= 4)
                     L.Masked = V.Word() != 0;
                 if (F.Kind >= 33 && F.Kind <= 37 && L.Modifiers.IsValidIndex(F.Index) && V.Left() >= 44)
@@ -622,7 +641,7 @@ struct FAC2AssetLibrary::FImpl
         for (int32 I = 0; I < NL && R.Good; ++I)
         {
             FAC2DecodedLayer L;
-            R.Take(8);
+            L.TrueFlags=R.Word(); L.FalseFlags=R.Word();
             const int32 NS = R.Count(56, 16);
             for (int32 J = 0; J < NS; ++J)
             {
@@ -633,7 +652,8 @@ struct FAC2AssetLibrary::FImpl
                 Alpha.Argument1 = R.Word();
                 Alpha.Argument2 = R.Word();
                 L.AlphaStages.Add(Alpha);
-                R.Take(16); // address and filter modes
+                const uint32 AU=R.Word(), AV=R.Word(); L.AddressModes.Add(FIntPoint(AU,AV));
+                R.Take(8); // min/mag filters (all installed stages use linear)
                 L.TextureCoordinates.Add(R.Word());
                 R.Word(); // projected coordinates
                 L.SpecialTextures.Add(R.Word());
@@ -682,6 +702,7 @@ struct FAC2AssetLibrary::FImpl
             int32 Shader = R.Count(1, 1024 * 1024);
             R.Take(Shader);
             Shader = R.Count(1, 1024 * 1024);
+            L.PixelShader=Shader>0;
             R.Take(Shader);
             M->Layers.Add(MoveTemp(L));
         }
@@ -809,22 +830,23 @@ struct FAC2AssetLibrary::FImpl
             Image.Mips.Add(M.Pixels);
         }
     }
-    UTexture2D *Texture(FAC2DecodedImage &Image, bool Clamp = false)
+    UTexture2D *Texture(FAC2DecodedImage &Image, bool Clamp = false, uint32 AU=0, uint32 AV=0)
     {
-        if (Image.Texture)
-            return Image.Texture;
+        if(!AU)AU=Clamp?3:1; if(!AV)AV=Clamp?3:1;
+        const uint32 SamplerKey=(AU&15)|((AV&15)<<4);
+        if(auto* Found=Image.Samplers.Find(SamplerKey))return *Found;
         check(IsInGameThread());
         // Weak entries don't keep distant blocks' GPU resources alive.
         static TMap<FString, TWeakObjectPtr<UTexture2D>> SharedTextures;
         const FString CacheKey =
             FString::Printf(TEXT("%s:%08X:%08X:%dx%d:%d:%d"), *TextureNamespace, Image.Id, Image.SurfaceId,
-                            Image.W, Image.H, Image.HighResolution, Clamp);
+                            Image.W, Image.H, Image.HighResolution, SamplerKey);
         if (Image.Id)
             if (auto *Cached = SharedTextures.Find(CacheKey))
                 if (auto *T = Cached->Get())
                 {
                     Objects.Add(T);
-                    Image.Texture = T;
+                    Image.Samplers.Add(SamplerKey,T);
                     return T;
                 }
         UTexture2D *T = UTexture2D::CreateTransient(Image.W, Image.H, PF_B8G8R8A8);
@@ -832,8 +854,8 @@ struct FAC2AssetLibrary::FImpl
             return nullptr;
         T->SRGB = true;
         T->NeverStream = true;
-        T->AddressX = Clamp ? TA_Clamp : TA_Wrap;
-        T->AddressY = T->AddressX;
+        auto Address=[](uint32 A){return A==3?TA_Clamp:A==2?TA_Mirror:TA_Wrap;};
+        T->AddressX=Address(AU);T->AddressY=Address(AV);
         T->Filter = TF_Default; // texture group supplies anisotropic filtering
         auto *Platform = T->GetPlatformData();
         BuildMips(Image);
@@ -858,7 +880,7 @@ struct FAC2AssetLibrary::FImpl
         }
         T->UpdateResource();
         Objects.Add(T);
-        Image.Texture = T;
+        Image.Samplers.Add(SamplerKey,T);
         if (Image.Id)
             SharedTextures.Add(CacheKey, T);
         return T;
@@ -876,6 +898,38 @@ struct FAC2AssetLibrary::FImpl
         M->SetVectorParameterValue(TEXT("Tint"), Tint);
         return M;
     }
+    static bool FixedFunction(const FAC2DecodedLayer &L)
+    {
+        if(L.PixelShader || L.Textures.Num()>4)return false;
+        for(int32 I=0;I<L.Textures.Num();++I)
+            if(L.SpecialTextures[I] || L.TextureCoordinates[I]>3)return false;
+        return true;
+    }
+    static int32 SelectedLayer(const FAC2DecodedMaterial &M)
+    {
+        for(uint32 Hardware:{2u,1u}) for(int32 I=0;I<M.Layers.Num();++I)
+            if(AC2MaterialLayerEnabled(M.Layers[I].TrueFlags,M.Layers[I].FalseFlags,Hardware) && FixedFunction(M.Layers[I]))return I;
+        return 0;
+    }
+    void ConfigureStages(UMaterialInstanceDynamic *MID,const FAC2DecodedLayer &L,int32 LayerIndex)
+    {
+        if(!FixedFunction(L))return;
+        MID->SetScalarParameterValue(TEXT("AC2NativeStages"),1);
+        MID->SetVectorParameterValue(TEXT("AC2UIMaterialAmbient"),L.Ambient);
+        MID->SetVectorParameterValue(TEXT("AC2UIFlags"),FLinearColor(L.DynamicLighting,L.MaterialDiffuse,L.VertexDiffuse,L.ModulateVertexDiffuse));
+        MID->SetVectorParameterValue(TEXT("AC2UIIgnore"),FLinearColor(L.IgnoreDirectional,L.IgnorePoint,0,0));
+        MID->SetVectorParameterValue(TEXT("AC2StageFlags"),FLinearColor(L.MaterialDiffuse,L.VertexDiffuse,LayerIndex,1));
+        for(int32 S=0;S<L.Textures.Num();++S)
+        {
+            const FString P=FString::Printf(TEXT("AC2Stage%d"),S);
+            const auto &C=L.ColorStages[S], &A=L.AlphaStages[S];
+            auto StageImage=L.Textures[S]?Image(L.Textures[S]):nullptr;
+            MID->SetVectorParameterValue(*(P+TEXT("Color")),FLinearColor(AC2BoundColorOperation(C.Operation,C.Argument1,StageImage.IsValid()),C.Argument1,C.Argument2,0));
+            MID->SetVectorParameterValue(*(P+TEXT("Alpha")),FLinearColor(A.Operation,A.Argument1,A.Argument2,0));
+            MID->SetVectorParameterValue(*(P+TEXT("UV")),FLinearColor(L.TextureCoordinates[S],0,0,0));
+            if(StageImage) MID->SetTextureParameterValue(*(P+TEXT("Texture")),Texture(*StageImage,false,L.AddressModes[S].X,L.AddressModes[S].Y));
+        }
+    }
     TSharedPtr<FAC2DecodedImage> MaterialImage(uint32 Id, FLinearColor &Tint, bool &Masked)
     {
         if ((Id >> 24) == 0x40 || (Id >> 24) == 0x41)
@@ -883,26 +937,18 @@ struct FAC2AssetLibrary::FImpl
         auto M = Material(Id);
         if (!M)
             return nullptr;
-        if (!M->Layers.IsEmpty())
-        {
-            Tint = M->Layers[0].Tint;
-            Masked = M->Layers[0].Masked;
-            if (M->Layers[0].Textures.Num() > 1 && M->Layers[0].SpecialTextures[1] == 0 && M->Layers[0].Textures[1])
-                Image(M->Layers[0].Textures[1]);
-        }
-        for (const FAC2DecodedLayer &L : M->Layers)
-            for (uint32 TextureId : L.Textures)
-                if ((TextureId >> 24) == 0x40 || (TextureId >> 24) == 0x41)
-                {
-                    Tint = L.Tint;
-                    Masked = L.Masked;
-                    return Image(TextureId);
-                }
-        return nullptr;
+        if(M->Layers.IsEmpty())return nullptr;
+        const auto &L=M->Layers[SelectedLayer(*M)];
+        Tint=L.Tint; Masked=L.Masked;
+        TSharedPtr<FAC2DecodedImage> First;
+        for(int32 S=0;S<L.Textures.Num();++S)
+            if(L.SpecialTextures[S]==0 && L.Textures[S])
+                if(auto I=Image(L.Textures[S])) { I->AlphaRange(); if(!First)First=I; }
+        return First;
     }
     UMaterialInterface *RuntimeMaterial(uint32 Id, bool Grass = false)
     {
-        const uint64 CacheKey = uint64(Id) | (uint64(Grass) << 32);
+        const uint64 CacheKey = uint64(Id) | (uint64(Grass) << 32) | (uint64(DrawingCell & 0xffff) << 33);
         if (auto *M = RuntimeMaterials.Find(CacheKey))
             return *M;
         FLinearColor Tint = FLinearColor::White;
@@ -925,29 +971,42 @@ struct FAC2AssetLibrary::FImpl
                 UE_LOG(LogTemp, Display, TEXT("AC2 material %08X uses authored constant colour"), Id);
         }
         auto Native = Material(Id);
-        const auto *Layer = Native && !Native->Layers.IsEmpty() ? &Native->Layers[0] : nullptr;
+        const auto *Layer = Native && !Native->Layers.IsEmpty() ? &Native->Layers[SelectedLayer(*Native)] : nullptr;
         UE_LOG(LogTemp, VeryVerbose, TEXT("AC2 material %08X image=%08X tint=%s blend=%u/%u"),
             Id, I ? I->Id : 0, *Tint.ToString(), Layer ? Layer->SourceBlend : 0, Layer ? Layer->DestBlend : 0);
         const float DiffuseAlpha = Layer && Layer->MaterialDiffuse ? Tint.A : 1.f;
+        TArray<FVector2D> Ranges;
+        TArray<bool> BoundTextures;
+        if(Layer) for(uint32 TextureId:Layer->Textures) {
+            auto ImageData=TextureId?Image(TextureId):nullptr;
+            BoundTextures.Add(ImageData.IsValid());
+            Ranges.Add(ImageData?ImageData->AlphaRange():FVector2D(1,1));
+        }
+        TConstArrayView<FAC2AlphaStage> AlphaStages;
+        if(Layer) {
+            // Do not classify a material using stages the native colour
+            // cascade will never execute (notably empty optional detail maps).
+            const int32 Active=FixedFunction(*Layer)?AC2ActiveStageCount(Layer->ColorStages,BoundTextures):Layer->AlphaStages.Num();
+            AlphaStages=MakeArrayView(Layer->AlphaStages.GetData(),Active);
+        }
         auto Alpha = [&](float A) {
-            return Layer ? EvaluateAC2Alpha(Layer->AlphaStages, A, DiffuseAlpha, Tint.A) : 1.f;
+            return Layer ? EvaluateAC2Alpha(AlphaStages, A, DiffuseAlpha, Tint.A) : 1.f;
         };
-        uint8 MinAlpha = 255, MaxAlpha = 255;
-        if (I)
-        {
-            MaxAlpha = 0;
-            for (const FColor &P : I->Pixels)
-            {
-                MinAlpha = FMath::Min(MinAlpha, P.A);
-                MaxAlpha = FMath::Max(MaxAlpha, P.A);
+        float Minimum=Alpha(1),Maximum=Minimum;
+        if(Layer) {
+            Minimum=1;Maximum=0;
+            // Independent endpoints, not one alpha reused for every texture.
+            // Four native stages bound the enumeration to sixteen combinations.
+            const int32 Count=FMath::Min(AlphaStages.Num(),4);
+            for(int32 Mask=0;Mask<(1<<Count);++Mask) {
+                TArray<float> Samples;
+                for(int32 S=0;S<Count;++S)Samples.Add((Mask&(1<<S))?Ranges[S].Y:Ranges[S].X);
+                const float A=EvaluateAC2Alpha(AlphaStages,Samples,DiffuseAlpha,Tint.A);
+                Minimum=FMath::Min(Minimum,A);Maximum=FMath::Max(Maximum,A);
             }
         }
-        // Untextured red/white cell helper materials have diffuse alpha zero.
-        // The alpha combiner applies to constant colour as well as texture pixels.
-        const bool HasAlpha = FMath::Min(Alpha(MinAlpha / 255.f), Alpha(MaxAlpha / 255.f)) < .98f;
-        if (Layer && (Masked || Layer->DestBlend > 2) &&
-            FMath::Max(Alpha(MinAlpha / 255.f), Alpha(MaxAlpha / 255.f)) <= SMALL_NUMBER)
-            InvisibleMaterials.Add(Id);
+        const bool HasAlpha=Minimum<.98f;
+        if(Layer && (Masked || Layer->DestBlend>2) && Maximum<=SMALL_NUMBER)InvisibleMaterials.Add(Id);
         if (!HasAlpha)
             Masked = false;
         UMaterialInterface *Result = nullptr;
@@ -990,10 +1049,10 @@ struct FAC2AssetLibrary::FImpl
         else if (SkyMode)
         {
             auto Authored = Material(Id);
-            const uint32 Dest = Authored && Authored->Layers.Num() ? Authored->Layers[0].DestBlend : 1;
+            const uint32 Dest = Authored && Authored->Layers.Num() ? Authored->Layers[SelectedLayer(*Authored)].DestBlend : 1;
             if (Authored && Authored->Layers.Num())
             {
-                const auto &L = Authored->Layers[0];
+                const auto &L = Authored->Layers[SelectedLayer(*Authored)];
                 if (!L.MaterialDiffuse)
                     Tint = FLinearColor::White;
                 UE_LOG(LogTemp, Display,
@@ -1018,7 +1077,7 @@ struct FAC2AssetLibrary::FImpl
         else
         {
             auto Authored = Material(Id);
-            uint32 Dest = Authored && !Authored->Layers.IsEmpty() ? Authored->Layers[0].DestBlend : 1;
+            uint32 Dest = Authored && !Authored->Layers.IsEmpty() ? Authored->Layers[SelectedLayer(*Authored)].DestBlend : 1;
             if (!Masked && (Dest == 2 || (Dest > 2 && HasAlpha)))
             {
                 const TCHAR *Path = Dest == 2
@@ -1044,18 +1103,10 @@ struct FAC2AssetLibrary::FImpl
             MID->SetVectorParameterValue(TEXT("AC2Opacity"),
                                          FLinearColor(Alpha(1) - Alpha(0), Alpha(0), 0, 0));
             MID->SetScalarParameterValue(TEXT("AC2Specular"), Layer && Layer->SpecularHighlights ? .5f : 0.f);
-            // The crystal/cloud materials combine an independently scrolling
-            // second texture with CURRENT. Special reflection/light stages need
-            // their own renderer inputs and are not ordinary colour textures.
-            if (!PreviewMode && !SkyMode && Layer && Layer->Textures.Num() > 1 &&
-                Layer->ColorStages[1].Argument1 == 2 && Layer->ColorStages[1].Argument2 == 1 &&
-                Layer->SpecialTextures[1] == 0)
-                if (auto Detail = Image(Layer->Textures[1]))
-                {
-                    MID->SetTextureParameterValue(TEXT("AC2Detail"), Texture(*Detail));
-                    MID->SetScalarParameterValue(TEXT("AC2DetailOperation"), float(Layer->ColorStages[1].Operation));
-                    MID->SetScalarParameterValue(TEXT("AC2DetailChannel"), Layer->TextureCoordinates[1] == 1 ? 1.f : 0.f);
-                }
+            if (Layer) {
+                if(!SkyMode)ConfigureStages(MID,*Layer,SelectedLayer(*Native));
+                if(!FixedFunction(*Layer))Warn(Id,TEXT("native programmable/generated-coordinate material uses base fallback"));
+            }
         }
         TrackMaterial(Id, Result);
         RuntimeMaterials.Add(CacheKey, Result);
@@ -1842,6 +1893,11 @@ struct FAC2AssetLibrary::FImpl
             const FVector2D Detail = UVCount > 1 ? FVector2D(AC2::F32(P + UV + 8), AC2::F32(P + UV + 12)) : T;
             if (Detail.ContainsNaN()) return nullptr;
             G->DetailUVs.Add(Detail);
+            for(int32 Channel=2;Channel<4;++Channel) {
+                FVector2D Extra=UVCount>Channel?FVector2D(AC2::F32(P+UV+Channel*8),AC2::F32(P+UV+Channel*8+4)):T;
+                if(Extra.ContainsNaN())return nullptr;
+                (Channel==2?G->UV2:G->UV3).Add(Extra);
+            }
         }
         R.Align();
         R.Take(40);
@@ -1898,6 +1954,7 @@ struct FAC2AssetLibrary::FImpl
     {
         check(IsInGameThread());
         const auto &G = Draw.Mesh;
+        TGuardValue<uint32> RoomContext(DrawingCell,Draw.Cell?Draw.Cell:DrawingCell);
         auto *C = NewObject<UProceduralMeshComponent>(Owner);
         Owner->AddInstanceComponent(C);
         C->SetupAttachment(Root);
@@ -1919,18 +1976,19 @@ struct FAC2AssetLibrary::FImpl
                 Stats.GrassDepthSections += Material && Material->GetBlendMode() == BLEND_Masked ? 1 : 0;
                 Stats.GrassSortedSections += !Material || Material->GetBlendMode() != BLEND_Masked ? 1 : 0;
             }
-            auto Authored = SkyMode || PreviewMode ? this->Material(F.Material) : nullptr;
+            auto Authored = this->Material(F.Material);
             const bool VertexColors =
                 Authored && Authored->Layers.Num() &&
-                (Authored->Layers[0].VertexDiffuse || Authored->Layers[0].ModulateVertexDiffuse);
+                (Authored->Layers[SelectedLayer(*Authored)].VertexDiffuse || Authored->Layers[SelectedLayer(*Authored)].ModulateVertexDiffuse);
             // Leaf cards and translucent surfaces don't become invisible collision walls.
             const bool Collision = Draw.Solid && !SkyMode && !Animating && Material && !F.Indices.IsEmpty() &&
                                    (Draw.Structural || Material->GetBlendMode() == BLEND_Opaque);
             HasCollision |= Collision;
-            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs, G->DetailUVs, {}, {},
+            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs, G->DetailUVs, G->UV2, G->UV3,
                                  VertexColors ? G->Colors : TArray<FColor>(), TArray<FProcMeshTangent>(),
                                  Collision);
             C->SetMaterial(J, Material);
+            if(!SkyMode && !PreviewMode) RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(Material),C,Draw.Structural);
             if (InvisibleMaterials.Contains(F.Material))
                 C->SetMeshSectionVisible(J, false);
             ++Stats.ScenerySections;
@@ -2142,6 +2200,7 @@ struct FAC2AssetLibrary::FImpl
                 G.Normals.Add(FrillNormal);
                 G.UVs.Add(Source->UVs[V]);
                 G.DetailUVs.Add(Source->DetailUVs[V]);
+                G.UV2.Add(Source->UV2[V]);G.UV3.Add(Source->UV3[V]);
                 G.Colors.Add(Source->Colors[V]);
             }
             for (int32 I : Fragment.Indices)
@@ -2740,7 +2799,7 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
             }
             M.Component->SetRelativeTransform(G.Frame);
             for (int32 J = 0; J < D.Fragments.Num(); ++J)
-                M.Component->UpdateMeshSection(J, V, N, D.UVs, TArray<FColor>(), TArray<FProcMeshTangent>());
+                M.Component->UpdateMeshSection(J, V, N, D.UVs, D.DetailUVs, D.UV2, D.UV3, D.Colors, TArray<FProcMeshTangent>());
         }
     }
     Impl->Actions.RemoveAll([](const auto& A){return !A.Hold && A.Time>=A.Duration;});
@@ -3113,7 +3172,7 @@ UMaterialInterface *FAC2AssetLibrary::ParticleMaterial(uint32 Id)
     bool Masked = false;
     auto I = Impl->MaterialImage(Id, Tint, Masked);
     auto Native = Impl->Material(Id);
-    bool Additive = Native && !Native->Layers.IsEmpty() && Native->Layers[0].DestBlend == 2;
+    bool Additive = Native && !Native->Layers.IsEmpty() && Native->Layers[FImpl::SelectedLayer(*Native)].DestBlend == 2;
     auto *Parent = LoadObject<UMaterialInterface>(
         nullptr, Additive ? TEXT("/Game/AC2/Materials/M_AC2ParticleAdd.M_AC2ParticleAdd")
                           : TEXT("/Game/AC2/Materials/M_AC2Particle.M_AC2Particle"));
@@ -3332,6 +3391,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
     FAC2DatEntry Entry;
     TArray<FAC2DecodedEntity> Entities;
     int32 CellCount = 0;
+    uint32 LightInfo=0; bool HasLightInfo=false;
     Impl->PlacedBounds.Reset();
     TGuardValue<const FAC2LandBlock *> EnvironmentContext(Impl->EnvironmentLand, &Land);
     Impl->EnvironmentTerrainMask = Defs.TerrainMask;
@@ -3344,7 +3404,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         if (Bits & 1)
             R.Word();
         CellCount = R.Count(0, 16384);
-        R.Take(8);
+        LightInfo=R.Word(); R.Word();
         const int32 N = R.Count(4, 16384);
         for (int32 I = 0; I < N && R.Good; ++I)
             Entities.Add(Impl->Entity(R));
@@ -3354,8 +3414,20 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
             Impl->Stats.SkippedEntities += N;
             return;
         }
+        const uint32 Links=R.Word();
+        if(Links==0) {
+            TMap<uint32,TArray<uint8>> Props; Impl->SkipProperties(R,&Props);
+            if(const auto* A=Props.Find(0x4000005a); A && A->Num()>=4)
+                Impl->InteriorAmbient=AC2NativeRGB(FColor(AC2::U32(A->GetData())));
+        } else Impl->Warn(Id,TEXT("unsupported entity links before interior lighting properties"));
     }
-    // Entity links and the block property/stab tail do not affect these draw placements.
+    Impl->CellLights.Reset();
+    if(LightInfo && Cell.Read(LightInfo,B,Error)) {
+        FAC2AssetReader R(MoveTemp(B));
+        HasLightInfo=DecodeAC2CellLights(R,LightInfo,[&](FAC2AssetReader& Reader,TMap<uint32,TArray<uint8>>& Props){Impl->SkipProperties(Reader,&Props);},Impl->CellLights);
+        if(!HasLightInfo) Impl->Warn(LightInfo,TEXT("unsupported static light record"));
+        else UE_LOG(LogTemp,Display,TEXT("AC2 native cell lighting %08X: %d lights"),LightInfo,Impl->CellLights.Num());
+    }
     for (FAC2DecodedEntity E : Entities)
     {
         ++Impl->Stats.Entities;
@@ -3380,6 +3452,10 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         if (!R.Good || !G)
             continue;
         const FTransform Frame(Rotation, Origin + Offset);
+        // A shared room mesh can appear in many cells with different light lists.
+        G=MakeShared<FAC2DecodedGeometry>(*G);
+        G->Colors=BakeAC2CellLights(CellId,FTransform(Rotation,Origin),G->Vertices,G->Normals,
+            Impl->CellLights,Impl->InteriorAmbient,HasLightInfo);
         FBox Bounds(ForceInit);
         for (const auto &V : G->Vertices)
             Bounds += Frame.TransformPosition(V);
@@ -3505,7 +3581,7 @@ void FAC2AssetLibrary::UpdateMaterials(float Time)
 {
     for (auto &M : Impl->MovingMaterials)
     {
-        for (uint32 Stage = 0; Stage < 2; ++Stage)
+        for (uint32 Stage = 0; Stage < 4; ++Stage)
         {
         FMatrix UV = FMatrix::Identity;
         for (const auto &Op : M.Modifiers)
@@ -3536,9 +3612,13 @@ void FAC2AssetLibrary::UpdateMaterials(float Time)
                 T = Op.Matrix;
             UV = UV * T;
         }
-        M.Material->SetVectorParameterValue(Stage ? TEXT("AC2DetailUVRowU") : TEXT("AC2UVRowU"),
+        M.Material->SetVectorParameterValue(*FString::Printf(TEXT("AC2Stage%dRowU"),Stage),
                                             FLinearColor(UV.M[0][0], UV.M[1][0], UV.M[3][0], 0));
-        M.Material->SetVectorParameterValue(Stage ? TEXT("AC2DetailUVRowV") : TEXT("AC2UVRowV"),
+        M.Material->SetVectorParameterValue(*FString::Printf(TEXT("AC2Stage%dRowV"),Stage),
+                                            FLinearColor(UV.M[0][1], UV.M[1][1], UV.M[3][1], 0));
+        if(Stage==0)M.Material->SetVectorParameterValue(TEXT("AC2UVRowU"),
+                                            FLinearColor(UV.M[0][0], UV.M[1][0], UV.M[3][0], 0));
+        if(Stage==0)M.Material->SetVectorParameterValue(TEXT("AC2UVRowV"),
                                             FLinearColor(UV.M[0][1], UV.M[1][1], UV.M[3][1], 0));
         }
     }
@@ -3555,4 +3635,24 @@ void FAC2AssetLibrary::RetainRuntimeMaterials(const TArray<UMaterialInterface *>
     Impl->Objects.RemoveAll(
         [&](const auto &Object) { return !Materials.Contains(Cast<UMaterialInterface>(Object.Get())); });
     Impl->MovingMaterials.RemoveAll([&](const auto &Entry) { return !Materials.Contains(Entry.Material); });
+}
+
+FAC2PreviewLighting FAC2AssetLibrary::InteriorLighting(uint32 Cell,const FVector& LocalViewer) const
+{
+    FAC2PreviewLighting Result; Result.Ambient=Impl->InteriorAmbient;
+    for(const auto& L:Impl->CellLights) if(!L.Sunlight && L.Vertices.Contains(Cell)) Result.Lights.Add(L);
+    Result.Lights.Sort([&](const FAC2PreviewLight& A,const FAC2PreviewLight& B){return FVector::DistSquared(A.Position,LocalViewer)<FVector::DistSquared(B.Position,LocalViewer);});
+    if(Result.Lights.Num()>8)Result.Lights.SetNum(8);
+    return Result;
+}
+
+bool FAC2AssetLibrary::LightingCellAt(const FVector& Position,uint32& Cell) const
+{
+    if(!InteriorAt(Position))return false;
+    if(InteriorCellAt(Position,Cell))return true;
+    double Smallest=DBL_MAX;
+    for(const auto& B:Impl->InteriorBounds)
+        if(Impl->CellVisible(B.Key) && B.Value.IsInsideOrOn(Position) && B.Value.GetVolume()<Smallest)
+        { Cell=B.Key; Smallest=B.Value.GetVolume(); }
+    return Smallest<DBL_MAX;
 }

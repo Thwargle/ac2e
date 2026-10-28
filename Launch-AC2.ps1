@@ -74,7 +74,7 @@ $materialRoot = Join-Path $PSScriptRoot 'Unreal/Content/AC2/Materials'
 $missingMaterials = @('M_AC2Opaque','M_AC2Cutout','M_AC2Sky','M_AC2SkyAlpha','M_AC2SkyAdd','M_AC2Water','M_AC2Far','M_AC2Particle','M_AC2SceneryAlpha','M_AC2SceneryAdd','M_AC2ParticleAdd','M_AC2Grass','M_AC2UIOpaque','M_AC2UICutout','M_AC2UIAlpha','M_AC2UIAdd') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $materialVersion = Join-Path $materialRoot 'template-version.txt'
 $needsMaterialUpdate = !(Test-Path -LiteralPath $materialVersion)
-if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '8' }
+if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '9' }
 if ($missingMaterials -or $needsMaterialUpdate) {
     & $commandlet $project -run=AC2Inspect -MaterialsOnly -unattended -nop4 -NullRHI -stdout -FullStdOutLogOutput
     if ($LASTEXITCODE -ne 0) { throw "AC2 material preparation failed ($LASTEXITCODE)." }
@@ -164,6 +164,12 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     $smokeExit = $process.ExitCode
     $process.Dispose()
     if ($smokeExit -ne 0) { throw "AC2 render smoke test failed ($smokeExit). See Unreal/Saved/Logs." }
+    if ($EnvironmentSmoke) {
+        $environmentLog = Join-Path $PSScriptRoot 'Unreal/Saved/Logs/AC2Environment-smoke.log'
+        if (Select-String -LiteralPath $environmentLog -Pattern 'Failed to compile Material|error X[0-9]+:' -Quiet) {
+            throw 'AC2 environment shaders failed to compile. See Unreal/Saved/Logs/AC2Environment-smoke.log.'
+        }
+    }
     if (!(Test-Path -LiteralPath $smokeReport) -or (Get-Content -LiteralPath $smokeReport -Raw).Trim() -ne 'PASS') {
         throw 'AC2 exited without completing the render smoke test. See Unreal/Saved/Logs.'
     }

@@ -227,11 +227,12 @@ bool FAC2WorldPropTest::RunTest(const FString&)
         TInlineComponentArray<UProceduralMeshComponent*> CrystalMeshes(Actor);
         for(auto* Mesh:CrystalMeshes) for(int32 S=0;S<Mesh->GetNumSections();++S)
             if(auto* Material=Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(S)))
-                if(Material->K2_GetScalarParameterValue(TEXT("AC2DetailOperation"))==8.f)
+                if(Material->K2_GetVectorParameterValue(TEXT("AC2Stage1Color")).R==8.f)
                 {
                     HasCrystalLayer=true;
-                    TestNotNull(TEXT("Crystal's second native texture is bound"),Material->K2_GetTextureParameterValue(TEXT("AC2Detail")));
-                    TestEqual(TEXT("Crystal's independently transformed stage samples native UV0"),Material->K2_GetScalarParameterValue(TEXT("AC2DetailChannel")),0.f);
+                    TestNotNull(TEXT("Crystal's second native texture is bound"),Material->K2_GetTextureParameterValue(TEXT("AC2Stage1Texture")));
+                    TestEqual(TEXT("Crystal's independently transformed stage samples native UV0"),Material->K2_GetVectorParameterValue(TEXT("AC2Stage1UV")).R,0.f);
+                    TestEqual(TEXT("High-detail final diffuse stage is selected"),Material->K2_GetVectorParameterValue(TEXT("AC2Stage2Color")).R,5.f);
                 }
         TestTrue(TEXT("Crystal uses native signed-add layer"),HasCrystalLayer);
         Actor->Destroy();

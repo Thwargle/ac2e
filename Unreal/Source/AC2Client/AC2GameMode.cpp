@@ -1,4 +1,6 @@
 #include "AC2GameMode.h"
+#include "AC2NativeMaterial.h"
+#include "AC2CellLighting.h"
 #include "AC2CreatureCatalog.h"
 #include "AC2Explorer.h"
 #include "AC2CharacterUI.h"
@@ -571,6 +573,11 @@ void AAC2GameMode::Tick(float Delta)
                                                            FCollisionObjectQueryParams(ECC_WorldStatic), Q);
     }
     auto K = Sky->Lighting();
+    FAC2PreviewLighting NativeLights;
+    NativeLights.Ambient=AC2NativeRGB(K.AmbientColor.ToFColorSRGB())*K.Ambient;
+    FAC2PreviewLight NativeSun; NativeSun.Directional=true; NativeSun.Direction=K.LightDirection();
+    NativeSun.Diffuse=AC2NativeRGB(K.DirectColor.ToFColorSRGB()); NativeSun.Intensity=K.Direct; NativeLights.Lights.Add(NativeSun);
+    UpdateAC2WorldLighting(GetWorld(),NativeLights,[&](const FVector& Position,FAC2PreviewLighting& Lights){return Stream->InteriorLighting(Position,Lights);});
     EffectSync -= Delta;
     if (EffectSync <= 0)
     {

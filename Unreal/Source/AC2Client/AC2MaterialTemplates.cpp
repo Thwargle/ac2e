@@ -1,4 +1,5 @@
 #include "AC2Assets.h"
+#include "AC2NativeMaterial.h"
 #include "Materials/Material.h"
 #if WITH_EDITOR
 #include "Engine/Texture2D.h"
@@ -28,6 +29,9 @@
 bool PrepareAC2Materials(FString &Error)
 {
 #if WITH_EDITOR
+    FString SavedVersion;
+    const FString VersionPath=FPaths::Combine(FPaths::ProjectContentDir(),TEXT("AC2/Materials/template-version.txt"));
+    const bool CurrentVersion=FFileHelper::LoadFileToString(SavedVersion,*VersionPath) && SavedVersion.TrimStartAndEnd()==TEXT("9");
     for (int32 Kind = 0; Kind < 16; ++Kind)
     {
         const bool Preview = Kind >= 12, Grass = Kind == 11, Masked = Kind == 1 || Kind == 13 || Grass, Sky = Kind >= 2 && Kind <= 4;
@@ -58,9 +62,9 @@ bool PrepareAC2Materials(FString &Error)
             Cast<UMaterialExpressionVertexNormalWS>(Existing->GetEditorOnlyData()->Normal.Expression) != nullptr;
         bool NativeDetail = false;
         if (Existing) for (const auto &E : Existing->GetExpressions())
-            if (auto *P = Cast<UMaterialExpressionScalarParameter>(E)) NativeDetail |= P->ParameterName == TEXT("AC2DetailOperation");
+            if (auto *P = Cast<UMaterialExpressionScalarParameter>(E)) NativeDetail |= P->ParameterName == TEXT("AC2NativeStages");
         const bool NativeSpecular = Existing && Cast<UMaterialExpressionScalarParameter>(Existing->GetEditorOnlyData()->Specular.Expression) != nullptr;
-        if (Updated && NativeSpecular && NativeDetail && (!Masked || NativeNormals))
+        if (CurrentVersion && Updated && NativeSpecular && NativeDetail && (!Masked || NativeNormals))
             continue;
         UPackage *Package = CreatePackage(*Path);
         auto *Material = Existing ? Existing : NewObject<UMaterial>(Package, *Name, RF_Public | RF_Standalone);
@@ -125,42 +129,9 @@ bool PrepareAC2Materials(FString &Error)
         Expressions.AddExpression(RowU);
         Expressions.AddExpression(RowV);
         Expressions.AddExpression(UV);
-        auto *DetailCoord = NewObject<UMaterialExpressionTextureCoordinate>(Material);
-        DetailCoord->CoordinateIndex = 1;
-        auto *DetailRowU = NewObject<UMaterialExpressionVectorParameter>(Material);
-        DetailRowU->ParameterName = TEXT("AC2DetailUVRowU"); DetailRowU->DefaultValue = FLinearColor(1,0,0,0);
-        auto *DetailRowV = NewObject<UMaterialExpressionVectorParameter>(Material);
-        DetailRowV->ParameterName = TEXT("AC2DetailUVRowV"); DetailRowV->DefaultValue = FLinearColor(0,1,0,0);
-        auto *Channel = NewObject<UMaterialExpressionScalarParameter>(Material);
-        Channel->ParameterName = TEXT("AC2DetailChannel"); Channel->DefaultValue = 0;
-        auto *DetailUV = NewObject<UMaterialExpressionCustom>(Material);
-        DetailUV->OutputType = CMOT_Float2;
-        DetailUV->Code = TEXT("float3 t=float3(lerp(UV0,UV1,Channel),1); return float2(dot(t,RowU),dot(t,RowV));");
-        auto DetailInput = [](UMaterialExpressionCustom *Node, const TCHAR *Name, UMaterialExpression *Value) {
-            FCustomInput I; I.InputName=Name; I.Input.Connect(0,Value); Node->Inputs.Add(I);
-        };
-        DetailInput(DetailUV,TEXT("UV0"),Coord); DetailInput(DetailUV,TEXT("UV1"),DetailCoord); DetailInput(DetailUV,TEXT("Channel"),Channel);
-        DetailInput(DetailUV,TEXT("RowU"),DetailRowU); DetailInput(DetailUV,TEXT("RowV"),DetailRowV);
-        auto *Detail = NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
-        Detail->ParameterName = TEXT("AC2Detail"); Detail->Texture = Texture->Texture;
-        Detail->Coordinates.Connect(0,DetailUV);
-        auto *Operation = NewObject<UMaterialExpressionScalarParameter>(Material);
-        Operation->ParameterName = TEXT("AC2DetailOperation"); Operation->DefaultValue = 0;
-        auto *Combine = NewObject<UMaterialExpressionCustom>(Material);
-        Combine->OutputType = CMOT_Float3;
-        // Retail fixed-function texture arithmetic takes place before sRGB
-        // conversion. In particular ADDSIGNED uses a gamma-space 0.5 midpoint.
-        Combine->Code = TEXT("if(Op<2) return Base; "
-            "float3 a=select(Base<=0.0031308,Base*12.92,1.055*pow(max(Base,0),1.0/2.4)-0.055); "
-            "float3 b=select(Detail<=0.0031308,Detail*12.92,1.055*pow(max(Detail,0),1.0/2.4)-0.055); "
-            "float3 c=a; if(Op==2)c=b; if(Op==4)c=a*b; if(Op==5)c=2*a*b; if(Op==6)c=4*a*b; "
-            "if(Op==7)c=a+b; if(Op==8)c=a+b-0.5; if(Op==9)c=2*(a+b-0.5); if(Op==10)c=b-a; if(Op==11)c=a+b-a*b; "
-            "c=saturate(c); return select(c<=0.04045,c/12.92,pow((c+0.055)/1.055,2.4));");
-        DetailInput(Combine,TEXT("Base"),Texture); DetailInput(Combine,TEXT("Detail"),Detail); DetailInput(Combine,TEXT("Op"),Operation);
-        for (UMaterialExpression *E : {(UMaterialExpression*)DetailCoord,(UMaterialExpression*)DetailRowU,
-            (UMaterialExpression*)DetailRowV,(UMaterialExpression*)Channel,(UMaterialExpression*)DetailUV,
-            (UMaterialExpression*)Detail,(UMaterialExpression*)Operation,(UMaterialExpression*)Combine}) Expressions.AddExpression(E);
-        Multiply->A.Connect(0,Combine);
+        auto Native=BuildAC2NativeStages(Material,Texture,Tint,Preview);
+        Multiply->A.Connect(0,Native.Color);
+        Multiply->B.Expression=nullptr; Multiply->ConstB=1;
         if (Masked)
         {
             // Retail lights both sides of a leaf/grass card using the authored
@@ -174,33 +145,27 @@ bool PrepareAC2Materials(FString &Error)
         }
         if (Kind == 1 || Kind == 8 || Kind == 9 || Grass || Preview)
         {
-            auto *Opacity = NewObject<UMaterialExpressionVectorParameter>(Material);
-            Opacity->ParameterName = TEXT("AC2Opacity");
-            Opacity->DefaultValue = FLinearColor(1, 0, 0, 0);
             auto *Alpha = NewObject<UMaterialExpressionCustom>(Material);
             Alpha->OutputType = CMOT_Float1;
-            Alpha->Code = TEXT("return saturate(TexAlpha * Opacity.x + Opacity.y);");
-            Alpha->Inputs.SetNum(2);
+            Alpha->Code = TEXT("return saturate(TexAlpha);");
+            Alpha->Inputs.SetNum(1);
             Alpha->Inputs[0].InputName = TEXT("TexAlpha");
-            Alpha->Inputs[0].Input.Connect(4, Texture);
-            Alpha->Inputs[1].InputName = TEXT("Opacity");
-            Alpha->Inputs[1].Input.Connect(0, Opacity);
-            Expressions.AddExpression(Opacity);
+            Alpha->Inputs[0].Input.Connect(0, Native.Alpha);
             Expressions.AddExpression(Alpha);
             if (Grass)
             {
                 auto *Position = NewObject<UMaterialExpressionWorldPosition>(Material);
                 auto *Camera = NewObject<UMaterialExpressionCameraPositionWS>(Material);
-                Alpha->Code = TEXT("float a=saturate(TexAlpha*Opacity.x+Opacity.y); "
+                Alpha->Code = TEXT("float a=saturate(TexAlpha); "
                                    "float fade=saturate((8000.0-distance(World,Camera))/2000.0); "
                                    "float3 p=floor(World*0.5); "
                                    "float noise=frac(sin(dot(p,float3(12.9898,78.233,37.719)))*43758.5453); "
                                    "return a*step(noise+0.00001,fade);");
-                Alpha->Inputs.SetNum(4);
-                Alpha->Inputs[2].InputName = TEXT("World");
-                Alpha->Inputs[2].Input.Connect(0, Position);
-                Alpha->Inputs[3].InputName = TEXT("Camera");
-                Alpha->Inputs[3].Input.Connect(0, Camera);
+                Alpha->Inputs.SetNum(3);
+                Alpha->Inputs[1].InputName = TEXT("World");
+                Alpha->Inputs[1].Input.Connect(0, Position);
+                Alpha->Inputs[2].InputName = TEXT("Camera");
+                Alpha->Inputs[2].Input.Connect(0, Camera);
                 Expressions.AddExpression(Position);
                 Expressions.AddExpression(Camera);
             }
@@ -236,7 +201,7 @@ bool PrepareAC2Materials(FString &Error)
         }
         else
             Material->GetEditorOnlyData()->BaseColor.Connect(0, Multiply);
-        if (Preview)
+        if (Preview || Kind==0 || Kind==1 || Kind==8 || Kind==9 || Grass)
         {
             // Retail UIScene uses vertex diffuse lighting and gamma-space RGB,
             // not UE's physical light units, ACES tone curve or automatic exposure.
@@ -284,14 +249,25 @@ bool PrepareAC2Materials(FString &Error)
             Interpolate->Input.Connect(0, Lighting); Expressions.AddExpression(Interpolate);
             auto* NativeColor = NewObject<UMaterialExpressionCustom>(Material);
             NativeColor->OutputType = CMOT_Float3;
-            Input(NativeColor, TEXT("Albedo"), Texture); Input(NativeColor, TEXT("Tint"), Tint);
+            Input(NativeColor, TEXT("Albedo"), Native.Color); Input(NativeColor, TEXT("Tint"), Tint);
             Input(NativeColor, TEXT("Light"), Interpolate);
-            NativeColor->Code = TEXT(
-                "float3 tex=select(Albedo<=0.0031308,Albedo*12.92,1.055*pow(max(Albedo,0),1.0/2.4)-0.055);"
-                "float3 c=saturate(tex*Light);"
-                "return select(c<=0.04045,c/12.92,pow((c+0.055)/1.055,2.4));");
+            // Evaluate the cascade after native vertex lighting, as retail does.
+            for(auto &In:Native.Stages->Inputs) if(In.InputName==TEXT("Diffuse")) In.Input.Connect(0,Interpolate);
+            Input(NativeColor,TEXT("Original"),Texture);
+            for(auto &In:Native.Stages->Inputs) if(In.InputName==TEXT("Enabled"))Input(NativeColor,TEXT("Enabled"),In.Input.Expression);
+            NativeColor->Code = TEXT("if(Enabled>0.5)return Albedo; "
+                "float3 tex=select(Original<=0.0031308,Original*12.92,1.055*pow(max(Original,0),1.0/2.4)-0.055); "
+                "float3 c=saturate(tex*Light); return select(c<=0.04045,c/12.92,pow((c+0.055)/1.055,2.4));");
             Expressions.AddExpression(NativeColor);
-            Material->GetEditorOnlyData()->BaseColor.Expression = nullptr;
+            if(Preview) Material->GetEditorOnlyData()->BaseColor.Expression=nullptr;
+            else {
+                auto* Legacy=NewObject<UMaterialExpressionCustom>(Material); Legacy->OutputType=CMOT_Float3;
+                Input(Legacy,TEXT("Color"),Multiply);
+                for(auto& In:Native.Stages->Inputs) if(In.InputName==TEXT("Enabled"))Input(Legacy,TEXT("Enabled"),In.Input.Expression);
+                Legacy->Code=TEXT("return Enabled>0.5?float3(0,0,0):Color;"); Expressions.AddExpression(Legacy);
+                Material->GetEditorOnlyData()->BaseColor.Connect(0,Legacy);
+                NativeColor->Code=TEXT("return Enabled>0.5?Albedo:float3(0,0,0);");
+            }
             Material->GetEditorOnlyData()->EmissiveColor.Connect(0, NativeColor);
         }
         if (Kind == 5)
@@ -346,7 +322,7 @@ bool PrepareAC2Materials(FString &Error)
         UE_LOG(LogTemp, Display, TEXT("AC2 material template saved: %s"), *File);
     }
     if (!FFileHelper::SaveStringToFile(
-            TEXT("8"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
+            TEXT("9"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
     {
         Error = TEXT("Cannot save AC2 material template version");
         return false;

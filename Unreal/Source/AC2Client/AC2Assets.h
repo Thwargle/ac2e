@@ -103,6 +103,8 @@ class FAC2AssetLibrary : public FGCObject
     TArray<FColor> TerrainPixels(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Land,
         const FAC2TerrainMesh &Mesh, int32 Resolution);
     FAC2BlockWater Water() const;
+    bool LightingCellAt(const FVector& Position,uint32& Cell) const;
+    FAC2PreviewLighting InteriorLighting(uint32 Cell,const FVector& LocalViewer) const;
     const TArray<FAC2ParticleSource> &ParticleSources() const;
     bool InteriorAt(const FVector &Position) const;
     bool InteriorCellAt(const FVector& Feet,uint32& Cell) const;

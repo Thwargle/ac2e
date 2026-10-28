@@ -577,3 +577,19 @@ TArray<FAC2ParticleSource> FAC2WorldStream::ParticleSources(const FVector &Viewe
         Out.SetNum(48);
     return Out;
 }
+
+
+bool FAC2WorldStream::InteriorLighting(const FVector& Viewer,FAC2PreviewLighting& Lighting) const
+{
+    uint32 Cell=0;
+    // Query each model's room; using the player's current cell lights nearby
+    // objects with the wrong cell lists across portals and walls.
+    for(const auto& Pair:Impl->Blocks) {
+        const FVector Origin=AC2::BlockOrigin(Pair.Key);
+        if(!Pair.Value->Assets->LightingCellAt(Viewer-Origin,Cell))continue;
+        Lighting=Pair.Value->Assets->InteriorLighting(Cell,Viewer-Origin);
+        for(auto& L:Lighting.Lights)L.Position+=Origin;
+        return true;
+    }
+    return false;
+}

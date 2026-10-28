@@ -8,10 +8,16 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#if WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 
 // Reproducible DAT scenery views. No account service or persistent character store.
 void AAC2GameMode::EnvironmentSmokeTick(float Delta)
 {
+#if WITH_EDITOR
+    if(GShaderCompilingManager && GShaderCompilingManager->IsCompiling())return;
+#endif
     SmokeTime += Delta; StageTime += Delta;
     if (EnvironmentModel) { EnvironmentModel->Animate(SmokeTime,0); EnvironmentModel->UpdateMaterials(SmokeTime); }
     auto Finish = [&](bool OK) {

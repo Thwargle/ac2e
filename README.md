@@ -21,8 +21,47 @@ Distant terrain uses a filtered atlas of native terrain surfaces instead of flat
 palette colors. Closed dungeons stream their own block without waiting for unrelated
 neighboring dungeons. High-resolution DAT surfaces remain preferred where available.
 Terrain cells explicitly marked without frills remain bare; this does not synthesize
-grass or replace missing retail assets. General multi-pass material/shader parity
-and full environment content coverage remain unfinished.
+grass or replace missing retail assets.
+
+The material renderer selects authored high-detail fixed-function alternatives,
+evaluates up to four color/alpha texture stages in native order, retains four UV
+sets and independent animated UV transforms, and honors per-axis texture wrapping.
+World objects use native ambient/directional lighting before texture combination;
+interior meshes bake the DAT `CLightInfo` per-cell vertex lists and attenuation.
+Nearby actors/props use up to eight static lights from their own room. High-resolution
+surfaces are preferred for every texture stage. Empty optional texture stages follow
+[Direct3D's cascade termination rule](https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-blending).
+
+This is not full renderer parity: authored programmable pixel shaders, generated
+reflection/projected coordinates, framebuffer distortion/refraction, additional
+simultaneous material passes, and native shadow/fog parity remain unfinished.
+Unsupported programmable materials use an authored fixed-function alternative when
+one exists; otherwise the log identifies the base-texture fallback. Terrain/water
+and standalone particle templates still use their existing rendering paths.
+
+## Missing content records
+
+`AC2E/data/world/legions-world.report.json` now lists the exact record IDs and DAT
+archives missing from each excluded server placement. These are different from
+texture-resolution problems: `highres.dat` cannot supply absent entity, visual, or
+room definitions. In the current local installation, 22 excluded placements refer
+to 13 distinct entity records, 8 visual records, and 5 room records; several
+placements share missing definitions.
+
+If you have another complete patched Legions installation or backup, keep it in a
+separate folder and compare it without replacing any active DATs:
+
+```powershell
+python .\Network\prepare_content.py "Asheron's Call 2 - Legions" .\Saved\candidate-content.tsv --compare-dat "D:\AC2-backup"
+```
+
+The companion `.report.json` lists both recovered placements and currently working
+placements that the candidate would lose. This is a record-presence check, not proof
+of dependency/protocol compatibility. Keep each installation's DAT set together;
+a higher-resolution texture archive alone does not repair missing world records.
+Without a matching source record, leave the placement excluded or create a clearly
+identified replacement after its identity/location is established. The local
+`C:\Turbine\AC2` copy was checked and recovers none of these 22 placements.
 
 ## First checkout
 
@@ -108,6 +147,7 @@ as is the R test-spawn shortcut. Developer console commands remain available.
 .\Launch-AC2.ps1 -EnvironmentSmoke -SkipBuild
 .\Build-AC2Network.ps1 -Test
 python .\Network\test_environment_content.py
+python -m unittest discover -s Network -p test_prepare_content.py
 python .\AC2E\test_export_source.py
 ```
 

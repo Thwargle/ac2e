@@ -7,18 +7,24 @@ struct FAC2AlphaStage
 {
     uint32 Operation = 1, Argument1 = 1, Argument2 = 1;
 };
-inline float EvaluateAC2Alpha(TConstArrayView<FAC2AlphaStage> Stages, float TextureAlpha, float DiffuseAlpha = 1,
-                              float FactorAlpha = 1)
+template<typename FTextureAlpha>
+inline float EvaluateAC2AlphaStages(TConstArrayView<FAC2AlphaStage> Stages, FTextureAlpha Sample, float DiffuseAlpha,
+                                    float FactorAlpha)
 {
     float Current = DiffuseAlpha;
-    for (const auto &Stage : Stages)
+    for (int32 Index=0;Index<Stages.Num();++Index)
     {
-        if (Stage.Operation == 1)
-            break;
+        const auto &Stage=Stages[Index];
+        const float TextureAlpha=Sample(Index);
+        // Colour-stage disable controls cascade termination. Preserve CURRENT
+        // for an inactive alpha operation, matching the shader implementation.
+        if (Stage.Operation <= 1)
+            continue;
         auto Argument = [&](uint32 Arg) {
             float V = (Arg & 15) == 0   ? DiffuseAlpha
                       : (Arg & 15) == 2 ? TextureAlpha
                       : (Arg & 15) == 3 ? FactorAlpha
+                      : (Arg & 15) == 4 ? 0.f
                                         : Current;
             return (Arg & 16) ? 1 - V : V;
         };
@@ -76,4 +82,12 @@ inline float EvaluateAC2Alpha(TConstArrayView<FAC2AlphaStage> Stages, float Text
         Current = FMath::Clamp(Current, 0.f, 1.f);
     }
     return Current;
+}
+inline float EvaluateAC2Alpha(TConstArrayView<FAC2AlphaStage> Stages, float TextureAlpha, float DiffuseAlpha=1, float FactorAlpha=1)
+{
+    return EvaluateAC2AlphaStages(Stages,[&](int32){return TextureAlpha;},DiffuseAlpha,FactorAlpha);
+}
+inline float EvaluateAC2Alpha(TConstArrayView<FAC2AlphaStage> Stages, TConstArrayView<float> TextureAlpha, float DiffuseAlpha=1, float FactorAlpha=1)
+{
+    return EvaluateAC2AlphaStages(Stages,[&](int32 I){return TextureAlpha.IsValidIndex(I)?TextureAlpha[I]:1.f;},DiffuseAlpha,FactorAlpha);
 }
