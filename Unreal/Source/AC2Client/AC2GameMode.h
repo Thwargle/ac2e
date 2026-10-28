@@ -46,6 +46,7 @@ class AAC2GameMode : public AGameModeBase
     bool PlaceCharacter();
     bool InWorld() const { return !FrontEnd; }
     bool CellVisible(uint32 Cell) const { return Stream && Stream->CellVisible(Cell); }
+    bool EnvironmentStats(uint32 Block, FAC2AssetStats& Stats) const { return Stream && Stream->BlockStats(Block,Stats); }
     bool OpenWorld();
     void LeaveWorld();
     void ShowLogin(const FString& Message=FString());

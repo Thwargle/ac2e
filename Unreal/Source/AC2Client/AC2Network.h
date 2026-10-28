@@ -92,6 +92,9 @@ class FAC2Network
     TUniquePtr<class FAC2MapData> PortalMap;
     bool PortalMapAttempted = false;
     bool SmokeWorldProps(FString& Error) const;
+    void FoliageSmokeTick();
+    int32 FoliageSmokeStep=0;
+    double FoliageSmokeNext=0;
     struct FObject
     {
         uint32 Visual = 0, Cell = 0, Entity = 0;

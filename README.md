@@ -23,6 +23,13 @@ neighboring dungeons. High-resolution DAT surfaces remain preferred where availa
 Terrain cells explicitly marked without frills remain bare; this does not synthesize
 grass or replace missing retail assets.
 
+For the installed Legions DATs, the reported positions **43.6N, 6.6W** (`77B7`)
+and **42.5N, 6.5W** (`77B5`) select the empty scenery record `02000090`.
+Those blocks have no procedural grass group; their bare ground is preserved.
+Nearby **41.5N, 6.4W** (`77B4`) has authored grass. The connected foliage test
+checks each destination's own uploaded batches, rather than counting grass in
+neighboring streamed blocks: `python Network/test_foliage_ui.py`.
+
 The world now uses the same neutral display-gamma path as character portraits,
 without a second ACES/bloom/exposure pass over native material colors. Desktop
 rendering stays at 100% resolution with spatial AA and anisotropic filtering.

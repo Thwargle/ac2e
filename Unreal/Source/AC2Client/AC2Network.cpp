@@ -1456,6 +1456,10 @@ void FAC2Network::Tick(float Delta)
             SmokeEntered = true;
             Enter(Mode->Characters.Characters[0].Id);
         }
+        if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_FOLIAGE_SMOKE"))==TEXT("1"))
+        {
+            FoliageSmokeTick();return;
+        }
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_SHOP_SMOKE"))==TEXT("1"))
         {
             auto Finish=[&](bool OK,const FString& Error){

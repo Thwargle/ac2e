@@ -477,6 +477,13 @@ int32 FAC2WorldStream::SceneryCount() const
         Count += P.Value->Assets->Stats().ScenerySections;
     return Count;
 }
+bool FAC2WorldStream::BlockStats(uint32 Block, FAC2AssetStats& Stats) const
+{
+    const auto* B=Impl->Blocks.Find(Block);
+    if(!B || !(*B)->Complete)return false;
+    Stats=(*B)->Assets->Stats();
+    return true;
+}
 int32 FAC2WorldStream::GrassBatchCount() const
 {
     int32 N = 0;

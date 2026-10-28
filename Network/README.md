@@ -171,6 +171,13 @@ traces through closed/open/closed states. Its three native-asset placements are
 test fixtures, not additions to the production world. Screenshots are written to
 `Unreal/Saved/Screenshots/AC2Shop-native.png` and `AC2Door-{closed,open}.png`.
 
+`Network/test_foliage_ui.py` uses a disposable server on 19392/19393 and visits
+the reported bare locations in `77B7` and `77B5`, then native grass in `77B4`.
+It checks per-block generated/resolved/uploaded foliage, depth-tested materials
+and high-resolution texture availability after server-authorized map travel.
+The bare samples must stay bare; no substitute scenery is generated. Screenshots
+and logs are preserved under `Saved/AC2NetworkTests/foliage-*` for visual review.
+
 ## Sources and licenses
 
 AC2E derives from Pyrealium commit `7c2e856840b04302d1c78f057dcf8094326472a4`. The separate bridge and both upstream projects are AGPL-3.0-only. Their original notices and licenses are preserved. AC2E's account backend serves the corresponding server source at `/source.zip`; rebuild it after source changes. The original game DATs are read-only local inputs and are excluded from the source archive. See `AC2E/AC2E-README.md` and `Network/Bridge/NOTICE.md`.

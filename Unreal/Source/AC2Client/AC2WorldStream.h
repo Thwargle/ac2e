@@ -41,6 +41,7 @@ class FAC2WorldStream
     int32 ResidentCount() const;
     int32 SceneryCount() const;
     int32 GrassBatchCount() const;
+    bool BlockStats(uint32 Block, FAC2AssetStats& Stats) const;
     bool GrassDepthReady() const;
     const FAC2LandscapeDefs &Landscape() const;
     void SetTerrainCollision(bool Enabled);
