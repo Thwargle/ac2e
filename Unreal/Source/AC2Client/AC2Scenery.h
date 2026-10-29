@@ -7,6 +7,9 @@ struct FAC2SceneryPlacement
     uint32 Object = 0;
     FTransform Transform;
     bool Frill = false;
+    // Only zero-offset, land-relative frills may fit their cards to the ground.
+    // Water, frame-relative and deliberately elevated decorations keep their authored height.
+    bool GroundFrill = false;
 };
 
 // Native deterministic SceneFile groups with bounded client frills.
@@ -29,4 +32,5 @@ namespace AC2
 {
 double SceneRandom(uint32 X, uint32 Y);
 double PlacementRandom(uint32 X, uint32 Y, uint32 Key);
+FQuat ScenePlaneRotation(const FVector &Normal);
 } // namespace AC2

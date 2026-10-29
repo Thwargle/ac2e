@@ -11,11 +11,21 @@ class UMaterialInterface;
 class USceneComponent;
 class AActor;
 
+struct FAC2TextureSource
+{
+    uint32 Texture = 0, Surface = 0;
+    FIntPoint DecodedSize = FIntPoint::ZeroValue, UploadedSize = FIntPoint::ZeroValue;
+    bool HighResolution = false;
+};
+
 struct FAC2AssetStats
 {
     bool HighResAvailable = false;
     int32 FrillsGenerated = 0, FrillsResolved = 0, FrillBatches = 0, FrillBatchesUploaded = 0;
     int32 GrassDepthSections = 0, GrassSortedSections = 0;
+    int32 GrassGroundContacts = 0;
+    double GrassMaxRootGapBefore = 0, GrassMaxRootGapAfter = 0; // centimetres, base vertices and edges
+    TArray<FAC2TextureSource> GrassTextures;
     int32 Textures = 0;
     int32 HighResSurfaces = 0;
     int32 TerrainMaterials = 0;

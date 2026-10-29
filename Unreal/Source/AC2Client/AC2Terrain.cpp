@@ -63,6 +63,105 @@ bool FAC2LandBlock::Decode(uint32 ExpectedId, TConstArrayView<uint8> Bytes, FStr
     return true;
 }
 
+bool SampleAC2Terrain(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block,
+                      double X, double Y, double &Height, FVector &Normal)
+{
+    if (Defs.Heights.Num() != 256 || Block.Heights.Num() != 289 || Block.CellInfo.Num() != 289 ||
+        !FMath::IsFinite(X) || !FMath::IsFinite(Y) || X < 0 || Y < 0 || X >= 160 || Y >= 160)
+        return false;
+    const int32 IX = int32(X / 10), IY = int32(Y / 10);
+    const double FX = X / 10 - IX, FY = Y / 10 - IY;
+    const int32 Indices[] = {IX * 17 + IY, (IX + 1) * 17 + IY, IX * 17 + IY + 1, (IX + 1) * 17 + IY + 1};
+    FVector V[4];
+    for (int32 I = 0; I < 4; ++I)
+    {
+        if ((Block.CellInfo[Indices[I]] & Defs.TerrainMask) == 0x1e)
+            return false;
+        V[I] = FVector((IX + (I & 1)) * 10, (IY + (I >> 1)) * 10, Defs.Heights[Block.Heights[Indices[I]]]);
+    }
+    const uint32 GX = (Block.Id >> 24) * 16 + IX, GY = ((Block.Id >> 16) & 255) * 16 + IY;
+    const bool Cut = (((GY * GX * GX * 0x39557fcf - 0x4a6506db) * GY - GX * 0x6b3c5f11 + 0xae226ceb) & 0x80000000) != 0;
+    int32 A = 0, B = 1, C = 2;
+    if (Cut) { B = FX >= FY ? 1 : 3; C = FX >= FY ? 3 : 2; }
+    else if (FX + FY > 1) { A = 3; B = 2; C = 1; }
+    Normal = FVector::CrossProduct(V[B] - V[A], V[C] - V[A]).GetSafeNormal();
+    if (Normal.Z <= SMALL_NUMBER)
+        return false;
+    Height = V[A].Z - (Normal.X * (X - V[A].X) + Normal.Y * (Y - V[A].Y)) / Normal.Z;
+    return true;
+}
+
+FVector FitAC2GroundFrill(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block,
+                         const FTransform &Frame, const FVector &Vertex, double BaseZ)
+{
+    FVector Result = Frame.TransformPosition(Vertex);
+    const FVector Base = Frame.TransformPosition(FVector(Vertex.X, Vertex.Y, BaseZ));
+    double Height;
+    FVector Normal;
+    if (SampleAC2Terrain(Defs, Block, Base.X / 100., Base.Y / 100., Height, Normal))
+        Result.Z += Height * 100. - Base.Z;
+    return Result;
+}
+
+TArray<FVector> SplitAC2GroundFrill(const FAC2LandBlock &Block, const FTransform &Frame,
+                                  const FVector &A, const FVector &B, const FVector &C, double BaseZ)
+{
+    const FVector Base[] = {Frame.TransformPosition(FVector(A.X,A.Y,BaseZ))/100.,
+        Frame.TransformPosition(FVector(B.X,B.Y,BaseZ))/100.,
+        Frame.TransformPosition(FVector(C.X,C.Y,BaseZ))/100.};
+    auto Point = [&](const FVector &W) { return Base[0]*W.X+Base[1]*W.Y+Base[2]*W.Z; };
+    FBox Bounds(ForceInit);
+    for(const FVector &V:Base)Bounds+=V;
+    TArray<FVector> Planes;
+    const int32 X0=FMath::Clamp(FMath::FloorToInt(Bounds.Min.X/10),0,15);
+    const int32 X1=FMath::Clamp(FMath::FloorToInt(Bounds.Max.X/10),0,15);
+    const int32 Y0=FMath::Clamp(FMath::FloorToInt(Bounds.Min.Y/10),0,15);
+    const int32 Y1=FMath::Clamp(FMath::FloorToInt(Bounds.Max.Y/10),0,15);
+    for(int32 X=X0+1;X<=X1;++X)Planes.Add(FVector(1,0,X*10));
+    for(int32 Y=Y0+1;Y<=Y1;++Y)Planes.Add(FVector(0,1,Y*10));
+    for(int32 X=X0;X<=X1;++X)for(int32 Y=Y0;Y<=Y1;++Y)
+    {
+        const uint32 GX=(Block.Id>>24)*16+X, GY=((Block.Id>>16)&255)*16+Y;
+        const bool Cut=(((GY*GX*GX*0x39557fcf-0x4a6506db)*GY-GX*0x6b3c5f11+0xae226ceb)&0x80000000)!=0;
+        Planes.AddUnique(Cut?FVector(1,-1,(X-Y)*10):FVector(1,1,(X+Y+1)*10));
+    }
+    TArray<TArray<FVector>> Pieces;
+    Pieces.Add({FVector(1,0,0),FVector(0,1,0),FVector(0,0,1)});
+    for(const FVector &Plane:Planes)
+    {
+        auto Distance=[&](const FVector &W){const FVector P=Point(W);return P.X*Plane.X+P.Y*Plane.Y-Plane.Z;};
+        const int32 Count=Pieces.Num();
+        for(int32 I=0;I<Count;++I)
+        {
+            const auto Polygon=Pieces[I];
+            double Low=0,High=0;
+            for(const FVector &W:Polygon){const double D=Distance(W);Low=FMath::Min(Low,D);High=FMath::Max(High,D);}
+            // A card lying along an edge belongs to one piece, not both neighbours.
+            if(Low>=-1.e-8 || High<=1.e-8)continue;
+            TArray<FVector> Front,Back;
+            FVector Prev=Polygon.Last(); double PrevD=Distance(Prev);
+            for(const FVector &W:Polygon)
+            {
+                const double D=Distance(W);
+                if((D>0 && PrevD<0)||(D<0 && PrevD>0))
+                {
+                    const FVector Hit=FMath::Lerp(Prev,W,PrevD/(PrevD-D));
+                    Front.Add(Hit);Back.Add(Hit);
+                }
+                if(D>=0)Front.Add(W);
+                if(D<=0)Back.Add(W);
+                Prev=W;PrevD=D;
+            }
+            Pieces[I]=MoveTemp(Front);Pieces.Add(MoveTemp(Back));
+        }
+    }
+    TArray<FVector> Triangles;
+    for(const auto &Polygon:Pieces)
+        for(int32 I=1;I+1<Polygon.Num();++I)
+            Triangles.Append({Polygon[0],Polygon[I],Polygon[I+1]});
+    return Triangles;
+}
+
 FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block)
 {
     FAC2TerrainMesh Mesh;

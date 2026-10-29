@@ -30,6 +30,18 @@ Nearby **41.5N, 6.4W** (`77B4`) has authored grass. The connected foliage test
 checks each destination's own uploaded batches, rather than counting grass in
 neighboring streamed blocks: `python Network/test_foliage_ui.py`.
 
+Slope-aligned scenery uses the original client's plane orientation. Zero-offset,
+land-relative grass also gets a render-only ground-contact correction: wide cards
+split at terrain boundaries and follow the ground under their bases instead of
+bridging over creases. Texture coordinates interpolate across the new edges.
+This fitting is an Unreal rendering correction, not a change to native
+instance placement. Scene choices, density, slope exclusions and empty areas stay
+DAT-authored; water-relative and deliberately elevated frills are not fitted.
+The foliage regression includes **41.6N, 6.5W**, checks card-base contact and verifies
+that grass texture `40000008` uploads surface `41000034` from `highres.dat` at
+**1024 x 256**, rather than the **512 x 128** portal version. The authored grass
+group excludes slopes over roughly 15 degrees, so some patch boundaries remain.
+
 The world now uses the same neutral display-gamma path as character portraits,
 without a second ACES/bloom/exposure pass over native material colors. Desktop
 rendering stays at 100% resolution with spatial AA and anisotropic filtering.

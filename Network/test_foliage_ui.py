@@ -1,7 +1,8 @@
 """Connected foliage regression at the reported Arwic-area coordinates.
 
 Uses a disposable server/store; the user's server and characters are untouched.
-The first two samples must remain bare, as authored; the third must render frills.
+The first two samples must remain bare, as authored; the other two verify frills,
+ground contact and the actual highres grass surface uploaded by the client.
 """
 import json
 import os
@@ -55,11 +56,14 @@ def main():
             result.check_returncode()
             text = (run / 'client.log').read_text(encoding='utf-8', errors='replace')
             assert 'AC2 foliage network smoke PASS' in text
-            for block in ('77B7', '77B5', '77B4'):
-                assert f'AC2 connected foliage {block}:' in text
+            for block in ('77B7', '77B5', '77B4', '77B4-slope'):
+                assert f'AC2 connected foliage {block[:4]}:' in text
                 shutil.copyfile(ROOT / f'Unreal/Saved/Screenshots/AC2Foliage-network-{block}.png', run / f'{block}.png')
-            (run / 'result.json').write_text(json.dumps({'result': 'PASS', 'blocks': ['77B7', '77B5', '77B4']}))
-            print('PASS: connected authored foliage and empty scenes. Captures:', run)
+            assert 'texture=40000008 surface=41000034 uploaded=1024x256 highres=1' in text
+            (run / 'result.json').write_text(json.dumps({'result': 'PASS',
+                'samples': ['77B7', '77B5', '77B4', '77B4-slope'],
+                'grass_texture': '40000008', 'grass_surface': '41000034', 'grass_size': [1024, 256]}))
+            print('PASS: connected authored foliage, ground contact, highres texture and empty scenes. Captures:', run)
         finally:
             if peer:
                 peer.close()

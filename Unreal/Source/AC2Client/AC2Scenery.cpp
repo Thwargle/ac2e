@@ -1,5 +1,19 @@
 #include "AC2Scenery.h"
 #include "AC2AssetReader.h"
+#include "Math/RotationMatrix.h"
+
+FQuat AC2::ScenePlaneRotation(const FVector &Normal)
+{
+    // Plane::OrientFrameToPlane fixes forward in the Y/Z plane. The shortest
+    // arc from up to N twists a compound slope's frame and its child offsets.
+    if (FMath::Abs(Normal.X) < .0002 && FMath::Abs(Normal.Y) < .0002)
+        return FQuat::Identity;
+    const FVector Up = FMath::Abs(Normal.Z) > .0002 ? Normal.GetSafeNormal()
+        : FVector(Normal.X, Normal.Y, 0).GetSafeNormal();
+    const FVector Forward = FMath::Abs(Normal.Z) > .0002
+        ? FVector(0, Normal.Z, -Normal.Y).GetSafeNormal() : FVector::UpVector;
+    return FRotationMatrix::MakeFromYZ(Forward, Up).ToQuat();
+}
 
 double AC2::SceneRandom(uint32 X, uint32 Y)
 {
@@ -182,48 +196,16 @@ struct FAC2SceneryGenerator::FImpl
     }
     bool Ground(double X, double Y, double &Height, FVector &Normal, bool &Road) const
     {
-        if (X < 0 || Y < 0 || X >= 160 || Y >= 160)
+        if (!SampleAC2Terrain(*Defs, *Land, X, Y, Height, Normal))
             return false;
         const int32 IX = int32(X / 10), IY = int32(Y / 10);
-        const double FX = X / 10 - IX, FY = Y / 10 - IY;
         const int32 Indices[4] = {IX * 17 + IY, (IX + 1) * 17 + IY, IX * 17 + IY + 1, (IX + 1) * 17 + IY + 1};
-        FVector V[4];
         Road = false;
         for (int32 I = 0; I < 4; ++I)
         {
-            if ((Land->CellInfo[Indices[I]] & Defs->TerrainMask) == 0x1e)
-                return false;
             // Conservative road exclusion for this preview: reserve the whole marked quad.
             Road |= ((Land->CellInfo[Indices[I]] >> 24) & 15) != 0;
-            V[I] = FVector((IX + (I & 1)) * 10, (IY + (I >> 1)) * 10, Defs->Heights[Land->Heights[Indices[I]]]);
         }
-        const uint32 XG = (Land->Id >> 24) * 16 + IX, YG = ((Land->Id >> 16) & 255) * 16 + IY;
-        const bool Cut =
-            (((YG * XG * XG * 0x39557fcf - 0x4a6506db) * YG - XG * 0x6b3c5f11 + 0xae226ceb) & 0x80000000) != 0;
-        int32 A = 0, B = 1, C = 2;
-        if (Cut)
-        {
-            if (FX >= FY)
-            {
-                B = 1;
-                C = 3;
-            }
-            else
-            {
-                B = 3;
-                C = 2;
-            }
-        }
-        else if (FX + FY > 1)
-        {
-            A = 3;
-            B = 2;
-            C = 1;
-        }
-        Normal = FVector::CrossProduct(V[B] - V[A], V[C] - V[A]).GetSafeNormal();
-        if (Normal.Z <= SMALL_NUMBER)
-            return false;
-        Height = V[A].Z - (Normal.X * (X - V[A].X) + Normal.Y * (Y - V[A].Y)) / Normal.Z;
         return true;
     }
     void Scene(uint32 Id, const FTransform &Pose, uint32 Seed, int32 Depth)
@@ -243,7 +225,8 @@ struct FAC2SceneryGenerator::FImpl
                 FrillJobs.Add({F->Frill, Pose, FrillSeed, GX, GY});
         }
     }
-    void Nodes(const TArray<FSceneNode> &List, const FTransform &Pose, uint32 Seed, int32 Depth, uint32 Max)
+    void Nodes(const TArray<FSceneNode> &List, const FTransform &Pose, uint32 Seed, int32 Depth, uint32 Max,
+               bool GroundFrill = false)
     {
         uint32 Emitted = 0;
         for (int32 I = 0; I < List.Num() && Work < 50000 && Output->Num() < OutputLimit; ++I)
@@ -256,6 +239,7 @@ struct FAC2SceneryGenerator::FImpl
                 P.Object = N.Id;
                 P.Transform = Pose;
                 P.Frill = Frills;
+                P.GroundFrill = GroundFrill;
                 Output->Add(P);
                 ++Emitted;
             }
@@ -381,11 +365,13 @@ struct FAC2SceneryGenerator::FImpl
             Degrees += FMath::RadiansToDegrees(FMath::Atan2(Normal.X, Normal.Y)) + 180;
         FQuat Q(FVector::UpVector, -FMath::DegreesToRadians(Degrees));
         if (G.Align)
-            Q = FQuat::FindBetweenNormals(FVector::UpVector, Normal) * Q;
+            Q = AC2::ScenePlaneRotation(Normal) * Q;
         else if (G.RotateOrientation && !G.Orient)
             Q = Base.GetRotation() * Q;
         const int32 Before = Output->Num();
-        Nodes(G.Children, FTransform(Q, P, Scale), Seed, Depth + 1, G.MaxObjects);
+        const bool GroundFrill = Frills && G.Align && G.HeightRelative == 0 &&
+            FMath::Abs(G.MinLoc.Z) < .0002 && FMath::Abs(G.MaxLoc.Z) < .0002;
+        Nodes(G.Children, FTransform(Q, P, Scale), Seed, Depth + 1, G.MaxObjects, GroundFrill);
         if (!Frills && Output->Num() > Before && Radius > 0)
             Blockers.Add(FBox(P - FVector(Radius), P + FVector(Radius)));
     }

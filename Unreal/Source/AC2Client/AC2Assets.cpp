@@ -290,6 +290,7 @@ struct FAC2AssetLibrary::FImpl
     int32 NextDraw = 0;
     bool Preparing = false, SkyMode = false;
     bool Animating = false, Decoration = false;
+    bool GroundDecoration = false;
     struct FAnimatedMesh
     {
         TSharedPtr<FAC2DecodedGeometry> Data;
@@ -414,6 +415,8 @@ struct FAC2AssetLibrary::FImpl
     FAC2WaterSource WaterSource;
     FAC2BlockWater BlockWater;
     const FAC2LandBlock *EnvironmentLand = nullptr;
+    const FAC2LandscapeDefs *EnvironmentDefs = nullptr;
+    FVector EnvironmentOffset = FVector::ZeroVector;
     uint32 EnvironmentTerrainMask = 0;
     TMap<uint32, TArray<FVector>> InteriorPositions;
     TMap<uint32, FBox> InteriorBounds;
@@ -1051,7 +1054,16 @@ struct FAC2AssetLibrary::FImpl
                 auto *MID = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
                 Objects.Add(MID);
                 if (I)
-                    MID->SetTextureParameterValue(TEXT("Albedo"), Texture(*I,false,0,0,true));
+                {
+                    auto *T = Texture(*I,false,0,0,true);
+                    MID->SetTextureParameterValue(TEXT("Albedo"), T);
+                    FAC2TextureSource Source;
+                    Source.Texture = I->Id; Source.Surface = I->SurfaceId;
+                    Source.DecodedSize = FIntPoint(I->W,I->H);
+                    Source.UploadedSize = T ? FIntPoint(T->GetSizeX(),T->GetSizeY()) : FIntPoint::ZeroValue;
+                    Source.HighResolution = I->HighResolution;
+                    Stats.GrassTextures.Add(Source);
+                }
                 MID->SetVectorParameterValue(TEXT("Tint"), Tint);
                 Result = MID;
             }
@@ -2179,18 +2191,98 @@ struct FAC2AssetLibrary::FImpl
     void QueueFrill(const TSharedPtr<FAC2DecodedGeometry> &Source, const FTransform &Frame)
     {
         const FVector P = Frame.GetLocation();
+        TArray<FVector> Vertices;
+        auto Fields = Source;
+        double MinZ = TNumericLimits<double>::Max();
+        for (const FVector &V : Source->Vertices) MinZ = FMath::Min(MinZ,V.Z);
+        // Native grass meshes can start a few centimetres above their origin.
+        // Keep buried roots buried, but seat raised bases on the rendered terrain.
+        const double BaseZ = FMath::Max(0.,MinZ);
+        FTransform LocalFrame = Frame;
+        LocalFrame.AddToTranslation(-EnvironmentOffset);
+        for (const FVector &V : Source->Vertices)
+        {
+            FVector World = Frame.TransformPosition(V);
+            if (GroundDecoration && EnvironmentDefs && EnvironmentLand)
+            {
+                const FVector Fitted = FitAC2GroundFrill(*EnvironmentDefs,*EnvironmentLand,LocalFrame,V,BaseZ);
+                if (FMath::Abs(V.Z-BaseZ) < .01)
+                {
+                    double Height; FVector Normal;
+                    if (SampleAC2Terrain(*EnvironmentDefs,*EnvironmentLand,Fitted.X/100.,Fitted.Y/100.,Height,Normal))
+                    {
+                        ++Stats.GrassGroundContacts;
+                        Stats.GrassMaxRootGapBefore = FMath::Max(Stats.GrassMaxRootGapBefore,
+                            World.Z-EnvironmentOffset.Z-Height*100.);
+                        Stats.GrassMaxRootGapAfter = FMath::Max(Stats.GrassMaxRootGapAfter,FMath::Abs(Fitted.Z-Height*100.));
+                    }
+                }
+                World = Fitted + EnvironmentOffset;
+            }
+            if (!GroundDecoration || !EnvironmentDefs || !EnvironmentLand)
+                Vertices.Add(World);
+        }
+        if (GroundDecoration && EnvironmentDefs && EnvironmentLand)
+        {
+            Fields = MakeShared<FAC2DecodedGeometry>();
+            for (const auto &Fragment : Source->Fragments)
+            {
+                FAC2DecodedFragment F;
+                F.Material = Fragment.Material;
+                for (int32 T = 0; T < Fragment.Indices.Num(); T += 3)
+                {
+                    const int32 IA=Fragment.Indices[T],IB=Fragment.Indices[T+1],IC=Fragment.Indices[T+2];
+                    const FVector A=Source->Vertices[IA],B=Source->Vertices[IB],C=Source->Vertices[IC];
+                    const auto Cuts=SplitAC2GroundFrill(*EnvironmentLand,LocalFrame,A,B,C,BaseZ);
+                    for (int32 Triangle=0;Triangle<Cuts.Num();Triangle+=3)
+                    {
+                        FVector Card[3], World[3];
+                        for(int32 Corner=0;Corner<3;++Corner)
+                        {
+                            const FVector W=Cuts[Triangle+Corner];
+                            Card[Corner]=A*W.X+B*W.Y+C*W.Z;
+                            World[Corner]=FitAC2GroundFrill(*EnvironmentDefs,*EnvironmentLand,LocalFrame,Card[Corner],BaseZ);
+                            F.Indices.Add(Vertices.Add(World[Corner]+EnvironmentOffset));
+                            auto UV=[&](const TArray<FVector2D>& U){return U[IA]*W.X+U[IB]*W.Y+U[IC]*W.Z;};
+                            Fields->UVs.Add(UV(Source->UVs)); Fields->DetailUVs.Add(UV(Source->DetailUVs));
+                            Fields->UV2.Add(UV(Source->UV2)); Fields->UV3.Add(UV(Source->UV3));
+                            const FColor CA=Source->Colors[IA],CB=Source->Colors[IB],CC=Source->Colors[IC];
+                            auto Channel=[&](uint8 X,uint8 Y,uint8 Z){return uint8(FMath::Clamp(FMath::RoundToInt(X*W.X+Y*W.Y+Z*W.Z),0,255));};
+                            Fields->Colors.Add(FColor(Channel(CA.R,CB.R,CC.R),Channel(CA.G,CB.G,CC.G),
+                                Channel(CA.B,CB.B,CC.B),Channel(CA.A,CB.A,CC.A)));
+                        }
+                        // Check the rendered base edges as well as mesh corners.
+                        for(int32 Edge=0;Edge<3;++Edge)
+                        {
+                            const int32 Next=(Edge+1)%3;
+                            if(FMath::Abs(Card[Edge].Z-BaseZ)>.00001 || FMath::Abs(Card[Next].Z-BaseZ)>.00001)continue;
+                            const FVector Mid=(World[Edge]+World[Next])*.5;
+                            double Height; FVector Normal;
+                            if(SampleAC2Terrain(*EnvironmentDefs,*EnvironmentLand,World[Edge].X/100.,World[Edge].Y/100.,Height,Normal) &&
+                                SampleAC2Terrain(*EnvironmentDefs,*EnvironmentLand,World[Next].X/100.,World[Next].Y/100.,Height,Normal) &&
+                                SampleAC2Terrain(*EnvironmentDefs,*EnvironmentLand,Mid.X/100.,Mid.Y/100.,Height,Normal))
+                            {
+                                ++Stats.GrassGroundContacts;
+                                Stats.GrassMaxRootGapAfter=FMath::Max(Stats.GrassMaxRootGapAfter,FMath::Abs(Mid.Z-Height*100.));
+                            }
+                        }
+                    }
+                }
+                Fields->Fragments.Add(MoveTemp(F));
+            }
+        }
         // FrillRender::RefreshFrillMesh replaces every vertex normal with the
         // placement's transformed up axis. Card normals make neighboring blades
         // alternate between bright and dark and can point under the ground.
         const FVector FrillNormal = Frame.GetUnitAxis(EAxis::Z);
         const int32 X = FMath::Clamp(FMath::FloorToInt(P.X / 2000), 0, 7);
         const int32 Y = FMath::Clamp(FMath::FloorToInt(P.Y / 2000), 0, 7);
-        for (const auto &Fragment : Source->Fragments)
+        for (const auto &Fragment : Fields->Fragments)
         {
             const uint64 Key = (uint64(X * 8 + Y) << 32) | Fragment.Material;
             int32 *Existing = FrillBatches.Find(Key);
             int32 Index = Existing ? *Existing : -1;
-            if (Index < 0 || Draws[Index].Mesh->Vertices.Num() + Source->Vertices.Num() > 60000)
+            if (Index < 0 || Draws[Index].Mesh->Vertices.Num() + Vertices.Num() > 60000)
             {
                 auto Batch = MakeShared<FAC2DecodedGeometry>();
                 FAC2DecodedFragment F;
@@ -2204,14 +2296,14 @@ struct FAC2AssetLibrary::FImpl
             auto &Draw = Draws[Index];
             auto &G = *Draw.Mesh;
             const int32 Base = G.Vertices.Num();
-            for (int32 V = 0; V < Source->Vertices.Num(); ++V)
+            for (int32 V = 0; V < Vertices.Num(); ++V)
             {
-                G.Vertices.Add(Frame.TransformPosition(Source->Vertices[V]) - Draw.Transform.GetLocation());
+                G.Vertices.Add(Vertices[V] - Draw.Transform.GetLocation());
                 G.Normals.Add(FrillNormal);
-                G.UVs.Add(Source->UVs[V]);
-                G.DetailUVs.Add(Source->DetailUVs[V]);
-                G.UV2.Add(Source->UV2[V]);G.UV3.Add(Source->UV3[V]);
-                G.Colors.Add(Source->Colors[V]);
+                G.UVs.Add(Fields->UVs[V]);
+                G.DetailUVs.Add(Fields->DetailUVs[V]);
+                G.UV2.Add(Fields->UV2[V]);G.UV3.Add(Fields->UV3[V]);
+                G.Colors.Add(Fields->Colors[V]);
             }
             for (int32 I : Fragment.Indices)
                 G.Fragments[0].Indices.Add(Base + I);
@@ -3404,6 +3496,8 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
     uint32 LightInfo=0; bool HasLightInfo=false;
     Impl->PlacedBounds.Reset();
     TGuardValue<const FAC2LandBlock *> EnvironmentContext(Impl->EnvironmentLand, &Land);
+    TGuardValue<const FAC2LandscapeDefs *> GroundContext(Impl->EnvironmentDefs, &Defs);
+    TGuardValue<FVector> OffsetContext(Impl->EnvironmentOffset, Offset);
     Impl->EnvironmentTerrainMask = Defs.TerrainMask;
     if (Cell.Find(Id, Entry, Error) && Cell.Read(Id, B, Error))
     {
@@ -3560,6 +3654,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
     for (const auto &P : Placements)
     {
         Impl->Decoration = P.Frill;
+        Impl->GroundDecoration = P.GroundFrill;
         Impl->Stats.FrillsGenerated += P.Frill ? 1 : 0;
         FAC2DecodedEntity E;
         E.Data = P.Object;
@@ -3575,6 +3670,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
             ++Impl->Stats.SkippedEntities;
     }
     Impl->Decoration = false;
+    Impl->GroundDecoration = false;
     Impl->Stats.UnsupportedSceneGroups = Impl->Scenery->UnsupportedGroups;
     UE_LOG(LogTemp, Display,
            TEXT("AC2 environment %04X: grass %d/%d in %d batches; highres %d/%d textures; world FX %d"),

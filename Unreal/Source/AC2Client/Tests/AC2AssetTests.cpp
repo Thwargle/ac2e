@@ -96,6 +96,91 @@ bool FAC2SceneryHashTest::RunTest(const FString &Parameters)
     TestEqual(TEXT("unsigned wrapping"), AC2::PlacementRandom(4095, 4095, 0xffffffff), 0.92742919921875);
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2GrassGroundTest, "AC2.Data.GrassGroundContact",
+                                 EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FAC2GrassGroundTest::RunTest(const FString &Parameters)
+{
+    const FVector N = FVector(.15,-.18,1).GetSafeNormal();
+    const FQuat Q = AC2::ScenePlaneRotation(N);
+    TestTrue(TEXT("native up follows the terrain plane"),Q.RotateVector(FVector::UpVector).Equals(N,1.e-6));
+    TestTrue(TEXT("native forward stays in YZ, including a compound slope"),
+        Q.RotateVector(FVector(0,1,0)).Equals(FVector(0,N.Z,-N.Y).GetSafeNormal(),1.e-6));
+    TestTrue(TEXT("flat native plane is identity"),AC2::ScenePlaneRotation(FVector::UpVector).Equals(FQuat::Identity));
+    TestFalse(TEXT("compound native basis is not the shortest arc"),
+        Q.Equals(FQuat::FindBetweenNormals(FVector::UpVector,N),1.e-4));
+
+    FAC2LandscapeDefs Defs;
+    Defs.CellSize=20; Defs.CellsPerBlock=8; Defs.Subdivisions=2; Defs.TerrainMask=0x7f;
+    Defs.Heights.SetNum(256);
+    for(int32 I=0;I<256;++I)Defs.Heights[I]=float(I);
+    FAC2LandBlock Land;
+    Land.Id=0x77b4ffff; Land.Heights.SetNum(289); Land.CellInfo.Init(0,289);
+    // A two-metre rise followed by a plateau: a rigid four-metre card floats
+    // when it crosses the crease even though its scene anchor is on the ground.
+    for(int32 X=0;X<17;++X)for(int32 Y=0;Y<17;++Y)Land.Heights[X*17+Y]=X?2:0;
+    double Height; FVector Normal;
+    TestTrue(TEXT("ground anchor exists"),SampleAC2Terrain(Defs,Land,9,5,Height,Normal));
+    const FTransform Frame(AC2::ScenePlaneRotation(Normal),FVector(900,500,Height*100));
+    const FVector Root(200,0,6.36), Top(200,0,116.36);
+    const FVector Before=Frame.TransformPosition(Root);
+    TestTrue(TEXT("root spans the next terrain triangle"),SampleAC2Terrain(Defs,Land,Before.X/100,Before.Y/100,Height,Normal));
+    TestTrue(TEXT("unfitted native card lifts above the crease"),Before.Z-Height*100>10);
+    const FVector After=FitAC2GroundFrill(Defs,Land,Frame,Root,Root.Z);
+    TestTrue(TEXT("root is on the rendered terrain"),FMath::Abs(After.Z-Height*100)<1.e-6);
+    TestEqual(TEXT("fitting preserves authored X"),After.X,Before.X);
+    TestEqual(TEXT("fitting preserves authored Y"),After.Y,Before.Y);
+    const FVector FittedTop=FitAC2GroundFrill(Defs,Land,Frame,Top,Root.Z);
+    TestTrue(TEXT("card retains its height and lean"),
+        (FittedTop-After).Equals(Frame.TransformVector(Top-Root),1.e-6));
+    TestTrue(TEXT("deterministic fitting"),FitAC2GroundFrill(Defs,Land,Frame,Root,Root.Z).Equals(After));
+
+    const FVector Left(-200,0,Root.Z);
+    const auto Cuts=SplitAC2GroundFrill(Land,Frame,Left,Root,Top,Root.Z);
+    TestTrue(TEXT("wide cards split across terrain creases"),Cuts.Num()>3);
+    for(int32 T=0;T<Cuts.Num();T+=3)
+    {
+        FVector Local[3],World[3];
+        for(int32 J=0;J<3;++J)
+        {
+            const FVector W=Cuts[T+J];
+            Local[J]=Left*W.X+Root*W.Y+Top*W.Z;
+            World[J]=FitAC2GroundFrill(Defs,Land,Frame,Local[J],Root.Z);
+        }
+        for(int32 J=0;J<3;++J)
+        {
+            const int32 K=(J+1)%3;
+            if(FMath::Abs(Local[J].Z-Root.Z)>1.e-6 || FMath::Abs(Local[K].Z-Root.Z)>1.e-6)continue;
+            const FVector Mid=(World[J]+World[K])*.5;
+            TestTrue(TEXT("split base edge lies on terrain"),SampleAC2Terrain(Defs,Land,Mid.X/100,Mid.Y/100,Height,Normal));
+            TestTrue(TEXT("edge cannot bridge above or through a crease"),FMath::Abs(Mid.Z-Height*100)<1.e-6);
+        }
+    }
+
+    const FVector Outside(-2000,0,0);
+    TestEqual(TEXT("card on a grid edge is not duplicated into both cells"),
+        SplitAC2GroundFrill(Land,FTransform(FVector(1000,500,200)),
+            FVector(0,-100,0),FVector(0,100,0),FVector(0,100,100),0).Num(),3);
+    TestTrue(TEXT("outside block has no guessed height"),
+        FitAC2GroundFrill(Defs,Land,Frame,Outside,0).Equals(Frame.TransformPosition(Outside)));
+    Land.CellInfo.Init(0x1e,289);
+    TestFalse(TEXT("cave openings are not ground"),SampleAC2Terrain(Defs,Land,9,5,Height,Normal));
+    TestTrue(TEXT("cave-mouth cards remain untouched"),
+        FitAC2GroundFrill(Defs,Land,Frame,Root,Root.Z).Equals(Before));
+
+    // Sample both sides of every native diagonal against the rendered mesh.
+    Land.CellInfo.Init(0,289);
+    for(int32 X=0;X<17;++X)for(int32 Y=0;Y<17;++Y)Land.Heights[X*17+Y]=(X*X+Y*7)%23;
+    const auto Mesh=BuildAC2TerrainMesh(Defs,Land);
+    for(int32 I=0;I<Mesh.Indices.Num();I+=3)
+    {
+        const FVector Center=(Mesh.Vertices[Mesh.Indices[I]]+Mesh.Vertices[Mesh.Indices[I+1]]+
+            Mesh.Vertices[Mesh.Indices[I+2]])/300.;
+        if(!SampleAC2Terrain(Defs,Land,Center.X,Center.Y,Height,Normal) || FMath::Abs(Height-Center.Z)>.00001)
+        {AddError(TEXT("Ground sampling disagrees with rendered terrain triangles"));break;}
+    }
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2MaterialAlphaTest, "AC2.Data.NativeMaterialOpacity",
                                  EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 bool FAC2MaterialAlphaTest::RunTest(const FString &Parameters)
