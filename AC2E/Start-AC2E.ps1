@@ -27,6 +27,7 @@ $DataDirectory=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFrom
 $server=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
 if($Stop){& $server stop --data $DataDirectory --seconds 20; if($LASTEXITCODE){throw 'Server stop failed.'};return}
 . (Join-Path $PSScriptRoot 'Recover-StaleLock.ps1')
+. (Join-Path $PSScriptRoot 'Find-AccountService.ps1')
 Restore-AC2EStaleLock $DataDirectory 'server.lock'
 if($SkipBuild -and $Rebuild){throw 'Choose either -SkipBuild or -Rebuild.'}
 # The store's native exclusive lock remains authoritative. Only report a live
@@ -89,33 +90,35 @@ $accounts=$null
 try {
     if(!$DevelopmentLogin -and !$ExternalAccounts){
         Restore-AC2EStaleLock $AuthDirectory 'accounts.lock'
-        if(Test-Path -LiteralPath (Join-Path $AuthDirectory 'accounts.lock')){
-            throw 'The account store is already locked. If you intentionally run Start-Accounts.ps1 separately, use -ExternalAccounts with the same AuthDirectory and PublicOrigin.'
+        $existingAccounts=Get-AC2EAccountService $server $AuthDirectory $DataDirectory $PublicOrigin $AccountPort $GameHost $Port
+        if($existingAccounts){
+            Write-Output "Reusing matching account service (PID $existingAccounts) at $PublicOrigin. It will remain running when this game server stops."
+        } else {
+            # Bind-check before spawning, so an unrelated service is never mistaken for ours.
+            $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$AccountPort)
+            try {$probe.Start()} finally {$probe.Stop()}
+            New-Item -ItemType Directory -Path $AuthDirectory -Force | Out-Null
+            $accountArgs=@('account-web','--auth-data',$AuthDirectory,'--data',$DataDirectory,
+                '--web-bind',"127.0.0.1:$AccountPort",'--public-origin',$PublicOrigin,
+                '--public-host',$GameHost,'--public-port',"$Port")
+            # Arguments are Windows argv values, never shell commands. Reject quotes/newlines
+            # rather than allowing paths or endpoints to change argument boundaries.
+            if($accountArgs | Where-Object {$_ -match '["\r\n]'} ) {throw 'Invalid account-service argument.'}
+            $quotedArgs=($accountArgs | ForEach-Object {'"'+$_.TrimEnd('\')+'"'}) -join ' '
+            $accounts=Start-Process -FilePath $server -ArgumentList $quotedArgs -PassThru -WindowStyle Hidden `
+                -RedirectStandardOutput (Join-Path $AuthDirectory 'service.log') -RedirectStandardError (Join-Path $AuthDirectory 'service-error.log')
+            $ready=$false
+            for($attempt=0;$attempt -lt 50;$attempt++){
+                $accounts.Refresh()
+                if($accounts.HasExited){throw "Account service failed. See $AuthDirectory\service-error.log"}
+                try {
+                    $health=Invoke-RestMethod -Uri "http://127.0.0.1:$AccountPort/health" -TimeoutSec 1
+                    if($health.status -eq 'ok'){$ready=$true;break}
+                } catch {}
+                Start-Sleep -Milliseconds 100
+            }
+            if(!$ready){throw 'Account service did not become ready.'}
         }
-        # Bind-check before spawning, so an unrelated service is never mistaken for ours.
-        $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$AccountPort)
-        try {$probe.Start()} finally {$probe.Stop()}
-        New-Item -ItemType Directory -Path $AuthDirectory -Force | Out-Null
-        $accountArgs=@('account-web','--auth-data',$AuthDirectory,'--data',$DataDirectory,
-            '--web-bind',"127.0.0.1:$AccountPort",'--public-origin',$PublicOrigin,
-            '--public-host',$GameHost,'--public-port',"$Port")
-        # Arguments are Windows argv values, never shell commands. Reject quotes/newlines
-        # rather than allowing paths or endpoints to change argument boundaries.
-        if($accountArgs | Where-Object {$_ -match '["\r\n]'} ) {throw 'Invalid account-service argument.'}
-        $quotedArgs=($accountArgs | ForEach-Object {'"'+$_.TrimEnd('\')+'"'}) -join ' '
-        $accounts=Start-Process -FilePath $server -ArgumentList $quotedArgs -PassThru -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $AuthDirectory 'service.log') -RedirectStandardError (Join-Path $AuthDirectory 'service-error.log')
-        $ready=$false
-        for($attempt=0;$attempt -lt 50;$attempt++){
-            $accounts.Refresh()
-            if($accounts.HasExited){throw "Account service failed. See $AuthDirectory\service-error.log"}
-            try {
-                $health=Invoke-RestMethod -Uri "http://127.0.0.1:$AccountPort/health" -TimeoutSec 1
-                if($health.status -eq 'ok'){$ready=$true;break}
-            } catch {}
-            Start-Sleep -Milliseconds 100
-        }
-        if(!$ready){throw 'Account service did not become ready.'}
     }
     if(!$DevelopmentLogin){Write-Output "Accounts: $PublicOrigin (first sign-in creates an account; passwords require 12-128 characters)."}
     Write-Output "AC2E: UDP $Port and $($Port+1); persistent store $DataDirectory"
