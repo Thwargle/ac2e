@@ -291,6 +291,7 @@ pub fn metadata(portal: &mut Dat, definition: u32) -> io::Result<Metadata> {
         portal.read(profile.appearance)?;
     }
     Ok(Metadata {
+        implement: None,
         icon: profile.appearance,
         physical: profile.physical,
         equipment: None,

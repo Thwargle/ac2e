@@ -39,7 +39,7 @@ struct FAC2WorldStream::FImpl
     TFuture<bool> Future;
     uint32 Center = 0;
     uint32 InteriorCell = 0;
-    bool ExteriorVisible = true, TerrainCollision = true;
+    bool ExteriorVisible = true, TerrainCollision = true, DistantWaterActive = false;
     void ApplyCellContext()
     {
         const auto* Active = Blocks.Find(InteriorCell >> 16);
@@ -50,7 +50,7 @@ struct FAC2WorldStream::FImpl
             B.Assets->SetActiveCell(!InteriorCell || (ExteriorVisible && B.Id != (InteriorCell >> 16)) ? 0 : InteriorCell);
             B.Terrain->SetVisibility(ExteriorVisible);
             B.Terrain->SetCollisionEnabled(ExteriorVisible && TerrainCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
-            if (B.WaterMesh) B.WaterMesh->SetVisibility(ExteriorVisible);
+            if (B.WaterMesh) B.WaterMesh->SetVisibility(ExteriorVisible && !DistantWaterActive);
         }
     }
     int32 UnloadedSinceGC = 0;
@@ -71,6 +71,7 @@ struct FAC2WorldStream::FImpl
         Root->RegisterComponent();
         B.Actor->SetActorLocation(AC2::BlockOrigin(B.Id));
         B.Terrain = NewObject<UProceduralMeshComponent>(B.Actor);
+        B.Terrain->ComponentTags.Add(TEXT("AC2TerrainSurface"));
         B.Actor->AddInstanceComponent(B.Terrain);
         B.Terrain->SetupAttachment(Root);
         B.Terrain->SetCollisionProfileName(TEXT("BlockAll"));
@@ -89,13 +90,10 @@ struct FAC2WorldStream::FImpl
             W->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             W->SetCastShadow(false);
             W->RegisterComponent();
-            const float Z = B.Water.Height * 100, T = 160 / B.Water.Tiling;
-            const FVector2D Base((B.Id >> 8) * T, (B.Id & 255) * T);
-            W->CreateMeshSection(
-                0, {FVector(0, 0, Z), FVector(16000, 0, Z), FVector(0, 16000, Z), FVector(16000, 16000, Z)},
-                {0, 2, 1, 1, 2, 3}, {FVector::UpVector, FVector::UpVector, FVector::UpVector, FVector::UpVector},
-                {Base, Base + FVector2D(T, 0), Base + FVector2D(0, T), Base + FVector2D(T, T)}, TArray<FColor>(),
-                TArray<FProcMeshTangent>(), false);
+            FAC2TerrainMesh Surface;
+            AppendAC2WaterMesh(B.Id,B.Water,FVector::ZeroVector,Surface);
+            W->CreateMeshSection(0,Surface.Vertices,Surface.Indices,Surface.Normals,Surface.UVs,
+                                 TArray<FColor>(),TArray<FProcMeshTangent>(),false);
             W->SetMaterial(0, B.Assets->Material(B.Water.Above, true));
         }
         Blocks.Add(B.Id, MoveTemp(Pending));
@@ -236,13 +234,16 @@ void FAC2WorldStream::Tick(const FVector &Position)
                     UE_LOG(LogTemp, Warning, TEXT("AC2 block %04X unavailable: %s"), Id, *Impl->LastError);
                     continue;
                 }
-                B->Mesh = BuildAC2TerrainMesh(Impl->Defs, B->Land);
                 Impl->Pending = MoveTemp(B);
                 auto *Job = Impl->Pending.Get();
                 const auto Defs = Impl->Defs;
                 const FString Directory = Impl->Directory;
                 auto *State = Impl.Get();
                 Impl->Future = Async(EAsyncExecution::ThreadPool, [Job, Defs, Directory, State]() {
+                    FAC2DatArchive Cell;
+                    if(!Cell.Open(FPaths::Combine(Directory,TEXT("cell_1.dat")),2,State->LastError))return false;
+                    const auto Neighborhood=LoadAC2TerrainNeighborhood(Cell,Job->Id,1);
+                    Job->Mesh=BuildAC2TerrainMesh(Defs,Job->Land,&Neighborhood);
                     return Job->Assets->PrepareBlock(Directory, Defs, Job->Land, Job->Mesh, State->LastError);
                 });
                 break;
@@ -551,6 +552,16 @@ void FAC2WorldStream::SetDrawRadius(int32 VisibleRadius)
         if (B.Value->Actor->IsHidden() != Hidden)
             B.Value->Actor->SetActorHiddenInGame(Hidden);
     }
+}
+
+void FAC2WorldStream::SetDistantWaterActive(bool Active)
+{
+    if(Impl->DistantWaterActive==Active)return;
+    Impl->DistantWaterActive=Active;
+    // One continuous surface owns near and far water. Drawing both translucent
+    // surfaces would darken overlaps whenever the streaming centre moves.
+    for(const auto& Pair:Impl->Blocks)
+        if(Pair.Value->WaterMesh)Pair.Value->WaterMesh->SetVisibility(Impl->ExteriorVisible && !Active);
 }
 bool FAC2WorldStream::InteriorCellAt(const FVector& Feet,uint32& Cell) const
 {

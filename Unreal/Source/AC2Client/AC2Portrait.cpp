@@ -188,7 +188,7 @@ void AAC2Portrait::SetCamera(bool Head, float Rotation)
     Radius *= Body->GetRelativeScale3D().X;
     const float Low = Body->GetRelativeTransform().TransformPosition(Focus.Min).Z;
     const float High = Body->GetRelativeTransform().TransformPosition(Focus.Max).Z;
-    const float Fill = Head ? .8f : .7f;
+    const float Fill = Head ? .8f : FullBodyFill;
     const float Aspect = float(Image->SizeY) / Image->SizeX;
     const float TanH = FMath::Tan(FMath::DegreesToRadians(35.f * .5f));
     const float Vertical = FMath::Max(Target.Z - Low, High - Target.Z);
@@ -208,6 +208,15 @@ void AAC2Portrait::SetCamera(bool Head, float Rotation)
     Lighting.FollowCamera(Capture->GetRelativeRotation().Vector());
     if (Backdrop) Backdrop->SetPreviewLighting(Lighting, GetActorTransform());
     if (Model) Model->SetPreviewLighting(Lighting, GetActorTransform());
+}
+void AAC2Portrait::SetViewport(FIntPoint Size, float BodyFill)
+{
+    if(!Image || Size.X<=0 || Size.Y<=0)return;
+    FullBodyFill=FMath::Clamp(BodyFill,.1f,.95f);
+    Image->ResizeTarget(Size.X,Size.Y);
+    // Fitting before resize uses the creator's aspect ratio and makes the
+    // first inventory portrait smaller than subsequent equipment updates.
+    SetCamera(HeadCamera,Yaw);
 }
 bool AAC2Portrait::AuditFraming(FString& Error) const
 {

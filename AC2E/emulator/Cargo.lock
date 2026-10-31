@@ -350,6 +350,7 @@ dependencies = [
 name = "pyrealium"
 version = "0.1.0"
 dependencies = [
+ "ac2-assets",
  "ac2-core",
  "ac2-dat",
  "ac2-db",

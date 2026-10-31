@@ -20,6 +20,8 @@ struct FAC2FarTerrain::FImpl
         TArray<FColor> Colors;
         TArray<FColor> Pixels;
         TArray<TArray<FColor>> Mips;
+        TMap<uint32,FAC2TerrainMesh> WaterMeshes;
+        int32 WaterTiles = 0;
     };
     UWorld *World = nullptr;
     FString Directory;
@@ -30,6 +32,8 @@ struct FAC2FarTerrain::FImpl
     AActor *Actor = nullptr;
     uint32 Current = MAX_uint32;
     int32 Count = 0;
+    int32 WaterCount = 0, WaterBatches = 0;
+    TMap<uint32,UMaterialInterface*> WaterMaterials;
     void Build(FJob &J, int32 Near)
     {
         J.Pixels.Init(FColor::White, AtlasSize * AtlasSize);
@@ -37,28 +41,39 @@ struct FAC2FarTerrain::FImpl
         FAC2DatArchive Portal;
         FAC2WaterSource Water;
         FString Error;
-        TArray<uint8> B;
         if (!Cell.Open(FPaths::Combine(Directory, TEXT("cell_1.dat")), 2, Error) ||
             !Portal.Open(FPaths::Combine(Directory, TEXT("portal.dat")), 1, Error) || !Water.Load(Portal, Error))
             return;
         const FVector Origin = AC2::BlockOrigin(J.Center);
+        // Reuse a single DAT halo for the whole job, including the outer ring's
+        // normals, rather than rereading eight neighbours for every far tile.
+        const auto Neighborhood=LoadAC2TerrainNeighborhood(Cell,J.Center,FarRadius+1);
         for (int32 X = FMath::Max(0, int32(J.Center >> 8) - FarRadius);
              X <= FMath::Min(254, int32(J.Center >> 8) + FarRadius); ++X)
             for (int32 Y = FMath::Max(0, int32(J.Center & 255) - FarRadius);
                  Y <= FMath::Min(254, int32(J.Center & 255) + FarRadius); ++Y)
             {
                 uint32 Id = (X << 8) | Y;
+                const auto* Found=Neighborhood.Find(Id);
+                if(!Found)continue;
+                const auto& Land=*Found;
+                const FVector Offset = AC2::BlockOrigin(Id) - Origin;
+                const auto W = Water.At(Defs, Land);
+                if(W.Present)
+                {
+                    AppendAC2WaterMesh(Id,W,Offset,J.WaterMeshes.FindOrAdd(W.Above));
+                    ++J.WaterTiles;
+                }
+                // Water spans the whole landscape radius, including nearby
+                // tiles. This removes both the flat-colour LOD boundary and
+                // translucent overlaps while the terrain streamer changes tiles.
                 if (AC2::BlockDistance(Id, J.Center) <= Near)
                     continue;
-                FAC2LandBlock Land;
-                if (!Cell.Read((Id << 16) | 0xffff, B, Error) || !Land.Decode((Id << 16) | 0xffff, B, Error))
-                    continue;
                 ++J.Tiles;
-                const FVector Offset = AC2::BlockOrigin(Id) - Origin;
                 const int32 TX = X - int32(J.Center >> 8) + FarRadius;
                 const int32 TY = Y - int32(J.Center & 255) + FarRadius;
                 constexpr int32 Gutter = 2, ContentPixels = TilePixels - Gutter * 2;
-                const auto NativeMesh = BuildAC2TerrainMesh(Defs, Land);
+                const auto NativeMesh = BuildAC2TerrainMesh(Defs, Land, &Neighborhood);
                 const auto Pixels = Assets->TerrainPixels(Defs, Land, NativeMesh, ContentPixels);
                 for (int32 V = 0; V < TilePixels; ++V)
                     for (int32 U = 0; U < TilePixels; ++U)
@@ -67,7 +82,6 @@ struct FAC2FarTerrain::FImpl
                 const int32 Base = J.Vertices.Num();
                 // 8x8 quads nearby and 4x4 beyond 1.3 km. Full-resolution edge samples
                 // are unnecessary because adjoining far blocks use a short skirt.
-                const auto W = Water.At(Defs, Land);
                 // Coarse diagonals can put the shoreline below the water plane,
                 // erasing narrow banks. Preserve the authored shore triangles.
                 int32 Step = W.Present ? 1 : (AC2::BlockDistance(Id, J.Center) < 8 ? 2 : 4);
@@ -77,13 +91,7 @@ struct FAC2FarTerrain::FImpl
                     {
                         J.Vertices.Add(Offset +
                                        FVector(I * 1000, K * 1000, Defs.Heights[Land.Heights[I * 17 + K]] * 100));
-                        int32 L = FMath::Max(0, I - 1), R = FMath::Min(16, I + 1), D = FMath::Max(0, K - 1),
-                              U = FMath::Min(16, K + 1);
-                        double DX = (Defs.Heights[Land.Heights[R * 17 + K]] - Defs.Heights[Land.Heights[L * 17 + K]]) /
-                                    (10 * (R - L)),
-                               DY = (Defs.Heights[Land.Heights[I * 17 + U]] - Defs.Heights[Land.Heights[I * 17 + D]]) /
-                                    (10 * (U - D));
-                        J.Normals.Add(FVector(-DX, -DY, 1).GetSafeNormal());
+                        J.Normals.Add(NativeMesh.Normals[I*17+K]);
                         J.UVs.Add(FVector2D((TX * TilePixels + Gutter + .5f + I / 16.f * (ContentPixels - 1)) / AtlasSize,
                             (TY * TilePixels + Gutter + .5f + K / 16.f * (ContentPixels - 1)) / AtlasSize));
                         J.Colors.Add(FColor::White);
@@ -110,21 +118,6 @@ struct FAC2FarTerrain::FImpl
                     Skirt(Base + (Row - 1) * Row + I + 1, Base + (Row - 1) * Row + I);
                     Skirt(Base + (I + 1) * Row, Base + I * Row);
                     Skirt(Base + I * Row + Row - 1, Base + (I + 1) * Row + Row - 1);
-                }
-                if (W.Present)
-                {
-                    int32 N = J.Vertices.Num();
-                    float Z = W.Height * 100;
-                    J.Vertices.Append({Offset + FVector(0, 0, Z), Offset + FVector(16000, 0, Z),
-                                       Offset + FVector(0, 16000, Z), Offset + FVector(16000, 16000, Z)});
-                    J.Indices.Append({N, N + 2, N + 1, N + 1, N + 2, N + 3});
-                    for (int32 I = 0; I < 4; ++I)
-                    {
-                        J.Normals.Add(FVector::UpVector);
-                        // Centre tile is omitted (near terrain), leaving a white texel for water tint.
-                        J.UVs.Add(FVector2D(.5f, .5f));
-                        J.Colors.Add(FColor(20, 50, 65));
-                    }
                 }
             }
         // Filter on the worker and stop before unrelated atlas cells merge.
@@ -176,6 +169,7 @@ void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
                 Impl->Actor->Destroy();
             Impl->Actor = Impl->World->SpawnActor<AActor>();
             auto *C = NewObject<UProceduralMeshComponent>(Impl->Actor);
+            C->ComponentTags.Add(TEXT("AC2TerrainSurface"));
             Impl->Actor->SetRootComponent(C);
             Impl->Actor->AddInstanceComponent(C);
             C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -204,9 +198,26 @@ void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
             Texture->UpdateResource();
             Material->SetTextureParameterValue(TEXT("Albedo"), Texture);
             C->SetMaterial(0, Material);
+            for(const auto& Pair:J.WaterMeshes)
+            {
+                auto* Surface=NewObject<UProceduralMeshComponent>(Impl->Actor);
+                Impl->Actor->AddInstanceComponent(Surface);
+                Surface->SetupAttachment(C);
+                Surface->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+                Surface->SetCastShadow(false);
+                Surface->RegisterComponent();
+                const auto& Mesh=Pair.Value;
+                Surface->CreateMeshSection(0,Mesh.Vertices,Mesh.Indices,Mesh.Normals,Mesh.UVs,
+                                          TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                auto*& WaterMaterial=Impl->WaterMaterials.FindOrAdd(Pair.Key);
+                if(!WaterMaterial)WaterMaterial=Impl->Assets->Material(Pair.Key,true);
+                Surface->SetMaterial(0,WaterMaterial);
+            }
             Impl->Current = Id;
             Impl->Count = J.Tiles;
-            UE_LOG(LogTemp, Display, TEXT("AC2 distant terrain: %d tiles, %d triangles"), J.Tiles, J.Indices.Num() / 3);
+            Impl->WaterCount=J.WaterTiles;Impl->WaterBatches=J.WaterMeshes.Num();
+            UE_LOG(LogTemp, Display, TEXT("AC2 distant terrain: %d tiles, %d triangles; native water: %d tiles, %d batches"),
+                   J.Tiles,J.Indices.Num()/3,J.WaterTiles,J.WaterMeshes.Num());
         }
         Impl->Job.Reset();
     }
@@ -227,6 +238,8 @@ uint32 FAC2FarTerrain::Center() const
 {
     return Impl->Current;
 }
+int32 FAC2FarTerrain::WaterTileCount() const {return Impl->WaterCount;}
+int32 FAC2FarTerrain::WaterBatchCount() const {return Impl->WaterBatches;}
 void FAC2FarTerrain::SetVisible(bool Visible)
 {
     if (Impl->Actor) Impl->Actor->SetActorHiddenInGame(!Visible);

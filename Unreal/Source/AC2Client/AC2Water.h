@@ -7,6 +7,9 @@ struct FAC2BlockWater
     uint32 Above = 0, Below = 0, Color = 0xffffffff;
     float Height = 0, Tiling = 10;
 };
+// Shared near/distant surface geometry: native height and world-aligned UVs.
+void AppendAC2WaterMesh(uint32 Block, const FAC2BlockWater& Water,
+                       const FVector& Offset, FAC2TerrainMesh& Mesh);
 class FAC2WaterSource
 {
   public:

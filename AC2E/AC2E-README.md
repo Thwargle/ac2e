@@ -24,8 +24,20 @@ This requires local test map travel (enabled by the default loopback launcher).
 It does not add spawns or bypass interaction distance checks. A verified Edge
 Beetle location is approximately **42.2N, 7.0W**, cell `76B5002B`.
 
-Wild creatures now use native perception and defined wandering controls; their
-movement is shared with nearby players. Corpse loot combines observed item
+The regional wilderness expansion adds 3,495 creature slots in 2,071 managed
+groups, using 326 native creature templates across 21 regions. The prepared world
+now has 9,801 placements; 8,056 outdoor creature points span 3,623 landblocks.
+Two-client network tests found, killed and looted Drudge Outcasts around
+**38.6N, 22.6W** (Esper Reaches), Akeha Mimbu around **10.3N, 40.6E** (Kydi Delta),
+and Undead Stony Armoredillos around **15.0S, 4.7W** (Rings of Oriad).
+These are inferred placements grounded on native terrain, not recovered retail
+generator coordinates. See the regional population section of the recovery guide.
+
+Wild creatures now use native perception and defined wandering controls. Their
+movement reads native motion descriptors, inherited visual scale and captured
+instance scale instead of giving every creature the same 2 m/s pace. Speed and
+acceleration apply to pursuit, wandering and homeward travel, with short native
+collision checks and positions shared with nearby players. Corpse loot combines observed item
 profiles, recovered native trophy rates and the versioned inferred treasure
 policy. Supported equipment can roll persistent armor ratings and palette tints.
 There is no universal potion fallback. Full retail treasure probabilities,
@@ -157,12 +169,23 @@ offset, velocity and instance. The renderer handles fixed-point, object-target
 and untargeted flight, bounded lifetime and trail cleanup; missiles are excluded
 from selectable world contacts. Server health changes remain authoritative.
 
-This does not finish every retail spell effect. AC2E's starter magic still uses
-direct server damage rather than generating retail missiles with delayed hits.
-Native ballistic parameters, scripted missile creation, target cloning, sound/light/streak FX
-and the rest of the spell catalog need further work. Human/Lugian starter casts
-now select Magic_Nuke1 and Tumerok Flash selects Magic_Harm1 from their native
-skill records; normal magic auto-attacks keep Magic_Auto1.
+The server now imports native skill costs, equipment/target requirements, range,
+cooldowns, rank curves and core effects from the installed DATs. The executable
+subset includes 224 racial profiles: Flame Bolt applies its damage and periodic
+burn, while supported healing, vigor, regeneration and combat-rating effects
+use the same cast path. Train the skill and equip the required implement first.
+Nine shared mastery skills can be trained and raised for the supported races;
+their ranks contribute to combat ratings. See `emulator/content/README.md` and
+`skill-runtime.report.json` for the exact scope and pending profiles.
+
+This does not finish every retail spell effect. Magic damage remains a server
+impact with an authored release delay rather than a native simulated missile.
+Native ballistic parameters, scripted missile creation, target cloning,
+sound/light/streak FX, area/multi-hit timing, combos, summons and specialized
+statuses need further work. Human/Lugian starter casts select Magic_Nuke1 and
+Tumerok Flash selects Magic_Harm1; normal magic auto-attacks keep Magic_Auto1.
+Unsupported required effects withhold the cast rather than consume vigor for
+a silently incomplete status effect. Non-lifestone recalls remain unavailable.
 
 `Network/test_shelter.py` verifies the complete implemented continuation with two
 UDP clients, including three additional armor appearances and server restart.

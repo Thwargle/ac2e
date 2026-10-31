@@ -62,6 +62,7 @@ pub fn validate_potion(portal: &mut Dat) -> io::Result<Metadata> {
     }
     portal.read(POTION_ICON)?;
     let metadata = Metadata {
+        implement: None,
         icon: POTION_ICON,
         physical: POTION_PHYSICAL,
         equipment: None,

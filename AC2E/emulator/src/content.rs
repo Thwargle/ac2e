@@ -49,7 +49,7 @@ mod motion_tests {
         let home=Placement::HUMAN_START;
         let id=NAMESPACE+1;
         let mut content=Content::default();
-        content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,placement:home,home,home_orientation:home.orientation(),
+        content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,visual:0x1f0003d1,scale:1.,placement:home,home,home_orientation:home.orientation(),
             spawn:spawn(home,1).into(),destroy:vec![0;16].into(),active:true,instance:1,
             visual_stamp:0,position_stamp:0,stats:BTreeMap::new(),service:None,name:None,corpse_name:None,door_open:false,door_mode:None});
         content.set_stat(id,0x107,60).unwrap();
@@ -116,6 +116,8 @@ fn invalid(message: impl Into<String>) -> io::Error {
 pub struct Object {
     pub id: u64,
     pub entity: u32,
+    pub visual: u32,
+    pub scale: f32,
     pub name: Option<String>,
     corpse_name: Option<Arc<[u8]>>,
     pub service: Option<crate::services::Service>,
@@ -170,7 +172,7 @@ impl Content {
             entity_did:crate::quests::TARGET_ENTITY,cell_id:point.cell,position:point.coordinates,orientation:point.orientation(),
             instance_stamp:1,visual_ordering_stamp:0,timestamps:[0;4]}).unwrap();
         let mut result=Self::default();
-        result.objects.insert(id,Object{id,entity:crate::quests::TARGET_ENTITY,name:None,corpse_name:None,service,door_open:false,door_mode:None,
+        result.objects.insert(id,Object{id,entity:crate::quests::TARGET_ENTITY,visual:0x1f0003d1,scale:1.,name:None,corpse_name:None,service,door_open:false,door_mode:None,
             placement:point,home:point,home_orientation:point.orientation(),spawn:spawn.into(),destroy:world::destroy_inventory_item(id,1).into(),active:true,
             instance:1,visual_stamp:0,position_stamp:0,stats:BTreeMap::new()});
         result.cells.insert(point.cell,vec![id]);
@@ -212,7 +214,7 @@ impl Content {
             character_id:id,parent_visual_did:dropped.item.visual,entity_did:dropped.item.definition,
             cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,
             visual_ordering_stamp:1,timestamps:[0;4]}).map_err(io::Error::other)?;
-        self.objects.insert(id,Object {id,entity:dropped.item.definition,placement:p,home:p,home_orientation:p.orientation(),spawn:spawn.into(),
+        self.objects.insert(id,Object {id,entity:dropped.item.definition,visual:dropped.item.visual,scale:1.,placement:p,home:p,home_orientation:p.orientation(),spawn:spawn.into(),
             destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new(),service:None,name:None,corpse_name:None,door_open:false,door_mode:None});
         self.cells.entry(p.cell).or_default().push(id);Ok(())
     }
@@ -227,8 +229,8 @@ impl Content {
     pub fn move_creature(&mut self, id: u64, placement: Placement, now: u64) -> io::Result<Arc<[u8]>> {
         let object = self.objects.get_mut(&id).filter(|o| o.active && o.stat(0x107).is_some() && o.service.is_none())
             .ok_or_else(|| invalid("unsupported moving creature"))?;
-        if object.placement.distance(placement).is_none_or(|d|d>1.0) {
-            return Err(invalid("creature pursuit exceeds one validated walking step"));
+        if object.placement.distance(placement).is_none_or(|d|d>crate::creature_motion::MAX_UPDATE_DISTANCE) {
+            return Err(invalid("creature movement exceeds bounded validated update"));
         }
         let old_cell=object.placement.cell;
         let stamp=object.position_stamp.checked_add(1).ok_or_else(|| invalid("creature position stamp exhausted"))?;
@@ -663,6 +665,8 @@ impl Content {
                 Object {
                     id,
                     entity,
+                    visual,
+                    scale:scale.unwrap_or(1.),
                     name:name.map(str::to_owned),corpse_name:None,
                     placement,
                     home: placement,

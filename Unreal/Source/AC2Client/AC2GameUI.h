@@ -82,6 +82,9 @@ class SAC2GameUI : public SCompoundWidget
     }
 
   private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FAC2LiveExaminationTest;
+#endif
     bool Frontend = false;
     FSimpleDelegate OnClose;
     TWeakObjectPtr<AAC2GameMode> Mode;

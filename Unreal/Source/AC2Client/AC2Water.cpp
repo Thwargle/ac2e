@@ -1,6 +1,20 @@
 #include "AC2Water.h"
 #include "AC2AssetReader.h"
 
+void AppendAC2WaterMesh(uint32 Block, const FAC2BlockWater& Water,
+                       const FVector& Offset, FAC2TerrainMesh& Mesh)
+{
+    if(!Water.Present || !FMath::IsFinite(Water.Height) || !FMath::IsFinite(Water.Tiling) || Water.Tiling<=0)return;
+    const int32 N=Mesh.Vertices.Num();
+    const float Z=Water.Height*100, T=160/Water.Tiling;
+    const FVector2D Base((Block>>8)*T,(Block&255)*T);
+    Mesh.Vertices.Append({Offset+FVector(0,0,Z),Offset+FVector(16000,0,Z),
+                          Offset+FVector(0,16000,Z),Offset+FVector(16000,16000,Z)});
+    Mesh.Indices.Append({N,N+2,N+1,N+1,N+2,N+3});
+    Mesh.Normals.Append({FVector::UpVector,FVector::UpVector,FVector::UpVector,FVector::UpVector});
+    Mesh.UVs.Append({Base,Base+FVector2D(T,0),Base+FVector2D(0,T),Base+FVector2D(T,T)});
+}
+
 uint8 FAC2WaterSource::FMap::At(uint32 X, uint32 Y) const
 {
     const uint32 I = X < W && Y < H ? X * H + Y : 0;

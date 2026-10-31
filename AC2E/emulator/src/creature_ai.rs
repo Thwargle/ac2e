@@ -19,7 +19,10 @@ impl Profile {
 }
 pub fn catalog()->io::Result<BTreeMap<u32,Profile>> {
     let mut result=BTreeMap::new();let bad=||io::Error::other("invalid native creature AI profile");
-    for line in include_str!("../content/creature-ai.tsv").lines().skip(1).chain(include_str!("../content/inferred-creature-ai-v1.tsv").lines().skip(1)).filter(|l|!l.starts_with('#') && !l.is_empty()) {
+    for line in include_str!("../content/creature-ai.tsv").lines().skip(1)
+        .chain(include_str!("../content/inferred-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/regional-creature-ai-v1.tsv").lines().skip(1))
+        .filter(|l|!l.starts_with('#') && !l.is_empty()) {
         let f=line.split('\t').collect::<Vec<_>>();if f.len()!=11{return Err(bad());}
         let number=|i:usize|->io::Result<Option<f32>> {
             if f[i]=="-"{return Ok(None)}

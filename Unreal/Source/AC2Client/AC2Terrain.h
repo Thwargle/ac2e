@@ -35,7 +35,11 @@ struct FAC2TerrainMesh
 
 // Heights and topology from CLandBlockData, with metres converted to UE centimetres.
 // Mesh-local X/Y follow the archive axes. Materials and scenery are supplied by AC2Assets.
-FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block);
+// Rendering supplies a one-block halo so shared vertices use the same complete
+// triangle fan for lighting and slope-based material selection.
+TMap<uint32, FAC2LandBlock> LoadAC2TerrainNeighborhood(FAC2DatArchive& Cell, uint32 Center, int32 Radius);
+FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block,
+                                  const TMap<uint32, FAC2LandBlock>* Neighborhood = nullptr);
 
 // Block-local metres, on the same triangle/diagonal used by BuildAC2TerrainMesh.
 // Cave mouths and positions outside this block have no ground sample.

@@ -674,6 +674,13 @@ struct FAC2AssetLibrary::FImpl
             for (uint32 Mod : Mods)
                 if (!ModifyMaterial(M, Mod))
                     return nullptr;
+            // Legions scenery bird 1F000003 has single-sheet wings at every
+            // mesh LOD, but 31000005 inherits one-sided culling. Repair only
+            // that wing material so its native feather texture renders below
+            // the bird too; the body and other ordinary materials stay culled.
+            if (Id == 0x31000005)
+                for (auto& Layer : M->Layers)
+                    Layer.CullMode = 1;
             Materials[Id] = M;
             return M;
         }
@@ -766,11 +773,16 @@ struct FAC2AssetLibrary::FImpl
         // lighting and appearance colours are applied.
         for (const auto& P : M->Properties)
             for (const auto& F : P.Fields)
-                if (F.Kind==10 && P.Data.Num()==4 && M->Layers.IsValidIndex(F.Layer))
+                if (P.Data.Num()==4 && M->Layers.IsValidIndex(F.Layer))
                 {
-                    auto& Textures=M->Layers[F.Layer].Textures;
-                    if (Textures.IsValidIndex(F.Index) && !Textures[F.Index])
-                        Textures[F.Index]=AC2::U32(P.Data.GetData());
+                    auto& Layer=M->Layers[F.Layer];
+                    if (F.Kind==10 && Layer.Textures.IsValidIndex(F.Index) && !Layer.Textures[F.Index])
+                        Layer.Textures[F.Index]=AC2::U32(P.Data.GetData());
+                    // Admin7148 RenderMaterial::GetSubObjects applies default
+                    // properties after unpacking layers, before instance mods.
+                    // Several foliage templates store no-cull only here.
+                    if (F.Kind==5)
+                        Layer.CullMode=AC2::U32(P.Data.GetData()) ? 1 : 2;
                 }
         Materials[Id] = M;
         return M;
@@ -962,7 +974,7 @@ struct FAC2AssetLibrary::FImpl
         const FString Variant=Base+(TwoSided?TEXT("TwoSided"):TEXT("OneSided"));
         return LoadObject<UMaterialInterface>(nullptr,*(TEXT("/Game/AC2/Materials/")+Variant+TEXT(".")+Variant));
     }
-    UMaterialInterface *Instance(FAC2DecodedImage *Image, const FLinearColor &Tint, bool Masked, uint32 CullMode=0)
+    UMaterialInterface *Instance(FAC2DecodedImage *Image, const FLinearColor &Tint, bool Masked, uint32 CullMode=0, bool ClampTexture=false)
     {
         UMaterialInterface *Parent = CullMode ? NativeParent(Masked?TEXT("M_AC2Cutout"):TEXT("M_AC2Opaque"),CullMode==1) : (Masked ? Cutout : Opaque);
         if (!Parent)
@@ -970,7 +982,7 @@ struct FAC2AssetLibrary::FImpl
         auto *M = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
         Objects.Add(M);
         if (Image)
-            M->SetTextureParameterValue(TEXT("Albedo"), Texture(*Image,false,0,0,Masked));
+            M->SetTextureParameterValue(TEXT("Albedo"), Texture(*Image,ClampTexture,0,0,Masked));
         M->SetVectorParameterValue(TEXT("Tint"), Tint);
         return M;
     }
@@ -3354,9 +3366,10 @@ bool FAC2AssetLibrary::PrepareBlock(const FString &Directory, const FAC2Landscap
 UMaterialInterface *FAC2AssetLibrary::UploadTerrain()
 {
     check(IsInGameThread());
-    Impl->Texture(Impl->TerrainAtlas, true);
     ++Impl->Stats.TerrainMaterials;
-    return Impl->Instance(&Impl->TerrainAtlas, FLinearColor::White, false);
+    // A landblock atlas is not tileable: wrapping blends the opposite bank into
+    // its edges. Keep the clamp sampler on the texture actually bound to the MID.
+    return Impl->Instance(&Impl->TerrainAtlas, FLinearColor::White, false, 0, true);
 }
 bool FAC2AssetLibrary::UploadScenery(AActor *Owner, USceneComponent *Root, int32 MeshBudget)
 {
@@ -3739,9 +3752,8 @@ UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &D
         Impl->TerrainAtlas = MoveTemp(Atlas);
         return nullptr;
     }
-    Impl->Texture(Atlas, true);
     ++Impl->Stats.TerrainMaterials;
-    return Impl->Instance(&Atlas, FLinearColor::White, false);
+    return Impl->Instance(&Atlas, FLinearColor::White, false, 0, true);
 }
 
 void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs &Defs,

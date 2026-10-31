@@ -15,7 +15,7 @@ pub fn validate(dat:&mut crate::dat::Dat)->std::io::Result<std::collections::BTr
         for id in [p.male,p.female,p.appearance,p.visual] {dat.read(id)?;}
         let expected:Vec<u8>=[0xbu32,p.physical,0x40000001,p.visual].into_iter().flat_map(u32::to_le_bytes).collect();
         if dat.read(p.physical)?!=expected {return Err(std::io::Error::other("Armor physics profile changed"));}
-        result.insert(p.definition,Metadata{icon:p.appearance,physical:p.physical,equipment:Some(crate::inventory_request::Equipment{valid:u32::from(p.slot),preferred:u32::from(p.slot),primary:0,secondary:0})});
+        result.insert(p.definition,Metadata{implement:None,icon:p.appearance,physical:p.physical,equipment:Some(crate::inventory_request::Equipment{valid:u32::from(p.slot),preferred:u32::from(p.slot),primary:0,secondary:0})});
     }
     Ok(result)
 }
@@ -76,6 +76,13 @@ pub fn drop(inventory:&Inventory,race:u32,id:u64,slot:u16)->Option<Item> {
                 assert_eq!(aspects(&bag,p.race,sex),vec![(table,0x10,1.0),(table,2,0.0)]);
             }
             assert_eq!(armor(&bag,p.race),p.armor.unwrap_or(0));
+            // Every accepted apparel profile must also be serializable through
+            // the equipment reply, including recovered gloves and headwear.
+            let metadata=crate::inventory_request::Equipment{valid:u32::from(p.slot),preferred:u32::from(p.slot),primary:0,secondary:0};
+            for equipped in [true,false] {
+                assert!(crate::ui::hand_equipment_at(7,i.id,p.slot,0x40,metadata,equipped,3).is_ok(),
+                    "Equipment reply rejected {:08x}, slot {:x}, equipped {equipped}",p.definition,p.slot);
+            }
         }
     }
 }

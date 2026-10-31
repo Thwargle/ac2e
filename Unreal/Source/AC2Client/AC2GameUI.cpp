@@ -133,6 +133,8 @@ void SAC2GameUI::Tick(const FGeometry &G, double Time, float Delta)
         LastShopVendor=Mode->Network->ShopVendor;SelectedOffer=INDEX_NONE;ShopPage=0;
         if(!LastShopVendor.IsEmpty()){ShowInventory=true;ShowStats=ShowOptions=false;UpdatePortrait();}
     }
+    if(!Frontend && ShowStats && VisibleWorld() && Mode.IsValid() && Mode->Network)
+        Mode->Network->RefreshExamination(InspectedObject);
     Rebuild();
 }
 void SAC2GameUI::Bind(const TCHAR *Control, FName Action)
@@ -357,7 +359,7 @@ void SAC2GameUI::Rebuild()
         TArray<uint32> Appearances, RowImages;
         if(Inspecting)
         {
-            if(Net->ExaminationId==InspectedObject && !Net->ExaminationPending && Net->ExaminationError.IsEmpty())
+            if(Net->ExaminationId==InspectedObject && Net->ExaminationError.IsEmpty())
                 for(const auto& Row:Net->ExaminationRows)
                 {Lines.Add(Row.Text);Appearances.Add(Row.Appearance);RowImages.Add(Row.Image);}
             if(Lines.IsEmpty())
@@ -402,7 +404,10 @@ void SAC2GameUI::Rebuild()
         for (const FString &Line : Lines)
         {
             const int32 Start = Native.Nodes.Num();
-            FIntRect R(List.Min.X, Y, List.Max.X, Y + 20);
+            // Measure using a visible template first. Creating an off-screen
+            // row is culled by Native.Template before its font can be read,
+            // which otherwise loses its height and collapses the scroll range.
+            FIntRect R(List.Min.X, List.Min.Y, List.Max.X, List.Min.Y + 20);
             const uint32 Image=RowImages.IsValidIndex(RowIndex)?RowImages[RowIndex]:0;
             const uint32 Appearance=Appearances.IsValidIndex(RowIndex)?Appearances[RowIndex]:0;
             ++RowIndex;
@@ -422,9 +427,11 @@ void SAC2GameUI::Rebuild()
                 N.Text = Line;
                 auto F = Fonts.Get(N.Attr(TEXT("font"), 0x4200000c));
                 int32 Height = F ? FMath::Max(16, int32(F->Lines(Line, List.Width()).Num() * F->Height)) : 20;
+                N.Rect.Min.Y = Y;
                 N.Rect.Max.Y = Y + Height;
-                N.Clip.Max.Y = FMath::Min(List.Max.Y, N.Rect.Max.Y);
+                N.Clip=N.Rect;N.Clip.Clip(List);
                 Y += Height;
+                if(N.Clip.Width()<=0 || N.Clip.Height()<=0)Native.Nodes.SetNum(Start);
             }
         }
         ExamineMaxScroll=FMath::Max(0,Y+ExamineScroll-List.Max.Y);
@@ -1041,7 +1048,8 @@ void SAC2GameUI::UpdatePortrait()
         Portrait->Show(Mode->DatDirectory, Mode->Network ? Mode->Network->Visual(P->Id) : A->Physics, P->Height, P->Build,
                        Mode->Network ? Mode->Network->Appearance(P->Id) : A->Resolve(P->Appearance, P->ClothingMask(Mode->CharacterCatalog)), 0x21000000))
     {
-        Portrait->Image->ResizeTarget(306, 400);
+        // The paper doll has no creator stage/arch to reserve space for.
+        Portrait->SetViewport(FIntPoint(306,400),.9f);
         PortraitBrush.SetResourceObject(Portrait->Composite);
         PortraitBrush.DrawAs = ESlateBrushDrawType::Image;
         PortraitBrush.ImageSize = FVector2D(153, 200);

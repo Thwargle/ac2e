@@ -36,6 +36,10 @@ and localized signs render readable on both faces. World materials use the DAT
 highlight color, animated power and enable flags; zero power disables highlights
 without adding Unreal's generic white specular sheen. The Menhir's independently
 moving second texture is supported.
+Material culling honors native template defaults as well as instance overrides.
+The small scenery bird's single-sheet wings have a targeted two-sided rendering
+repair using the original feather texture; the Legions material itself is authored
+one-sided. Above/below render checks cover several poses of its native animation.
 Distant terrain uses a filtered atlas of native terrain surfaces instead of flat
 palette colors. Closed dungeons stream their own block without waiting for unrelated
 neighboring dungeons. High-resolution DAT surfaces remain preferred where available.
@@ -99,7 +103,15 @@ retail server database. Source DATs, captures and reference SQL remain unchanged
   while service NPCs remain noncombat. Spawners manage creation, corpse retirement
   and regeneration; explicit camp rosters enforce group capacity. Creatures use
   recovered perception, wandering and homesickness properties with native terrain
-  and collision checks. Unrecovered timing and movement rules are documented.
+  and collision checks. Movement uses native per-visual speed/acceleration and
+  captured body scale, with time-based pursuit, wandering and homeward travel.
+  Unrecovered AI timing and navigation rules are documented.
+  The regional wilderness pack adds **3,495 creature slots in 2,071 spawner
+  groups across 21 regions** on Osteth, Omishan and Linvak. Archived wiki
+  regional rosters select native creatures; Pyreal ringway/town coordinates
+  bound inferred placement areas. This reaches 1,842 previously empty outdoor
+  landblocks while keeping clear of towns and existing content. Group sizes,
+  exact locations and three-minute regeneration are reconstruction policy.
 - **Quests and services:** readable signs send native descriptions. Supported
   doors, containers, merchants, lifestones, portals and tutorial actions have
   server handlers. The inferred pack adds 88 quest profiles, 143 camp groups and
@@ -109,7 +121,8 @@ retail server database. Source DATs, captures and reference SQL remain unchanged
 - **Loot and equipment:** native trophy probabilities supplement observed corpse
   loot. The inferred treasure policy adds variable supported equipment/restorative
   drops and persistent armor ratings/tints. Pickup, equipment and rewards are
-  journaled. Recovered apparel preserves native models and race restrictions;
+  journaled. Recovered apparel, including gloves and headwear, supports equipping,
+  removing and replacing items while preserving native models and race restrictions;
   unknown potion effects and full retail affixes remain unsupported.
 - **Combat and movement:** repeated basic attacks retain their target, missile
   damage follows projectile flight, and local/remote swimming use native motion
@@ -121,6 +134,13 @@ retail server database. Source DATs, captures and reference SQL remain unchanged
   use their native cell-space positions. A bounded shoreline repair in block
   `74A9` uses the adjacent lake's 96.7 m height consistently for rendering,
   swimming and server geometry. It is an explicit content repair, not a DAT edit.
+  Water uses continuous native textures and world-aligned UVs across the full
+  14-block (about 2.2 km) landscape radius, replacing the nearby flat-blue
+  distance cutoff. Surfaces are batched by material, with no overlapping near
+  water layer during streaming.
+  Terrain atlas edges are clamped to prevent opposite-edge texture bleed, and
+  adjoining landblocks share the retail triangle-normal calculation for
+  continuous lighting and slope-based materials, including block `86B0`.
 
 Recovery tools audit Pyreal SQL, historical emulator tables, packet captures,
 quest text, loot and native generator properties. Compatibility and provenance
@@ -135,9 +155,11 @@ NPC scripts are still unresolved. See [content recovery](Docs/ADMIN_CONTENT_RECO
 `AC2E/data/world/legions-world.report.json` now lists the exact record IDs and DAT
 archives missing from each excluded server placement. These are different from
 texture-resolution problems: `highres.dat` cannot supply absent entity, visual, or
-room definitions. In the current local installation, 22 excluded placements refer
-to 13 distinct entity records, 8 visual records, and 5 room records; several
-placements share missing definitions.
+room definitions. Counts grow as additional capture and regional content is
+audited; use the generated report for the current totals and exact records.
+Several placements can share a missing definition. The original starter-area
+audit found 22 excluded placements (13 entity, 8 visual and 5 room records),
+but those numbers do not describe the expanded world manifest.
 
 If you have another complete patched Legions installation or backup, keep it in a
 separate folder and compare it without replacing any active DATs:
@@ -152,7 +174,8 @@ of dependency/protocol compatibility. Keep each installation's DAT set together;
 a higher-resolution texture archive alone does not repair missing world records.
 Without a matching source record, leave the placement excluded or create a clearly
 identified replacement after its identity/location is established. The local
-`C:\Turbine\AC2` copy was checked and recovers none of these 22 placements.
+`C:\Turbine\AC2` copy was checked and recovered none of the original 22
+starter-area exclusions.
 
 ## First checkout
 
@@ -231,14 +254,24 @@ normalized character heading; stationary camera orbit does not turn the radar.
 Drag panel headers to move the main windows; positions persist. Skills and quests
 open from the toolbar. The skill book supports training, raising and untraining;
 learned active skills can be dragged onto any of ten shortcut pages, selected with
-the page arrows. Bindings persist per character. Most active skill effects still
-need implementation even when their native definitions are visible in the book.
+the page arrows. Bindings persist per character. The server executes recovered
+core effects for 224 racial skill profiles, including Flame Bolt damage and burns,
+healing, vigor restoration, regeneration and supported combat-rating buffs.
+Train Flame Bolt and equip a stave before casting it on an enemy. Nine shared
+mastery skills can also be trained and raised, and their ranks affect combat.
+This is not full spell parity: specialized statuses, summons, area/multi-hit
+behavior and most recalls remain unfinished. Exact coverage and source evidence
+are recorded in [the skill content notes](AC2E/emulator/content/README.md#native-skill-effects).
 
 Right-click your character to examine yourself. Other inspections include known
 level, health, vigor, descriptions and equipment stats; retail chance-to-hit is
-not yet calculated. Chat and inventory support wheel, arrows and thumb dragging.
+not yet calculated. Open examination panels refresh server state twice a second
+without clearing their text or scroll position while an update is in flight.
+Chat and inventory support wheel, arrows and thumb dragging.
 Floating damage numbers can be toggled in options. Native nameplate templates are
-used, but complete retail relationship/color policy remains unfinished.
+used, but complete retail relationship/color policy remains unfinished. Names
+and targeting frames use stable model bounds so flying/idle animations do not
+make them bounce; actual movement, scaling and corpse posture still update them.
 
 Double-click corpse items or use **Loot All** to collect them. Looting from combat
 temporarily enters peace, performs the operation and restores combat stance without
@@ -299,6 +332,7 @@ python .\Network\test_corpse_loot.py
 python .\Network\test_outdoor_population.py
 python .\Network\test_recovered_equipment.py
 python .\Network\test_inferred_content.py
+python .\Network\test_regional_population.py
 python .\Network\test_world_clock.py
 python .\Network\test_falling.py
 python .\Network\test_map_travel.py

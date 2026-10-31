@@ -12,6 +12,7 @@ name = "ac2e"
 path = "src/main.rs"
 
 [dependencies]
+ac2-assets = { path = "../../References/AC2_Rusted/crates/ac2-assets" }
 ac2-physics = { path = "../../References/AC2_Rusted/crates/ac2-physics" }
 ac2-world = { path = "../../References/AC2_Rusted/crates/ac2-world" }
 ac2-core = { path = "../../References/AC2_Rusted/crates/ac2-core" }

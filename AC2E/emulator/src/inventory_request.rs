@@ -239,6 +239,8 @@ impl MoveRequest {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Metadata {
+    /// Native IntStats ImplementType (0xfa0); required by skill hand masks.
+    pub implement: Option<u32>,
     /// Legacy field name: DID quality 103 / inventory AppearanceFile, not the
     /// UI descriptor's texture icon. Zero denotes an absent appearance profile.
     pub icon: u32,
@@ -456,6 +458,7 @@ impl Metadata {
             icon,
             physical,
             equipment,
+            implement: integers.get(&0xfa0).copied(),
         })
     }
 }

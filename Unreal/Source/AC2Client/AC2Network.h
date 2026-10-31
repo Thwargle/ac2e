@@ -44,6 +44,9 @@ class FAC2Network
     FString ObjectName(const FString& Id) const;
     bool ObjectScreenBounds(const FString& Id,FBox2D& Bounds) const;
     void Examine(const FString& Id);
+    // Called only while the examination panel is visible; retains the last
+    // snapshot until the server supplies its replacement.
+    void RefreshExamination(const FString& Id);
     struct FExaminationRow { FString Text; uint32 Appearance=0, Image=0; };
     FString ExaminationId, ExaminationError;
     TArray<FExaminationRow> ExaminationRows;
@@ -114,6 +117,8 @@ class FAC2Network
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FAC2DamageNetworkTest;
     friend class FAC2SwimmingRenderTest;
+    friend class FAC2TargetPresentationTest;
+    friend class FAC2LiveExaminationTest;
 #endif
     TUniquePtr<class FAC2MapData> PortalMap;
     bool PortalMapAttempted = false;
@@ -140,6 +145,9 @@ class FAC2Network
         FAC2Appearance Aspects;
         TWeakObjectPtr<AActor> Actor;
         TWeakObjectPtr<USceneComponent> Body;
+        // Body-local bounds captured when the visual is built. Animation must
+        // not move the targeting frame or the name above a living creature.
+        FBox PresentationBounds = FBox(ForceInit);
         bool Content=false, GroundedContent=false, Solid=false, GroundItem=false;
         bool Door=false,DoorOpen=false,OpenableStateKnown=false,OpenableOpen=false;
         float FootZ=0;
@@ -164,7 +172,9 @@ class FAC2Network
     uint64 SceneRevision = 0;
     FAC2ServerClock Clock;
     double LastShopRefresh=0;
-    double ExaminationStarted=0;
+    double ExaminationStarted=-1;
+    bool ExaminationQueued=false;
+    void RequestExamination();
     bool Smoke = false, SmokeEntered = false, SmokeChat = false;
     int32 ReceivedChats = 0;
     double SmokeFinish = 0;
@@ -196,6 +206,7 @@ class FAC2Network
     void Handle(const TSharedPtr<FJsonObject> &Event);
     void ClearWorld();
     bool Targetable(const FString &Id, const FObject &Object) const;
+    FBox ObjectPresentationBounds(const FString& Id) const;
     void SetStatus(const FString &State, const FString &Text);
     void ApplyVisual(FObject &Object, const TSharedPtr<FJsonObject> &Visual, bool Player);
     void AddCharacter(const TSharedPtr<FJsonObject> &Character);

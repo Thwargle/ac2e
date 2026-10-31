@@ -30,6 +30,7 @@ class FAC2WorldStream
     bool InteriorAt(const FVector &Position, uint32 &Block) const;
     bool InteriorCellAt(const FVector& Feet,uint32& Cell) const;
     void SetDrawRadius(int32 Radius);
+    void SetDistantWaterActive(bool Active);
     bool CellPosition(uint32 Id, FVector &Position) const;
     int32 InteriorCount() const;
     int32 WaterCount() const;

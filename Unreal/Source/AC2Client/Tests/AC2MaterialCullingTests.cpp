@@ -38,8 +38,21 @@ bool FAC2MaterialCullingTest::RunTest(const FString&)
             const auto* Mat=Assets.Material(Id);
             TestTrue(FString::Printf(TEXT("%s tent %08X honors native no-cull modifier"),Preview?TEXT("Preview"):TEXT("World"),Id),Mat && Mat->IsTwoSided());
         }
-        const auto* Ordinary=Assets.Material(0x2b000005);
+        const auto* Ordinary=Assets.Material(0x2b000002);
         TestTrue(TEXT("Unmodified template retains one-sided culling"),Ordinary && !Ordinary->IsTwoSided());
+        // 2B000005 serializes cull=2, but property 4003 defaults to true.
+        // Retail applies that property after the serialized layer is loaded.
+        const auto* DefaultTwoSided=Assets.Material(0x2b000005);
+        TestTrue(TEXT("Default property overrides serialized template culling"),DefaultTwoSided && DefaultTwoSided->IsTwoSided());
+        for(uint32 Id:{0x31000006u,0x31000007u,0x31000181u})
+        {
+            const auto* Mat=Assets.Material(Id);
+            TestTrue(FString::Printf(TEXT("Foliage %08X honors template default no-cull property"),Id),Mat && Mat->IsTwoSided());
+        }
+        const auto* Wings=Assets.Material(0x31000005);
+        TestTrue(TEXT("Single-sheet scenery bird wings render both faces"),Wings && Wings->IsTwoSided());
+        const auto* Body=Assets.Material(0x31000004);
+        TestTrue(TEXT("Scenery bird body keeps native one-sided culling"),Body && !Body->IsTwoSided());
     }
     return true;
 }

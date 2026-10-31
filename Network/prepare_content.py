@@ -32,6 +32,49 @@ def missing_records(fields, index):
                                       ('cell', 'cell_1.dat', record)]
             if did not in index[archive]]
 
+def apply_placement_replacements(content, lines, input_rows, admitted_sources):
+    """Retire audited observations only after their verified replacement passes.
+
+    Capture IDs and subcells can change between snapshots. Do not infer unique
+    NPCs from names, templates or proximity: repeated actors are valid. These
+    authoring decisions pin both source rows and keep the raw packs intact.
+    """
+    path = content / 'placement-replacements.json'
+    if not path.exists():
+        return lines, [], []
+    policy = json.loads(path.read_text(encoding='utf-8'))
+    if policy.get('schema') != 1:
+        raise ValueError('Unsupported placement replacement schema')
+    rules = policy['replacements']
+    retired = {rule['superseded']['id'] for rule in rules}
+    retained = {rule['retained']['id'] for rule in rules}
+    if len(retired) != len(rules) or retired & retained:
+        raise ValueError('Duplicate or chained placement replacements')
+    removed, pending = [], []
+    for rule in rules:
+        old, new = rule['superseded'], rule['retained']
+        if new['source'] != 'recovered-population.tsv':
+            raise ValueError('Placement replacement requires verified recovered population')
+        rows = []
+        for endpoint in (old, new):
+            row = input_rows.get((endpoint['source'], endpoint['id']))
+            if row is None or hashlib.sha256(row.encode()).hexdigest() != endpoint['row_sha256']:
+                raise ValueError(f'Stale placement replacement evidence: {endpoint["id"]}')
+            rows.append(row.split('\t'))
+        if rows[0][1:3] != rows[1][1:3]:
+            raise ValueError('Placement replacement must preserve entity and visual identity')
+        if admitted_sources.get(old['id']) != old['source']:
+            continue
+        entry = dict(rule)
+        if admitted_sources.get(new['id']) != new['source']:
+            entry['reason'] = 'Replacement was not admitted; original observation retained'
+            pending.append(entry)
+        else:
+            removed.append(entry)
+    removed_ids = {entry['superseded']['id'] for entry in removed}
+    return [line for line in lines if line.split('\t', 1)[0] not in removed_ids], removed, pending
+
+
 def prepare(directory, output, compare_directory=None):
     index = asset_index(directory)
     comparison = asset_index(compare_directory) if compare_directory else None
@@ -63,13 +106,19 @@ def prepare(directory, output, compare_directory=None):
     if newer.exists(): sources.append(newer.name)
     if audited.exists(): sources.append(audited.name)
     inferred = content / 'inferred-world-v1.tsv'
-    if inferred.exists():
-        evidence = json.loads(inferred.with_suffix('.report.json').read_text(encoding='utf8'))
+    regional = content / 'regional-world-v1.tsv'
+    for inferred_pack, catalog in [(inferred, 'inferred-content-v1.json'),
+                                   (regional, 'regional-content-v1.json')]:
+        if not inferred_pack.exists():
+            continue
+        evidence = json.loads(inferred_pack.with_suffix('.report.json').read_text(encoding='utf8'))
         if (not evidence.get('native_ground_verified')
-            or evidence['manifest_sha256'] != hashlib.sha256(inferred.read_bytes()).hexdigest()
-            or evidence['source_sha256'] != hashlib.sha256((content/'inferred-content-v1.json').read_bytes()).hexdigest()):
+            or evidence['manifest_sha256'] != hashlib.sha256(inferred_pack.read_bytes()).hexdigest()
+            or evidence['source_sha256'] != hashlib.sha256((content/catalog).read_bytes()).hexdigest()):
             raise ValueError('Inferred content requires fresh native ground validation')
-        sources.append(inferred.name)
+        sources.append(inferred_pack.name)
+        version = 4
+        lines[0] = 'pyrealium-world-v4'
     state_file=content / 'capture-spawns-audited.report.json'
     state_exclusions={}
     if audited.exists() and state_file.exists():
@@ -78,6 +127,8 @@ def prepare(directory, output, compare_directory=None):
     transient=[]
     input_seen = set()
     input_counts = {}
+    input_rows = {}
+    admitted_sources = {}
     earlier_capture_cells = set()
     overlapping = []
     for name in sources:
@@ -88,6 +139,7 @@ def prepare(directory, output, compare_directory=None):
             fields = line.split('\t')
             if len(fields) not in (12, 13): raise ValueError(f'Unsupported placement in {name}')
             iid, entity, visual, cell = [int(v, 16) for v in fields[:4]]
+            input_rows[name, fields[0]] = line
             # A later capture cannot replace an earlier placement identity.
             # Incompatible older rows are also retained in the audit exactly once.
             if iid in input_seen: continue
@@ -118,7 +170,7 @@ def prepare(directory, output, compare_directory=None):
                 skipped.append(entry)
                 continue
             if iid not in seen:
-                if name.startswith('capture-spawns') or name in (recovered.name, inferred.name):
+                if name.startswith('capture-spawns') or name in (recovered.name, inferred.name, regional.name):
                     expected = profile.visual(entity)
                     if (entity, visual) not in curated_pairs and expected != visual:
                         incompatible.append({'source': name, 'id': fields[0], 'entity': fields[1],
@@ -142,6 +194,7 @@ def prepare(directory, output, compare_directory=None):
                 if version == 4 and len(fields) == 12: fields.append('-')
                 lines.append('\t'.join(fields))
                 seen.add(iid)
+                admitted_sources[fields[0]] = name
                 if name == recovered.name: recovered_cells.add(cell)
                 if comparison is not None:
                     absent = missing_records(fields, comparison)
@@ -149,9 +202,15 @@ def prepare(directory, output, compare_directory=None):
                         candidate_regressions.append({'id': fields[0], 'source': name, 'missing_records': absent})
         earlier_capture_cells.update(source_cells)
     profile.close()
+    lines, superseded, pending_replacements = apply_placement_replacements(
+        content, lines, input_rows, admitted_sources)
+    retired_ids = {entry['superseded']['id'] for entry in superseded}
+    seen.difference_update(int(iid, 16) for iid in retired_ids)
+    candidate_regressions = [entry for entry in candidate_regressions if entry['id'] not in retired_ids]
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
-    report = {'included': len(seen), 'excluded': len(skipped)+len(incompatible)+len(duplicates)+len(overlapping)+len(transient), 'missing_assets': skipped,
+    report = {'included': len(seen), 'excluded': len(skipped)+len(incompatible)+len(duplicates)+len(overlapping)+len(transient)+len(superseded), 'missing_assets': skipped,
+              'superseded_placements': superseded, 'unapplied_placement_replacements': pending_replacements,
               'transient_capture_placements':transient,
               'source_unique_placements': input_counts,
               'overlapping_capture_cells':overlapping,
@@ -170,6 +229,8 @@ def prepare(directory, output, compare_directory=None):
     print(f'Unverified or incompatible capture placements withheld: {len(incompatible)}. Source captures are unchanged; see {output.with_suffix(".report.json")}')
     if overlapping: print(f'Overlapping capture observations withheld: {len(overlapping)}; one verified snapshot retained per cell.')
     if transient: print(f'Captured looted/dead objects withheld: {len(transient)}; exact original observation rows retained in source files.')
+    if superseded: print(f'Superseded duplicate placements withheld: {len(superseded)}; verified replacements retained.')
+    if pending_replacements: print(f'Placement replacements unavailable: {len(pending_replacements)}; original observations retained.')
     if skipped:
         print(f'Missing unique records: {report["missing_record_counts"]}. Details: {output.with_suffix(".report.json")}')
     if comparison is not None:

@@ -162,7 +162,22 @@ TArray<FVector> SplitAC2GroundFrill(const FAC2LandBlock &Block, const FTransform
     return Triangles;
 }
 
-FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block)
+TMap<uint32, FAC2LandBlock> LoadAC2TerrainNeighborhood(FAC2DatArchive& Cell, uint32 Center, int32 Radius)
+{
+    TMap<uint32, FAC2LandBlock> Blocks;
+    TArray<uint8> Bytes;FString Error;
+    for(int32 X=FMath::Max(0,int32(Center>>8)-Radius);X<=FMath::Min(254,int32(Center>>8)+Radius);++X)
+        for(int32 Y=FMath::Max(0,int32(Center&255)-Radius);Y<=FMath::Min(254,int32(Center&255)+Radius);++Y)
+        {
+            const uint32 Id=(X<<24)|(Y<<16)|0xffff;
+            FAC2LandBlock Land;
+            if(Cell.Read(Id,Bytes,Error) && Land.Decode(Id,Bytes,Error))Blocks.Add(Id>>16,MoveTemp(Land));
+        }
+    return Blocks;
+}
+
+FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Block,
+                                  const TMap<uint32, FAC2LandBlock>* Neighborhood)
 {
     FAC2TerrainMesh Mesh;
     if (Defs.Heights.Num() != 256 || Block.Heights.Num() != 289 || Block.CellInfo.Num() != 289)
@@ -196,15 +211,37 @@ FAC2TerrainMesh BuildAC2TerrainMesh(const FAC2LandscapeDefs &Defs, const FAC2Lan
                 Mesh.Indices.Append({A, C, B, B, C, D});
         }
     }
+    // CLandBlockData::CacheFarValues / GetNormalFromTriangle (admin 0x0048FE10,
+    // 0x0048F830): sum unit face normals, including triangles in adjacent blocks.
+    // The same normal also selects the native surface's slope band.
+    auto Neighbor=[&](int32 X,int32 Y,bool Vertex=false)->const FAC2LandBlock* {
+        const int32 Limit=Vertex?17:16;
+        const int32 BX=int32(BlockX)+(X<0?-1:X>=Limit?1:0);
+        const int32 BY=int32(BlockY)+(Y<0?-1:Y>=Limit?1:0);
+        return Neighborhood && BX>=0 && BX<=254 && BY>=0 && BY<=254
+            ? Neighborhood->Find((BX<<8)|BY):nullptr;
+    };
+    auto Height=[&](int32 X,int32 Y) {
+        if(X>=0 && X<=16 && Y>=0 && Y<=16)return Defs.Heights[Block.Heights[X*17+Y]];
+        const auto* Land=Neighbor(X,Y,true);
+        if(!Land)return 0.f; // Retail's absent-neighbor height fallback.
+        const int32 NX=X<0?X+16:X>16?X-16:X,NY=Y<0?Y+16:Y>16?Y-16:Y;
+        return Defs.Heights[Land->Heights[NX*17+NY]];
+    };
     Mesh.Normals.Init(FVector::ZeroVector, Mesh.Vertices.Num());
-    for (int32 I = 0; I < Mesh.Indices.Num(); I += 3)
+    const int32 Start=Neighborhood?-1:0,End=Neighborhood?17:16;
+    for(int32 X=Start;X<End;++X)for(int32 Y=Start;Y<End;++Y)
     {
-        const int32 A = Mesh.Indices[I], B = Mesh.Indices[I + 1], C = Mesh.Indices[I + 2];
-        const FVector N =
-            FVector::CrossProduct(Mesh.Vertices[C] - Mesh.Vertices[A], Mesh.Vertices[B] - Mesh.Vertices[A]);
-        Mesh.Normals[A] += N;
-        Mesh.Normals[B] += N;
-        Mesh.Normals[C] += N;
+        const uint32 GX=BlockX*16+X,GY=BlockY*16+Y;
+        const bool Available=(X>=0 && X<16 && Y>=0 && Y<16)||Neighbor(X,Y);
+        const bool Cut=Available && (((GY*GX*GX*0x39557fcfu-0x4a6506dbu)*GY-GX*0x6b3c5f11u+0xae226cebu)&0x80000000u);
+        auto Face=[&](FIntPoint A,FIntPoint B,FIntPoint C) {
+            auto Position=[&](FIntPoint P){return FVector(P.X*Spacing,P.Y*Spacing,Height(P.X,P.Y)*100.);};
+            const FVector N=FVector::CrossProduct(Position(B)-Position(A),Position(C)-Position(A)).GetSafeNormal();
+            for(FIntPoint P:{A,B,C})if(P.X>=0 && P.X<=16 && P.Y>=0 && P.Y<=16)Mesh.Normals[P.X*17+P.Y]+=N;
+        };
+        if(Cut){Face({X,Y},{X+1,Y},{X+1,Y+1});Face({X,Y},{X+1,Y+1},{X,Y+1});}
+        else{Face({X,Y},{X+1,Y},{X,Y+1});Face({X+1,Y},{X+1,Y+1},{X,Y+1});}
     }
     for (FVector &N : Mesh.Normals)
         N = N.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);

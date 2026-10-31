@@ -75,6 +75,7 @@ pub fn validate(portal: &mut Dat) -> io::Result<Metadata> {
         return Err(invalid());
     }
     let metadata = Metadata {
+        implement: None,
         icon: 0x2000012f,
         physical: PHYSICAL,
         equipment: Some(crate::inventory_request::Equipment {

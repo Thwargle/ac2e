@@ -17,6 +17,9 @@ fn playable(race: u32) -> bool {
         crate::appearance::HUMAN | crate::appearance::LUGIAN | crate::appearance::TUMEROK
     )
 }
+fn eligible_race(id: u32, definition_race: u32, race: u32) -> bool {
+    definition_race == race || definition_race == 0 && matches!(id, 3 | 4 | 5 | 9 | 10 | 11 | 14 | 15 | 16)
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     Train,
@@ -303,7 +306,7 @@ impl Book {
         if self.untraining_id()==id {return Err(SkillError::Locked);}
         let definition = catalog()?.definitions.get(&id).ok_or(SkillError::Unknown)?;
         if !playable(race)
-            || definition.race != race
+            || !eligible_race(id, definition.race, race)
             || definition.level > 50
             || matches!(definition.kind, 4 | 0x44 | 0x45 | 0x51 | 0x71)
         {
@@ -376,10 +379,11 @@ impl Book {
             Command::Train(id) | Command::Grant(id) => {
                 let definition = catalog.definitions.get(&id).ok_or(SkillError::Unknown)?;
                 let granting = matches!(command, Command::Grant(_));
-                // Playable races train their own race's skills.
+                // Racial skills plus the nine common mastery skills from
+                // Pyreal SkillList.Com_{Ma,Me,Mi}_{Master,Grandmaster,Paragon}.
                 // Faction/hero/recall/mob grants require additional state/services.
                 if !playable(race)
-                    || definition.race != race
+                    || !eligible_race(id, definition.race, race)
                     || definition.level > 50
                     || matches!(definition.kind, 4 | 0x44 | 0x45 | 0x51 | 0x71)
                     || granting && definition.credits != 0

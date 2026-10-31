@@ -9,6 +9,11 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Materials/Material.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture.h"
+#include "ProceduralMeshComponent.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
@@ -87,6 +92,73 @@ void AAC2GameMode::EnvironmentSmokeTick(float Delta)
     auto Capture = [&](const TCHAR *Name) {
         FScreenshotRequest::RequestScreenshot(FPaths::Combine(FPaths::ProjectSavedDir(),TEXT("Screenshots"),Name),false,false);
     };
+    if(FParse::Param(FCommandLine::Get(),TEXT("AC2TerrainSeamSmoke")))
+    {
+        if(!Far || Far->Center()!=InitialBlock)return;
+        if(FParse::Param(FCommandLine::Get(),TEXT("AC2TerrainOnly")) || FParse::Param(FCommandLine::Get(),TEXT("AC2TerrainFlat")))
+            for(TActorIterator<AActor> It(GetWorld());It;++It)
+            {
+                TArray<UProceduralMeshComponent*> Components;It->GetComponents(Components);
+                for(auto* C:Components)
+                    if(!C->ComponentHasTag(TEXT("AC2TerrainSurface")))C->SetVisibility(false);
+                    else if(FParse::Param(FCommandLine::Get(),TEXT("AC2TerrainFlat")))
+                        if(auto* M=Cast<UMaterialInstanceDynamic>(C->GetMaterial(0)))
+                            M->SetTextureParameterValue(TEXT("Albedo"),LoadObject<UTexture>(nullptr,TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture")));
+            }
+        Sky->TimeScale=0;
+        // Reported seam: 86B0, world 21440.5, 28301.5 metres (west tile edge).
+        const FVector Seam(2144050,2830150,0);
+        double Ground=0;
+        if(!Stream->GroundAt(Seam+FVector(0,0,1000000),Ground)){Finish(false);return;}
+        FString Label=TEXT("terrain-seam");
+        FParse::Value(FCommandLine::Get(),TEXT("AC2TerrainCapture="),Label);
+        switch(SmokeStage)
+        {
+        case 0: View(Seam+FVector(400,-700,Ground+350),Seam+FVector(-400,1700,Ground-50));break;
+        case 1: Capture(*(TEXT("AC2Environment-")+Label+TEXT("-north.png")));break;
+        case 2: View(Seam+FVector(1700,-400,Ground+1800),Seam+FVector(0,0,Ground));break;
+        case 3: Capture(*(TEXT("AC2Environment-")+Label+TEXT("-overhead.png")));break;
+        default: Finish(true);return;
+        }
+        ++SmokeStage;StageTime=0;return;
+    }
+    if(FParse::Param(FCommandLine::Get(),TEXT("AC2WaterDistanceSmoke")))
+    {
+        const uint32 ExpectedCenter=SmokeStage>=5?0x85b0:InitialBlock;
+        if(!Far || Far->Center()!=ExpectedCenter)return;
+        int32 WaterBatches=0,WaterTriangles=0;
+        for(TActorIterator<AActor> It(GetWorld());It;++It)
+        {
+            if(It->IsHidden())continue;
+            TArray<UProceduralMeshComponent*> Components;It->GetComponents(Components);
+            for(auto* C:Components)if(C->IsVisible())
+                for(int32 Section=0;Section<C->GetNumSections();++Section)
+                    if(auto* M=C->GetMaterial(Section);M && M->GetBaseMaterial()->GetName()==TEXT("M_AC2Water"))
+                    {++WaterBatches;WaterTriangles+=C->GetProcMeshSection(Section)->ProcIndexBuffer.Num()/3;}
+        }
+        if(Far->WaterTileCount()<=Stream->WaterCount() || WaterBatches!=Far->WaterBatchCount() ||
+           WaterTriangles!=Far->WaterTileCount()*2)
+        {UE_LOG(LogTemp,Error,TEXT("AC2 water: incomplete or overlapping surface (%d batches, %d triangles)"),WaterBatches,WaterTriangles);Finish(false);return;}
+        Sky->TimeScale=0;
+        // Reported coastline: 38.1N, 3.7E. Look over the near/far terrain boundary.
+        const FVector Shore=AC2::BlockOrigin(0x84b0)+FVector(3480,1240,0);
+        double Ground=0;
+        if(!Stream->GroundAt(Shore+FVector(0,0,1000000),Ground)){Finish(false);return;}
+        FString Label=TEXT("water-distance");
+        FParse::Value(FCommandLine::Get(),TEXT("AC2WaterCapture="),Label);
+        switch(SmokeStage)
+        {
+        case 0: View(Shore+FVector(0,0,Ground+500),Shore+FVector(60000,-10000,7100));break;
+        case 1: Capture(*(TEXT("AC2Environment-")+Label+TEXT("-coast.png")));break;
+        case 2: View(Shore+FVector(-18000,12000,Ground+26000),Shore+FVector(30000,-5000,7100));break;
+        case 3: Capture(*(TEXT("AC2Environment-")+Label+TEXT("-overview.png")));break;
+        case 4: if(!LoadBlock(0x85b0)){Finish(false);return;}break;
+        case 5: View(Shore+FVector(0,0,Ground+500),Shore+FVector(60000,-10000,7100));break;
+        case 6: Capture(*(TEXT("AC2Environment-")+Label+TEXT("-streamed.png")));break;
+        default: UE_LOG(LogTemp,Display,TEXT("AC2 water: PASS %d tiles in %d batches after streaming 84B0 to 85B0, no overlapping near surface"),Far->WaterTileCount(),WaterBatches);Finish(true);return;
+        }
+        ++SmokeStage;StageTime=0;return;
+    }
     if(FParse::Param(FCommandLine::Get(),TEXT("AC2ShorelineSmoke")))
     {
         const FVector Bank=AC2::BlockOrigin(0x74a9);

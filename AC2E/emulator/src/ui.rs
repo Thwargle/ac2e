@@ -270,7 +270,9 @@ pub fn hand_equipment_at(
     equipped: bool,
     destination: u16,
 ) -> Result<Vec<u8>, WorldError> {
-    if !matches!(slot, 2 | 8 | 0x10 | 0x40 | 0x80) || other_hands & !0xc0 != 0 || other_hands & slot != 0 {
+    // Body apparel uses the same native descriptor as held items. Recovered
+    // headwear (0x01) and gloves (0x20) must not fail after profile validation.
+    if !matches!(slot, 1 | 2 | 8 | 0x10 | 0x20 | 0x40 | 0x80) || other_hands & !0xc0 != 0 || other_hands & slot != 0 {
         return Err(WorldError::InvalidValue);
     }
     let mut fields = [0; 19];

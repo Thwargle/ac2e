@@ -229,6 +229,7 @@ void FAC2Network::ClearWorld()
     PlayerId.Reset();
     TargetId.Reset();
     ExaminationId.Reset();ExaminationRows.Reset();ExaminationError.Reset();ExaminationPending=false;
+    ExaminationQueued=false;ExaminationStarted=-1;
     HasPlayerPose = NeedsPlacement = false;
     Dead = Combat = false;
     MaxHealth=MaxVigor=0;
@@ -334,6 +335,7 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     if (Obj.Actor.IsValid())
         Obj.Actor->Destroy();
     Obj.Model.Reset();
+    Obj.PresentationBounds=FBox(ForceInit);
     if (!Obj.Visual || (!Obj.Placed && Obj.Parent.IsEmpty()))
         return;
     auto A = Mode->GetWorld()->SpawnActor<AActor>();
@@ -373,6 +375,11 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
         Obj.FootZ=GroundedBody?FeetBounds.Min.Z:0;
         if(GroundedBody)Obj.BodyHeight=FMath::Max(1.,Obj.Model->ModelBounds().Max.Z-Obj.FootZ);
         if(GroundedBody && Obj.Parent.IsEmpty())Body->SetRelativeLocation(FVector(0,0,-Obj.FootZ));
+        Obj.PresentationBounds=Obj.Model->ModelBounds();
+        // Effect-only portals can have invisible interaction hulls rather than
+        // visible model triangles. Preserve their original display extent too.
+        if(!Obj.PresentationBounds.IsValid)
+            Obj.PresentationBounds=A->GetComponentsBoundingBox(true).TransformBy(Body->GetComponentTransform().Inverse());
         Obj.Solid=!GroundItem && Obj.Content && Obj.Parent.IsEmpty() && Obj.Model->EnableWorldObjectCollision()>0;
         A->SetActorEnableCollision(Obj.Solid);
         if(Smoke)
@@ -698,11 +705,23 @@ FString FAC2Network::ObjectName(const FString& Id) const
     const auto* O=Objects.Find(Id);
     return O?(*O)->Name:FString();
 }
+FBox FAC2Network::ObjectPresentationBounds(const FString& Id) const
+{
+    const auto* Entry=Objects.Find(Id);
+    if(!Entry || !(*Entry)->Actor.IsValid())return FBox(ForceInit);
+    const auto& Obj=**Entry;
+    // Follow the object/body placement, not animated limbs, wing tips or idle
+    // hover. Death is a one-time posture change: let the frame settle around
+    // the collapsed corpse instead of keeping its old standing/flying extent.
+    if(Obj.AnimMode!=AC2Motion::Dead && Obj.PresentationBounds.IsValid && Obj.Body.IsValid())
+        return Obj.PresentationBounds.TransformBy(Obj.Body->GetComponentTransform());
+    return Obj.Actor->GetComponentsBoundingBox(true);
+}
 bool FAC2Network::ObjectScreenBounds(const FString& Id,FBox2D& Bounds) const
 {
     const auto* O=Objects.Find(Id);auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     if(!O || !Targetable(Id,**O) || !PC)return false;
-    const auto Box=(*O)->Actor->GetComponentsBoundingBox(true);
+    const auto Box=ObjectPresentationBounds(Id);
     Bounds=FBox2D(ForceInit);
     if(!Box.IsValid)return false;
     for(int32 I=0;I<8;++I)
@@ -716,9 +735,39 @@ bool FAC2Network::ObjectScreenBounds(const FString& Id,FBox2D& Bounds) const
 void FAC2Network::Examine(const FString& Id)
 {
     if(!IsWorld() || Id.IsEmpty() || !Objects.Contains(Id))return;
-    ExaminationId=Id;ExaminationRows.Reset();ExaminationError.Reset();ExaminationPending=true;
+    if(Id==ExaminationId && ExaminationPending)return;
+    if(Id!=ExaminationId)ExaminationRows.Reset();
+    ExaminationId=Id;ExaminationError.Reset();ExaminationPending=true;ExaminationQueued=true;
+    RefreshExamination(Id);
+}
+void FAC2Network::RefreshExamination(const FString& Id)
+{
+    if(!IsWorld() || Id.IsEmpty() || Id!=ExaminationId)return;
+    if(!Objects.Contains(Id))
+    {
+        ExaminationRows.Reset();ExaminationPending=ExaminationQueued=false;
+        ExaminationError=TEXT("That object is no longer available to examine.");
+        return;
+    }
+    if(!ExaminationError.IsEmpty())return;
+    const double Elapsed=FPlatformTime::Seconds()-ExaminationStarted;
+    // A target change can land immediately after an automatic refresh. Queue
+    // it past the server's 100 ms cooldown instead of losing the new request.
+    if(ExaminationQueued)
+    {
+        if(Elapsed>=.125)RequestExamination();
+        return;
+    }
+    // One outstanding refresh, at most twice a second. This also covers
+    // server-only derived stats, inventory changes and corpse transitions.
+    if(ExaminationPending || Elapsed<.5)return;
+    RequestExamination();
+}
+void FAC2Network::RequestExamination()
+{
+    ExaminationError.Reset();ExaminationPending=true;ExaminationQueued=false;
     ExaminationStarted=FPlatformTime::Seconds();
-    auto J=Command(TEXT("examine"));J->SetStringField(TEXT("id"),Id);Send(J);
+    auto J=Command(TEXT("examine"));J->SetStringField(TEXT("id"),ExaminationId);Send(J);
 }
 void FAC2Network::Attack()
 {
@@ -883,11 +932,15 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         return;
     }
     if(Event==TEXT("examination_error"))
-    {ExaminationPending=false;ExaminationError=S(J,TEXT("message"));return;}
+    {
+        if(ExaminationPending && !ExaminationQueued && (Id.IsEmpty() || Id==ExaminationId))
+        {ExaminationPending=false;ExaminationError=S(J,TEXT("message"));}
+        return;
+    }
     if(Event==TEXT("examination"))
     {
-        if(Id!=ExaminationId)return; // A slower reply must never replace a newer inspection.
-        ExaminationPending=false;ExaminationRows.Reset();ExaminationError.Reset();
+        if(Id!=ExaminationId || !Objects.Contains(Id))return; // Ignore old targets and removed objects.
+        ExaminationPending=ExaminationQueued=false;ExaminationRows.Reset();ExaminationError.Reset();
         FExaminationRow Row;
         auto Flush=[&](){if(!Row.Text.IsEmpty() || Row.Image)ExaminationRows.Add(Row);Row={};};
         const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;
@@ -1293,7 +1346,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     if(Event==TEXT("quality") && N(J,TEXT("table"))==10 && N(J,TEXT("key"))==0x100)
     {
         if(auto* Object=Objects.Find(Id);Object && int32(N(J,TEXT("instance"),(*Object)->Instance))==(*Object)->Instance)
-        {(*Object)->Name=StringInfo(O(J,TEXT("value")));if(ExaminationId==Id)Examine(Id);}
+        {(*Object)->Name=StringInfo(O(J,TEXT("value")));}
         return;
     }
     if(Event==TEXT("quality") && N(J,TEXT("table"))==4 && N(J,TEXT("key"))==0x3b6){
@@ -1356,6 +1409,11 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
                 (*E)->Actor->Destroy();
             Objects.Remove(Id);
             if(TargetId==Id)TargetId.Reset();
+            if(ExaminationId==Id)
+            {
+                ExaminationRows.Reset();ExaminationPending=ExaminationQueued=false;
+                ExaminationError=TEXT("That object is no longer available to examine.");
+            }
         }
         if (auto P = Mode->Characters.Active())
             P->Items.RemoveAll([&](const FAC2InventoryItem &I) { return I.NetworkId == Id; });
@@ -1468,7 +1526,7 @@ void FAC2Network::Tick(float Delta)
     if(IsWorld() && !ShopVendor.IsEmpty() && Time-LastShopRefresh>10)
     {auto J=Command(TEXT("shop_refresh"));J->SetStringField(TEXT("vendor"),ShopVendor);Send(J);LastShopRefresh=Time;}
 
-    if(ExaminationPending && FPlatformTime::Seconds()-ExaminationStarted>8)
+    if(ExaminationPending && !ExaminationQueued && FPlatformTime::Seconds()-ExaminationStarted>8)
     {ExaminationPending=false;ExaminationError=TEXT("The server did not provide examination information. Right-click to retry.");}
     Time += Delta;
     Started += Delta;

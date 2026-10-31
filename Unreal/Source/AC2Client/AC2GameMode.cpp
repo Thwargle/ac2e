@@ -389,6 +389,7 @@ void AAC2GameMode::UpdateEnvironment(float Delta)
     {
         if (Stream->ExteriorVisible()) Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
         Far->SetVisible(Stream->ExteriorVisible());
+        Stream->SetDistantWaterActive(Far->TileCount()>0);
         uint32 Center = 0;
         AC2::WorldBlock(StreamFocus, Center);
         Stream->SetDrawRadius(Far->Center() == Center ? ViewRadius : ViewRadius + 1);

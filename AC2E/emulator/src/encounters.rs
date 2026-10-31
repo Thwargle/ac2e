@@ -1,4 +1,4 @@
-//! Deterministic development encounters. Rules are explicit server-authored data.
+//! Server-authoritative development encounters. Balance rules remain authored.
 //! This module does not claim original combat balance, collision or animation parity.
 use crate::{
     content::Content,
@@ -15,6 +15,47 @@ use std::{
 };
 fn invalid(text: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, text)
+}
+
+#[cfg(test)]
+mod skill_tests;
+
+#[cfg(test)]
+mod locomotion_tests {
+    use super::*;
+    #[test]
+    fn different_speeds_preserve_collision_steps_and_attack_standoff() {
+        let from=Placement::HUMAN_START;
+        let goal=from.translated([10.,0.,0.]).unwrap();
+        for speed in [3.9,6.5,7.8] {
+            let mut route=Vec::new();
+            let next=advance(from,goal,2.5,speed*0.1,&mut route,|a,b| {
+                assert!(a.distance(b).unwrap()<0.201);Some(b)
+            }).unwrap();
+            assert!((from.distance(next).unwrap()-speed*0.1).abs()<0.0001);
+            let stop=advance(from,goal,2.5,20.,&mut Vec::new(),|_,b|Some(b)).unwrap();
+            assert!((stop.distance(goal).unwrap()-2.5).abs()<0.0001);
+        }
+        // A wall encountered partway through a fast tick cannot be skipped.
+        let limited=advance(from,goal,0.,2.,&mut Vec::new(),|_,b|
+            (b.coordinates[0]<=from.coordinates[0]+0.41).then_some(b)).unwrap();
+        assert!((from.distance(limited).unwrap()-0.4).abs()<0.0001);
+    }
+    #[test]
+    fn return_spends_time_budget_across_waypoints_without_cutting_corners() {
+        let home=Placement::HUMAN_START;
+        let mut route=Vec::new();
+        let corner=advance(home,home.translated([1.,0.,0.]).unwrap(),0.,1.,&mut route,|_,b|Some(b)).unwrap();
+        let end=advance(corner,corner.translated([0.,1.,0.]).unwrap(),0.,1.,&mut route,|_,b|Some(b)).unwrap();
+        let next=retreat(end,1.5,&mut route,|a,b| {
+            let [x,y,_]=a.offset_to(b).unwrap();
+            assert!(x.abs()<0.001 || y.abs()<0.001,"Must follow recorded right-angle path");
+            assert!(a.distance(b).unwrap()<0.201);Some(b)
+        }).unwrap();
+        let [x,y,_]=home.offset_to(next).unwrap();assert!((x-0.5).abs()<0.001 && y.abs()<0.001);
+        let back=retreat(next,1.5,&mut route,|_,b|Some(b)).unwrap();
+        assert!(home.distance(back).unwrap()<0.001);assert!(route.is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -76,6 +117,8 @@ struct Actor {
     name: Option<String>,
     home: Placement,
     pursuit: bool,
+    movement: crate::creature_motion::Profile,
+    velocity: f32,
     // Verified steps retraced on disengagement, without inventing a path home.
     route: Vec<Placement>,
     rule: Rule,
@@ -97,8 +140,64 @@ struct Attack {
     stage: u8,
     started: u64,
     skill: bool,
+    strike: Option<Strike>,
+    periodic: bool,
 }
+/// One skill hit: weapon damage plus `bonus`, spending up to `cost` vigor.
+/// `behavior` and `fx` are the skill record's story behavior and FX (0 = none).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Strike {
+    pub ratings: Option<(crate::combat::Ratings,u64)>,
+    pub skill: u32,
+    pub bonus: u32,
+    pub weapon_damage: bool,
+    pub cost: u32,
+    pub range: f32,
+    pub behavior: u32,
+    pub fx: u32,
+    pub burn: Option<Over>,
+}
+/// A vital change applied every `period_ms` for `duration_ms`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Over {
+    pub health: u32,
+    pub vigor: u32,
+    pub period_ms: u64,
+    pub duration_ms: u64,
+}
+/// Regeneration multipliers from a timed buff (1.0 = unchanged).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Regen {
+    pub health: f32,
+    pub vigor: f32,
+    pub duration_ms: u64,
+}
+struct Burn {
+    skill: u32,
+    source: u64,
+    target: u64,
+    per_tick: u32,
+    period: u64,
+    next: u64,
+    until: u64,
+}
+struct Mend {
+    instant: bool,
+    skill: u32,
+    source: u64,
+    player: u64,
+    health: u32,
+    vigor: u32,
+    period: u64,
+    next: u64,
+    until: u64,
+    /// FX shown on the player when the first restoration lands (0 = none).
+    fx: u32,
+}
+const MAX_TIMED: usize = 512;
 pub enum Event {
+    SkillSwing { player: u64, behavior: u32 },
+    Fx { target: u64, fx: u32 },
     Loot { actor:u64, player:u64, entity:u32, ai:crate::creature_ai::Profile },
     Move { actor: u64, placement: Placement },
     IdolVisual(u64, crate::combat_visual::IdolAction),
@@ -140,6 +239,11 @@ pub enum Event {
     Stop(u64),
 }
 pub struct Encounters {
+    dice: crate::combat::Dice,
+    burns: Vec<Burn>,
+    mends: Vec<Mend>,
+    regen: BTreeMap<(u64,u32), (Regen, u64)>,
+    ratings: Vec<(u64,u32,crate::combat::Ratings,u64)>,
     actors: BTreeMap<u64, Actor>,
     spawners: crate::spawners::Spawners,
     attacks: BTreeMap<u64, Attack>,
@@ -165,20 +269,66 @@ fn facing(from:Placement,target:Placement)->Option<Placement> {
     let degrees=dx.atan2(dy).to_degrees().rem_euclid(360.0);
     Some(Placement{heading:(f64::from(degrees)*f64::from(1f32/360.)*255.).trunc() as u8,..from})
 }
-fn approach(from:Placement,target:Placement,stop:f32)->Option<Placement> {
+fn approach(from:Placement,target:Placement,stop:f32,budget:f32)->Option<Placement> {
     let [dx,dy,_]=from.offset_to(target)?;
     let distance=dx.hypot(dy);
     if distance<=stop+0.01{return None;}
-    let step=0.2f32.min(distance-stop);
+    let step=budget.min(distance-stop);
+    if step<=0.0001{return None;}
     let next=from.translated([dx/distance*step,dy/distance*step,0.])?;
     facing(next,target)
 }
+/// Spend a distance budget through the same short, collision-checked segments
+/// used before variable speed. Retain every segment for safe homeward retracing.
+fn advance(from:Placement,target:Placement,stop:f32,mut budget:f32,route:&mut Vec<Placement>,
+    mut walk:impl FnMut(Placement,Placement)->Option<Placement>)->Option<Placement> {
+    let mut point=from;
+    for _ in 0..128 {
+        if route.len()>=4096 {break;}
+        let Some(proposed)=approach(point,target,stop,budget.min(0.2)) else {break};
+        let Some(next)=walk(point,proposed) else {break};
+        if from.distance(next).is_none_or(|d|d>crate::creature_motion::MAX_UPDATE_DISTANCE) {break;}
+        let [x,y,_]=point.offset_to(next)?;let distance=x.hypot(y);
+        if distance<0.0001 {break;}
+        budget=(budget-distance).max(0.);route.push(point);point=next;
+    }
+    (point!=from).then_some(point)
+}
+fn retreat(from:Placement,mut budget:f32,route:&mut Vec<Placement>,
+    mut walk:impl FnMut(Placement,Placement)->Option<Placement>)->Option<Placement> {
+    let mut point=from;
+    for _ in 0..128 {
+        while route.last().is_some_and(|p|point.offset_to(*p).is_some_and(|[x,y,z]|x.hypot(y)<0.01 && z.abs()<=0.65)) {route.pop();}
+        let Some(&goal)=route.last() else {break};
+        let Some(proposed)=approach(point,goal,0.,budget.min(0.2)) else {break};
+        let Some(next)=walk(point,proposed) else {break};
+        if from.distance(next).is_none_or(|d|d>crate::creature_motion::MAX_UPDATE_DISTANCE) {break;}
+        let [x,y,_]=point.offset_to(next)?;let distance=x.hypot(y);
+        if distance<0.0001 {break;}
+        budget=(budget-distance).max(0.);point=next;
+    }
+    (point!=from).then_some(point)
+}
 impl Encounters {
+    pub fn load_motion(&mut self,content:&Content,directory:&Path)->io::Result<()> {
+        let mut dat=crate::dat::Dat::open(directory.join("portal.dat"))?;
+        let mut catalog=crate::creature_motion::Catalog::default();
+        for (&id,actor) in &mut self.actors {
+            let object=content.object(id).ok_or_else(||invalid("Movement actor missing content"))?;
+            actor.movement=catalog.resolve(&mut dat,object.visual,object.scale)?
+                .ok_or_else(||io::Error::other(format!("Missing native movement for creature {id:016x}, visual {:08x}",object.visual)))?;
+        }
+        Ok(())
+    }
+    pub fn movement_profile(&self,id:u64)->Option<crate::creature_motion::Profile> {
+        self.actors.get(&id).map(|a|a.movement)
+    }
     pub fn load(path: &Path, content: &Content) -> io::Result<Self> {
         if path == Path::new("training") {
-            return Self::parse(
+            return Self::parse_profile(
                 include_str!("../content/development-encounters.tsv"),
                 content,
+                true,
             );
         }
         let mut bytes = Vec::new();
@@ -191,6 +341,9 @@ impl Encounters {
         Self::parse(text, content)
     }
     fn parse(text: &str, content: &Content) -> io::Result<Self> {
+        Self::parse_profile(text,content,false)
+    }
+    fn parse_profile(text: &str, content: &Content, regional_native: bool) -> io::Result<Self> {
         if text.len() > 65536 {
             return Err(invalid("encounter profile exceeds 64 KiB"));
         }
@@ -302,7 +455,10 @@ impl Encounters {
         // level 1 character. Interval 0 means the record had no natural weapon
         // time. A catalog entry alone is not evidence that an NPC is attackable.
         // Only explicit encounter rules or recovered combat records qualify.
-        for line in include_str!("../content/creature-combat.tsv").lines().chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines()) {
+        let mut native_rules=BTreeMap::new();
+        for line in include_str!("../content/creature-combat.tsv").lines()
+            .chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines()) {
             if line.is_empty() || line.starts_with('#') || line.starts_with("pyrealium-") {
                 continue;
             }
@@ -352,6 +508,7 @@ impl Encounters {
                     if !value.is_finite() || !(0.0..=500.0).contains(&value){return Err(invalid("native homesick radius bounds"));}
                     if value>0. {value}else{18.}}else{18.},
             };
+            native_rules.entry(entity).or_insert(rule);
             if rules.contains_key(&entity) {
                 continue;
             }
@@ -382,7 +539,12 @@ impl Encounters {
                 {
                     return None;
                 }
-                rules.get(&object.entity).map(|&rule| {
+                // The built-in training profile weakens several high-level
+                // templates for practice. New regional wilderness must retain
+                // native stats. Explicit external encounter overrides still win.
+                let regional=object.id&0xffffffffff000000==0x8140c00000000000;
+                let selected=if regional_native && regional {&native_rules}else{&rules};
+                selected.get(&object.entity).map(|&rule| {
                     let ai=ai_profiles.get(&object.entity).copied().unwrap_or_default();
                     let mut rule=rule;
                     if ai.homesick.is_none(){rule.leash=rule.leash.max(ai.perception);}
@@ -393,6 +555,8 @@ impl Encounters {
                             name: object.name.clone().or_else(||labels.get(&object.entity).map(|name|(*name).to_owned())),
                             home: object.placement,
                             pursuit: object.supports_pose_updates(),
+                            movement: crate::creature_motion::Profile::default(),
+                            velocity: 0.,
                             route: Vec::new(),
                             rule,
                             health: rule.health,
@@ -414,16 +578,23 @@ impl Encounters {
         // pack caps its authored rosters as groups; services remain excluded.
         let mut spawners=crate::spawners::Spawners::new(actors.iter().map(|(&id,actor)|{
             (id,spawn_policies.get(&actor.entity).copied().unwrap_or(crate::spawners::Policy{
-                initial_delay_ms:0,regeneration_ms:if id&0xffffff0000000000==0x8140a00000000000 {120000}else{actor.rule.respawn}}))
+                initial_delay_ms:0,regeneration_ms:
+                    if id&0xffffffffff000000==0x8140c00000000000 {180000}
+                    else if id&0xffffff0000000000==0x8140a00000000000 {120000}
+                    else {actor.rule.respawn}}))
         }))?;
         for (id,capacity,members) in spawn_groups {spawners.group(id,capacity,members)?;}
-        let inferred:serde_json::Value=serde_json::from_str(include_str!("../content/inferred-world-v1.report.json")).map_err(io::Error::other)?;
+        for source in [include_str!("../content/inferred-world-v1.report.json"),
+            include_str!("../content/regional-world-v1.report.json")] {
+        let inferred:serde_json::Value=serde_json::from_str(source).map_err(io::Error::other)?;
         for group in inferred["groups"].as_array().ok_or_else(||invalid("inferred spawn groups"))? {
             let members=group["members"].as_array().ok_or_else(||invalid("inferred roster"))?.iter().filter_map(|v|v.as_u64()).collect::<Vec<_>>();
             // External content can select only part of the authored pack.
             let members=members.into_iter().filter(|id|actors.contains_key(id)).collect::<Vec<_>>();
-            if !members.is_empty(){let capacity=(group["capacity"].as_u64().unwrap() as usize).min(members.len());
-                spawners.group(group["id"].as_u64().unwrap(),capacity,members)?;}
+            if !members.is_empty(){let capacity=usize::try_from(group["capacity"].as_u64().ok_or_else(||invalid("inferred capacity"))?)
+                .map_err(|_|invalid("inferred capacity overflow"))?.min(members.len());
+                spawners.group(group["id"].as_u64().ok_or_else(||invalid("inferred group identity"))?,capacity,members)?;}
+        }
         }
         Ok(Self {
             actors,
@@ -439,7 +610,9 @@ impl Encounters {
             regen_vigor,
             regen_interval,
             next_regen: 0,
+            burns: Vec::new(), mends: Vec::new(), regen: BTreeMap::new(), ratings: Vec::new(),
             training_loot: false,
+            dice:crate::combat::Dice::seeded(),
         })
     }
     pub fn initial_health(&self) -> impl Iterator<Item = (u64, u32)> + '_ {
@@ -469,7 +642,10 @@ impl Encounters {
         if !self.spawners.spawned(id){return Err(invalid("unexpected spawner child"));}
         let actor=self.actors.get_mut(&id).ok_or_else(||invalid("unknown spawner child"))?;
         actor.health=actor.rule.health;actor.target=None;actor.route.clear();actor.next_attack=0;
+        actor.velocity=0.;
         actor.evading=false;actor.wander_goal=None;
+        self.burns.retain(|b|b.target!=id);
+        self.ratings.retain(|(who,_,_,_)|*who!=id);
         Ok(())
     }
     pub fn removed(&mut self,id:u64,now:u64) { self.spawners.removed(id,now); }
@@ -570,6 +746,8 @@ impl Encounters {
                 stage: 0,
                 started: next,
                 skill: false,
+                strike: None,
+                periodic: false,
             },
         );
         Ok(())
@@ -606,17 +784,31 @@ impl Encounters {
         if now < self.next_tick {
             return Ok(Vec::new());
         }
+        // Use elapsed time rather than assuming every scheduled 100ms tick ran
+        // on time. Bound catch-up after a stall so no actor leaps across a zone.
+        let elapsed=if self.next_tick==0 {0.1}else{(now.saturating_sub(self.next_tick.saturating_sub(100)).min(250) as f32)/1000.};
         self.next_tick = now.saturating_add(100);
+        self.ratings.retain(|(_,_,_,until)|*until>now);
+        self.regen.retain(|(who,_),(_,until)|*until>now && store.characters.get(who).is_some_and(|c|c.progression.alive()) && scene.player_placement(*who).is_some());
+        self.ratings.retain(|(who,_,_,_)|store.characters.get(who).map_or_else(||self.actors.get(who).is_some_and(|a|a.health>0 && !a.evading),|c|c.progression.alive()));
+        self.burns.retain(|b| b.next<=b.until && now<=b.until && self.actors.get(&b.target).is_some_and(|a|a.health>0 && !a.evading) && store.characters.get(&b.source).is_some_and(|c|!c.deleted && c.progression.alive()) && scene.player_placement(b.source).is_some());
         let mut events = Vec::new();
         let active=active.collect::<Vec<_>>();
-        let due = self
+        let mut due = self
             .attacks
             .iter()
             .filter(|(_, attack)| attack.next <= now)
             .map(|(&id, &attack)| (id, attack))
             .collect::<Vec<_>>();
+        for burn in &mut self.burns {
+            if burn.next<=now {
+                burn.next=now.saturating_add(burn.period);
+                due.push((burn.source,Attack{target:burn.target,next:now,repeat:false,category:0,stage:2,started:now,skill:false,periodic:true,
+                    strike:Some(Strike{ratings:None,skill:burn.skill,bonus:burn.per_tick,weapon_damage:false,cost:0,range:0.,behavior:0,fx:0,burn:None})}));
+            }
+        }
         for (player, attack) in due {
-            if !self.attacks.contains_key(&player) {
+            if !attack.periodic && !self.attacks.contains_key(&player) {
                 continue;
             }
             let available = self
@@ -629,8 +821,8 @@ impl Encounters {
                 .is_some_and(|c| !c.deleted && c.progression.alive());
             if !available
                 || !alive
-                || !scene.combat_distance(player, attack.target).is_some_and(|distance|
-                    distance <= if attack.category == 0 { self.range } else { 18.0 })
+                || (!attack.periodic && !scene.combat_distance(player, attack.target).is_some_and(|distance|
+                    distance <= attack.strike.map_or(if attack.category == 0 { self.range } else { 18.0 }, |s|s.range.max(self.range))))
             {
                 if alive {
                     events.push(Event::Note {
@@ -642,30 +834,34 @@ impl Encounters {
                         }.into(),
                     });
                 }
-                self.stopped(player, &mut events);
+                if !attack.periodic { self.stopped(player, &mut events); }
                 continue;
             }
-            if let Some(world)=geometry.as_deref_mut() {
+            if !attack.periodic { if let Some(world)=geometry.as_deref_mut() {
                 let clear=scene.player_placement(player).zip(scene.content_placement(attack.target))
                     .is_some_and(|(a,b)|world.clear(a,b,1.));
                 if !clear {events.push(Event::Note{player,text:"Attack stopped: your target is obstructed.".into()});
                     self.stopped(player,&mut events);continue;}
             }
-            if attack.category != 0 && attack.stage == 0 {
-                let cost = if attack.category == 2 { self.cost.max(6) } else { self.cost };
-                if store.characters[&player].progression.apply(&Command::SpendVigor(cost)).is_err() {
+            }
+            if !attack.periodic && attack.strike.is_some_and(|s|s.cost>0) && store.characters[&player].progression.vigor==0 {
+                events.push(Event::Note{player,text:"Attack stopped: insufficient vigor.".into()});self.stopped(player,&mut events);continue;
+            }
+            if !attack.periodic && attack.category != 0 && attack.stage == 0 {
+                let cost = attack.strike.map_or(if attack.category == 2 { self.cost.max(6) } else { self.cost }, |s|s.cost.min(store.characters[&player].progression.vigor));
+                if cost > 0 && store.characters[&player].progression.apply(&Command::SpendVigor(cost)).is_err() {
                     events.push(Event::Note { player, text: "Attack stopped: insufficient vigor.".into() });
                     self.stopped(player, &mut events);
                     continue;
                 }
-                events.push(Event::Swing(player));
+                if let Some(strike)=attack.strike { events.push(Event::SkillSwing{player,behavior:strike.behavior}); } else { events.push(Event::Swing(player)); }
                 let queued = self.attacks.get_mut(&player).unwrap();
                 queued.started = now;
                 queued.stage = 1;
                 queued.next = now.saturating_add(crate::projectiles::RELEASE_MS);
                 continue;
             }
-            if attack.category != 0 && attack.stage == 1 {
+            if attack.strike.is_none() && attack.category != 0 && attack.stage == 1 {
                 let race = store.characters[&player].creation.as_ref().map_or(1, |r| r.race);
                 if let Some(profile) = crate::projectiles::profile(race, attack.category, attack.skill) {
                     let distance = scene.combat_distance(player, attack.target).unwrap();
@@ -679,14 +875,21 @@ impl Encounters {
             }
             let actor = &self.actors[&attack.target];
             // Authored starter balance; the client sends only a learned skill/target.
-            let damage = if attack.category == 2 { self.damage.saturating_add(4) } else { self.damage };
-            let cost = if attack.category == 2 { self.cost.max(6) } else { self.cost };
-            let dealt = damage
-                .saturating_sub(actor.rule.armor)
+            let base = if attack.category == 2 { self.damage.saturating_add(4) } else { self.damage };
+            let damage = attack.strike.map_or(base, |s|s.bonus.saturating_add(if s.weapon_damage {base} else {0}));
+            let armor=if attack.periodic {0} else {crate::combat::adjusted(actor.rule.armor,self.ratings_for(attack.target).armor)};
+            let cost = attack.strike.map_or(if attack.category == 2 { self.cost.max(6) } else { self.cost }, |s|s.cost.min(store.characters[&player].progression.vigor));
+            let school=match attack.category {1=>crate::combat::School::Missile,2=>crate::combat::School::Magic,_=>crate::combat::School::Melee};
+            let caster=&store.characters[&player];
+            let rating=crate::combat::adjusted(crate::combat::player_attack(caster.progression.level().number,&caster.skills,school),self.ratings_for(player).attack(school));
+            let defense=crate::combat::adjusted(actor.rule.level.unwrap_or(1)*8,self.ratings_for(attack.target).creature_defense());
+            let hit=attack.periodic || self.dice.roll(crate::combat::hit_chance(rating,defense));
+            let dealt = if !hit || damage == 0 {0} else {damage
+                .saturating_sub(armor)
                 .max(1)
-                .min(actor.health);
+                .min(actor.health)};
             let killed = dealt == actor.health;
-            let mut commands = vec![Command::SpendVigor(cost)];
+            let mut commands = if cost > 0 { vec![Command::SpendVigor(cost)] } else { Vec::new() };
             if killed && actor.rule.xp > 0 {
                 commands.push(Command::AwardXp(actor.rule.xp));
             }
@@ -704,7 +907,7 @@ impl Encounters {
                     player,
                     text: "Attack stopped: insufficient vigor or reward capacity.".into(),
                 });
-                self.stopped(player, &mut events);
+                if !attack.periodic { self.stopped(player, &mut events); }
                 continue;
             }
             let account = character.account.clone();
@@ -746,7 +949,7 @@ impl Encounters {
                 });
             } else if killed {
                 store.encounter_reward(&account, player, actor.entity, &commands)?;
-            } else {
+            } else if !commands.is_empty() {
                 store.progression_batch(&account, player, &commands)?;
             }
             if killed && quest_drop.is_some() && loot.is_none() {
@@ -760,16 +963,30 @@ impl Encounters {
                     book: store.characters[&player].quests.clone(),
                 });
             }
+            if !attack.periodic {
             let until = if attack.category == 0 { now.saturating_add(self.interval) }
                 else { attack.started.saturating_add(self.interval).max(now.saturating_add(100)) };
             self.cooldowns.insert(player, until);
             self.attacks.get_mut(&player).unwrap().next = until;
             self.attacks.get_mut(&player).unwrap().stage = 0;
             self.attacks.get_mut(&player).unwrap().skill = false;
+                self.attacks.get_mut(&player).unwrap().strike=None;
+            }
+            if let Some(strike)=attack.strike {
+                if !attack.periodic {
+                    if strike.fx!=0 {events.push(Event::Fx{target:attack.target,fx:strike.fx});}
+                    if hit { if let Some((ratings,ms))=strike.ratings {self.add_ratings(attack.target,strike.skill,ratings,ms,now)?;} }
+                    if let Some(burn)=strike.burn.filter(|b|hit && b.health>0 && b.duration_ms>0) {
+                        self.burns.retain(|b|!(b.source==player && b.target==attack.target && b.skill==strike.skill));
+                        self.burns.push(Burn{source:player,target:attack.target,skill:strike.skill,per_tick:burn.health,
+                            period:burn.period_ms.max(250),next:now.saturating_add(burn.period_ms.max(250)),until:now.saturating_add(burn.duration_ms)});
+                    }
+                }
+            }
             let actor = self.actors.get_mut(&attack.target).unwrap();
             actor.health -= dealt;
-            if attack.category == 0 { events.push(Event::Swing(player)); }
-            if let Ok(dealt) = i32::try_from(dealt) {
+            if !attack.periodic && attack.category == 0 { if let Some(strike)=attack.strike {events.push(Event::SkillSwing{player,behavior:strike.behavior});} else {events.push(Event::Swing(player));} }
+            if let Some(dealt) = i32::try_from(dealt).ok().filter(|value| *value > 0) {
                 events.push(Event::Hit {
                     victim: attack.target,
                     attacker: player,
@@ -787,7 +1004,7 @@ impl Encounters {
             });
             events.push(Event::Note {
                 player,
-                text: format!("You hit for {dealt} damage."),
+                text: if !hit {"Your attack missed.".into()} else if dealt == 0 {"Your skill takes effect.".into()} else {format!("You hit for {dealt} damage.")},
             });
             if killed {
                 actor.target = None;
@@ -826,10 +1043,12 @@ impl Encounters {
                     crate::combat_visual::IdolAction::Combat,
                 ));
             }
-            if !attack.repeat {
+            if !attack.repeat && !attack.periodic {
                 self.attacks.remove(&player);
             }
         }
+        let mut spell_ratings=BTreeMap::<u64,crate::combat::Ratings>::new();
+        for (who,_,rating,_) in &self.ratings {spell_ratings.entry(*who).or_default().add(*rating);}
         for (&id, actor) in &mut self.actors {
             // A real removal may also come from a script. Refill the owned slot;
             // leaving the client's PVS never removes content from the server.
@@ -838,6 +1057,7 @@ impl Encounters {
                 self.spawners.removed(id,now);
             }
             if actor.health == 0 {
+                actor.velocity=0.;
                 continue;
             }
             if actor.target.is_none() && !actor.evading && now>=actor.next_idle {
@@ -879,26 +1099,23 @@ impl Encounters {
                 if let Some(point)=scene.content_placement(id) {
                     if let Some(goal)=actor.wander_goal {
                         if actor.route.len()<2048 {
-                            if let Some(next)=approach(point,goal,0.2).and_then(|proposed|
-                                geometry.as_deref_mut().and_then(|world|world.walk_step(point,proposed,0.35))) {
-                                actor.route.push(point);events.push(Event::Move{actor:id,placement:next});continue;
+                            let budget=actor.movement.peace.distance(&mut actor.velocity,elapsed);
+                            if let Some(next)=advance(point,goal,0.2,budget,&mut actor.route,|from,to|
+                                geometry.as_deref_mut().and_then(|world|world.walk_step(from,to,0.35))) {
+                                events.push(Event::Move{actor:id,placement:next});continue;
                             }
                         }
                         actor.wander_goal=None;
+                        actor.velocity=0.;
                     }
                     // A blocked return waits for geometry; never teleport or
                     // walk through an obstacle to restore an authored spawn.
-                    while actor.route.last().is_some_and(|homeward|point.offset_to(*homeward)
-                        .is_some_and(|[x,y,z]|x.hypot(y)<0.04 && z.abs()<=0.65)) {actor.route.pop();}
-                    if actor.route.is_empty(){actor.evading=false;}
-                    if let Some(&homeward)=actor.route.last() {
-                        if let Some(mut next)=geometry.as_deref_mut().and_then(|world|world.walk_step(point,homeward,0.35)) {
-                            if actor.route.len()>1 {
-                                if let Some([x,y,_])=point.offset_to(next){next.heading=(x.atan2(y).to_degrees().rem_euclid(360.)/360.*255.).round() as u8;}
-                            }
-                            events.push(Event::Move{actor:id,placement:next});
-                        }
-                    }
+                    let budget=actor.movement.peace.distance(&mut actor.velocity,elapsed);
+                    if let Some(next)=retreat(point,budget,&mut actor.route,|from,to|
+                        geometry.as_deref_mut().and_then(|world|world.walk_step(from,to,0.35))) {
+                        events.push(Event::Move{actor:id,placement:next});
+                    } else {actor.velocity=0.;}
+                    if actor.route.is_empty(){actor.evading=false;actor.velocity=0.;}
                 }
                 continue;
             };
@@ -944,15 +1161,18 @@ impl Encounters {
             // adjacent blocks; native collision resolves the destination cell.
             if actor.pursuit {
                 if let (Some(from),Some(player))=(scene.content_placement(id),scene.player_placement(target)) {
-                    let step=approach(from,player,(actor.rule.range-0.5).max(0.5))
-                        .and_then(|proposed|geometry.as_deref_mut().and_then(|world|world.walk_step(from,proposed,0.35)));
+                    let budget=actor.movement.combat.distance(&mut actor.velocity,elapsed);
+                    let step=advance(from,player,(actor.rule.range-0.5).max(0.5),budget,&mut actor.route,|from,to|
+                        geometry.as_deref_mut().and_then(|world|world.walk_step(from,to,0.35)));
                     if let Some(next)=step {
-                        actor.route.push(from);
                         events.push(Event::Move{actor:id,placement:next});
-                    } else if let Some(turned)=facing(from,player).filter(|p|p.heading!=from.heading) {
+                    } else {
+                        actor.velocity=0.;
+                        if let Some(turned)=facing(from,player).filter(|p|p.heading!=from.heading) {
                         // Targets can circle inside melee range. Turn in place
                         // without adding a fake walking step to the home route.
                         events.push(Event::Move{actor:id,placement:turned});
+                        }
                     }
                 }
             }
@@ -968,6 +1188,16 @@ impl Encounters {
             // ArmorRating from Pyreal_DB_Insert_PlayerLevelData.sql. At least 1
             // damage remains so a hit is still a hit.
             let armor = previous.level().armor.saturating_add(crate::apparel::armor(&store.characters[&target].inventory,store.characters[&target].creation.as_ref().map_or(1,|r|r.race)));
+            let offense=spell_ratings.get(&id).copied().unwrap_or_default();
+            let protection=spell_ratings.get(&target).copied().unwrap_or_default();
+            let armor=crate::combat::adjusted(armor,protection.armor);
+            let attack=crate::combat::adjusted(actor.rule.level.unwrap_or(1)*8,offense.creature_attack());
+            let defense=crate::combat::adjusted(crate::combat::player_defense(previous.level().number,&store.characters[&target].skills,crate::combat::School::Melee),protection.defense(crate::combat::School::Melee));
+            if !self.dice.roll(crate::combat::hit_chance(attack,defense)) {
+                actor.next_attack=now.saturating_add(actor.rule.interval);
+                events.push(Event::IdolVisual(id,crate::combat_visual::IdolAction::Swing));
+                events.push(Event::Note{player:target,text:"The creature's attack misses you.".into()});continue;
+            }
             let dealt = actor.rule.damage.saturating_sub(armor).max(1);
             store.progression_command(&account, target, Command::Damage(dealt))?;
             actor.next_attack = now.saturating_add(actor.rule.interval);
@@ -1001,6 +1231,7 @@ impl Encounters {
                 state,
             });
         }
+        self.tick_mends(now,scene,store,&mut events)?;
         if now >= self.next_regen {
             self.next_regen = now.saturating_add(self.regen_interval);
             let busy: BTreeSet<_> = self
@@ -1023,11 +1254,14 @@ impl Encounters {
                 let state = &character.progression;
                 let level = state.level();
                 let mut commands = Vec::new();
-                if self.regen_health > 0 && state.health < level.health {
-                    commands.push(Command::Heal(self.regen_health));
+                let (h,v)=self.regen.iter().filter(|((who,_),_)|*who==player).fold((1f32,1f32),|(h,v),(_, (r,_))|((h*r.health).clamp(0.,100.),(v*r.vigor).clamp(0.,100.)));
+                let health = (self.regen_health as f32*h).round() as u32;
+                let vigor = (self.regen_vigor as f32*v).round() as u32;
+                if health > 0 && state.health < level.health {
+                    commands.push(Command::Heal(health));
                 }
-                if self.regen_vigor > 0 && state.vigor < level.vigor {
-                    commands.push(Command::RecoverVigor(self.regen_vigor));
+                if vigor > 0 && state.vigor < level.vigor {
+                    commands.push(Command::RecoverVigor(vigor));
                 }
                 if commands.is_empty() {
                     continue;
@@ -1050,4 +1284,163 @@ impl Encounters {
         }
         Ok(events)
     }
+    /// Restore a player's vitals: once on the next tick when `duration_ms` is 0,
+    /// otherwise every period until it expires. Recasting refreshes the effect.
+    pub fn mend(
+        &mut self,
+        source: u64,
+        skill: u32,
+        player: u64,
+        over: Over,
+        fx: u32,
+        now: u64,
+    ) -> io::Result<()> {
+        if over.health == 0 && over.vigor == 0 {
+            return Err(invalid("empty restoration"));
+        }
+        let period = over.period_ms.max(250);
+        if over.duration_ms > 0 {
+            self.mends.retain(|m| !(m.source == source && m.skill == skill && m.player == player && !m.instant));
+        }
+        if self.mends.len() >= MAX_TIMED {
+            return Err(invalid("timed effect capacity"));
+        }
+        self.mends.push(Mend {
+            instant: over.duration_ms == 0,
+            source,
+            skill,
+            player,
+            health: over.health,
+            vigor: over.vigor,
+            period,
+            next: if over.duration_ms == 0 {now} else {now.saturating_add(period)},
+            until: now.saturating_add(over.duration_ms),
+            fx,
+        });
+        Ok(())
+    }
+
+    pub fn add_ratings(&mut self, entity: u64, skill: u32, ratings: crate::combat::Ratings, duration_ms: u64, now: u64) -> io::Result<()> {
+        if ratings.is_empty() || entity == 0 {
+            return Ok(());
+        }
+        self.ratings.retain(|(who, id, _, until)| !(*who == entity && *id == skill) && *until > now);
+        if self.ratings.len() >= MAX_TIMED {
+            return Err(invalid("timed effect capacity"));
+        }
+        self.ratings.push((entity, skill, ratings, now.saturating_add(duration_ms.max(1000))));
+        Ok(())
+    }
+    fn ratings_for(&self, entity: u64) -> crate::combat::Ratings {
+        let mut total = crate::combat::Ratings::default();
+        for (who, _, ratings, _) in &self.ratings {
+            if *who == entity {
+                total.add(*ratings);
+            }
+        }
+        total
+    }
+    /// Multiply a player's regeneration until the buff expires.
+    pub fn boost_regen(&mut self, player: u64, skill:u32, regen: Regen, now: u64) -> io::Result<()> {
+        if !(regen.health.is_finite() && regen.vigor.is_finite())
+            || regen.health < 0.0
+            || regen.vigor < 0.0
+            || regen.health > 100.0
+            || regen.vigor > 100.0
+        {
+            return Err(invalid("invalid regeneration buff"));
+        }
+        if self.regen.len() >= MAX_TIMED && !self.regen.contains_key(&(player,skill)) {return Err(invalid("timed effect capacity"));}
+        self.regen.insert((player,skill),(regen,now.saturating_add(regen.duration_ms)));
+        Ok(())
+    }
+    fn tick_mends(
+        &mut self,
+        now: u64,
+        scene: &Scene,
+        store: &mut Store,
+        events: &mut Vec<Event>,
+    ) -> io::Result<()> {
+        for mend in &mut self.mends {
+            if mend.next > now || mend.next > mend.until || !mend.instant && now > mend.until {
+                continue;
+            }
+            mend.next = now.saturating_add(mend.period);
+            let Some(character) = store
+                .characters
+                .get(&mend.player)
+                .filter(|c| !c.deleted && c.progression.alive())
+            else {
+                mend.until = 0;
+                continue;
+            };
+            if scene.player_placement(mend.player).is_none() {
+                continue;
+            }
+            if mend.fx != 0 {
+                events.push(Event::Fx {
+                    target: mend.player,
+                    fx: std::mem::take(&mut mend.fx),
+                });
+            }
+            let level = character.progression.level();
+            let mut commands = Vec::new();
+            if mend.health > 0 && character.progression.health < level.health {
+                commands.push(Command::Heal(mend.health));
+            }
+            if mend.vigor > 0 && character.progression.vigor < level.vigor {
+                commands.push(Command::RecoverVigor(mend.vigor));
+            }
+            if commands.is_empty() {
+                continue;
+            }
+            let account = character.account.clone();
+            let previous = character.progression.clone();
+            store.progression_batch(&account, mend.player, &commands)?;
+            let state = store.characters[&mend.player].progression.clone();
+            let healed = state.health.saturating_sub(previous.health);
+            if healed > 0 {
+                if let Ok(healed) = i32::try_from(healed) {
+                    events.push(Event::Hit {
+                        victim: mend.player,
+                        attacker: mend.source,
+                        health_change: healed,
+                    });
+                }
+            }
+            events.push(Event::Owner {
+                player: mend.player,
+                previous,
+                state,
+            });
+        }
+        self.mends.retain(|mend| mend.next <= mend.until && (mend.instant || now <= mend.until));
+        Ok(())
+    }
+    /// Capacity is checked before any progression persistence or queue mutation.
+    pub fn admit_effects(&self) -> io::Result<()> {
+        let pending = self.attacks.values().filter(|a|a.strike.is_some()).count();
+        if self.burns.len()+pending+2>MAX_TIMED || self.mends.len()+2>MAX_TIMED || self.ratings.len()+pending+2>MAX_TIMED || self.regen.len()+1>MAX_TIMED {
+            return Err(invalid("Timed effect capacity; try again shortly."));
+        } Ok(())
+    }
+    pub fn strike(&mut self, player:u64, target:u64, now:u64, scene:&Scene, store:&Store, strike:Strike) -> io::Result<()> {
+        if !strike.range.is_finite() || strike.range<0. || !self.actors.get(&target).is_some_and(|a|a.health>0 && !a.evading) {
+            return Err(invalid("Select a living attackable creature."));
+        }
+        if !store.characters.get(&player).is_some_and(|c|!c.deleted && c.progression.alive()) {
+            return Err(invalid("The caster must be alive."));
+        }
+        if !scene.combat_distance(player,target).is_some_and(|d|d<=strike.range.max(self.range)) {
+            return Err(invalid("Your target is out of skill range."));
+        }
+        if self.attacks.get(&player).is_some_and(|a|a.stage!=0) { return Err(invalid("Finish the current attack before casting.")); }
+        self.admit_effects()?;
+        if self.attacks.len()>=64 && !self.attacks.contains_key(&player) {return Err(invalid("Attack capacity."));}
+        let repeat=self.attacks.get(&player).is_some_and(|a|a.repeat && a.target==target);
+        let category=crate::starter_gear::equipped_category(&store.characters[&player].inventory);
+        self.attacks.insert(player,Attack{target,next:now,repeat,category,stage:0,started:now,skill:true,strike:Some(strike),periodic:false});
+        Ok(())
+    }
+
 }

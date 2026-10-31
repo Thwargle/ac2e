@@ -87,6 +87,7 @@ class AAC2GameMode : public AGameModeBase
   private:
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FAC2PortalArrivalTest;
+    friend class FAC2LiveExaminationTest;
 #endif
     FAC2ScenePresentationBarrier ArrivalRender;
     bool bRevealing=false;

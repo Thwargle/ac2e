@@ -11,6 +11,109 @@ from content_profile import ContentProfile, nearby_landmark, door_physical
 
 
 class ContentComparisonTest(unittest.TestCase):
+    def test_regional_population_requires_matching_ground_proof_and_native_visual(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)
+            for name in ['world-observed-expanded.tsv','training-world.tsv','capture-spawns.tsv']:
+                (content/name).write_text('pyrealium-world-v4\n')
+            row='8140c0000077b800\t47000001\t1f000001\t01020001\t5\t5\t0\t1\t0\t0\t0\t-\tCreature'
+            manifest=content/'regional-world-v1.tsv';manifest.write_text('pyrealium-world-v4\n'+row+'\n')
+            catalog=content/'regional-content-v1.json';catalog.write_text('{}')
+            evidence={'native_ground_verified':True,
+                      'manifest_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                      'source_sha256':hashlib.sha256(catalog.read_bytes()).hexdigest()}
+            manifest.with_suffix('.report.json').write_text(json.dumps(evidence))
+            index={'portal.dat':{0x47000001,0x1f000001},'cell_1.dat':{0x0102ffff}}
+            output=root/'world.tsv'
+            with patch.object(prepare_content,'ROOT',root),patch.object(prepare_content,'asset_index',return_value=index),patch.object(prepare_content,'ContentProfile') as profile:
+                profile.return_value.visual.return_value=0x1f000001
+                prepare_content.prepare(root,output)
+                self.assertEqual(output.read_text().splitlines()[0],'pyrealium-world-v4')
+                self.assertEqual(output.read_text().splitlines()[1:],[row])
+                profile.return_value.visual.return_value=0x1f000002
+                prepare_content.prepare(root,output)
+                self.assertEqual(len(output.read_text().splitlines()),1)
+                catalog.write_text('{"changed":true}')
+                with self.assertRaisesRegex(ValueError,'fresh native ground'):
+                    prepare_content.prepare(root,output)
+
+    def replacement_fixture(self, root):
+        content = root / 'AC2E/emulator/content'
+        content.mkdir(parents=True)
+        old = '8140000000000001\t47001c27\t1f001042\t76b80027\t98.1885986\t133.502838\t168.323868\t1\t0\t0\t0\t-'
+        new = '8140000000000002\t47001c27\t1f001042\t77b80006\t1.37962341\t100.779083\t182.50499\t1\t0\t0\t0\t-\tOrven'
+        # The same template in another location is not automatically a duplicate.
+        other = old.replace('8140000000000001', '8140000000000003').replace('76b80027', '80b80027')
+        for name, rows in [('world-observed-expanded.tsv', [old, other]),
+                           ('training-world.tsv', []), ('capture-spawns.tsv', []),
+                           ('recovered-population.tsv', [new])]:
+            (content / name).write_text('pyrealium-world-v4\n' + '\n'.join(rows) + '\n', encoding='utf-8')
+        recovered = content / 'recovered-population.tsv'
+        recovered.with_suffix('.report.json').write_text(json.dumps(dict(
+            native_ground_verified=True, manifest_sha256=hashlib.sha256(recovered.read_bytes()).hexdigest())))
+        endpoint = lambda source, row: dict(source=source, id=row.split('\t')[0],
+                                            row_sha256=hashlib.sha256(row.encode()).hexdigest())
+        policy = dict(schema=1, replacements=[dict(name='Orven', reason='Audited duplicate',
+            superseded=endpoint('world-observed-expanded.tsv', old),
+            retained=endpoint('recovered-population.tsv', new))])
+        (content / 'placement-replacements.json').write_text(json.dumps(policy))
+        index = {'portal.dat': {0x47001c27, 0x1f001042},
+                 'cell_1.dat': {0x76b8ffff, 0x77b8ffff, 0x80b8ffff}}
+        return content, index, old, new, other
+
+    def test_audited_npc_replacement_crosses_cells_without_template_deduplication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            content, index, old, new, other = self.replacement_fixture(root)
+            original = {path.name: path.read_bytes() for path in content.iterdir()}
+            with patch.object(prepare_content, 'ROOT', root), \
+                 patch.object(prepare_content, 'asset_index', return_value=index), \
+                 patch.object(prepare_content, 'ContentProfile') as profile:
+                profile.return_value.visual.return_value = 0x1f001042
+                prepare_content.prepare(root, root / 'world.tsv')
+            self.assertEqual((root / 'world.tsv').read_text().splitlines(),
+                             ['pyrealium-world-v4', other + '\t-', new])
+            report = json.loads((root / 'world.report.json').read_text())
+            self.assertEqual(report['included'], 2)
+            self.assertEqual(report['excluded'], 1)
+            self.assertEqual(report['superseded_placements'][0]['superseded']['id'], old.split('\t')[0])
+            self.assertFalse(report['unapplied_placement_replacements'])
+            self.assertEqual(original, {path.name: path.read_bytes() for path in content.iterdir()})
+
+    def test_unavailable_replacement_preserves_original_npc(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, index, old, _, other = self.replacement_fixture(root)
+            index['cell_1.dat'].remove(0x77b8ffff)
+            with patch.object(prepare_content, 'ROOT', root), \
+                 patch.object(prepare_content, 'asset_index', return_value=index), \
+                 patch.object(prepare_content, 'ContentProfile'):
+                prepare_content.prepare(root, root / 'world.tsv')
+            self.assertEqual((root / 'world.tsv').read_text().splitlines(),
+                             ['pyrealium-world-v4', old + '\t-', other + '\t-'])
+            report = json.loads((root / 'world.report.json').read_text())
+            self.assertFalse(report['superseded_placements'])
+            self.assertEqual(len(report['unapplied_placement_replacements']), 1)
+
+    def test_stale_replacement_proof_does_not_overwrite_prepared_content(self):
+        for endpoint in ['superseded', 'retained']:
+            with self.subTest(endpoint=endpoint), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                content, index, *_ = self.replacement_fixture(root)
+                path = content / 'placement-replacements.json'
+                policy = json.loads(path.read_text())
+                policy['replacements'][0][endpoint]['row_sha256'] = 'stale'
+                path.write_text(json.dumps(policy))
+                output = root / 'world.tsv'
+                output.write_text('existing content\n')
+                with patch.object(prepare_content, 'ROOT', root), \
+                     patch.object(prepare_content, 'asset_index', return_value=index), \
+                     patch.object(prepare_content, 'ContentProfile') as profile:
+                    profile.return_value.visual.return_value = 0x1f001042
+                    with self.assertRaisesRegex(ValueError, 'Stale placement replacement evidence'):
+                        prepare_content.prepare(root, output)
+                self.assertEqual(output.read_text(), 'existing content\n')
+
     def test_verified_translation_wins_over_old_cell_snapshots(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)

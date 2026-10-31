@@ -34,6 +34,7 @@ class AAC2Portrait : public AActor
     bool AvatarSelectionComplete() const;
     float AvatarSelectionDuration() const;
     void SetCamera(bool Head, float Rotation);
+    void SetViewport(FIntPoint Size, float BodyFill);
     void SetHealth(float Current,float Maximum) { if(Model)Model->SetHealth(Current,Maximum); }
     bool AuditFraming(FString& Error) const;
     uint32 Fingerprint() const
@@ -73,6 +74,7 @@ class AAC2Portrait : public AActor
     TArray<TWeakObjectPtr<UActorComponent>> Generated;
     float Time = 0, Yaw = 0;
     bool HeadCamera = false;
+    float FullBodyFill = .7f;
     TUniquePtr<class FAC2Effects> SceneEffects;
     void RefreshSceneEffects(const FString& Directory);
 };

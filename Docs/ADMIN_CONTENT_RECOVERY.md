@@ -127,6 +127,99 @@ starter availability. `Network/test_inferred_content.py` exercises real UDP
 delivery/targeted hand-in, elixir use, a five-kill incursion across two camps,
 native journals and a full server restart using a disposable test account store.
 
+## Regional wilderness pack v1 (2026-10-31)
+
+The previous world followed captured travel routes and individual quest camps;
+it did not contain the missing regional wilderness generators. This pass joins
+the locally archived [AC2 wiki locations](https://20oz.net/index.php/Locations.html)
+and regional rosters (for example [Arwic Outlands](https://20oz.net/index.php/Arwic_Outlands.html),
+[Esper Reaches](https://20oz.net/index.php/Esper_Reaches.html),
+[Kydi Delta](https://20oz.net/index.php/Kydi_Delta.html) and
+[Rings of Oriad](https://20oz.net/index.php/Rings_of_Oriad.html)) to the recovered
+Pyreal AC2UtilSQL `ringways` and `towns` rows in `reference-tables.json`.
+Those SQL rows contain geography; they are not a recovered spawn database.
+Article URLs, HTML hashes, SQL source hashes, native template-cache hash and
+the source catalog hash are retained in `regional-content-v1.json` and its
+grounding report. This pass adds no guessed NPC dialogue or quest state machines.
+
+The new separate pack admits **3,495 native-grounded creature slots**, using
+**326 native creature templates**, in **2,071 spawner groups**. The source roster
+matched 329 eligible templates; three had no accepted placement. Sixty-five
+regional creature names with no eligible ordinary native profile at the guide's
+level were withheld. Protected NPCs, loot-proof/script-only actors and known
+single-kill quest targets are excluded from this generic wilderness pool.
+
+Coverage spans:
+
+- Osteth: Arwic Outlands, Esper Reaches, Lost Wish, Mad Crone Mountains, Cobalt
+  Sweeps, Drudge Citadel and Prosper Marches.
+- Omishan: Kydi Delta, Ariaki River Basin, Lumari Spill Isles, Tou-Tou Peninsula,
+  Naderu Greenwood, Farali Wasteland and Vesayen Islands.
+- Linvak: Rings of Oriad, Stoneshadow Plains, Thusik Delta, Nepeth Strata,
+  Winterhollows, Mount Malthabbor and Gevoth.
+
+Prepared world placements increase from **6,306 to 9,801**. Outdoor landblocks
+containing server content increase from **1,991 to 3,833**, including **1,842
+newly populated blocks**. The complete world has 8,612 managed creature points,
+8,056 outdoors in 3,623 blocks, and 2,214 capacity-limited camp groups. These
+counts include the earlier packs; they do not imply complete retail coverage.
+
+### Explicit inference and validation policy
+
+The convex hull of a region's documented ringway anchors bounds its candidate
+area; it is not the missing retail region polygon. Overlapping hulls select the
+closest documented ringway centre. A stable hash chooses one jittered candidate
+camp per 160-metre landblock and one eligible creature from that region's roster.
+The source's `group` marker means elite/fellowship difficulty, so the authored
+capacity is one elite or two ordinary creatures, not a supposed retail count.
+Grounding can shrink a two-child group: 1,424 accepted groups have two children
+and 647 have one.
+
+Candidates must stay inside their inferred region, at least 220 metres from
+documented town centres, 80 metres from existing outdoor server objects and
+other new camp centres, and 12 metres from their own group member. A bounded
+32-metre search requires native dry ground, collision contact, a walkable patch
+and a clear route between members. The report records 899 rejected attempted
+slots; rejecting a camp's first slot withholds its remaining candidates too.
+Existing captures, services, quest camps and all DAT scenery/foliage stay intact.
+No expansion is inferred for dungeons, Arramora, Knorr or missing regional edges.
+
+The normal server uses native health, level, vigor, natural damage, armor,
+perception, wandering and homesickness for these actors. Existing generic
+treasure rolls and native trophy probabilities apply, so they can be killed and
+looted through the usual ownership/persistence path. This does not recover full
+retail loot affixes, creature spell AI or exact spawn weights. Child regeneration
+is an explicit **180-second** policy; the controller owns creation, corpse
+retirement and replacement rather than inserting permanent static mobs on login.
+Idle distant regions perform no collision or wandering work until players approach.
+
+### Regeneration and acceptance
+
+From the repository root (using the configured local Python/Rust tools):
+
+```powershell
+python AC2E/emulator/tools/author_regional_population.py
+python AC2E/emulator/tools/import_creature_combat.py "Asheron's Call 2 - Legions/portal.dat" AC2E/emulator/content/regional-creature-entities.txt AC2E/emulator/content/regional-creature-combat-v1.tsv
+cargo run --release --manifest-path AC2E/emulator/Cargo.toml --example regional_population -- "Asheron's Call 2 - Legions" AC2E/emulator/content/regional-content-v1.json AC2E/emulator/content/regional-world-v1.tsv AC2E/emulator/content/regional-world-v1.report.json AC2E/data/world/legions-world.tsv
+python Network/prepare_content.py "Asheron's Call 2 - Legions" AC2E/data/world/legions-world.tsv
+./AC2E/Build-AC2E.ps1
+$env:AC2_TEST_GAME_DATA = "${PWD}/Asheron's Call 2 - Legions"
+cargo test --release --manifest-path AC2E/emulator/Cargo.toml --test regional_population
+python Network/test_regional_population.py
+```
+
+The grounder ignores only this pack's exact reserved identity range when run
+against an already expanded world. Preparation refuses stale catalog/placement
+proof or mismatched native visuals. Native acceptance checks all 3,495 positions,
+regional rosters, town/content separation, combat health and varied loot for
+every placed template, plus group capacity, one-time initial creation and delayed
+replacement. Two real UDP clients tested visibility, kills and loot pickup in
+Esper (Drudge Outcast, 38.6N 22.6W), Kydi (Akeha Mimbu, 10.3N 40.6E) and Oriad
+(Undead Stony Armoredillo, 15.0S 4.7W) with the complete 9,801-placement world.
+Only those three test templates had reduced health/damage for the bounded UDP
+test; separate native acceptance verifies the normal stats. These are protocol
+tests, not a rendered-client visual inspection of all new locations.
+
 ## Quests and flow evidence
 
 `AC2E/emulator/content/native-quests.json` contains 582 unique quest definitions,

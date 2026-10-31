@@ -1,6 +1,7 @@
 """Exercise real admitted outdoor capture placements, without adding test spawns."""
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -17,11 +18,19 @@ def main(render=False):
     content=run/'world.tsv';prepare(DAT_DIRECTORY,content)
     rows={int(f[0],16):f for line in content.read_text(encoding='utf-8').splitlines()[1:]
           if line and not line.startswith('#') for f in [line.split('\t')]}
+    # Different capture IDs/subcells must not stack Orven and Adaro in Arwic.
+    for entity, retained, superseded in [(0x47001c27, 0x8140d31eddf3ea49, 0x8140dc346c4fa355),
+                                         (0x47001bf2, 0x81409443b0ad9f3c, 0x8140cb3aa56b9e04)]:
+        assert [iid for iid, row in rows.items() if int(row[1], 16) == entity] == [retained]
+        assert superseded not in rows
     # Two independent outdoor observations south of Cragstone. Their captured
     # coordinates, scale and native combat profiles are left unchanged.
     targets=[0x81409bec26cb5af8,0x8140b739fea6ec9a]
     # Native floor at captured X+12, verified by the geometry integration test.
     chase_heights=[141.96219,126.52316]
+    # Native MotionInterpDesc forward limit times inherited VisualDesc Y scale
+    # and captured PhysicsDesc scale. Neither is the old uniform 2m/s step.
+    visual_speeds={0x1f000031:6.5,0x1f0004e0:6.5*1.15}
     assert all(target in rows for target in targets)
     env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1')
     peers=[];report=[]
@@ -45,7 +54,7 @@ def main(render=False):
             until(peers[0],mark,'chat',lambda e:'Go outdoors' in str(e))
             # Orven is a captured town NPC, not an encounter. The former
             # catalog fallback gave him 60 HP, a damage rule and potion loot.
-            town_id=0x8140dc346c4fa355
+            town_id=0x8140d31eddf3ea49
             town=rows[town_id];town_point=list(map(float,town[4:7]));town_point[0]+=2
             a=peers[0];a.send('move',cell=int(town[3],16),position=town_point,heading=0,motion=[0,0,0])
             until(a,0,'object',lambda e:e['id']==str(town_id))
@@ -82,6 +91,7 @@ def main(render=False):
             report.append({'native_vermin_attackable':vermin[1],'health':81})
             for target,chase_height in zip(targets,chase_heights):
                 f=rows[target];cell=int(f[3],16);point=list(map(float,f[4:7]));near=point[:];near[0]+=2
+                speed=visual_speeds[int(f[2],16)]*(1. if f[11]=='-' else float(f[11]))
                 for p in peers:
                     mark=len(p.events)
                     p.send('move',cell=cell,position=near,heading=0,motion=[0,0,0])
@@ -123,11 +133,18 @@ def main(render=False):
                 assert all(abs(x-y)<.03 for x,y in zip(returned['position'],point)),returned
                 steps=[e for e in b.events[returned_mark:] if e.get('event')=='position' and e['id']==str(target)]
                 assert len(steps)>5,'Returning home must walk, not teleport'
+                measured=[]
                 for previous,current in zip(steps,steps[1:]):
-                    assert sum((x-y)**2 for x,y in zip(previous['position'],current['position']))<.25**2
+                    dt=current['time']-previous['time']
+                    assert dt>0
+                    distance=math.hypot(*(current['position'][axis]-previous['position'][axis] for axis in [0,1]))
+                    assert distance<=speed*min(dt,.25)+.015,'Native speed limit must bound each update'
+                    measured.append(distance/dt)
+                assert max(measured)>speed*.9,'Creature must reach its native pace, not the old 2m/s fallback'
                 a.send('enter',id=a.id);until(a,departed,'player');a.send('ready');until(a,departed,'status',lambda e:e['phase']=='world')
                 report.append({'id':f[0],'entity':f[1],'cell':f[3],'position':point,'hit':hit,
-                    'pursuit':moved['position'],'late_observer':snapshot['placement'],'return_steps':len(steps)})
+                    'pursuit':moved['position'],'late_observer':snapshot['placement'],'return_steps':len(steps),
+                    'native_speed_mps':speed,'measured_peak_mps':max(measured)})
             # Persist an observer near the first unmodified capture for a real
             # rendered-client check, away from any prior target's retaliation.
             f=rows[targets[0]];point=list(map(float,f[4:7]));point[0]+=12

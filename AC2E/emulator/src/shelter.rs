@@ -78,7 +78,7 @@ pub fn validate(dat:&mut crate::dat::Dat)->std::io::Result<std::collections::BTr
         if hash!=p.hash {return Err(std::io::Error::other("Shelter item DAT profile changed"));}
         dat.read(p.definition)?;dat.read(p.visual)?;dat.read(p.physical)?;
         if p.appearance!=0 {dat.read(p.appearance)?;}
-        result.insert(p.definition,crate::inventory_request::Metadata{icon:p.appearance,physical:p.physical,equipment:None});
+        result.insert(p.definition,crate::inventory_request::Metadata{implement:None,icon:p.appearance,physical:p.physical,equipment:None});
     }
     Ok(result)
 }

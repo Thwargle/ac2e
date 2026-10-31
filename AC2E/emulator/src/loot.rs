@@ -107,7 +107,9 @@ impl Catalog {
         // Captured quest/special items remain tied to their observed creature.
         catalog.treasure=items.values().filter(|i|crate::apparel::recovered_slot(i.definition,i.visual).is_some()
             ||matches!(i.definition,crate::item_services::POTION_DEFINITION|crate::crafting::VIGOR_OUTPUT|crate::crafting::MUCOR)).cloned().collect();
-        for line in include_str!("../content/creature-combat.tsv").lines().chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines()) {
+        for line in include_str!("../content/creature-combat.tsv").lines()
+            .chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines()) {
             let f=line.split('\t').collect::<Vec<_>>();if f.len()<7||!f[0].starts_with("47"){continue;}
             catalog.levels.insert(u32::from_str_radix(f[0],16).map_err(io::Error::other)?,f[6].parse::<u16>().map_err(io::Error::other)?.clamp(1,150));
         }

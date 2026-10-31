@@ -22,6 +22,35 @@ It does not populate the human starter dungeon or supply AI, trading, damage,
 loot, quest interactions, death or respawn behavior. The regular default pack
 continues to use only the table-derived placements.
 
+## Regional wilderness population (2026-10-31)
+
+`regional-content-v1.json` joins the archived AC2 wiki's regional creature lists
+to Pyreal AC2UtilSQL ringway/town geography and installed native creature
+templates. `regional-world-v1.tsv` and its ground-verification report add 3,495
+accepted slots in 2,071 groups, across 21 Osteth/Omishan/Linvak regions. There are
+326 placed native creature types; 329 eligible types were considered. Preparation
+verifies catalog/manifest hashes and the installed entity/visual/cell records.
+
+The separate `regional-creature-combat-v1.tsv` and `regional-creature-ai-v1.tsv`
+enable native stats and perception/wandering/home behavior. Regional actors use
+native stats even when the built-in development profile weakens the same
+template for practice encounters. Explicit external encounter overrides still
+apply. Generic variable loot and native trophy slots use the existing pipeline.
+
+These are inferred generator locations: one candidate per landblock inside the
+convex envelope of documented ringway anchors, with town and existing-content
+exclusion distances, native dry-ground/contact/walkability checks, and one or two
+simultaneous children. A wiki `group` label means elite/fellowship difficulty,
+not a recovered spawn count. Regeneration is 180 seconds after death, with corpse
+retirement acknowledged before a replacement appears. The `8140c00000` identity
+prefix is reserved for this pack; random capture IDs sharing only `8140c0` are
+ordinary existing content and retain priority.
+
+Author with `tools/author_regional_population.py`, ground with the Rust
+`regional_population` example, then run `Network/prepare_content.py` and rebuild.
+Exact commands, source links, caveats and acceptance checks are in
+[content recovery](../../../Docs/ADMIN_CONTENT_RECOVERY.md#regional-wilderness-pack-v1-2026-10-31).
+
 ## Retail capture population
 
 `capture-spawns.tsv` holds 14,340 stationary objects read from retail packet
@@ -51,6 +80,17 @@ distinguishes incompatible observations from genuinely absent DAT records.
 Lifestone snapshots within 12 metres are merged across outdoor subcell/block
 boundaries, keeping the earlier stable IID. Different dungeon rooms and distinct
 lifestone entity types are kept separate.
+
+`placement-replacements.json` records explicit duplicate-observation decisions
+that cannot be resolved by capture ID or cell ownership. Orven and Adaro each had
+an older unverified Arwic observation alongside a semantically mapped,
+native-ground-verified recovery at a different subcell/elevation. Preparation
+retains the recovered placement and withholds the older row. Both endpoints are
+pinned by source filename, ID and row SHA256; changed evidence stops preparation.
+If the replacement fails admission, the original is kept. The generated report
+lists applied and unavailable replacements. Source manifests are unchanged, and
+no other actors are deduplicated by name, template or proximity. Restart the game
+server to load a newly prepared manifest; existing sessions do not hot-reload it.
 
 Regenerate it with `python tools/import_capture_corpus.py`; edit `ROOTS` in that
 script to point at your capture folders. It uses the same decoder as the
@@ -454,8 +494,25 @@ Absent properties stay absent. No wandering range is invented for a creature
 without one. The runtime uses native collision for wandering, pursuit and line
 of sight. Nearby actors scan once per second on staggered schedules; distant
 unobserved actors do not load collision merely to roam. Uniform disk wandering
-destinations, the missing-probability fallback (0.2), movement speed, and generic
+destinations, the missing-probability fallback (0.2), and generic
 hostility exclusions are AC2E policy, not recovered retail AI scripts.
+
+Creature locomotion now resolves the placed `VisualDesc` parent chain to its
+`MotionInterpDesc` (`0x32`) and native Y scale. `CMotionInterp` selects the ground
+peace/combat mode's forward speed (default-mode fallback), multiplies speed by
+visual and instance scale, and scales acceleration only for bodies above unit
+size. The server applies those limits with elapsed time, caps stall catch-up at
+250 ms, and collision-checks movement in segments no larger than 0.2 m. Homeward
+travel spends the same distance budget along recorded segments rather than
+retracing just one segment per tick. All 8,612 installed combat actors resolved
+native profiles in the population audit; none use the synthetic-fixture fallback.
+At unit instance scale, native forward limits include Idol Spawn 3.9 m/s,
+Red Soldier Wasp 6.5 m/s, Crawlspace Vermin 7.475 m/s and Drudge Outcast 7.8 m/s.
+Captured instance scale can further change these values. These are locomotion
+limits, not a claim that retail AI always requests maximum speed: original AI
+pace choices, speed-altering effects, flight paths and swimming navigation remain
+separate gaps. Source: `ac2_motion_interp.rs`, `motion_interp.rs`, and the admin
+client's `CMotionInterp::GetDesiredMotionValues` (0050B660).
 
 `native-quests.json` is a version-fingerprinted authoring catalog of native quest
 text, phases, related quests and entity/effect links. It does not enable quests
@@ -491,3 +548,59 @@ it never rewrites them. Additional native combat/AI profiles live in the matchin
 has persistent ratings/tints. These are inferred rules, not recovered retail
 weights. See `Docs/ADMIN_CONTENT_RECOVERY.md` for exact assumptions, provenance,
 limits, regeneration commands and immutable journal-version requirements.
+
+## Native skill effects
+
+`skill-effects.tsv` imports 1,602 use records from the installed Legions DATs.
+`skill-effects.report.json` fingerprints the source skill/effect records and
+records 325 withheld catalog entries (320 short roots and five ambiguous curves).
+The importer checks the native object graph and typed list fields; instant
+health/vigor values use field 36, and periodic values use field 38 in this build.
+Scalar values must not be interpreted as references to graph object zero.
+The server verifies the source hashes before admitting this profile.
+
+`skill-runtime.report.json` inventories all 1,927 catalog entries. Currently 482
+have executable core effects, including **224 racial profiles** (some already
+used by starter attacks), and nine shared passive masteries are implemented.
+These counts do not waive training, race, level, prerequisites or equipment
+requirements. The remaining entries include passives, 528 profiles needing
+specialized handlers and 29 recalls needing destination/entitlement handling.
+The existing bound-lifestone recall retains its separate implementation.
+
+The supported core includes direct damage, health/vigor restoration, periodic
+healing and burns, regeneration multipliers, armor and melee/missile/magic
+attack/defense ratings. Flame Bolt (`59`, native record `7000172d`) requires a
+stave and uses its DAT cost, range, cooldown, rank-scaled damage, burn and story/FX.
+Ease Suffering (`55`) exercises the self/other healing path. Casts validate the
+learned skill, implement, target, visibility, range and cooldown before admission.
+Failed admission does not spend vigor or cooldown. Burns use the existing kill,
+quest-credit, loot and respawn paths; they cannot follow a corpse into its new life.
+Damage casts still cannot attack protected NPCs or other players.
+
+This is **core single-target execution**, not complete retail spell behavior.
+Area selection, multi-hit timing, combos, summons, status handlers, retail effect
+stacking categories and persistence of timed buffs remain unfinished. Compound
+effects with unsupported required components or incompatible timer layouts are
+withheld. Generic rank damage is added to the existing authored encounter damage;
+spell release timing, creature ratings and the 75%-at-equal-rating hit curve
+(bounded to 5–95%) are AC2E policy. Shared mastery attack/defense formulas come
+from the recovered 2012 Pyreal `Player.cs`, but that does not verify current retail
+balance. Timed effects are bounded runtime state; health, vigor costs and rewards
+use the durable player journal.
+
+The importer and runtime were adapted from
+[Pyrealium at 4687930](https://github.com/Vanquish-6/Pyrealium/tree/468793018b332b87228794b0720ea1ce0400f96d/emulator)
+(AGPL-3.0), then corrected for the installed Legions schema and integrated with
+AC2E's existing encounters. `skill-travel.tsv` retains 30 recovered travel records
+as evidence, using the supplied Pyreal `Pyreal_DB_Insert_Telepad.sql`; it does not
+enable those routes automatically. Raw DATs and reference archives stay unchanged.
+
+Regenerate the import with `tools/import_skill_effects.py --game-data <DAT-dir>
+--telepads <Pyreal_DB_Insert_Telepad.sql> --output content/skill-effects.tsv
+--travel content/skill-travel.tsv` from `AC2E/emulator`. Regenerate runtime coverage
+with `cargo run --example skill_coverage > content/skill-runtime.report.json`.
+The importer tests check native field decoding. Rust tests cover casting rules,
+cooldowns, mastery progression, periodic effects, expiry and durable burn kills.
+`Network/test_active_skills.py` checks trained Flame Bolt over UDP with the actual
+DATs, including stave requirements, protected targets, observer animation/FX and
+burn ticks, using disposable characters and an isolated server.
