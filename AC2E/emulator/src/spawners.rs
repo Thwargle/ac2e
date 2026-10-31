@@ -118,10 +118,57 @@ impl Spawners {
         point.state = State::Live;
         true
     }
+    /// Live edit: a new point whose first child is due at `now`.
+    pub fn add_point(&mut self, id: u64, policy: Policy, now: u64) -> io::Result<()> {
+        if id == 0 || id == u64::MAX || !policy.valid() || self.points.len() >= 16384 || self.points.contains_key(&id) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid or duplicate point spawner"));
+        }
+        let due = now.saturating_add(policy.initial_delay_ms);
+        self.points.insert(id, Point { policy, state: State::Waiting { due } });
+        self.due.push(Reverse((due, id)));
+        Ok(())
+    }
+    /// Live edit: forget a point and its group membership. Stale heap entries are skipped.
+    pub fn remove_point(&mut self, id: u64) {
+        self.points.remove(&id);
+        if let Some(group) = self.membership.remove(&id) {
+            self.leave_group(group, id);
+        }
+    }
+    fn leave_group(&mut self, group: u64, id: u64) {
+        let Some(entry) = self.groups.get_mut(&group) else { return };
+        entry.members.retain(|member| *member != id);
+        entry.capacity = entry.capacity.min(entry.members.len());
+        if entry.members.is_empty() { self.groups.remove(&group); }
+    }
+    /// Live edit: future timers use the new policy; pending deadlines stand.
+    pub fn set_policy(&mut self, id: u64, policy: Policy) {
+        if let Some(point) = self.points.get_mut(&id).filter(|_| policy.valid()) { point.policy = policy; }
+    }
+    pub fn policy(&self, id: u64) -> Option<Policy> { self.points.get(&id).map(|point| point.policy) }
+    /// Live edit: replace every group whose id has `tag` set. Their members leave any
+    /// other group. Living children are never removed; capacity only limits refills.
+    pub fn replace_groups(&mut self, tag: u64, groups: Vec<(u64, usize, Vec<u64>)>) -> io::Result<()> {
+        for id in self.groups.keys().copied().filter(|id| id & tag != 0).collect::<Vec<_>>() {
+            for member in self.groups.remove(&id).map(|g| g.members).unwrap_or_default() {
+                self.membership.remove(&member);
+            }
+        }
+        for (id, capacity, members) in groups {
+            let members = members.into_iter().filter(|m| self.points.contains_key(m)).collect::<Vec<_>>();
+            if members.is_empty() { continue; }
+            for &member in &members {
+                if let Some(group) = self.membership.remove(&member) { self.leave_group(group, member); }
+            }
+            self.group(id | tag, capacity.clamp(1, members.len()), members)?;
+        }
+        Ok(())
+    }
     pub fn poll(&mut self, now: u64) -> Vec<Action> {
         let mut actions = Vec::new();
         while self.due.peek().is_some_and(|Reverse((due, _))| *due <= now) {
             let Reverse((due, id)) = self.due.pop().unwrap();
+            if !self.points.contains_key(&id) { continue; } // Removed by a live edit.
             let capacity=self.has_capacity(id);
             let point = self.points.get_mut(&id).unwrap();
             if point.state.deadline() != Some(due) { continue; } // Superseded corpse deadline.
@@ -207,5 +254,23 @@ mod tests {
         assert!(p.poll(10000).is_empty());assert_eq!(p.live(),2);
         assert!(p.group(2,3,vec![7,8]).is_err());assert!(p.group(2,1,vec![10]).is_err());
         assert!(p.group(2,1,vec![7,7]).is_err());
+    }
+    #[test]
+    fn live_points_and_groups_change_without_disturbing_living_children() {
+        let policy=Policy{initial_delay_ms:0,regeneration_ms:1000};
+        let mut p=Spawners::new([7,8].into_iter().map(|id|(id,policy))).unwrap();
+        p.initialize(0);assert_eq!(p.poll(0).len(),2);p.spawned(7);p.spawned(8);
+        p.add_point(9,policy,100).unwrap();assert!(p.add_point(9,policy,100).is_err());
+        assert_eq!(p.poll(100),vec![Action::Spawn(9)]);p.spawned(9);
+        const TAG:u64=1<<63;
+        p.replace_groups(TAG,vec![(1,1,vec![7,8,9])]).unwrap();
+        assert_eq!(p.live(),3,"lowering capacity never kills living children");
+        p.died(7,200,0);assert_eq!(p.poll(200),vec![Action::Remove(7)]);p.removed(7,200);
+        assert!(p.poll(5000).is_empty(),"group full: no refill");
+        p.died(8,6000,0);p.poll(6000);p.removed(8,6000);p.died(9,6000,0);p.poll(6000);p.removed(9,6000);
+        assert_eq!(p.poll(7000),vec![Action::Spawn(7)],"one refill under capacity 1");
+        p.remove_point(8);p.remove_point(9);assert!(p.poll(100000).is_empty(),"stale deadlines are skipped");
+        p.replace_groups(TAG,vec![]).unwrap();assert_eq!(p.group_count(),0);
+        p.set_policy(7,Policy{initial_delay_ms:0,regeneration_ms:9000});assert_eq!(p.policy(7).unwrap().regeneration_ms,9000);
     }
 }

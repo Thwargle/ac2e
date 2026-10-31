@@ -1,4 +1,4 @@
-# Pyrealium Content Editor
+# AC2e Content Editor (World Builder)
 
 Open `emulator/OpenContentEditor.cmd`. The editor remembers your game data
 folder, content file, and window size when you close it. Command-line
@@ -221,6 +221,103 @@ is an effect with no supported preview mesh. Use **Preview entry travel** or
 These buttons move the editor camera; live player travel uses the server route.
 
 A current server build containing external route support is available at
-`emulator/target/worldbuilder-build/release/pyrealium.exe`. It has not replaced
+`emulator/target/worldbuilder-build/release/ac2e.exe`. It has not replaced
 the server running in an existing game session. Build validation does not imply
 a live server restart or native-client acceptance.
+
+## Creatures, loot, spawn groups and patrols
+
+The **Creatures** tab (or **Creatures** in the travel bar) lists the creatures in
+the current zone and switches the workspace to the **Position map**, a bird's-eye
+view of the whole landblock and its neighbours. **Bird's-eye** points the 3D
+camera straight down. On the map and in 3D:
+
+- Rings show each creature's aggro radius (orange), wander range (green) and
+  leash/homesick radius (dashed red). Patrol routes are cyan with numbered
+  waypoints; dotted purple lines join the members of a spawn group.
+- Toggles under the list hide each overlay, the base world and labels.
+- With the Creatures tab open, click a creature in the 3D view or its dot on the
+  Position map to select it. Ctrl-click (or a double-click in the list) opens the
+  inspector. With the select tool, clicking a base-world creature opens it too.
+- The 3D zone draws the base world's objects as well (nearest first; with OpenGL the
+  scene budget is 150,000 triangles, 50,000 in the software view). They can be
+  inspected but not moved; the **Base world** toggle hides them.
+
+To see the existing population, set **Base world (read-only)** in Project / DATs
+to the prepared world the server loads with `--content` (for example the
+launcher's `legions-world.tsv`). Base-world creatures stay where they are, but
+you can still give them rules: the server keys rules by placement id.
+
+The inspector edits rules for **this spawn only** or **every creature of this
+type**. Blank fields inherit the value shown beside them (native table, type
+rule or placement rule).
+
+- **Stats**: health, damage, armor, level, XP, gold, attack interval/range,
+  leash and respawn. Giving a non-combat type Health and Damage makes it a creature.
+- **Behaviour**: aggro radius, homesick radius, wandering, wander range and
+  chance, attacks-on-sight, idle-only and no-loot.
+- **Loot**: a weighted table. One outcome (one or more items, or "nothing") is
+  rolled per kill and replaces the native loot. **Copy native loot** starts from
+  the observed bundles. Items come from `content/loot-items.tsv`.
+- **Spawning**: a spawn group is a generator. Each member is a spawn point and at
+  most *Alive at once* members are populated; the group respawn time overrides
+  each member's own. **Add spawn point** copies the creature into your content
+  file 3 m east and adds it to the group; move it with the placement tools.
+- **Patrol**: **Click map to add waypoints**, then click the ground in 3D or the
+  Position map. The
+  creature walks the waypoints in order, returns to its spawn and repeats,
+  pausing at each. It patrols while a player is within 80 m, chases as usual and
+  resumes the route afterwards.
+
+**Apply** writes `NAME.rules.tsv` beside the content file (with a rolling `.bak`).
+Deleting a placement removes its rules. Rule edits are not part of Undo/Redo.
+
+These are custom server rules, not recovered retail data. Run the server with the
+overlay and its rules load automatically:
+
+```sh
+PYREALIUM_UNREAL_LEGIONS_DATA=1 pyrealium serve --game-data DATS --initialize-ui true \
+    --content legions-world.tsv --content-overlay my-world.tsv
+# or Start-AC2E.ps1 -ContentOverlay my-world.tsv; --world-rules PATH names another rules file
+```
+
+Loot tables apply to corpse loot, which needs `--initialize-ui true` and
+`PYREALIUM_UNREAL_LEGIONS_DATA=1` (the AC2E launcher sets both).
+
+On Linux, start the editor with `emulator/OpenContentEditor.sh`. The 3D view uses
+OpenGL through GLX (X11 or XWayland). Set `AC2E_EDITOR_SOFTWARE=1` to force the
+slower software view. Settings live in `~/.config/ac2e/content-editor/`.
+
+## Live editing a running server (local)
+
+Start the server with a loopback admin address and the overlay file (it is
+created on the first edit if it does not exist yet):
+
+```sh
+PYREALIUM_UNREAL_LEGIONS_DATA=1 ac2e serve --game-data DATS --initialize-ui true \
+    --content legions-world.tsv --content-overlay my-world.tsv --admin-bind 127.0.0.1:19373
+```
+
+The server writes a fresh token to `DATA/admin.token` (owner-only) at each start.
+In the editor's Project / DATs, tick **Live server**, keep `127.0.0.1:19373` and
+set **Server data folder** to the server's `--data` folder. From then on every
+saved change goes live: added, moved, deleted and undone placements, and
+creature stats, behaviour, loot, patrols and spawn groups. Players near a change
+see it at once; nobody is disconnected. The status line shows what changed and
+how long the server took to apply it.
+
+- The editor's files are the source of truth: connecting pushes them, and the
+  server saves each applied edit to its own overlay and rules paths, so a restart
+  keeps them.
+- A refused edit (an unknown asset, a full cell, an unsupported loot item) changes
+  nothing on the server; the editor reports why.
+- Moving, rotating or re-typing a placement re-creates it in its new place. A new
+  creature appears through its spawner within a moment. Stat changes apply to
+  living creatures (a full-health creature stays at full health); lowering a
+  group's capacity never kills living creatures, it only limits refills.
+- Corpses already rolled keep their loot; the next kill uses the new table.
+- Only loopback addresses are accepted. Endpoints: `GET /admin/status`,
+  `POST /admin/sync` with `{base, world, rules}` and `Authorization: Bearer TOKEN`.
+
+Applying a sync costs the game loop about 0.5 ms per 1,000 changed objects
+(release build). The parsing, DAT checks and diffing run on the admin thread.

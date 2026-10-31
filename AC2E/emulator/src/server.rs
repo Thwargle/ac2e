@@ -31,6 +31,12 @@ pub struct Config {
     pub map_travel: bool,
     pub content: Option<PathBuf>,
     pub encounters: Option<PathBuf>,
+    /// Operator world-builder placements added on top of `content`.
+    pub content_overlay: Option<PathBuf>,
+    /// Operator creature stats, behaviour, loot, patrol and spawn-group rules.
+    pub world_rules: Option<PathBuf>,
+    /// Loopback address for live world editing (needs `content_overlay`).
+    pub admin_bind: Option<SocketAddr>,
 }
 struct Peer {
     client_version: String,
@@ -2076,6 +2082,29 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             None => crate::content::Content::default(),
         },
     };
+    let mut content = content;
+    if config.admin_bind.is_some() && config.content_overlay.is_none() {
+        return Err(invalid("--admin-bind needs --content-overlay: live edits are saved there"));
+    }
+    if let Some(path) = config.content_overlay.as_deref().filter(|path| !path.exists() && config.admin_bind.is_some()) {
+        println!("World-builder overlay {} does not exist yet; live edits will create it.", path.display());
+    } else if let Some(path) = config.content_overlay.as_deref() {
+        let directory = config.game_data.as_deref().ok_or_else(|| invalid("--content-overlay requires --game-data"))?;
+        let added = content.extend(path, directory)?;
+        println!("Loaded {added} world-builder overlay objects from {}.", path.display());
+    }
+    // An overlay's rules sit beside it as NAME.rules.tsv unless named explicitly.
+    let sidecar = config.world_rules.clone().or_else(|| config.content_overlay.as_deref().map(|path| path.with_extension("rules.tsv")));
+    let rules_path = sidecar.clone().filter(|path| path.is_file());
+    let world_rules = match rules_path.as_deref() {
+        Some(path) => {
+            let rules = crate::world_rules::Rules::load(path)?;
+            println!("Loaded world rules from {}: {} stats, {} behaviour, {} loot tables, {} patrols, {} spawn groups.",
+                path.display(), rules.stats.len(), rules.behaviour.len(), rules.loot.len(), rules.patrols.len(), rules.groups.len());
+            rules
+        }
+        None => crate::world_rules::Rules::default(),
+    };
     let mut projectiles = crate::projectiles::Projectiles::default();
     let mut corpse_loot=crate::loot::Loot::default();
     if let Ok(value)=std::env::var("AC2_TEST_LOOT_SEED") {
@@ -2084,13 +2113,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
     }
     if unreal_gameplay {
         let mut portal=crate::dat::Dat::open(config.game_data.as_ref().unwrap().join("portal.dat"))?;
-        corpse_loot.catalog=crate::loot::Catalog::load(&mut portal,&mut inventory_metadata)?;
+        corpse_loot.catalog=crate::loot::Catalog::load_with_rules(&mut portal,&mut inventory_metadata,&world_rules)?;
     }
     let mut encounters = config
         .encounters
         .as_deref()
         .filter(|path| *path != std::path::Path::new("none"))
-        .map(|path| crate::encounters::Encounters::load(path, &content))
+        .map(|path| crate::encounters::Encounters::load_with_rules(path, &content, &world_rules))
         .transpose()?;
     if config.training_kit || (config.initialize_ui && std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1")) {
         if let Some(runtime) = &mut encounters {
@@ -2211,6 +2240,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
     let mut diagnosed_application_errors = BTreeSet::new();
     let mut diagnosed_packet_errors = BTreeSet::new();
     let mut diagnosed_queues = BTreeSet::new();
+    let admin = match (config.admin_bind, config.content_overlay.clone(), sidecar) {
+        (Some(bind), Some(world), Some(rules)) => Some(crate::admin::start(bind, &config.data,
+            config.game_data.clone().ok_or_else(|| invalid("--admin-bind requires --game-data"))?,
+            crate::admin::Paths { world, rules })?),
+        _ => None,
+    };
     loop {
         let now = Instant::now();
         let now_ms = start.elapsed().as_millis() as u64;
@@ -5026,6 +5061,24 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 )?;
             }
         }
+        if let Some(admin) = &admin {
+            admin.players.store(active_characters.len(), std::sync::atomic::Ordering::Relaxed);
+            // Live edits arrive prepared; applying one costs microseconds per object.
+            while let Ok(job) = admin.jobs.try_recv() {
+                let started = Instant::now();
+                let reply = match crate::live_edit::apply(&job.change, &mut scene, encounters.as_mut(), &mut corpse_loot, now_ms) {
+                    Ok((deliveries, mut summary)) => {
+                        summary.apply_us = started.elapsed().as_micros() as u64;
+                        deliver_scene(deliveries, &active_characters, &mut peers, &primary, now, &mut failed_peers)?;
+                        println!("Live edit: +{} -{} ~{} objects, {} rule targets, applied in {} µs.",
+                            summary.added, summary.removed, summary.replaced, summary.rules, summary.apply_us);
+                        Ok(summary)
+                    }
+                    Err(error) => Err(error.to_string()),
+                };
+                let _ = job.reply.send(reply);
+            }
+        }
         let chest_updates=scene.expire_chest_views(now_ms,|id|store.characters.get(&id).is_some_and(|c|!c.deleted && c.progression.alive()))?;
         deliver_scene(chest_updates,&active_characters,&mut peers,&primary,now,&mut failed_peers)?;
         if let Some(runtime) = &mut encounters {
@@ -5197,6 +5250,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 });
                             }
                         }
+                    }
+                    crate::encounters::Event::Stats { actor, max_health, health, level } => {
+                        updates.extend(scene.content_stat(actor, 0x107, max_health)?);
+                        updates.extend(scene.content_stat(actor, 0x102, health)?);
+                        if let Some(level) = level { updates.extend(scene.content_stat(actor, 0x12e, level)?); }
                     }
                     crate::encounters::Event::Despawn(actor) => {
                         if scene.content_placement(actor).is_some(){updates.extend(scene.despawn_content(actor)?);}

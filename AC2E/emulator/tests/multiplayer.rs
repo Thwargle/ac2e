@@ -196,6 +196,9 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
         server::run(Config {
             content: None,
             encounters: None,
+            content_overlay: None,
+            world_rules: None,
+            admin_bind: None,
             initialize_ui: false,
             training_kit: false,
             lifestones: false,

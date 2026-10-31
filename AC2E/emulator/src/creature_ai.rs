@@ -5,9 +5,12 @@ pub struct Profile {
     pub perception:f32, pub homesick:Option<f32>, pub wandering:Option<bool>,
     pub wander_range:f32, pub probability:Option<f32>, pub friend:u32,
     pub free_attack:Option<bool>, pub idle_only:bool, pub loot_profile:u32, pub loot_proof:bool,
+    /// Operator world-rule choice; replaces the native relationship heuristic.
+    pub custom_aggressive:Option<bool>,
 }
 impl Profile {
     pub fn aggressive(self)->bool {
+        if let Some(choice)=self.custom_aggressive {return choice && self.perception>0. && !self.idle_only;}
         // The relationship scripts are not present. Generic combat creatures
         // use their native perception; explicitly peaceful/pet roles do not.
         self.perception>0. && self.free_attack!=Some(false) && !self.idle_only &&
@@ -29,7 +32,7 @@ pub fn catalog()->io::Result<BTreeMap<u32,Profile>> {
         let boolean=|i:usize|->io::Result<Option<bool>> {match number(i)?{None=>Ok(None),Some(0.)=>Ok(Some(false)),Some(1.)=>Ok(Some(true)),_=>Err(bad())}};
         let p=Profile{perception:number(1)?.unwrap_or(0.),homesick:number(2)?,wandering:boolean(3)?,
             wander_range:number(4)?.unwrap_or(0.),probability:number(5)?,friend:number(6)?.unwrap_or(0.) as u32,
-            free_attack:boolean(7)?,idle_only:boolean(8)?.unwrap_or(false),loot_profile:number(9)?.unwrap_or(0.) as u32,loot_proof:boolean(10)?.unwrap_or(false)};
+            free_attack:boolean(7)?,idle_only:boolean(8)?.unwrap_or(false),loot_profile:number(9)?.unwrap_or(0.) as u32,loot_proof:boolean(10)?.unwrap_or(false),custom_aggressive:None};
         if p.probability.is_some_and(|v|v>1.) || p.perception>500. || p.wander_range>500. {return Err(bad())}
         let id=u32::from_str_radix(f[0],16).map_err(|_|bad())?;
         result.entry(id).or_insert(p);

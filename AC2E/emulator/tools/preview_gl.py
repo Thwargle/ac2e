@@ -1,7 +1,8 @@
-"""Windows OpenGL viewport for native DAT preview geometry and UV textures.
+"""OpenGL viewport for native DAT preview geometry and UV textures.
 
-Uses only ctypes and the Windows OpenGL 1.1 entry points. The child window owns
-its device context and does not alter the pixel format of Tk's own windows.
+Uses only ctypes and OpenGL 1.1 entry points: WGL on Windows, GLX on X11
+(including XWayland). The child window owns its pixel format/visual and does
+not alter Tk's own windows.
 Documentation: https://learn.microsoft.com/windows/win32/opengl/pixel-format-functions
 https://learn.microsoft.com/windows/win32/opengl/glvertexpointer
 This is an editor renderer, not an implementation of the original client shaders.
@@ -120,6 +121,127 @@ def material_draw_commands(instances, eye):
     return [(item, group) for _, _, _, item, group in commands]
 
 
+class GLXSurface:
+    """An X11 child window with a GLX context, on a private display connection.
+
+    The child selects only Expose. X propagates its pointer and key events to
+    the Tk canvas underneath, so Tk's bindings keep working unchanged.
+    """
+    def __init__(self, canvas):
+        import ctypes.util
+        names = {"X11": ctypes.util.find_library("X11") or "libX11.so.6", "GL": ctypes.util.find_library("GL") or "libGL.so.1"}
+        try:
+            self.x = C.CDLL(names["X11"])
+            self.gl = C.CDLL(names["GL"])
+        except OSError as error:
+            raise GLUnavailable(f"OpenGL/X11 libraries unavailable: {error}") from error
+        ptr, ulong, sint = C.c_void_p, C.c_ulong, C.c_int
+        class VisualInfo(C.Structure):
+            _fields_ = [("visual", ptr), ("visualid", ulong), ("screen", sint), ("depth", sint), ("c_class", sint),
+                        ("red_mask", ulong), ("green_mask", ulong), ("blue_mask", ulong),
+                        ("colormap_size", sint), ("bits_per_rgb", sint)]
+        class Attributes(C.Structure):
+            _fields_ = [("background_pixmap", ulong), ("background_pixel", ulong), ("border_pixmap", ulong),
+                        ("border_pixel", ulong), ("bit_gravity", sint), ("win_gravity", sint), ("backing_store", sint),
+                        ("backing_planes", ulong), ("backing_pixel", ulong), ("save_under", sint), ("event_mask", C.c_long),
+                        ("do_not_propagate_mask", C.c_long), ("override_redirect", sint), ("colormap", ulong), ("cursor", ulong)]
+        f = GLRenderer._function
+        f(self.x, "XOpenDisplay", ptr, [C.c_char_p])
+        f(self.x, "XCloseDisplay", sint, [ptr])
+        f(self.x, "XDefaultScreen", sint, [ptr])
+        f(self.x, "XRootWindow", ulong, [ptr, sint])
+        f(self.x, "XCreateColormap", ulong, [ptr, ulong, ptr, sint])
+        f(self.x, "XFreeColormap", sint, [ptr, ulong])
+        f(self.x, "XCreateWindow", ulong, [ptr, ulong, sint, sint, C.c_uint, C.c_uint, C.c_uint, sint, C.c_uint,
+                                           ptr, ulong, C.POINTER(Attributes)])
+        f(self.x, "XDestroyWindow", sint, [ptr, ulong])
+        f(self.x, "XMapWindow", sint, [ptr, ulong])
+        f(self.x, "XResizeWindow", sint, [ptr, ulong, C.c_uint, C.c_uint])
+        f(self.x, "XFlush", sint, [ptr])
+        f(self.x, "XSync", sint, [ptr, sint])
+        f(self.x, "XPending", sint, [ptr])
+        f(self.x, "XNextEvent", sint, [ptr, ptr])
+        f(self.x, "XFree", sint, [ptr])
+        f(self.gl, "glXChooseVisual", C.POINTER(VisualInfo), [ptr, sint, C.POINTER(sint)])
+        f(self.gl, "glXCreateContext", ptr, [ptr, C.POINTER(VisualInfo), ptr, sint])
+        f(self.gl, "glXDestroyContext", None, [ptr, ptr])
+        f(self.gl, "glXMakeCurrent", sint, [ptr, ulong, ptr])
+        f(self.gl, "glXSwapBuffers", None, [ptr, ulong])
+        self.display = self.window = self.colormap = self.context = None
+        self.visual = None
+        self.exposed = False
+        self.event = C.create_string_buffer(256)  # XEvent is a 24-long union.
+        self.display = self.x.XOpenDisplay(canvas.winfo_screen().encode() or None)
+        if not self.display:
+            raise GLUnavailable("Could not open the X display for OpenGL (Tk must run on X11 or XWayland)")
+        try:
+            screen = self.x.XDefaultScreen(self.display)
+            # GLX_RGBA, GLX_DOUBLEBUFFER, RED/GREEN/BLUE 8, DEPTH 24, None
+            attributes = (sint * 12)(4, 5, 8, 8, 9, 8, 10, 8, 12, 24, 0, 0)
+            visual = self.gl.glXChooseVisual(self.display, screen, attributes)
+            if not visual:
+                raise GLUnavailable("No double-buffered GLX visual with a depth buffer")
+            self.visual = visual
+            info = visual.contents
+            self.colormap = self.x.XCreateColormap(self.display, self.x.XRootWindow(self.display, screen), info.visual, 0)
+            attrs = Attributes(border_pixel=0, colormap=self.colormap, event_mask=1 << 15)  # ExposureMask
+            mask = (1 << 3) | (1 << 11) | (1 << 13)  # CWBorderPixel | CWEventMask | CWColormap
+            canvas.update_idletasks()
+            self.window = self.x.XCreateWindow(self.display, canvas.winfo_id(), 0, 0,
+                                               max(1, canvas.winfo_width()), max(1, canvas.winfo_height()), 0,
+                                               info.depth, 1, info.visual, mask, C.byref(attrs))
+            if not self.window:
+                raise GLUnavailable("Could not create the OpenGL child window")
+            self.x.XMapWindow(self.display, self.window)
+            self.x.XSync(self.display, 0)
+            self.context = self.gl.glXCreateContext(self.display, visual, None, 1)
+            if not self.context:
+                raise GLUnavailable("Could not create a GLX context")
+        except Exception:
+            self.close()
+            raise
+
+    def make_current(self):
+        if not self.context or not self.gl.glXMakeCurrent(self.display, self.window, self.context):
+            raise GLUnavailable("Could not activate the GLX context")
+
+    def resize(self, width, height):
+        self.x.XResizeWindow(self.display, self.window, width, height)
+        self.x.XFlush(self.display)
+
+    def swap(self):
+        self.gl.glXSwapBuffers(self.display, self.window)
+        self.x.XFlush(self.display)
+
+    def expose_pending(self):
+        while self.display and self.x.XPending(self.display):
+            self.x.XNextEvent(self.display, self.event)
+            if C.c_int.from_buffer(self.event).value == 12:  # Expose
+                self.exposed = True
+        pending, self.exposed = self.exposed, False
+        return pending
+
+    def close(self):
+        if not self.display:
+            return
+        if self.context:
+            self.gl.glXMakeCurrent(self.display, 0, None)
+            self.gl.glXDestroyContext(self.display, self.context)
+            self.context = None
+        if self.window:
+            self.x.XDestroyWindow(self.display, self.window)
+            self.window = None
+        if self.colormap:
+            self.x.XFreeColormap(self.display, self.colormap)
+            self.colormap = None
+        if self.visual:
+            self.x.XFree(self.visual)
+            self.visual = None
+        self.x.XSync(self.display, 0)
+        self.x.XCloseDisplay(self.display)
+        self.display = None
+
+
 class GLRenderer:
     """All construction, rendering and teardown must occur on the Tk thread.
 
@@ -133,9 +255,8 @@ class GLRenderer:
     TEXTURE_BUDGET = 64 * 1024 * 1024
 
     def __init__(self, canvas):
-        if os.name != "nt":
-            raise GLUnavailable("The embedded OpenGL viewport requires Windows")
         self.canvas = canvas
+        self.surface = None
         self.hwnd = self.dc = self.context = None
         self.closed = False
         self.size = None
@@ -145,6 +266,21 @@ class GLRenderer:
         self.warnings = []
         self.repaint_requested = False
         self.input_events = deque(maxlen=128)
+        if os.name != "nt":
+            if os.environ.get("AC2E_EDITOR_SOFTWARE") == "1":
+                raise GLUnavailable("Software rendering requested by AC2E_EDITOR_SOFTWARE=1")
+            try:
+                self.surface = GLXSurface(canvas)
+                self.gl = self.surface.gl
+                self._configure_gl()
+                self.surface.make_current()
+                self._initialize_gl()
+                self.info = {key: self._string(value) for key, value in
+                             (("vendor", 0x1f00), ("renderer", 0x1f01), ("version", 0x1f02))}
+            except Exception:
+                self.close()
+                raise
+            return
         self.u = C.WinDLL("user32", use_last_error=True)
         self.gdi = C.WinDLL("gdi32", use_last_error=True)
         self.gl = C.WinDLL("opengl32", use_last_error=True)
@@ -211,6 +347,11 @@ class GLRenderer:
         f(self.gl, "wglCreateContext", ptr, [ptr])
         f(self.gl, "wglDeleteContext", boolean, [ptr])
         f(self.gl, "wglMakeCurrent", boolean, [ptr, ptr])
+        self._configure_gl()
+
+    def _configure_gl(self):
+        uint, sint, ptr = C.c_uint32, C.c_int32, C.c_void_p
+        f = self._function
         specs = {
             "glGetString": (C.c_char_p, [uint]), "glGetError": (uint, []),
             "glGetIntegerv": (None, [uint, C.POINTER(sint)]),
@@ -361,6 +502,9 @@ class GLRenderer:
             raise GLUnavailable(f"No supported OpenGL pixel format: {C.get_last_error()}")
         self.context = self.gl.wglCreateContext(self.dc)
         self._current()
+        self._initialize_gl()
+
+    def _initialize_gl(self):
         limit = C.c_int32()
         self.gl.glGetIntegerv(0x0d33, C.byref(limit))  # GL_MAX_TEXTURE_SIZE
         self.max_texture_size = max(0, limit.value)
@@ -380,10 +524,15 @@ class GLRenderer:
         self.gl.glHint(0x0c50, 0x1102)  # PERSPECTIVE_CORRECTION_HINT, NICEST
 
     def _current(self):
+        if self.surface is not None:
+            self.surface.make_current()
+            return
         if not self.context or not self.gl.wglMakeCurrent(self.dc, self.context):
             raise GLUnavailable(f"Could not activate the OpenGL context: {C.get_last_error()}")
 
     def consume_repaint(self):
+        if self.surface is not None:
+            return self.surface.expose_pending()
         pending = self.repaint_requested
         self.repaint_requested = False
         return pending
@@ -473,14 +622,17 @@ class GLRenderer:
         self.texture_bytes += len(rgba)
         return key, identifier.value
 
-    def render(self, instances, eye, forward, right, up, width, height, cutaway_height=None, gizmo=None, brush=None, doors=None, portals=None):
+    def render(self, instances, eye, forward, right, up, width, height, cutaway_height=None, gizmo=None, brush=None, doors=None, portals=None, lines=None):
         if self.closed:
             return 0
         if width < 1 or height < 1:
             return 0
         self._current()
         if self.size != (width, height):
-            self.u.MoveWindow(self.hwnd, 0, 0, width, height, False)
+            if self.surface is not None:
+                self.surface.resize(width, height)
+            else:
+                self.u.MoveWindow(self.hwnd, 0, 0, width, height, False)
             self.size = width, height
         gl = self.gl
         gl.glViewport(0, 0, width, height)
@@ -597,6 +749,16 @@ class GLRenderer:
                 gl.glVertex3f(center[0],center[1],center[2]+8)
                 gl.glEnd()
             gl.glLineWidth(1)
+        if lines:
+            # World-builder overlays (roaming radii, patrols): visible through terrain.
+            gl.glDisable(0x0b50);gl.glDisable(0x0b71);gl.glDisable(0x0de1);gl.glLineWidth(2)
+            for color, points, closed in lines:
+                gl.glColor4f(*color, 1)
+                gl.glBegin(0x0002 if closed else 0x0003)  # LINE_LOOP / LINE_STRIP
+                for point in points:
+                    gl.glVertex3f(*point)
+                gl.glEnd()
+            gl.glLineWidth(1);gl.glEnable(0x0b71)
         if doors:
             gl.glDisable(0x0b50);gl.glDisable(0x0b71);gl.glDisable(0x0de1)
             for door in doors:
@@ -623,7 +785,9 @@ class GLRenderer:
         error = gl.glGetError()
         if error:
             raise GLUnavailable(f"OpenGL preview draw failed ({error:#x})")
-        if not self.gdi.SwapBuffers(self.dc):
+        if self.surface is not None:
+            self.surface.swap()
+        elif not self.gdi.SwapBuffers(self.dc):
             raise GLUnavailable(f"Preview buffer swap failed: {C.get_last_error()}")
         # Drop stale scene buffers immediately; texture reuse is bounded by bytes.
         self.arrays = OrderedDict((key,value) for key,value in self.arrays.items() if key in used_arrays)
@@ -696,6 +860,19 @@ class GLRenderer:
         if self.closed:
             return
         self.closed = True
+        if self.surface is not None:
+            try:
+                if self.surface.context:
+                    self.surface.make_current()
+                    for _, identifier, _ in self.textures.values():
+                        self.gl.glDeleteTextures(1, C.byref(C.c_uint32(identifier)))
+            except GLUnavailable:
+                pass
+            self.surface.close()
+            self.surface = None
+            self.textures.clear()
+            self.arrays.clear()
+            return
         if self.context:
             if self.gl.wglMakeCurrent(self.dc, self.context):
                 for _, identifier, _ in self.textures.values():

@@ -54,6 +54,9 @@ pub mod world;
 pub mod services;
 pub mod loot;
 pub mod creature_ai;
+pub mod world_rules;
+pub mod live_edit;
+pub mod admin;
 mod native_trophies;
 
 pub mod recovered_quests;
