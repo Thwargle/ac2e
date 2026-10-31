@@ -113,6 +113,7 @@ const MAX_CELL_OBJECTS: usize = 64;
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
+#[derive(Clone)]
 pub struct Object {
     pub id: u64,
     pub entity: u32,
@@ -164,6 +165,9 @@ impl Object {
 pub struct Content {
     objects: BTreeMap<u64, Object>,
     cells: BTreeMap<u32, Vec<u64>>,
+    /// Last instance of each object a live edit removed, so a re-added object
+    /// is a newer lifetime to clients that saw the old one.
+    retired: BTreeMap<u64, u16>,
 }
 impl Content {
     #[cfg(test)]
@@ -494,6 +498,91 @@ impl Content {
         let text =
             std::str::from_utf8(&bytes).map_err(|_| invalid("world content is not UTF-8"))?;
         Self::parse(text, game_data)
+    }
+    /// World-builder text parsed off the game thread; DAT checks use their own handles.
+    pub fn parse_text(text: &str, game_data: &Path) -> io::Result<Self> {
+        Self::parse(text, game_data)
+    }
+    pub fn into_objects(self) -> BTreeMap<u64, Object> {
+        self.objects
+    }
+    /// Live edit precheck: after `removed` leave, can every `added` object be placed?
+    pub fn check_live(&self, removed: &[u64], added: &[Object]) -> io::Result<()> {
+        let gone = removed.iter().copied().collect::<BTreeSet<_>>();
+        let fresh=added.iter().map(|o|o.id).collect::<BTreeSet<_>>();
+        if gone.len()!=removed.len() || fresh.len()!=added.len() {
+            return Err(invalid("duplicate live edit identity"));
+        }
+        if added.iter().any(|o|o.spawn.len()<26 || o.destroy.len()<14) {
+            return Err(invalid("truncated live object messages"));
+        }
+        if let Some(id) = gone.iter().find(|id| !self.objects.contains_key(id)) {
+            return Err(invalid(format!("object {id:016x} is not placed")));
+        }
+        let mut counts = BTreeMap::<u32, usize>::new();
+        for object in added {
+            if self.objects.contains_key(&object.id) && !gone.contains(&object.id) {
+                return Err(invalid(format!("object {:016x} is already placed by the base world", object.id)));
+            }
+            *counts.entry(object.placement.cell).or_default() += 1;
+        }
+        for (cell, extra) in counts {
+            let kept = self.cells.get(&cell).map_or(0, |ids| ids.iter().filter(|id| !gone.contains(id)).count());
+            if kept + extra > MAX_CELL_OBJECTS {
+                return Err(invalid(format!("cell {cell:08x} would hold more than 64 objects")));
+            }
+        }
+        if self.objects.len() - gone.len() + added.len() > MAX_OBJECTS {
+            return Err(invalid("the world object limit would be exceeded"));
+        }
+        Ok(())
+    }
+    /// Live edit: add a prepared object. An inactive one waits for its spawner.
+    pub fn insert_live(&mut self, mut object: Object, active: bool) -> io::Result<()> {
+        let id = object.id;
+        if self.objects.len() >= MAX_OBJECTS || self.objects.contains_key(&id) {
+            return Err(invalid(format!("object {id:016x} duplicates content or exceeds the world limit")));
+        }
+        let cell = object.placement.cell;
+        if self.cells.get(&cell).is_some_and(|ids| ids.len() >= MAX_CELL_OBJECTS) {
+            return Err(invalid(format!("cell {cell:08x} already holds 64 objects")));
+        }
+        object.instance = self.retired.remove(&id).map_or(1, |old| old.saturating_add(1)).max(1);
+        Arc::make_mut(&mut object.spawn)[24..26].copy_from_slice(&object.instance.to_le_bytes());
+        Arc::make_mut(&mut object.destroy)[12..14].copy_from_slice(&object.instance.to_le_bytes());
+        object.active = active;
+        self.cells.entry(cell).or_default().push(id);
+        self.objects.insert(id, object);
+        Ok(())
+    }
+    /// Live edit: forget an object; returns its destroy message if clients see it.
+    pub fn remove_live(&mut self, id: u64) -> io::Result<Option<Arc<[u8]>>> {
+        let object = self.objects.remove(&id).ok_or_else(|| invalid(format!("object {id:016x} is not placed")))?;
+        if let Some(ids) = self.cells.get_mut(&object.placement.cell) {
+            ids.retain(|entry| *entry != id);
+            if ids.is_empty() { self.cells.remove(&object.placement.cell); }
+        }
+        self.retired.insert(id, object.instance);
+        Ok(object.active.then_some(object.destroy))
+    }
+    /// Operator overlay placements join the selected base pack. Identities and
+    /// the per-cell limit are checked against the combined world.
+    pub fn extend(&mut self, path: &Path, game_data: &Path) -> io::Result<usize> {
+        let overlay = Self::load(path, game_data)?;
+        let count = overlay.objects.len();
+        for (id, object) in overlay.objects {
+            if self.objects.len() >= MAX_OBJECTS || self.objects.contains_key(&id) {
+                return Err(invalid(format!("overlay object {id:016x} duplicates base content or exceeds the world limit")));
+            }
+            let cell = self.cells.entry(object.placement.cell).or_default();
+            if cell.len() >= MAX_CELL_OBJECTS {
+                return Err(invalid(format!("overlay cell {:08x} exceeds 64 objects", object.placement.cell)));
+            }
+            cell.push(id);
+            cell.sort_unstable();
+            self.objects.insert(id, object);
+        }
+        Ok(count)
     }
     fn parse(text: &str, game_data: &Path) -> io::Result<Self> {
         if text.len() as u64 > MAX_BYTES {

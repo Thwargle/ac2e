@@ -25,11 +25,31 @@ from editor_travel import WorldAtlas, load_atlas
 from editor_interaction import ObjectTools
 from editor_palette import ModelSwatch
 from editor_geometry import GeometryTools
+from editor_population import Population
+from editor_hero_map import HeroMap, default_export, load_export, read_routes
+from editor_live import LiveLink
+
+
+def app_folder():
+    """Per-user editor data: %LOCALAPPDATA% on Windows, XDG config elsewhere."""
+    if os.name == "nt" or os.environ.get("LOCALAPPDATA"):
+        base = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
+        folder, earlier = base / "AC2e", base / "Pyrealium"
+        # Earlier editor builds kept their settings under an older folder name.
+        old, new = earlier / "content-editor" / "settings.json", folder / "content-editor" / "settings.json"
+        if old.is_file() and not new.exists():
+            try:
+                new.parent.mkdir(parents=True, exist_ok=True)
+                new.write_bytes(old.read_bytes())
+            except OSError:
+                pass
+        return folder
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "ac2e"
 
 
 def launcher_game_folder():
     """Reuse the launcher's chosen DAT folder on the editor's first run."""
-    path = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Pyrealium" / "launcher.xml"
+    path = app_folder() / "launcher.xml"
     try:
         folder = ET.fromstring(bounded_text(path)).findtext("GameDirectory", "")
         if folder and all((Path(folder) / name).is_file() for name in ("portal.dat", "cell_1.dat")):
@@ -43,7 +63,7 @@ class Editor:
     def __init__(self, root, args):
         self.root = root
         self.args = args
-        self.settings_path = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Pyrealium" / "content-editor" / "settings.json"
+        self.settings_path = app_folder() / "content-editor" / "settings.json"
         try:
             self.settings = json.loads(bounded_text(self.settings_path))
             if not isinstance(self.settings, dict):
@@ -98,7 +118,7 @@ class Editor:
         self.links_cell = None
         self.nearby_locations = []
         root.protocol("WM_DELETE_WINDOW", self.close)
-        root.title("Pyrealium WorldBuilder")
+        root.title("AC2e World Builder")
         try:
             root.geometry(self.settings.get("geometry", "1360x900"))
         except tk.TclError:
@@ -131,6 +151,14 @@ class Editor:
         self.recent_entities = [value for value in self.settings.get("recent_entities", []) if isinstance(value, str)][:24]
         self.favorite_entities = set(value for value in self.settings.get("favorite_entities", []) if isinstance(value, str))
         self.geometry = GeometryTools(self)
+        self.population = Population(self)
+        self.live = LiveLink(self)
+        self.hero_folder = tk.StringVar(value=self.settings.get("hero_map") or default_export())
+        self.hero_future = None
+        try:
+            self.portal_routes = read_routes(Path(args.catalog).parent / "portal-routes.tsv")
+        except (OSError, ValueError):
+            self.portal_routes = {}
         self.build_ui()
         self.view3d.set_tool("explore")
         self.last_tool = "explore"
@@ -150,6 +178,7 @@ class Editor:
         self.reload()
         self.status.set("Click the world map to travel. Build objects opens the placement tools.")
         self.root.after_idle(self.load_world_atlas)
+        self.root.after_idle(self.load_hero_map)
         self.root.after(300, self.load_locations)
 
     def build_ui(self):
@@ -157,14 +186,16 @@ class Editor:
         style = ttk.Style(root)
         style.theme_use("clam")
         bg, panel, field, text, muted = "#151c26", "#202a38", "#111925", "#e5edf7", "#9fb1c7"
+        from tkinter import font as tkfont
+        family = "Segoe UI" if os.name == "nt" else tkfont.nametofont("TkDefaultFont").actual("family")
         root.configure(background=bg)
-        style.configure(".", background=bg, foreground=text, font=("Segoe UI", 10))
+        style.configure(".", background=bg, foreground=text, font=(family, 10))
         style.configure("TFrame", background=bg)
         style.configure("Panel.TFrame", background=panel)
         style.configure("TLabel", background=bg, foreground=text)
         style.configure("Muted.TLabel", foreground=muted)
-        style.configure("Title.TLabel", font=("Segoe UI", 19, "bold"))
-        style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"))
+        style.configure("Title.TLabel", font=(family, 19, "bold"))
+        style.configure("Section.TLabel", font=(family, 11, "bold"))
         style.configure("TButton", background="#2d3d51", foreground=text, borderwidth=0, padding=(9, 6))
         style.map("TButton", background=[("active", "#405d7a"), ("disabled", "#202a38")], foreground=[("disabled", "#66788d")])
         style.configure("Accent.TButton", background="#246ea8", foreground="white", padding=(12, 9))
@@ -186,7 +217,7 @@ class Editor:
         header = ttk.Frame(shell)
         self.header = header
         header.pack(fill="x", pady=(0, 10))
-        ttk.Label(header, text="Pyrealium", style="Title.TLabel").pack(side="left")
+        ttk.Label(header, text="AC2e", style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="WORLDBUILDER", style="Muted.TLabel").pack(side="left", padx=15)
         ttk.Button(header, text="Undo", command=self.undo).pack(side="right", padx=3)
         self.undo_button = header.winfo_children()[-1]
@@ -203,6 +234,12 @@ class Editor:
         project.columnconfigure(1, weight=1)
         self.path_row(project, 0, "DAT folder", self.game, self.pick_game)
         self.path_row(project, 1, "Content file", self.output, self.pick_output)
+        self.path_row(project, 2, "Base world (read-only)", self.population.base_path, self.population.pick_base)
+        self.path_row(project, 3, "AC2Hero map export", self.hero_folder, self.pick_hero_map)
+        self.live.build(project, 5)
+        ttk.Label(project, style="Muted.TLabel", text="Content file = your world overlay (server --content-overlay); its "
+                  "creature rules are saved beside it as NAME.rules.tsv. Base world = the prepared world the server "
+                  "loads with --content, shown for reference. AC2Hero map export = the folder `ac2hero-map --export DIR` wrote.").grid(row=4, column=0, columnspan=3, sticky="w")
         self.panes = ttk.Panedwindow(shell, orient="horizontal")
         self.panes.pack(fill="both", expand=True)
         left, center, inspector = ttk.Frame(self.panes, width=300), ttk.Frame(self.panes), ttk.Frame(self.panes, width=260)
@@ -220,7 +257,8 @@ class Editor:
         self.page_scene = saved = ttk.Frame(self.library, padding=5)
         self.page_travel = ttk.Frame(self.library, padding=3)
         self.page_geometry = ttk.Frame(self.library, padding=4)
-        for frame, label in ((self.page_map, "Map"), (entities, "Objects"), (saved, "Scene"), (self.page_travel, "Travel"), (self.page_geometry, "Build")):
+        self.page_creatures = ttk.Frame(self.library, padding=5)
+        for frame, label in ((self.page_map, "Map"), (entities, "Objects"), (self.page_creatures, "Creatures"), (saved, "Scene"), (self.page_travel, "Travel"), (self.page_geometry, "Build")):
             self.library.add(frame, text=label)
         travel_tabs = ttk.Notebook(self.page_travel)
         travel_tabs.pack(fill="both", expand=True)
@@ -229,7 +267,8 @@ class Editor:
         travel_tabs.add(nearby, text="Rooms / exits")
         self.travel_tabs = travel_tabs
         self.geometry.build_panel(self.page_geometry)
-        self.minimap = WorldAtlas(self.page_map, self.navigate_to, compact=True)
+        self.population.build_panel(self.page_creatures)
+        self.minimap = HeroMap(self.page_map, self.navigate_to, compact=True, editor=self)
         self.minimap.pack(fill="both", expand=True)
         bookmark_bar = ttk.Frame(self.page_map)
         bookmark_bar.pack(fill="x", pady=5)
@@ -295,21 +334,26 @@ class Editor:
         self.workspace.pack(fill="both", expand=True, padx=6)
         self.view3d = Preview3D(self.workspace, on_pick=self.pick_3d, on_camera_move=self.camera_moved, on_select=self.select_in_view, on_command=self.viewport_command, on_transform=self.object_tools.transform, on_stamp=self.object_tools.stamp, on_surface=self.geometry.stroke, on_door=self.geometry.pick_door)
         self.view3d.canvas.configure(height=280)
+        self.view3d.on_creature_click = lambda event: self.population.click_3d(self.view3d, event)
         self.move_step = self.view3d.move_step
         map_frame = ttk.Frame(self.workspace)
-        self.atlas = WorldAtlas(self.workspace, self.navigate_to)
+        self.atlas = HeroMap(self.workspace, self.navigate_to, editor=self)
         self.workspace.add(self.atlas, text="World map")
         self.workspace.add(self.view3d, text="Explore in 3D")
         self.workspace.add(map_frame, text="Position map")
         bar = ttk.Frame(map_frame)
         bar.pack(fill="x", pady=5)
-        ttk.Label(bar, text="Click to move · right-drag to pan · wheel to zoom", style="Muted.TLabel").pack(side="left")
-        ttk.Button(bar, text="Fit cell", command=self.fit_map).pack(side="right")
+        ttk.Label(bar, text="Bird's-eye zone view · click to move the draft · Creatures tab: click a creature · Ctrl-click inspects · right-drag pans · wheel zooms", style="Muted.TLabel").pack(side="left")
+        ttk.Button(bar, text="Fit zone", command=self.fit_map).pack(side="right")
         self.canvas = tk.Canvas(map_frame, background=field, highlightthickness=0, height=280)
         self.canvas.pack(fill="both", expand=True)
         self.canvas.bind("<Configure>", lambda event: self.preview())
         self.canvas.bind("<Button-1>", self.pick_position)
         self.canvas.bind("<MouseWheel>", self.zoom_map)
+        self.canvas.bind("<Button-4>", lambda event: self.zoom_map(SimpleNamespace(delta=1)))
+        self.canvas.bind("<Button-5>", lambda event: self.zoom_map(SimpleNamespace(delta=-1)))
+        self.canvas.bind("<Escape>", lambda event: self.population.inspector and self.population.inspector.finish_patrol())
+        self.canvas.bind("<Enter>", lambda event: self.canvas.focus_set())
         self.canvas.bind("<ButtonPress-3>", self.begin_pan)
         self.canvas.bind("<B3-Motion>", self.pan_map)
         actions = ttk.Frame(inspector)
@@ -363,6 +407,8 @@ class Editor:
         ttk.Button(self.travel_bar, text="Dungeons", command=self.show_dungeons).pack(side="left", padx=8)
         ttk.Button(self.travel_bar, text="Terrain / rooms", command=self.show_geometry).pack(side="left", padx=3)
         ttk.Button(self.travel_bar, text="Build objects", command=self.show_building).pack(side="right", padx=3)
+        ttk.Button(self.travel_bar, text="Creatures", command=self.show_creatures).pack(side="right", padx=3)
+        ttk.Button(self.travel_bar, text="Bird's-eye", command=self.birds_eye).pack(side="right", padx=3)
         ttk.Checkbutton(self.travel_bar, text="Snap", variable=self.snap_enabled).pack(side="left", padx=(10,2))
         ttk.Spinbox(self.travel_bar, textvariable=self.snap_size, values=("0.1","0.25","0.5","1","2","5"), width=4).pack(side="left", padx=(0,4))
         ttk.Label(self.travel_bar, text="Fly speed").pack(side="left", padx=(12, 3))
@@ -503,6 +549,21 @@ class Editor:
         self.workspace.select(1)
         self.search_entry.focus_set()
 
+    def show_creatures(self):
+        self.library.select(self.page_creatures)
+        self.population.refresh_list()
+        if self.workspace.index("current") == 0:
+            self.workspace.select(1 if self.has_travelled else 2)
+        self.preview()
+        self.status.set("Creatures: click one in 3D, on the Position map or in the list (Ctrl-click opens its inspector).")
+
+    def birds_eye(self):
+        """Straight-down 3D camera over the current area."""
+        self.workspace.select(1)
+        self.view3d.elevation = math.radians(85)
+        self.view3d.distance = max(self.view3d.distance, 220)
+        self.view3d.redraw()
+
     def show_dungeons(self):
         self.location_kind.set("Dungeon")
         self.location_search.set("")
@@ -560,6 +621,34 @@ class Editor:
             logging.exception("World atlas unavailable")
             self.atlas.note.set(f"World map unavailable: {error}. Use Project / DATs to select the game folder.")
             self.atlas.draw()
+
+    def pick_hero_map(self):
+        folder = filedialog.askdirectory(title="Folder written by ac2hero-map --export")
+        if folder:
+            self.hero_folder.set(folder)
+            self.load_hero_map()
+
+    def load_hero_map(self):
+        folder = self.hero_folder.get().strip()
+        if self.closing or not folder or self.hero_future is not None:
+            return
+        self.hero_future = self.executor.submit(load_export, folder)
+        self.root.after(60, self.finish_hero_map)
+
+    def finish_hero_map(self):
+        if self.closing or self.hero_future is None:
+            return
+        if not self.hero_future.done():
+            self.root.after(60, self.finish_hero_map)
+            return
+        future, self.hero_future = self.hero_future, None
+        try:
+            data = future.result()
+            self.atlas.set_export(data)
+            self.minimap.set_export(data)
+        except Exception as error:
+            logging.exception("AC2Hero map export unavailable")
+            self.status.set(f"AC2Hero map not loaded ({error}); showing the DAT world map.")
 
     def size_panes(self):
         if not self.closing:
@@ -781,7 +870,7 @@ class Editor:
                 self.history.clear()
                 self.redo_history.clear()
             self.loaded_path, self.original = path, original
-            self.root.title(f"Pyrealium WorldBuilder — {path.name}")
+            self.root.title(f"AC2e World Builder — {path.name}")
             self.placements = rows
             self.selected_id = None
             self.group_ids = ()
@@ -790,6 +879,8 @@ class Editor:
             self.filter_placements()
             self.update_actions()
             self.status.set(f"Loaded {len(rows):,} placements. Select one to edit, or choose an entity to add.")
+            self.population.reload()
+            self.live.changed()
             self.preview()
         except (OSError, ValueError) as error:
             if self.loaded_path:
@@ -870,6 +961,9 @@ class Editor:
         if self.changing_fields:
             return
         self.refresh_scene()
+        if hasattr(self, "view3d"):
+            self.view3d.overlay_lines = self.population.lines_3d(self.active_scene_cell) if self.active_scene_cell is not None else []
+            self.view3d.redraw()
         self.canvas.delete("all")
         self.transform = None
         try:
@@ -877,20 +971,41 @@ class Editor:
             x, y = (float(self.fields[name].get()) for name in ("X", "Y"))
             if not all(math.isfinite(v) and abs(v) < 1_000_000 for v in (x, y)):
                 return
-            points = [(float(row[4]), float(row[5]), row[1]) for row in self.placements if int(row[3], 16) == cell]
+            # The whole zone (landblock and its outdoor neighbours) in the draft's block frame.
+            creatures = {row["id"] for row in self.population.creatures()}
+            points = []
+            for row in self.placements:
+                if row[0].lower() in creatures:
+                    continue
+                point = self.population.frame(dict(cell=int(row[3], 16), x=float(row[4]), y=float(row[5]), z=float(row[6])), cell)
+                if point is not None:
+                    points.append((point[0], point[1], row[1]))
             width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
             if width < 80 or height < 80:
                 return
-            xs, ys = [x] + [p[0] for p in points], [y] + [p[1] for p in points]
-            if self.map_view is None or self.map_view[0] != cell:
-                self.map_view = (cell, (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2,
-                                 max(20, max(xs)-min(xs), max(ys)-min(ys)) * 1.15)
+            zone = cell >> 16
+            if self.map_view is None or self.map_view[0] != zone:
+                # Outdoors, fit the landblock; indoors, fit the room's placements.
+                if 1 <= (cell & 65535) <= 64:
+                    side = self.population.block_side()
+                    self.map_view = (zone, side / 2, side / 2, side * 1.1)
+                else:
+                    xs, ys = [x] + [p[0] for p in points], [y] + [p[1] for p in points]
+                    self.map_view = (zone, (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2,
+                                     max(40, max(xs)-min(xs), max(ys)-min(ys)) * 1.15)
             _, middle_x, middle_y, span = self.map_view
             scale = min(width-70, height-70) / span
             self.transform = middle_x, middle_y, scale, width, height
             def project(px, py):
                 return width / 2 + (px - middle_x) * scale, height / 2 - (py - middle_y) * scale
-            self.canvas.create_text(12, 12, anchor="nw", fill="#b9cad9", text=f"Cell {cell:08x} · +Y ↑ · +X →")
+            self.canvas.create_text(12, 12, anchor="nw", fill="#b9cad9", text=f"Zone {cell >> 16:04x} · draft cell {cell:08x} · +Y north ↑ · +X east →")
+            if 1 <= (cell & 65535) <= 64:
+                side = self.population.block_side()
+                for bx in (-1, 0, 1):
+                    for by in (-1, 0, 1):
+                        ax, ay = project(bx*side, by*side)
+                        bx2, by2 = project((bx+1)*side, (by+1)*side)
+                        self.canvas.create_rectangle(ax, ay, bx2, by2, outline="#3c5266" if (bx, by) == (0, 0) else "#24323f")
             spacing = 10 ** math.floor(math.log10(span / 4))
             if span / spacing > 12:
                 spacing *= 5
@@ -907,10 +1022,14 @@ class Editor:
                     else:
                         self.canvas.create_line(0, sy, width, sy, fill="#263746")
                         self.canvas.create_text(4, sy-7, text=f"{value:g}", fill="#708a9d", anchor="w")
+            labels = {entity.lower(): label for entity, visual, label in self.catalog}
             for px, py, entity in points:
                 sx, sy = project(px, py)
-                self.canvas.create_oval(sx-4, sy-4, sx+4, sy+4, fill="#72b9e5", outline="")
-                self.canvas.create_text(sx+7, sy, anchor="w", text=entity, fill="#b9cad9", font=("Segoe UI", 8))
+                self.canvas.create_rectangle(sx-3, sy-3, sx+3, sy+3, fill="#5d7487", outline="")
+                if self.population.show["Labels"].get():
+                    self.canvas.create_text(sx+7, sy, anchor="w", text=labels.get(entity.lower(), entity)[:32], fill="#7f93a5", font=("TkDefaultFont", 8))
+            self.population.map_reference = cell
+            self.population.draw_map(self.canvas, project, scale, cell)
             sx, sy = project(x, y)
             self.canvas.create_oval(sx-6, sy-6, sx+6, sy+6, fill="#efb65e", outline="white")
             self.canvas.create_text(sx, sy+17, text="Editing selected" if self.selected_id is not None else "New placement", fill="#efb65e")
@@ -1010,7 +1129,8 @@ class Editor:
             if self.active_scene_cell == reference:
                 self.view3d.update_placement(position, heading, scale)
             selected_id = None if exploring else self.selected_id
-            key = (folder, reference, visual, (self.content_revision, selected_id, self.group_ids, self.geometry.project.revision, self.retry_revision))
+            base = self.population.show["Base world"].get()
+            key = (folder, reference, visual, (self.content_revision, selected_id, self.group_ids, self.geometry.project.revision, base, self.retry_revision))
             placements = [row for row in self.placements if int(row[0], 16) != selected_id]
             self.wanted = (key, position, heading, scale, placements)
             if self.future is None and key != self.scene_ready and self.scene_timer is None:
@@ -1048,7 +1168,10 @@ class Editor:
         from world_bundle import entrance_objects
         ids={row[0] for row in placements}
         placements=list(placements)+[row for row in entrance_objects(self.geometry.project.entrances) if row[0] not in ids]
-        return self.assets.scene(cell, visual, position, heading, scale, placements, catalog)
+        # The base world joins the scene read-only; OpenGL affords a larger budget.
+        base = self.population.scene_rows(cell, revision[-2])
+        budget = 150000 if self.view3d.gpu_error is None else 50000
+        return self.assets.scene(cell, visual, position, heading, scale, placements, catalog, base, budget)
 
     def finish_load(self):
         if self.closing or self.future is None:
@@ -1162,6 +1285,7 @@ class Editor:
         try:
             self.locations = future.result()
             self.filter_locations()
+            self.atlas.draw()
         except Exception as error:
             logging.exception("Area index failed")
             self.locations = []
@@ -1382,7 +1506,10 @@ class Editor:
             self.settings_path.write_text(json.dumps({"game_data": self.game.get(), "output": self.output.get(),
                                                        "geometry": self.root.geometry(),
                                                        "recent_entities": self.recent_entities,
-                                                       "favorite_entities": sorted(self.favorite_entities), "bookmarks": self.bookmarks}, indent=2), encoding="utf-8")
+                                                       "favorite_entities": sorted(self.favorite_entities), "bookmarks": self.bookmarks,
+                                                       "reference_world": self.population.base_path.get(),
+                                                       "hero_map": self.hero_folder.get(),
+                                                       "live_address": self.live.address.get(), "live_data": self.live.data_folder.get()}, indent=2), encoding="utf-8")
         except OSError:
             logging.exception("Could not save editor preferences")
 
@@ -1408,6 +1535,7 @@ class Editor:
             self.root.after_cancel(self.camera_timer)
             self.camera_timer = None
         self.view3d.close()
+        self.live.close()
         self.status.set("Closing after the current DAT read finishes…")
         def release():
             if self.assets:
@@ -1433,6 +1561,9 @@ class Editor:
     def pick_position(self, event):
         if self.transform:
             x, y, scale, width, height = self.transform
+            unproject = lambda px, py: (x + (px-width/2)/scale, y - (py-height/2)/scale)
+            if self.population.map_click(event, unproject):
+                return
             self.fields["X"].set(format(x + (event.x-width/2)/scale, ".9g"))
             self.fields["Y"].set(format(y - (event.y-height/2)/scale, ".9g"))
 
@@ -1516,6 +1647,12 @@ class Editor:
             from editor_arrange import remove_selection
             result = remove_selection(self.original, identities)
             self.commit_change(result)
+            rules = self.population.rules
+            named = [f"{i:016x}" for i in identities if any(f"{i:016x}" in table for table in (rules.stats, rules.behaviour, rules.loot, rules.patrols)) or rules.group_of(f"{i:016x}")]
+            if named:
+                for identity in named:
+                    rules.remove_placement(identity)
+                self.population.save(f"Removed creature rules for {len(named)} deleted placement(s).")
             self.status.set(f"Deleted {label}. Undo restores the complete selection.")
         except (OSError, ValueError) as error:
             messagebox.showerror("Placements were not deleted", str(error), parent=self.root)
@@ -1534,6 +1671,16 @@ class Editor:
 
     def select_in_view(self, identity, additive=False):
         if self.arrange_dialog is not None:
+            return
+        if not any(int(row[0], 16) == identity for row in self.placements):
+            # A base-world object: not movable here, but its creature rules are editable.
+            row = self.population.find(f"{identity:016x}")
+            if row is None:
+                self.status.set("Base-world object: read-only here (not a creature).")
+                return
+            self.library.select(self.page_creatures)
+            self.population.refresh_list()
+            self.population.select(row["id"], inspect=True)
             return
         selected = set(self.group_ids or ([self.selected_id] if self.selected_id is not None else [])) if additive else set()
         if additive and identity in selected:
@@ -1604,7 +1751,7 @@ class Editor:
 
 
 def main():
-    log_folder = Path(os.environ.get("LOCALAPPDATA",tempfile.gettempdir())) / "Pyrealium" / "content-editor" / "logs"
+    log_folder = app_folder() / "content-editor" / "logs"
     log_folder.mkdir(parents=True,exist_ok=True)
     log_path = log_folder / (datetime.now(timezone.utc).strftime("editor-%Y%m%d-%H%M%S-") + str(os.getpid()) + ".log")
     # pythonw has no console streams. Keep the log open until all owned worker

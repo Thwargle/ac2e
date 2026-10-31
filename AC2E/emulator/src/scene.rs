@@ -190,6 +190,25 @@ impl Scene {
         let object=self.content.object(dropped.id()).unwrap();
         Ok(self.neighbor_ids(object.placement.cell,0).map(|recipient|Delivery{recipient,data:object.spawn.clone()}).collect())
     }
+    /// Live edit: show a new object to everyone who can see its cell. Visibility is
+    /// computed from the observer's cell, so no target cell is read here.
+    pub fn insert_content_live(&mut self, object: crate::content::Object, active: bool) -> std::io::Result<Vec<Delivery>> {
+        let (id, cell) = (object.id, object.placement.cell);
+        self.content.insert_live(object, active)?;
+        if !active { return Ok(Vec::new()); }
+        let spawn = self.content.object(id).map(|o| o.spawn.clone()).unwrap();
+        Ok(self.neighbor_ids(cell, 0).map(|recipient| Delivery { recipient, data: spawn.clone() }).collect())
+    }
+    pub fn check_content_live(&self, removed: &[u64], added: &[crate::content::Object]) -> std::io::Result<()> {
+        self.content.check_live(removed, added)
+    }
+    pub fn remove_content_live(&mut self, id: u64) -> std::io::Result<Vec<Delivery>> {
+        let cell = self.content.cell(id); // None while inactive: nobody sees it.
+        Ok(match (self.content.remove_live(id)?, cell) {
+            (Some(destroy), Some(cell)) => self.neighbor_ids(cell, 0).map(|recipient| Delivery { recipient, data: destroy.clone() }).collect(),
+            _ => Vec::new(),
+        })
+    }
     pub fn remove_drop(&mut self,id:u64) -> std::io::Result<Vec<Delivery>> {
         let cell=self.content.cell(id).ok_or_else(||std::io::Error::other("Ground item unavailable"))?;
         let data=self.content.remove_drop(id)?;
@@ -451,6 +470,7 @@ impl Scene {
             .filter(|body| body.ready)
             .map(|body| body.placement)
     }
+    pub(crate) fn content_objects(&self) -> impl Iterator<Item=&crate::content::Object> {self.content.objects()}
     pub fn content_placement(&self, id: u64) -> Option<Placement> {
         self.content
             .object(id)

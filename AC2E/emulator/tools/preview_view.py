@@ -67,6 +67,8 @@ class Preview3D(ttk.Frame):
         self.brush_preview = None
         self.dungeon_doors = []
         self.portal_markers = []
+        self.overlay_lines = []
+        self.on_creature_click = None
         self.on_door = on_door
         self.placement_enabled = False
         self.transform_drag = None
@@ -404,6 +406,9 @@ class Preview3D(ttk.Frame):
 
     def orbit_start(self, event):
         self.canvas.focus_set()
+        if self.on_creature_click is not None and not event.state & 8 and self.on_creature_click(event):
+            self.drag = None
+            return
         tool = self.tool.get()
         if tool == "entrance" and not event.state & 8:
             hit=self.surface_hit(event,{"world"})
@@ -432,7 +437,7 @@ class Preview3D(ttk.Frame):
             width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
             gizmo = descriptor(self.instances, tool, self.camera(), width, height)
             if gizmo is None:
-                hit = self.surface_hit(event, {"world", "saved", "preview"})
+                hit = self.surface_hit(event, {"world", "saved", "base", "preview"})
                 if hit and hit[2].get("object_id") is not None and self.on_select:
                     self.on_select(hit[2]["object_id"], bool(event.state & 4))
                     self.set_tool(tool)
@@ -447,7 +452,7 @@ class Preview3D(ttk.Frame):
                 self.on_stamp()
             return
         if self.tool.get() == "select":
-            hit = self.surface_hit(event, {"world", "saved", "preview"})
+            hit = self.surface_hit(event, {"world", "saved", "base", "preview"})
             if hit and hit[2].get("object_id") is not None and self.on_select is not None:
                 self.on_select(hit[2]["object_id"], bool(event.state & 5))
             else:
@@ -749,7 +754,7 @@ class Preview3D(ttk.Frame):
                 from editor_gizmo import descriptor
                 count = self.gpu.render(list(self.visible_instances()), eye, forward, right, up,
                                         width, height, self.cutaway_height() if self.cutaway.get() else None,
-                                        gizmo=descriptor(self.instances, self.tool.get(), self.camera(), width, height), brush=self.brush_preview if self.tool.get()=="terrain" else None, doors=self.dungeon_doors if self.tool.get()=="dungeon" else None, portals=self.portal_markers)
+                                        gizmo=descriptor(self.instances, self.tool.get(), self.camera(), width, height), brush=self.brush_preview if self.tool.get()=="terrain" else None, doors=self.dungeon_doors if self.tool.get()=="dungeon" else None, portals=self.portal_markers, lines=self.overlay_lines)
                 self.status.set(f"Textured 3D view · {count:,} triangles"
                                 + (f" · {len(self.scene_warnings)} loading notes in Details" if self.scene_warnings else ""))
                 return
@@ -795,6 +800,18 @@ class Preview3D(ttk.Frame):
         triangles.sort(key=lambda item: item[0], reverse=True)
         for _, points, fill in triangles:
             self.canvas.create_polygon(*[coordinate for point in points for coordinate in point], fill=fill, outline="")
+        for color, points, closed in self.overlay_lines:
+            fill = "#%02x%02x%02x" % tuple(int(c*255) for c in color)
+            projected = []
+            for point in points + (points[:1] if closed else []):
+                offset = sub(point, eye)
+                depth = dot(offset, forward)
+                if depth <= 0.15:
+                    projected = []
+                    continue
+                projected += [width/2 + focal*dot(offset, right)/depth, height/2 - focal*dot(offset, up)/depth]
+                if len(projected) >= 4:
+                    self.canvas.create_line(*projected[-4:], fill=fill, width=2)
         offset = sub(self.placement, eye)
         depth = dot(offset, forward)
         if depth > 0.15:

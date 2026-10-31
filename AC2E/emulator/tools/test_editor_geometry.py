@@ -278,7 +278,7 @@ class PreviewTerrainHookTests(unittest.TestCase):
         def hit(event,roles,terrain_only=False):
             calls.append((roles,terrain_only))
             return (0,None,None,point)
-        view=SimpleNamespace(tool=Variable("terrain"),surface_hit=hit,
+        view=SimpleNamespace(tool=Variable("terrain"),surface_hit=hit,on_creature_click=None,
             on_surface=lambda point,phase:events.append((point,phase)) or True,
             terrain_dragging=False,transform_drag=None,drag=None,placement_drag=False,
             canvas=SimpleNamespace(focus_set=lambda:None))

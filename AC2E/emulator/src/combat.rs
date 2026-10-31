@@ -15,6 +15,7 @@ const MISSILE: [u32; 3] = [0xf, 0xe, 0x10];
 const MAGIC: [u32; 3] = [0x4, 0x3, 0x5];
 
 /// xorshift64* seeded from the OS; combat rolls need no cryptographic strength.
+#[derive(Clone)]
 pub struct Dice(u64);
 impl Dice {
     #[cfg(test)]

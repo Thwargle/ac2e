@@ -2,6 +2,7 @@
 
 VisualDesc::StreamPack 0063d7f0, PartGroupDataDesc::StreamPack 006443c0,
 CharacterSetup::UnPack 006105a0. Unsupported appearance graphs fail explicitly.
+Appearance hashes follow AC2_Rusted's ac2_visual_desc::part_group.
 """
 from collections import OrderedDict
 import math
@@ -33,12 +34,28 @@ def group(reader):
         if flags & bit:
             result[name] = reader.take("I")
     if flags & 0x20:
-        raise ValueError("Part-group appearance-key hash is not supported yet")
+        # AppearanceInfo hash: table DID -> (key, scalar) pairs. It picks surfaces,
+        # not geometry, so the preview keeps it without applying it.
+        appearance = {}
+        for unused in range(hash_count(reader)):
+            table = reader.take("I")
+            appearance[table] = [reader.take("If") for unused in range(hash_count(reader))]
+        result["appearance"] = appearance
     if flags & 0x40:
         result["effects"] = reader.take("I")
-    if flags & 0x180:
+    if flags & 0x80:
+        result["startup_effects"] = [reader.take("If") for unused in range(hash_count(reader))]
+    if flags & 0x100:
         raise ValueError("Part-group effect overrides are not supported yet")
     return result
+
+
+def hash_count(reader):
+    """PackableHashTable count: the low 16 bits (the high bits are the table size)."""
+    count = reader.take("I") & 0xffff
+    if count * 4 > len(reader.data) - reader.offset:
+        raise ValueError("Hash count exceeds the record")
+    return count
 
 
 def visual_record(data, did):
@@ -259,7 +276,9 @@ class Assets:
             self.animations.popitem(last=False)
         return animation
 
-    def scene(self, cell, visual, position, heading, scale, placements, catalog):
+    def scene(self, cell, visual, position, heading, scale, placements, catalog, reference=(), budget=50000):
+        """`reference`: read-only base-world rows (world-manifest fields), drawn nearest
+        first within the triangle budget after everything else."""
         from preview_cell import decode_cell
         warnings, instances = [], []
         self.material_warnings.clear()
@@ -268,8 +287,8 @@ class Assets:
         def add(mesh, origin, quaternion, sizes, role):
             nonlocal triangle_count
             count = len(mesh["indices"]) // 3
-            if triangle_count + count > 50000:
-                raise ValueError("Scene geometry exceeds the 50,000-triangle authoring budget")
+            if triangle_count + count > budget:
+                raise ValueError(f"Scene geometry exceeds the {budget:,}-triangle authoring budget")
             triangle_count += count
             instances.append(dict(mesh=mesh, position=origin, quaternion=quaternion,
                                   scale=sizes, role=role, placement_scale=scale or 1))
@@ -377,5 +396,41 @@ class Assets:
                     instances[-1]["object_id"] = int(row[0], 16)
             except (OSError, ValueError, KeyError) as error:
                 warnings.append(f"Saved object {row[0]}: {error}")
+        saved_ids = {int(row[0], 16) for row in placements}
+        nearby = []
+        for row in reference:
+            try:
+                identity = int(row[3], 16)
+                if identity not in loaded or int(row[0], 16) in saved_ids:
+                    continue
+                origin = [float(v) for v in row[4:7]]
+                if outdoor:
+                    origin[0] += ((identity>>24)-(cell>>24))*block_side
+                    origin[1] += (((identity>>16)&255)-((cell>>16)&255))*block_side
+                nearby.append((sum((a-b)**2 for a, b in zip(origin, position)), origin, row))
+            except (ValueError, IndexError):
+                continue
+        nearby.sort(key=lambda item: item[0])
+        skipped = 0
+        for distance, origin, row in nearby:
+            try:
+                factor = float(row[11]) if len(row) >= 12 and row[11] != "-" else 1
+                try:
+                    meshes = self.creature(int(row[2], 16))
+                except (OSError, ValueError, KeyError):
+                    # Captured visuals can come from another client build; the
+                    # type's own visual in these DATs is the reliable fallback.
+                    meshes = self.creature(self.definition_visual(int(row[1], 16), catalog))
+                if triangle_count + sum(len(mesh["indices"]) // 3 for mesh, _ in meshes) > budget:
+                    skipped += 1
+                    continue
+                for mesh, sizes in meshes:
+                    add(mesh, origin, [float(v) for v in row[7:11]], [v * factor for v in sizes], "base")
+                    instances[-1]["cell"] = int(row[3], 16)
+                    instances[-1]["object_id"] = int(row[0], 16)
+            except (OSError, ValueError, KeyError):
+                skipped += 1
+        if skipped:
+            warnings.append(f"{skipped} base-world objects not drawn (unsupported visual or the triangle budget); fly closer to see them")
         warnings.extend(sorted(self.material_warnings)[:8])
         return instances, warnings

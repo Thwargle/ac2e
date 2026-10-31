@@ -150,6 +150,28 @@ NPC scripts are still unresolved. See [content recovery](Docs/ADMIN_CONTENT_RECO
 [capture imports](Docs/CAPTURE_REFERENCE_IMPORT.md) and the
 [content manifest guide](AC2E/emulator/content/README.md).
 
+The world builder now supports creature stats, AI, weighted loot, patrol routes
+and population groups in an overlay plus a `NAME.rules.tsv` sidecar. Its optional
+loopback admin endpoint applies edits to a running server and saves them for
+restart. Rejected edits preserve the current world; stale revisions stop sync
+until the operator reconciles the files. Group overrides preserve the original
+regional rosters, and live creatures use native movement descriptors. These are
+operator-authored rules, not newly recovered retail data. See the
+[world-builder guide](AC2E/emulator/docs/content-editor.md) for setup and limits.
+
+The server recognizes the original 7230 DAT profile and selects its own skill,
+advancement and effect tables before loading persisted characters. Those tables
+are validated against the archived 7230 portal records, including Flame Bolt;
+Legions keeps its separate tables. A matching native 7230 client's full gameplay
+acceptance is still unverified. See the [7230 profile notes](AC2E/emulator/content/7230/README.md).
+
+A GUN social-service endpoint now starts alongside the game server (port 2310;
+disable with `--gun-bind off`). It supports persisted friends/ignores, presence
+and tells over a custom transport, with bounded queues and account-ticket
+authentication. Client transport adapters are not included in this checkout:
+stock retail `GunDll.dll` and the Unreal client do not automatically gain these
+features. See the [GUN protocol and limitations](AC2E/emulator/docs/gun-protocol.md).
+
 ## Missing content records
 
 `AC2E/data/world/legions-world.report.json` now lists the exact record IDs and DAT
@@ -331,6 +353,8 @@ python .\Network\test_combat_ui.py --mouse
 python .\Network\test_corpse_loot.py
 python .\Network\test_outdoor_population.py
 python .\Network\test_recovered_equipment.py
+python .\Network\test_active_skills.py
+python .\Network\test_live_world.py
 python .\Network\test_inferred_content.py
 python .\Network\test_regional_population.py
 python .\Network\test_world_clock.py

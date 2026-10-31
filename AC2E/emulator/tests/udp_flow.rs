@@ -102,6 +102,9 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         server::run(Config {
             content: None,
             encounters: None,
+            content_overlay: None,
+            world_rules: None,
+            admin_bind: None,
             initialize_ui: expect_bootstrap,
             training_kit: false,
             lifestones: false,

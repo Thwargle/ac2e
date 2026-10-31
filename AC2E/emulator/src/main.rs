@@ -39,7 +39,7 @@ fn usage() {
         "  player-state --character-id N [--event COMMAND] --data PATH\n    Offline progression inspection/edit: x,XP a,SPEND_XP g,GOLD s,GOLD d,DAMAGE h,HEAL v,COST r,RECOVERY z(resurrect)."
     );
     println!(
-        "  serve --game-data PATH [--content PATH|observed|training|none] [--encounters PATH]\n    Encounters use explicit development rules. training selects the authored starter encounter."
+        "  serve --game-data PATH [--content PATH|observed|training|none] [--encounters PATH] [--content-overlay PATH] [--world-rules PATH] [--admin-bind 127.0.0.1:PORT]\n    Encounters use explicit development rules. training selects the authored starter encounter.\n    --content-overlay adds world-builder placements; its NAME.rules.tsv (or --world-rules) sets custom creature stats, AI, loot, patrols and spawn groups.\n    --admin-bind enables local live world editing from the content editor (token in DATA/admin.token)."
     );
     println!(
         "  inventory-reorder --character-id N --request PATH\n    Offline import of one reassembled native inventory sorting message (296 bytes)."
@@ -85,6 +85,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut game_data = None;
     let mut content = None;
     let mut encounters = None;
+    let mut content_overlay = None;
+    let mut world_rules = None;
+    let mut admin_bind = None;
     let mut landblocks = None;
     let mut record_id = None;
     let mut character_id = None;
@@ -127,6 +130,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "--game-data" => game_data = Some(PathBuf::from(value)),
             "--content" => content = Some(PathBuf::from(value)),
             "--encounters" => encounters = Some(PathBuf::from(value)),
+            "--content-overlay" => content_overlay = Some(PathBuf::from(value)),
+            "--world-rules" => world_rules = Some(PathBuf::from(value)),
+            "--admin-bind" => admin_bind = Some(value.parse()?),
             "--landblocks" => landblocks = Some(PathBuf::from(value)),
             "--id" => record_id = Some(u32::from_str_radix(value.trim_start_matches("0x"), 16)?),
             "--character-id" => character_id = Some(value.parse::<u64>()?),
@@ -456,6 +462,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     map_travel,
                     content,
                     encounters,
+                    content_overlay,
+                    world_rules,
+                    admin_bind,
                 };
             if let Some(root) = local_accounts {
                 server::run_local_accounts(config, root)?;

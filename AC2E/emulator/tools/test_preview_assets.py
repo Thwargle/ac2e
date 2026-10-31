@@ -118,5 +118,27 @@ class AssetLoadingTests(unittest.TestCase):
         self.assertEqual(assets.material_warnings, set())
 
 
+    def test_base_world_rows_draw_read_only_nearest_first_within_budget(self):
+        assets = object.__new__(Assets)
+        assets.material_warnings = set()
+        assets.animation = lambda *args: self.fail("no selected visual")
+        class Cells:
+            def read(self, cell):
+                return (words(cell) + struct.pack("<3f",0,0,0) + struct.pack("<4f",1,0,0,0)
+                        + words(0,0x0100009e,0,0,0))
+        assets.cells = Cells()
+        assets.mesh = lambda did: {"indices": [0, 1, 2]}
+        tri = {"indices": [0, 1, 2] * 10, "did": 1}  # 10 triangles per object
+        assets.creature = lambda visual: [(tri, (1, 1, 1))]
+        row = lambda ident, x: [f"{ident:016x}", "47000001", "1f000001", "02990130", str(x), "0", "0", "1", "0", "0", "0", "-"]
+        base = [row(0x8140aaaa00000003, 50), row(0x8140aaaa00000001, 1), row(0x8140aaaa00000002, 2),
+                row(0x8140000000020000, 3)]
+        saved = [row(0x8140000000020000, 3)[:11]]
+        instances, warnings = assets.scene(0x02990130, None, [0,0,0], 0, None, saved, {}, base, budget=25)
+        drawn = [item["object_id"] for item in instances if item["role"] == "base"]
+        self.assertEqual(drawn, [0x8140aaaa00000001], "nearest first; saved ids not drawn twice; budget respected")
+        self.assertTrue(any("base-world objects not drawn" in note for note in warnings))
+
+
 if __name__ == "__main__":
     unittest.main()

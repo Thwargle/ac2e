@@ -86,6 +86,25 @@ mod spawner_tests {
         assert!(runtime.spawners.poll(100000).is_empty());
     }
     #[test]
+    fn world_rules_override_stats_respawn_and_plan_patrol_legs() {
+        let id=crate::content::NAMESPACE+7;let home=Placement::HUMAN_START;
+        let content=Content::fixture(id,home,None);
+        let rules=crate::world_rules::Rules::parse(&format!("{}\nstats\t{id:016x}\t999\t-\t-\t30\t-\t-\t-\t-\t-\t-\n\
+            group\t5\t1\t4000\t{id:016x}\npatrol\t{id:016x}\t0\t3,0\n",crate::world_rules::HEADER)).unwrap();
+        let mut runtime=Encounters::parse_with_rules(include_str!("../content/development-encounters.tsv"),&content,&rules).unwrap();
+        assert_eq!(runtime.initial_health().collect::<Vec<_>>(),vec![(id,999)]);
+        assert!(runtime.inspection_stats().any(|row|row==(id,0x12e,30)));
+        let mut scene=Scene::with_content(content);
+        runtime.initialize_spawners(&mut scene,0).unwrap();
+        assert_eq!(runtime.spawners.poll(0),vec![crate::spawners::Action::Spawn(id)]);
+        scene.respawn_content(id).unwrap();runtime.spawned(id).unwrap();
+        scene.despawn_content(id).unwrap();runtime.removed(id,1000);
+        assert!(runtime.spawners.poll(4999).is_empty());
+        assert_eq!(runtime.spawners.poll(5000),vec![crate::spawners::Action::Spawn(id)],"group respawn wins");
+        let actor=&runtime.actors[&id];
+        assert_eq!(actor.patrol.as_ref().unwrap().waypoints,vec![[3.,0.]]);
+    }
+    #[test]
     fn policy_cannot_make_a_fixed_service_attackable_or_create_an_unplaced_creature() {
         let content=Content::fixture(crate::content::NAMESPACE+7,Placement::HUMAN_START,None);
         let text=include_str!("../content/development-encounters.tsv");
@@ -98,7 +117,7 @@ mod spawner_tests {
         assert!(Encounters::parse(text,&service).is_err());
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Rule {
     health: u32,
     level: Option<u32>,
@@ -112,6 +131,7 @@ struct Rule {
     gold: u32,
     leash: f32,
 }
+#[derive(Clone)]
 struct Actor {
     entity: u32,
     name: Option<String>,
@@ -130,6 +150,13 @@ struct Actor {
     wander_goal: Option<Placement>,
     evading: bool,
     random: u64,
+    /// Operator patrol route. Patrol legs are not recorded in `route`; only a
+    /// pursuit is retraced, back to the patrol point where it began.
+    patrol: Option<crate::world_rules::Patrol>,
+    patrol_next: usize,
+    patrol_wait: u64,
+    /// Patrolling creatures leash around the point where they engaged.
+    engaged_at: Option<Placement>,
 }
 #[derive(Clone, Copy)]
 struct Attack {
@@ -172,6 +199,7 @@ pub struct Regen {
     pub vigor: f32,
     pub duration_ms: u64,
 }
+#[derive(Clone)]
 struct Burn {
     skill: u32,
     source: u64,
@@ -181,6 +209,7 @@ struct Burn {
     next: u64,
     until: u64,
 }
+#[derive(Clone)]
 struct Mend {
     instant: bool,
     skill: u32,
@@ -195,6 +224,7 @@ struct Mend {
     fx: u32,
 }
 const MAX_TIMED: usize = 512;
+#[derive(Clone)]
 pub enum Event {
     SkillSwing { player: u64, behavior: u32 },
     Fx { target: u64, fx: u32 },
@@ -237,8 +267,12 @@ pub enum Event {
         text: String,
     },
     Stop(u64),
+    /// A live rules edit changed a creature's vitals or level.
+    Stats { actor: u64, max_health: u32, health: u32, level: Option<u32> },
 }
+#[derive(Clone)]
 pub struct Encounters {
+    native_motion: bool,
     dice: crate::combat::Dice,
     burns: Vec<Burn>,
     mends: Vec<Mend>,
@@ -246,6 +280,9 @@ pub struct Encounters {
     ratings: Vec<(u64,u32,crate::combat::Ratings,u64)>,
     actors: BTreeMap<u64, Actor>,
     spawners: crate::spawners::Spawners,
+    bestiary: Bestiary,
+    /// Events from live edits, returned by the next tick at once.
+    pending: Vec<Event>,
     attacks: BTreeMap<u64, Attack>,
     cooldowns: BTreeMap<u64, u64>,
     damage: u32,
@@ -309,6 +346,99 @@ fn retreat(from:Placement,mut budget:f32,route:&mut Vec<Placement>,
     }
     (point!=from).then_some(point)
 }
+/// Spawn groups from world rules carry this bit, so a live edit can replace
+/// exactly them and leave captured and inferred groups alone.
+pub const OPERATOR_GROUP: u64 = 1 << 63;
+
+/// Native creature tables plus the operator rules: everything needed to build or
+/// re-rule a creature after startup.
+#[derive(Clone)]
+struct Bestiary {
+    rules: BTreeMap<u32, Rule>,
+    native_rules: BTreeMap<u32, Rule>,
+    regional_native: bool,
+    ai: BTreeMap<u32, crate::creature_ai::Profile>,
+    labels: BTreeMap<u32, String>,
+    protected: BTreeSet<u32>,
+    spawn_policies: BTreeMap<u32, crate::spawners::Policy>,
+    world: std::sync::Arc<crate::world_rules::Rules>,
+}
+impl Bestiary {
+    /// The rule, AI and patrol a placement gets, or None when it is no creature.
+    fn ruled(&self, entity: u32, id: u64) -> Option<(Rule, crate::creature_ai::Profile, Option<crate::world_rules::Patrol>)> {
+        let custom = self.world.stats_for(entity, id);
+        // Operator stats can make any placed non-service object a creature.
+        let regional=id&0xffffffffff000000==0x8140c00000000000;
+        let selected=if self.regional_native && regional {&self.native_rules}else{&self.rules};
+        let mut rule = selected.get(&entity).copied().or_else(|| custom.and_then(|s| Some(Rule {
+            health: s.health?, damage: s.damage?, level: None, vigor: None, armor: 0, interval: 1500,
+            range: 3.0, respawn: 30_000, xp: 0, gold: 0, leash: 18. })))?;
+        let behaviour = self.world.behaviour_for(entity, id);
+        let ai = behaviour.apply(self.ai.get(&entity).copied().unwrap_or_default());
+        if ai.homesick.is_none() { rule.leash = rule.leash.max(ai.perception); }
+        if let Some(radius) = behaviour.homesick.filter(|r| *r > 0.) { rule.leash = radius; }
+        if let Some(s) = custom { rule = apply_stats(rule, s); }
+        Some((rule, ai, self.world.patrols.get(&id).cloned()))
+    }
+    fn actor(&self, object: &crate::content::Object) -> Option<Actor> {
+        // Authored dialogue roles override inherited combat data: the
+        // training mentor's template also carries a monster profile.
+        // Use the same identities as the interaction dispatcher.
+        if object.service.is_some()
+            || self.protected.contains(&object.entity)
+            || object.entity == crate::training_dialogue::MENTOR_ENTITY
+            || crate::shelter::supported(object.entity)
+        {
+            return None;
+        }
+        let (rule, ai, patrol) = self.ruled(object.entity, object.id)?;
+        Some(Actor {
+            entity: object.entity,
+            name: object.name.clone().or_else(|| self.labels.get(&object.entity).cloned()),
+            home: object.placement,
+            pursuit: object.supports_pose_updates(),
+            movement: crate::creature_motion::Profile::default(),
+            velocity: 0.,
+            route: Vec::new(),
+            rule,
+            health: rule.health,
+            target: None,
+            next_attack: 0,
+            ai, next_idle: object.id % 1000, wander_goal: None, evading: false, random: object.id,
+            patrol, patrol_next: 0, patrol_wait: 0, engaged_at: None,
+        })
+    }
+    /// Operator groups own their members' timers; operator respawn values win
+    /// over development policies for the targeted type or placement.
+    fn policy(&self, id: u64, actor: &Actor) -> crate::spawners::Policy {
+        let custom = self.world.stats_for(actor.entity, id).and_then(|s| s.respawn_ms);
+        let group = self.world.groups.iter().find(|g| g.members.contains(&id)).and_then(|g| g.regeneration_ms);
+        let mut policy = self.spawn_policies.get(&actor.entity).copied().unwrap_or(crate::spawners::Policy {
+            initial_delay_ms: 0,
+            regeneration_ms: if id & 0xffffffffff000000 == 0x8140c00000000000 { 180000 } else if id & 0xffffff0000000000 == 0x8140a00000000000 { 120000 } else { actor.rule.respawn } });
+        if let Some(ms) = group.or(custom) { policy.regeneration_ms = ms; }
+        policy
+    }
+    fn operator_groups(&self, actors: &BTreeMap<u64, Actor>) -> Vec<(u64, usize, Vec<u64>)> {
+        // Members that are not placed creatures (deleted or services) are skipped.
+        self.world.groups.iter().map(|g| (g.id, g.capacity,
+            g.members.iter().copied().filter(|m| actors.contains_key(m)).collect())).collect()
+    }
+}
+
+fn apply_stats(mut rule: Rule, s: crate::world_rules::Stats) -> Rule {
+    if let Some(v) = s.health { rule.health = v; }
+    if let Some(v) = s.damage { rule.damage = v; }
+    if let Some(v) = s.armor { rule.armor = v; }
+    if let Some(v) = s.level { rule.level = Some(v).filter(|level| *level > 0); }
+    if let Some(v) = s.xp { rule.xp = v; }
+    if let Some(v) = s.gold { rule.gold = v; }
+    if let Some(v) = s.interval_ms { rule.interval = v; }
+    if let Some(v) = s.range { rule.range = v; }
+    if let Some(v) = s.leash { rule.leash = v; }
+    if let Some(v) = s.respawn_ms { rule.respawn = v; }
+    rule
+}
 impl Encounters {
     pub fn load_motion(&mut self,content:&Content,directory:&Path)->io::Result<()> {
         let mut dat=crate::dat::Dat::open(directory.join("portal.dat"))?;
@@ -318,17 +448,22 @@ impl Encounters {
             actor.movement=catalog.resolve(&mut dat,object.visual,object.scale)?
                 .ok_or_else(||io::Error::other(format!("Missing native movement for creature {id:016x}, visual {:08x}",object.visual)))?;
         }
+        self.native_motion=true;
         Ok(())
     }
     pub fn movement_profile(&self,id:u64)->Option<crate::creature_motion::Profile> {
         self.actors.get(&id).map(|a|a.movement)
     }
     pub fn load(path: &Path, content: &Content) -> io::Result<Self> {
+        Self::load_with_rules(path, content, &crate::world_rules::Rules::default())
+    }
+    pub fn load_with_rules(path: &Path, content: &Content, rules: &crate::world_rules::Rules) -> io::Result<Self> {
         if path == Path::new("training") {
             return Self::parse_profile(
                 include_str!("../content/development-encounters.tsv"),
                 content,
                 true,
+                rules,
             );
         }
         let mut bytes = Vec::new();
@@ -338,12 +473,16 @@ impl Encounters {
         }
         let text =
             std::str::from_utf8(&bytes).map_err(|_| invalid("encounter profile encoding"))?;
-        Self::parse(text, content)
+        Self::parse_with_rules(text, content, rules)
     }
+    #[cfg(test)]
     fn parse(text: &str, content: &Content) -> io::Result<Self> {
-        Self::parse_profile(text,content,false)
+        Self::parse_with_rules(text, content, &crate::world_rules::Rules::default())
     }
-    fn parse_profile(text: &str, content: &Content, regional_native: bool) -> io::Result<Self> {
+    fn parse_with_rules(text: &str, content: &Content, world_rules: &crate::world_rules::Rules) -> io::Result<Self> {
+        Self::parse_profile(text, content, false, world_rules)
+    }
+    fn parse_profile(text: &str, content: &Content, regional_native: bool, world_rules: &crate::world_rules::Rules) -> io::Result<Self> {
         if text.len() > 65536 {
             return Err(invalid("encounter profile exceeds 64 KiB"));
         }
@@ -521,68 +660,23 @@ impl Encounters {
         let labels=include_str!("../content/definitions.tsv").lines().filter_map(|line|{
             let mut fields=line.split('\t');let entity=u32::from_str_radix(fields.next()?,16).ok()?;
             fields.next()?;let name=fields.next()?;
-            Some((entity,name.split('[').next().unwrap_or(name).trim()))
+            Some((entity,name.split('[').next().unwrap_or(name).trim().to_owned()))
         }).collect::<BTreeMap<_,_>>();
         let protected=include_str!("../content/population-protected.txt").lines()
             .filter_map(|line|u32::from_str_radix(line,16).ok()).collect::<std::collections::BTreeSet<_>>();
-        let ai_profiles=crate::creature_ai::catalog()?;
-        let actors = content
-            .objects()
-            .filter_map(|object| {
-                // Authored dialogue roles override inherited combat data: the
-                // training mentor's template also carries a monster profile.
-                // Use the same identities as the interaction dispatcher.
-                if object.service.is_some()
-                    || protected.contains(&object.entity)
-                    || object.entity == crate::training_dialogue::MENTOR_ENTITY
-                    || crate::shelter::supported(object.entity)
-                {
-                    return None;
-                }
-                // The built-in training profile weakens several high-level
-                // templates for practice. New regional wilderness must retain
-                // native stats. Explicit external encounter overrides still win.
-                let regional=object.id&0xffffffffff000000==0x8140c00000000000;
-                let selected=if regional_native && regional {&native_rules}else{&rules};
-                selected.get(&object.entity).map(|&rule| {
-                    let ai=ai_profiles.get(&object.entity).copied().unwrap_or_default();
-                    let mut rule=rule;
-                    if ai.homesick.is_none(){rule.leash=rule.leash.max(ai.perception);}
-                    (
-                        object.id,
-                        Actor {
-                            entity: object.entity,
-                            name: object.name.clone().or_else(||labels.get(&object.entity).map(|name|(*name).to_owned())),
-                            home: object.placement,
-                            pursuit: object.supports_pose_updates(),
-                            movement: crate::creature_motion::Profile::default(),
-                            velocity: 0.,
-                            route: Vec::new(),
-                            rule,
-                            health: rule.health,
-                            target: None,
-                            next_attack: 0,
-                            ai, next_idle:object.id%1000, wander_goal:None,evading:false,random:object.id,
-                        },
-                    )
-                })
-            })
-            .collect::<BTreeMap<_, _>>();
+        let bestiary=Bestiary{rules,native_rules,regional_native,ai:crate::creature_ai::catalog()?,labels,protected,spawn_policies,
+            world:std::sync::Arc::new(world_rules.clone())};
+        let actors=content.objects().filter_map(|object|bestiary.actor(object).map(|actor|(object.id,actor)))
+            .collect::<BTreeMap<_,_>>();
         if actors.is_empty() || actors.len() > 16384 {
             return Err(invalid("encounters require 1..16384 matching placed actors"));
         }
-        if spawn_policies.keys().any(|entity|!actors.values().any(|actor|actor.entity==*entity)) {
+        if bestiary.spawn_policies.keys().any(|entity|!actors.values().any(|actor|actor.entity==*entity)) {
             return Err(invalid("spawner policy must name a placed combat creature"));
         }
         // Captures keep one point spawner per observation. The separate inferred
         // pack caps its authored rosters as groups; services remain excluded.
-        let mut spawners=crate::spawners::Spawners::new(actors.iter().map(|(&id,actor)|{
-            (id,spawn_policies.get(&actor.entity).copied().unwrap_or(crate::spawners::Policy{
-                initial_delay_ms:0,regeneration_ms:
-                    if id&0xffffffffff000000==0x8140c00000000000 {180000}
-                    else if id&0xffffff0000000000==0x8140a00000000000 {120000}
-                    else {actor.rule.respawn}}))
-        }))?;
+        let mut spawners=crate::spawners::Spawners::new(actors.iter().map(|(&id,actor)|(id,bestiary.policy(id,actor))))?;
         for (id,capacity,members) in spawn_groups {spawners.group(id,capacity,members)?;}
         for source in [include_str!("../content/inferred-world-v1.report.json"),
             include_str!("../content/regional-world-v1.report.json")] {
@@ -596,9 +690,13 @@ impl Encounters {
                 spawners.group(group["id"].as_u64().ok_or_else(||invalid("inferred group identity"))?,capacity,members)?;}
         }
         }
+        spawners.replace_groups(OPERATOR_GROUP,bestiary.operator_groups(&actors))?;
         Ok(Self {
+            native_motion: false,
             actors,
             spawners,
+            bestiary,
+            pending: Vec::new(),
             attacks: BTreeMap::new(),
             cooldowns: BTreeMap::new(),
             damage,
@@ -615,6 +713,83 @@ impl Encounters {
             dice:crate::combat::Dice::seeded(),
         })
     }
+    /// Live edit: whether a newly placed object is a creature under the current rules.
+    pub fn live_is_creature(&self, object: &crate::content::Object) -> bool {
+        self.bestiary.actor(object).is_some()
+    }
+    /// Live edit: the operator rules every later live change is built from.
+    pub fn live_set_rules(&mut self, rules: std::sync::Arc<crate::world_rules::Rules>) {
+        self.bestiary.world = rules;
+    }
+    /// Live edit: a new creature placement. Content holds it inactive; its point
+    /// spawner shows it through the normal spawn path on the next poll.
+    pub fn live_add(&mut self, object: &crate::content::Object, motion: Option<crate::creature_motion::Profile>, now: u64) -> io::Result<()> {
+        let mut actor = self.bestiary.actor(object).ok_or_else(|| invalid("object is not a creature"))?;
+        if self.native_motion && motion.is_none(){return Err(invalid("live creature is missing native movement data"));}
+        if let Some(profile)=motion {actor.movement=profile;}
+        actor.health=0; // Waiting for its first published spawner lifetime.
+        if self.actors.len() >= 16384 { return Err(invalid("creature limit reached")); }
+        self.spawners.add_point(object.id, self.bestiary.policy(object.id, &actor), now)?;
+        self.actors.insert(object.id, actor);
+        Ok(())
+    }
+    /// The stats a new creature's content object carries (as at startup).
+    pub fn live_stats(&self, id: u64) -> Vec<(u32, u32)> {
+        let Some(actor) = self.actors.get(&id) else { return Vec::new() };
+        let rule = actor.rule;
+        [(0x107, Some(rule.health)), (0x102, Some(rule.health)), (0x12e, rule.level), (0x108, rule.vigor), (0x103, rule.vigor)]
+            .into_iter().filter_map(|(stat, value)| value.map(|v| (stat, v))).collect()
+    }
+    /// Live edit: the creature leaves the world. Attackers stop at once.
+    pub fn live_remove(&mut self, id: u64) {
+        if self.actors.remove(&id).is_none() { return; }
+        self.spawners.remove_point(id);
+        self.burns.retain(|b|b.target!=id && b.source!=id);
+        self.ratings.retain(|(who,_,_,_)|*who!=id);
+        self.pending.retain(|event|!matches!(event,Event::Stats{actor,..} if *actor==id));
+        let attackers = self.attacks.iter().filter(|(_, a)| a.target == id).map(|(&p, _)| p).collect::<Vec<_>>();
+        for player in attackers {
+            self.attacks.remove(&player);
+            self.pending.push(Event::Stop(player));
+            self.pending.push(Event::Note { player, text: "Attack stopped: your target was removed by a world edit.".into() });
+        }
+    }
+    /// Live edit: re-rule the creatures a rules change touches (`None`: all of them),
+    /// then rebuild the operator spawn groups.
+    pub fn live_rules(&mut self, affected: Option<&BTreeSet<crate::world_rules::Target>>) -> io::Result<()> {
+        use crate::world_rules::Target;
+        for (&id, actor) in &mut self.actors {
+            if affected.is_some_and(|set| !set.contains(&Target::Actor(id)) && !set.contains(&Target::Entity(actor.entity))) {
+                continue;
+            }
+            let Some((rule, ai, patrol)) = self.bestiary.ruled(actor.entity, id) else { continue };
+            if rule != actor.rule {
+                let full = actor.health == actor.rule.health;
+                if actor.health > 0 {
+                    actor.health = if full { rule.health } else { actor.health.min(rule.health) };
+                }
+                self.pending.push(Event::Stats { actor: id, max_health: rule.health, health: actor.health, level: rule.level });
+                actor.rule = rule;
+            }
+            // Made peaceful: drop the fight. A creature that was already peaceful
+            // keeps defending itself against whoever attacked it.
+            if actor.target.is_some() && actor.ai.aggressive() && !ai.aggressive() {
+                actor.target = None;
+                actor.evading = true;
+                actor.wander_goal = None;
+                self.pending.push(Event::IdolVisual(id, crate::combat_visual::IdolAction::Peace));
+            }
+            actor.ai = ai;
+            if patrol != actor.patrol {
+                actor.patrol = patrol;
+                actor.patrol_next = 0;
+                actor.patrol_wait = 0;
+                if actor.target.is_none() { actor.wander_goal = None; }
+            }
+            self.spawners.set_policy(id, self.bestiary.policy(id, actor));
+        }
+        self.spawners.replace_groups(OPERATOR_GROUP, self.bestiary.operator_groups(&self.actors))
+    }
     pub fn initial_health(&self) -> impl Iterator<Item = (u64, u32)> + '_ {
         self.actors
             .iter()
@@ -627,12 +802,15 @@ impl Encounters {
         })
     }
     pub fn spawners(&self) -> &crate::spawners::Spawners { &self.spawners }
+    #[cfg(test)]
+    pub(crate) fn spawners_mut_for_test(&mut self) -> &mut crate::spawners::Spawners { &mut self.spawners }
     /// Called before any client can observe the scene. Only managed monsters
     /// are withdrawn; vendors, dialogue actors and world objects remain placed.
     pub fn initialize_spawners(&mut self,scene:&mut Scene,now:u64)->io::Result<()> {
         for (&id,actor) in &mut self.actors {
             if scene.content_placement(id).is_some(){scene.despawn_content(id)?;}
             actor.health=0;actor.target=None;actor.route.clear();
+            actor.patrol_next=0;actor.patrol_wait=0;actor.engaged_at=None;
         }
         self.spawners.initialize(now);
         Ok(())
@@ -646,6 +824,7 @@ impl Encounters {
         actor.evading=false;actor.wander_goal=None;
         self.burns.retain(|b|b.target!=id);
         self.ratings.retain(|(who,_,_,_)|*who!=id);
+        actor.patrol_next=0;actor.patrol_wait=0;actor.engaged_at=None;
         Ok(())
     }
     pub fn removed(&mut self,id:u64,now:u64) { self.spawners.removed(id,now); }
@@ -782,7 +961,7 @@ impl Encounters {
         mut geometry: Option<&mut crate::geometry::Geometry>,
     ) -> io::Result<Vec<Event>> {
         if now < self.next_tick {
-            return Ok(Vec::new());
+            return Ok(std::mem::take(&mut self.pending));
         }
         // Use elapsed time rather than assuming every scheduled 100ms tick ran
         // on time. Bound catch-up after a stall so no actor leaps across a zone.
@@ -792,7 +971,7 @@ impl Encounters {
         self.regen.retain(|(who,_),(_,until)|*until>now && store.characters.get(who).is_some_and(|c|c.progression.alive()) && scene.player_placement(*who).is_some());
         self.ratings.retain(|(who,_,_,_)|store.characters.get(who).map_or_else(||self.actors.get(who).is_some_and(|a|a.health>0 && !a.evading),|c|c.progression.alive()));
         self.burns.retain(|b| b.next<=b.until && now<=b.until && self.actors.get(&b.target).is_some_and(|a|a.health>0 && !a.evading) && store.characters.get(&b.source).is_some_and(|c|!c.deleted && c.progression.alive()) && scene.player_placement(b.source).is_some());
-        let mut events = Vec::new();
+        let mut events = std::mem::take(&mut self.pending);
         let active=active.collect::<Vec<_>>();
         let mut due = self
             .attacks
@@ -1037,6 +1216,7 @@ impl Encounters {
                 }
             } else if actor.target.is_none() {
                 actor.target = Some(player);
+                if actor.patrol.is_some() {actor.engaged_at=scene.content_placement(attack.target);}
                 actor.next_attack = now.saturating_add(actor.rule.interval);
                 events.push(Event::IdolVisual(
                     attack.target,
@@ -1067,11 +1247,14 @@ impl Encounters {
                 let nearby=active.iter().filter_map(|&player| {
                     let alive=store.characters.get(&player).is_some_and(|c|!c.deleted && c.progression.alive());
                     alive.then(||scene.combat_distance(player,id).map(|d|(player,d))).flatten()
-                }).filter(|(_,distance)|*distance<=actor.ai.perception.max(actor.ai.wander_range+20.))
+                }).filter(|(_,distance)|*distance<=actor.ai.perception.max(actor.ai.wander_range+20.)
+                    .max(if actor.patrol.is_some() {80.} else {0.}))
                   .collect::<Vec<_>>();
+                // A patrolling creature leashes around where it currently is.
+                let center=if actor.patrol.is_some() {scene.content_placement(id)} else {Some(actor.home)};
                 if actor.ai.aggressive() {
                     let mut candidates=nearby.iter().filter(|(_,d)|*d<=actor.ai.perception)
-                        .filter(|(p,_)|in_range(Some(actor.home),scene.player_placement(*p),actor.rule.leash))
+                        .filter(|(p,_)|in_range(center,scene.player_placement(*p),actor.rule.leash))
                         .copied().collect::<Vec<_>>();
                     candidates.sort_by(|a,b|a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
                     // A nearer player behind a wall must not mask a visible
@@ -1081,11 +1264,18 @@ impl Encounters {
                             .is_some_and(|(a,b)|geometry.as_deref_mut().is_some_and(|world|world.clear(a,b,1.))));
                     if let Some((player,_))=target {
                         actor.target=Some(player);actor.wander_goal=None;
+                        if actor.patrol.is_some() {actor.engaged_at=center;}
                         actor.next_attack=now.saturating_add(actor.rule.interval);
                         events.push(Event::IdolVisual(id,crate::combat_visual::IdolAction::Combat));
                     }
                 }
-                if actor.target.is_none() && actor.wander_goal.is_none() && actor.route.is_empty()
+                if let Some(patrol)=actor.patrol.as_ref().filter(|_|actor.target.is_none() && actor.wander_goal.is_none()
+                    && actor.route.is_empty() && actor.pursuit && !nearby.is_empty() && now>=actor.patrol_wait) {
+                    // Waypoints in order, then back to the spawn point; repeat.
+                    let leg=actor.patrol_next%(patrol.waypoints.len()+1);
+                    let [dx,dy]=patrol.waypoints.get(leg).copied().unwrap_or([0.,0.]);
+                    actor.wander_goal=actor.home.translated([dx,dy,0.]);
+                } else if actor.patrol.is_none() && actor.target.is_none() && actor.wander_goal.is_none() && actor.route.is_empty()
                     && actor.pursuit && actor.ai.wanders() && !nearby.is_empty()
                     && crate::creature_ai::random(&mut actor.random)<actor.ai.probability.unwrap_or(0.2) {
                     // Native range/probability; uniform disk destinations and
@@ -1100,13 +1290,20 @@ impl Encounters {
                     if let Some(goal)=actor.wander_goal {
                         if actor.route.len()<2048 {
                             let budget=actor.movement.peace.distance(&mut actor.velocity,elapsed);
-                            if let Some(next)=advance(point,goal,0.2,budget,&mut actor.route,|from,to|
+                            let mut patrol_route=Vec::new();
+                            let route=if actor.patrol.is_some(){&mut patrol_route}else{&mut actor.route};
+                            if let Some(next)=advance(point,goal,0.2,budget,route,|from,to|
                                 geometry.as_deref_mut().and_then(|world|world.walk_step(from,to,0.35))) {
                                 events.push(Event::Move{actor:id,placement:next});continue;
                             }
                         }
                         actor.wander_goal=None;
                         actor.velocity=0.;
+                        if let Some(patrol)=&actor.patrol {
+                            // Arrived, or blocked: either way continue with the next leg.
+                            actor.patrol_next=(actor.patrol_next+1)%(patrol.waypoints.len()+1);
+                            actor.patrol_wait=now.saturating_add(patrol.pause_ms);
+                        }
                     }
                     // A blocked return waits for geometry; never teleport or
                     // walk through an obstacle to restore an authored spawn.
@@ -1115,7 +1312,7 @@ impl Encounters {
                         geometry.as_deref_mut().and_then(|world|world.walk_step(from,to,0.35))) {
                         events.push(Event::Move{actor:id,placement:next});
                     } else {actor.velocity=0.;}
-                    if actor.route.is_empty(){actor.evading=false;actor.velocity=0.;}
+                    if actor.route.is_empty(){actor.evading=false;actor.velocity=0.;actor.engaged_at=None;}
                 }
                 continue;
             };
@@ -1128,7 +1325,7 @@ impl Encounters {
                     .get(&player)
                     .is_some_and(|c| !c.deleted && c.progression.alive())
                     && actor.route.len()<4096
-                    && in_range(Some(actor.home),scene.player_placement(player),actor.rule.leash)
+                    && in_range(Some(actor.engaged_at.unwrap_or(actor.home)),scene.player_placement(player),actor.rule.leash)
                     && scene.combat_distance(player, id).is_some_and(|distance| distance <= actor.rule.leash)
             };
             if !eligible(target) {
@@ -1142,7 +1339,7 @@ impl Encounters {
                     actor.next_attack = now.saturating_add(actor.rule.interval);
                 } else {
                     actor.target = None;
-                    actor.evading=true;actor.wander_goal=None;
+                    actor.evading=true;actor.wander_goal=None;actor.engaged_at=None;
                     events.push(Event::IdolVisual(
                         id,
                         crate::combat_visual::IdolAction::Peace,
