@@ -330,6 +330,24 @@ pub fn character_set(
     Ok(bytes)
 }
 
+/// A `CharacterSet` as the clients built from Legions read it: 7160 and the 7230 client
+/// (Legions `CharacterSet::StreamPack` 0x00664C80, 7230 0x00666220) read two more 32-bit
+/// words after the Turbine chat flag (`CharacterSet + 0x34`, `+ 0x38`, unnamed in the PDB),
+/// which the admin 7148 build does not. They are sent as zero.
+pub fn legions_character_set(mut set: Vec<u8>) -> Vec<u8> {
+    set.extend([0_u8; 8]);
+    set
+}
+
+/// The `CharacterSet` layout for a logon's client data version.
+pub fn character_set_for(client_version: &str, set: Vec<u8>) -> Vec<u8> {
+    if client_version == "7148" {
+        set
+    } else {
+        legions_character_set(set)
+    }
+}
+
 /// The minimal-list wire event does not provide the visual data needed by selection UI.
 pub fn minimal_character_set(
     account: &[u8],
@@ -952,5 +970,20 @@ mod tests {
             &bytes[32..],
             &[0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
+    }
+}
+
+#[cfg(test)]
+mod character_set_layout_tests {
+    use super::*;
+
+    /// 7148 ends at the Turbine chat flag; Legions-built clients (7230) read two more words.
+    #[test]
+    fn the_7230_character_set_has_the_legions_words() {
+        let set = empty_character_set(b"local", 5).unwrap();
+        assert_eq!(character_set_for("7148", set.clone()), set);
+        let legions = character_set_for("7230", set.clone());
+        assert_eq!(legions.len(), set.len() + 8);
+        assert_eq!(&legions[set.len()..], &[0; 8]);
     }
 }

@@ -1923,13 +1923,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
         .as_deref()
         .map(crate::bootstrap::Bootstrap::load)
         .transpose()?;
-    if config.initialize_ui
-        && !bootstrap
-            .as_ref()
-            .is_some_and(|profile| profile.supports_client("7148"))
-    {
+    // UI initialization sends the data's own UI state, so its client must read that data
+    // release: converted build-7148 data, or the installed 7230 data for 7230 clients.
+    if config.initialize_ui && bootstrap.is_none() {
         return Err(invalid(
-            "experimental UI initialization requires converted build-7148 game data",
+            "UI initialization requires build-7148 or 7230 game data (--game-data)",
         ));
     }
     let mut inventory_metadata = BTreeMap::new();
@@ -2498,7 +2496,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         // Local asset mode: finish the zero-download DAT phase before
                         // selection can invoke CharacterGenSystem. OnEndDDD initializes
                         // the native VM; skipping it dereferences a null resolver.
-                        peer.selection_pending = Some(list);
+                        peer.selection_pending =
+                            Some(world::character_set_for(&peer.client_version, list));
                         let mut packets = vec![peer.transport.send_time_sync(world_clock.seconds(), now).map_err(other)?];
                         packets.extend(peer.send_to_queue(5, &0x1003bu32.to_le_bytes(), now)?);
                         return Ok(packets);
@@ -4393,10 +4392,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             "deletion outside owned inactive selection",
                                         ));
                                     }
-                                    let list = selection_list_excluding(
+                                    let list = world::character_set_for(&peer.client_version, selection_list_excluding(
                                         &store, &peer.session.account, bootstrap.as_ref(),
                                         config.visual_did, Some(character_id),
-                                    )?;
+                                    )?);
                                     let characters: Vec<_> = store.characters.values()
                                         .filter(|c| c.account == peer.session.account && !c.deleted && c.id != character_id)
                                         .map(|c| world::MinimalCharacter { id: c.id, name: c.name.clone() })
@@ -4806,12 +4805,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                     peer.combat = false;
                                     active_characters.remove(&character_id);
                                     deliveries.extend(scene.remove(character_id));
-                                    let list = selection_list(
-                                        &store,
-                                        &peer.session.account,
-                                        bootstrap.as_ref(),
-                                        config.visual_did,
-                                    )?;
+                                    let list = world::character_set_for(
+                                        &peer.client_version,
+                                        selection_list(
+                                            &store,
+                                            &peer.session.account,
+                                            bootstrap.as_ref(),
+                                            config.visual_did,
+                                        )?,
+                                    );
                                     replies.extend(peer.send_event(&list, now)?);
                                     return Ok(replies);
                                 }
