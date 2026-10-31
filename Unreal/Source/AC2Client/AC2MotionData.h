@@ -40,8 +40,12 @@ struct FAC2BehaviorData
 namespace AC2Motion
 {
 constexpr uint32 Ground=0x40000001, Air=0x40000002, Water=0x40000003, SeaFloor=0x40000004;
-constexpr uint32 Peace=0x40000001, Swim=0x40000003, Melee=0x4100000a, Dead=0x41000005;
+// EnumMapper 23000048: 40000003 is riding, not swimming. Swimming is the
+// water element in peace mode; selecting riding chooses mounted water clips.
+constexpr uint32 Peace=0x40000001, Riding=0x40000003, Melee=0x4100000a, Dead=0x41000005;
 constexpr uint32 Monster=0x41000012;
+// Native avatar selection uses modes for hover, and a one-shot behavior on click.
+constexpr uint32 AvatarInactive=0x41000006, AvatarActive=0x41000007, AvatarSelect=0x41000005;
 constexpr uint32 Move=0x40000001, Jump=0x4000000a, Land=0x4000000b, Fall=0x40000009;
 // EnumMapper 23000027: Melee_Auto1, death, Damage_Hit1, Magic_LS_Recall1.
 constexpr uint32 Attack=0x41000089, Death=0x4100001f, Hit=0x4100007c, Recall=0x410000d8;

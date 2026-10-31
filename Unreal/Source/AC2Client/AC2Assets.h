@@ -3,6 +3,7 @@
 #include "AC2PreviewLighting.h"
 #include "AC2Particle.h"
 #include "AC2Terrain.h"
+#include "AC2Scenery.h"
 #include "AC2Water.h"
 #include "AC2MotionData.h"
 #include "UObject/GCObject.h"
@@ -37,12 +38,15 @@ struct FAC2AssetStats
     int32 SkippedEntities = 0;
     int32 MissingMaterials = 0;
     int32 InteriorCells = 0, WaterSections = 0;
+    uint64 AnimationEffectTriggers = 0;
 };
 
 struct FAC2UISceneInfo
 {
     FTransform Camera;
     float VerticalFOV = 65;
+    bool Orthographic = false;
+    float OrthoHeight = 100;
     FAC2PreviewLighting Lighting;
     TMap<uint32, FTransform> Locations;
 };
@@ -92,10 +96,16 @@ class FAC2AssetLibrary : public FGCObject
     bool PlayBehavior(uint32 Behavior, uint32 Mode = 0, float Rate = 1, bool Hold = false);
     void StopBehavior(uint32 Behavior = 0);
     float BehaviorDuration(uint32 Behavior) const;
+    float JumpDelay() const;
     bool PlayEffect(uint32 Effect,float Strength=1,USceneComponent* Target=nullptr);
+    bool DamageDecal(FAC2Decal& Out);
+    // Native BloodyDamaged FX selects material stages from missing health.
+    void SetHealth(float Current, float Maximum);
+    uint32 DamageAppearanceFingerprint() const;
     bool PlayEffectScript(uint32 Script);
     void StopEffect(uint32 Effect);
     int32 EffectParticleCount() const;
+    static void SetEffectChannel(uint32 Channel,uint32 Value);
     bool HasStartupEffects() const;
     const FAC2MotionData &MotionData() const;
     bool SetMotionDescriptor(uint32 Id);
@@ -116,6 +126,7 @@ class FAC2AssetLibrary : public FGCObject
     bool LightingCellAt(const FVector& Position,uint32& Cell) const;
     FAC2PreviewLighting InteriorLighting(uint32 Cell,const FVector& LocalViewer) const;
     const TArray<FAC2ParticleSource> &ParticleSources() const;
+    TArray<FAC2AmbientPoint> AmbientPoints(bool Landscape) const;
     bool InteriorAt(const FVector &Position) const;
     bool InteriorCellAt(const FVector& Feet,uint32& Cell) const;
     bool InteriorPositions(uint32 CellId, TArray<FVector> &LocalPositions) const;

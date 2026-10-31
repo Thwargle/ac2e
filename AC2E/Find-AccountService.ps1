@@ -1,7 +1,7 @@
 # Reuse only the account process identified by this store's marker, with the
 # exact requested configuration. A healthy HTTP endpoint alone is insufficient.
 function Get-AC2EAccountService(
-    [string]$Server, [string]$AuthDirectory, [string]$DataDirectory,
+    [string[]]$Server, [string]$AuthDirectory, [string]$DataDirectory,
     [string]$PublicOrigin, [int]$AccountPort, [string]$GameHost, [int]$GamePort
 ) {
     $lockFile=Join-Path $AuthDirectory 'accounts.lock'
@@ -13,7 +13,7 @@ function Get-AC2EAccountService(
     }
     $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId"
     if(!$owner -or !$owner.ExecutablePath -or
-       [IO.Path]::GetFullPath($owner.ExecutablePath) -ne [IO.Path]::GetFullPath($Server) -or !$owner.CommandLine){
+       [IO.Path]::GetFullPath($owner.ExecutablePath) -notin @($Server | ForEach-Object {[IO.Path]::GetFullPath($_)}) -or !$owner.CommandLine){
         throw "The account lock owner (PID $ownerId) cannot be confirmed as this AC2E service. The lock was left intact: $lockFile"
     }
     # Windows argv parsing handles quoted switches and directories containing

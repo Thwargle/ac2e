@@ -40,7 +40,8 @@ namespace
 {
 FLinearColor Packed(FAC2AssetReader &R)
 {
-    return FLinearColor::FromSRGBColor(FColor(R.Word()));
+    // CDayDesc interpolates HSB in native packed RGB, before display decoding.
+    return FColor(R.Word()).ReinterpretAsLinear();
 }
 void Keys(const FAC2SkyDay &Day, float T, const FAC2SkyKey *&Before, const FAC2SkyKey *&After)
 {
@@ -267,12 +268,15 @@ bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &E
         Error = TEXT("Cannot decode native sky day");
         return false;
     }
-    if (Portal.Read(TimeId, B, Error) && B.Num() >= 20)
+    if (!Portal.Read(TimeId, B, Error) || !Calendar.Decode(TimeId, B))
     {
-        const float Seconds = AC2::F32(B.GetData() + 16);
-        if (FMath::IsFinite(Seconds) && Seconds > 60)
-            DayLength = Seconds;
+        Error = TEXT("Cannot decode native game calendar");
+        return false;
     }
+    const auto Date = Calendar.At(CurrentTime);
+    DayFraction = Date.Fraction;
+    DayNumber = Date.Seed;
+    SetWeather(FAC2GameTime::Weather(Date.Seed, Weights));
     Assets = MakeUnique<FAC2AssetLibrary>();
     if (!Assets->Open(Directory, Error))
         return false;
@@ -300,12 +304,14 @@ bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &E
     }
     AmbientLight->SetCubemap(NeutralCube);
     UE_LOG(LogTemp, Display, TEXT("AC2 native sky: region=%08X sky=%08X day=%08X keys=%d objects=%d day_seconds=%.0f"),
-           0x0f000000, SkyId, Day.Id, Day.Keys.Num(), Day.Objects.Num(), DayLength);
+           0x0f000000, SkyId, Day.Id, Day.Keys.Num(), Day.Objects.Num(), Calendar.DayLength);
     return true;
 }
 void FAC2SkyRenderer::SetHour(float Hour)
 {
-    DayFraction = FMath::Fmod(FMath::Fmod(Hour, 24) + 24, 24) / 24;
+    if (Calendar.DayLength <= 0 || !FMath::IsFinite(Hour)) return;
+    CurrentTime = Calendar.AtHour(CurrentTime, Hour);
+    DayFraction = Calendar.At(CurrentTime).Fraction;
 }
 int32 FAC2SkyRenderer::ObjectCount() const
 {
@@ -314,30 +320,21 @@ int32 FAC2SkyRenderer::ObjectCount() const
         Count += Pair.Value.Rendered && !Pair.Value.Actor->IsHidden() ? 1 : 0;
     return Count;
 }
-void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime)
+void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<double> ServerTime)
 {
     if (!World || !Assets)
         return;
-    const float Next = DayFraction + DeltaTime * TimeScale / DayLength;
-    if (Next >= 1 && !Days.IsEmpty())
+    if (ServerTime.IsSet() && FMath::IsFinite(ServerTime.GetValue()))
+        CurrentTime = ServerTime.GetValue();
+    else
+        CurrentTime += double(DeltaTime) * TimeScale;
+    const auto Date = Calendar.At(CurrentTime);
+    if (Date.Seed != DayNumber && !Days.IsEmpty())
     {
-        ++DayNumber;
-        uint32 H = (DayNumber * 0x3fbb657fu - 0x6b3c5f11u) * DayNumber + 0x0719baf0u;
-        float Total = 0;
-        for (float W : Weights)
-            Total += W;
-        float Pick = double(H) / 4294967296.0 * Total;
-        for (int32 I = 0; I < Weights.Num(); ++I)
-        {
-            Pick -= Weights[I];
-            if (Pick <= 0)
-            {
-                SetWeather(I);
-                break;
-            }
-        }
+        DayNumber = Date.Seed;
+        SetWeather(FAC2GameTime::Weather(Date.Seed, Weights));
     }
-    DayFraction = FMath::Fmod(Next, 1);
+    DayFraction = Date.Fraction;
     for (auto &Pair : Instances)
         Pair.Value.Actor->SetActorHiddenInGame(true);
     int32 DrawOrder = 0;
@@ -374,7 +371,7 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime)
             C->SetTranslucentSortPriority(-1000 + DrawOrder);
             for (int32 J = 0; J < C->GetNumMaterials(); ++J)
                 if (auto *M = Cast<UMaterialInstanceDynamic>(C->GetMaterial(J)))
-                    M->SetVectorParameterValue(TEXT("SkyTint"), P.Color);
+                    M->SetVectorParameterValue(TEXT("SkyTint"), FLinearColor::FromSRGBColor(P.Color.ToFColor(false)));
         }
         ++DrawOrder;
     }
@@ -383,16 +380,16 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime)
     if (Fog)
     {
         auto *F = Fog->GetComponent();
-        F->SetFogInscatteringColor(K.FogColor);
+        F->SetFogInscatteringColor(FLinearColor::FromSRGBColor(K.FogColor.ToFColor(false)));
         F->SetStartDistance(FMath::Max(0.f, K.FogMin * 100));
         F->SetFogDensity(FMath::Clamp(250.f / FMath::Max(100.f, (K.FogMax - K.FogMin) * 100), 0.001f, 0.04f));
         F->SetFogMaxOpacity(0.7f);
     }
     Sun->SetActorRotation(K.LightDirection().Rotation());
     Sun->GetLightComponent()->SetIntensity(FMath::Max(0.0f, K.Direct) * 4);
-    Sun->GetLightComponent()->SetLightColor(K.DirectColor);
+    Sun->GetLightComponent()->SetLightColor(FLinearColor::FromSRGBColor(K.DirectColor.ToFColor(false)));
     Ambient->GetLightComponent()->SetIntensity(FMath::Max(0.0f, K.Ambient) * 2);
-    Ambient->GetLightComponent()->SetLightColor(K.AmbientColor);
+    Ambient->GetLightComponent()->SetLightColor(FLinearColor::FromSRGBColor(K.AmbientColor.ToFColor(false)));
 }
 
 void FAC2SkyRenderer::SetWeather(int32 Index)

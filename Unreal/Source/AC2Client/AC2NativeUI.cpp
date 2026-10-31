@@ -1,4 +1,6 @@
 #include "AC2NativeUI.h"
+#include "AC2Audio.h"
+#include "Engine/World.h"
 #include "AC2CharacterData.h"
 #include "Engine/Texture2D.h"
 #include "Misc/Paths.h"
@@ -107,7 +109,9 @@ bool FAC2NativeUI::Root(uint32 Id, const TCHAR *Name)
         return false;
     for (int32 I : L->Roots)
         if (L->Controls[I].Id == T(Name))
+        {
             return Add(*L, I, INDEX_NONE, FIntPoint(L->Width, L->Height), 0);
+        }
     return false;
 }
 bool FAC2NativeUI::Template(uint32 Id, const TCHAR *Name, FIntRect Rect, FIntRect Clip, uint32 ParentId)
@@ -218,6 +222,18 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
             N.Rect += Origin - N.Rect.Min;
         }
     }
+    if (Parent==INDEX_NONE)
+        if (auto* Offset=RootOffsets.Find(Ref.Id))
+        {
+            N.Rect+=*Offset;
+            const FIntPoint Origin(FMath::Clamp(N.Rect.Min.X,0,FMath::Max(0,Display.X-N.Rect.Width())),
+                                  FMath::Clamp(N.Rect.Min.Y,0,FMath::Max(0,Display.Y-N.Rect.Height())));
+            // Saved offsets can lie far outside the current viewport. Retain
+            // the clamped offset so the next drag starts at the visible panel,
+            // without an invisible distance the mouse must first travel.
+            *Offset+=Origin-N.Rect.Min;
+            N.Rect+=Origin-N.Rect.Min;
+        }
     if (Parent != INDEX_NONE && Ref.Id == T(TEXT("widget")) && Nodes[Parent].Kind == T(TEXT("scrollbar")))
     {
         const auto &Bar = Nodes[Parent];
@@ -310,6 +326,23 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
     for (const auto &C : Children)
         Add(L, C.Index, Here, Original(*C.Owner, Nodes[Here].State).Size() + FIntPoint(1, 1), C.State,
             nullptr, nullptr, Depth + 1);
+    // The native chat background's nine tiles share their boundary texels.
+    // Slate alpha-composites each tile separately; drawing those shared pixels
+    // twice creates dark horizontal/vertical seams through the text area.
+    // Clip the overlaps without changing the DAT artwork's sampling positions.
+    if(Desc->Id==0xdc5f0f48u)
+    {
+        FIntRect Center;
+        for(int32 I=Here+1;I<Nodes.Num();++I)
+            if(Nodes[I].Parent==Here && Nodes[I].Id==0xcb281c73u)Center=Nodes[I].Rect;
+        if(!Empty(Center))for(int32 I=Here+1;I<Nodes.Num();++I)
+            if(Nodes[I].Parent==Here){auto& Child=Nodes[I];
+                if(Child.Rect.Min.X<Center.Min.X)Child.Clip.Max.X=FMath::Min(Child.Clip.Max.X,Center.Min.X);
+                if(Child.Rect.Max.X>Center.Max.X)Child.Clip.Min.X=FMath::Max(Child.Clip.Min.X,Center.Max.X);
+                if(Child.Rect.Min.Y<Center.Min.Y)Child.Clip.Max.Y=FMath::Min(Child.Clip.Max.Y,Center.Min.Y);
+                if(Child.Rect.Max.Y>Center.Max.Y)Child.Clip.Min.Y=FMath::Max(Child.Clip.Min.Y,Center.Max.Y);
+            }
+    }
     return true;
 }
 const FAC2NativeNode *FAC2NativeUI::Find(uint32 Id) const
@@ -393,14 +426,28 @@ void FAC2NativeUI::LoadImage(uint32 Id, FAC2AssetLibrary &Assets)
 }
 void FAC2NativeUI::Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts)
 {
+    auto* Audio=FAC2Audio::Get(AudioWorld.Get());
+    TMap<uint64,uint32> NextStates;
     for (const auto &N : Nodes)
     {
+        uint32 Root=N.Id;
+        for(int32 P=N.Parent;Nodes.IsValidIndex(P);P=Nodes[P].Parent)Root=HashCombineFast(Root,Nodes[P].Id);
+        const uint64 Key=(uint64(Root)<<32)|N.Id;
+        if(Audio)
+        {
+            if(N.Parent==INDEX_NONE)if(uint32 Music=N.Attr(TEXT("music")))Audio->Music(Music);
+            const auto* Before=AudioStates.Find(Key);
+            if(!Before || *Before!=N.State)
+                for(const auto& M:N.Media)if(M.Kind==5)Audio->Play(M.Image);
+        }
+        NextStates.Add(Key,N.State);
         for (const auto &M : N.Media)
             if (M.Kind == 1 || M.Kind == 3)
                 LoadImage(M.Image, Assets);
         if (N.Kind == T(TEXT("text")))
             Fonts.Get(N.Attr(TEXT("font"), 0x4200000c));
     }
+    AudioStates=MoveTemp(NextStates);
 }
 bool FAC2NativeUI::CursorAt(FVector2D Point,uint32& Image,FIntPoint& Hotspot) const
 {
@@ -437,7 +484,7 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
     if (N.Attr(TEXT("center_vertically")))
         Y = N.Rect.Min.Y + (N.Rect.Height() - Lines.Num() * int32(Font->Height)) / 2.f;
     FLinearColor Color(N.Float(TEXT("font_color_red"), 1), N.Float(TEXT("font_color_green"), 1),
-                       N.Float(TEXT("font_color_blue"), 1));
+                       N.Float(TEXT("font_color_blue"), 1), N.Opacity);
     PushClip(Out, G, N.Clip);
     for (const auto &Line : Lines)
     {
@@ -448,7 +495,7 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
             X += Width - Font->Width(Line);
         if (N.Attr(TEXT("font_outline")))
             for (FVector2D D : {FVector2D(-1, 0), FVector2D(1, 0), FVector2D(0, -1), FVector2D(0, 1)})
-                Font->Draw(Out, ++Layer, G, Line, FVector2D(X, Y) + D, FLinearColor::Black);
+                Font->Draw(Out, ++Layer, G, Line, FVector2D(X, Y) + D, FLinearColor(0,0,0,N.Opacity));
         Font->Draw(Out, ++Layer, G, Line, FVector2D(X, Y), Color);
         Y += Font->Height;
     }
@@ -477,7 +524,17 @@ int32 FAC2NativeUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeom
                 const FVector2D Origin = FVector2D(N.Rect.Min + Chosen->Offset);
                 const bool Stretch = N.Attr(TEXT("size_image_to_owner")) != 0;
                 const FVector2D Step = Stretch ? FVector2D(N.Rect.Size()) : B->ImageSize;
-                if (Step.X > 0 && Step.Y > 0)
+                if(N.ImageBorderX>0 && B->ImageSize.X>2*N.ImageBorderX)
+                {
+                    FSlateBrush Frame=*B;
+                    Frame.DrawAs=ESlateBrushDrawType::Box;
+                    const float Border=N.ImageBorderX/B->ImageSize.X;
+                    Frame.Margin=FMargin(Border,0,Border,0);
+                    FSlateDrawElement::MakeBox(Out,++Layer,
+                        G.ToPaintGeometry(FVector2D(N.Rect.Size()),FSlateLayoutTransform(Origin)),
+                        &Frame,ESlateDrawEffect::None,FLinearColor(1,1,1,N.Float(TEXT("alpha_value"),1)));
+                }
+                else if (Step.X > 0 && Step.Y > 0)
                     for (float Y = Origin.Y; Y < N.Rect.Max.Y; Y += Step.Y)
                         for (float X = Origin.X; X < N.Rect.Max.X; X += Step.X)
                         {

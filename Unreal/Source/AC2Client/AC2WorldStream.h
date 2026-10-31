@@ -34,6 +34,9 @@ class FAC2WorldStream
     int32 InteriorCount() const;
     int32 WaterCount() const;
     TArray<FAC2ParticleSource> ParticleSources(const FVector &Viewer) const;
+    TArray<FAC2AmbientPoint> AmbientPoints(const FVector& Player) const;
+    bool PlayerOutside() const;
+    uint32 SoundTerrain(const FVector& Position) const;
     bool AllReady() const;
     FString Status() const;
     int32 Radius = 2;

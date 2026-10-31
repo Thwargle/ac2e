@@ -155,6 +155,13 @@ void ReadItemDescriptor(FAC2DatArchive& Portal,FAC2DatArchive& Local,FAC2ItemDef
     if(!R.Good)return;
     if(!Name.IsEmpty())Item.Name=Name;
     if(Icon>>24==0x41)Item.Icon=Icon;
+    // Native pile/worn pairs recovered from matching EntityDesc families.
+    // A shared mesh cannot supply randomized item statistics.
+    static const struct {uint32 Definition,Race,Slot;int32 Armor;} Wearables[]={
+#include "AC2RecoveredApparel.inl"
+    };
+    for(const auto& W:Wearables)if(W.Definition==Item.Id)
+    {Item.Race=W.Race;Item.Slots=Item.Preferred=W.Slot;Item.HasArmor=W.Armor>=0;Item.Armor=FMath::Max(0,W.Armor);break;}
 }
 // Entity overrides have typed properties. Unknown script defaults remain unknown instead of fabricated stats.
 void ReadItem(FAC2DatArchive &Portal, FAC2DatArchive &Local, const TMap<uint32, uint32> &Types,
@@ -163,6 +170,18 @@ void ReadItem(FAC2DatArchive &Portal, FAC2DatArchive &Local, const TMap<uint32, 
     ReadItemDescriptor(Portal,Local,Item);
     FString Error;
     TArray<uint8> Bytes;
+    // Closed/Open modes are shared by doors and containers. Resolve the native
+    // EntityDesc base chain so opening a chest never removes its collision.
+    uint32 Base=Item.Id;TSet<uint32> Seen;
+    for(int32 Depth=0;Depth<32 && (Base>>24)==0x47;++Depth)
+    {
+        if(Seen.Contains(Base) || !Portal.Read(Base,Bytes,Error)){Base=0;break;}
+        Seen.Add(Base);FAC2AssetReader Parent(MoveTemp(Bytes));const uint32 Flags=Parent.Word();
+        if(Flags&~511u){Base=0;break;}
+        if(Flags&1)Parent.Word();if(Flags&2)Parent.Word();if(Flags&4)Parent.Take(8);
+        Base=(Flags&8)?Parent.Word():0;if(!Parent.Good){Base=0;break;}
+    }
+    Item.NativeClass=(Base>>24)==0x47?0:Base;
     if (!Portal.Read(Item.Id, Bytes, Error))
         return;
     FAC2AssetReader R(MoveTemp(Bytes));
@@ -412,6 +431,7 @@ bool FAC2CharacterCatalog::DecodeMatrix(TConstArrayView<uint8> Bytes)
             A.Sex = Sex;
             A.Physics = Info.Physics;
             A.Appearance = Info.Appearance;
+            A.PreviewHeldObjects = Info.Pairs;
             uint32 Phys = Find(Find(Root->Slots[0], Race), Sex);
             auto Values = [&](uint32 Kind, TArray<float> &Out) {
                 for (uint32 Ref : Get(Find(Phys, Kind)).Values)

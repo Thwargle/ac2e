@@ -1,0 +1,533 @@
+[
+  {
+    "definition": 1191186135,
+    "visual": 520095141,
+    "physical": 1191183836,
+    "appearance": 536871001,
+    "race": 1,
+    "slot": 2,
+    "male": 536871001,
+    "female": 536871002,
+    "armor": null,
+    "hash": 8755329767482477575,
+    "entity_hash": 1363857401362952633,
+    "evidence": [
+      1191193330
+    ],
+    "name": "Platemail Hauberk"
+  },
+  {
+    "definition": 1191186145,
+    "visual": 520095149,
+    "physical": 1191183844,
+    "appearance": 536871343,
+    "race": 4,
+    "slot": 2,
+    "male": 536871343,
+    "female": 536871343,
+    "armor": null,
+    "hash": 11468912479001143738,
+    "entity_hash": 12666410243530335711,
+    "evidence": [
+      1191193345
+    ],
+    "name": "Bone Breastplate"
+  },
+  {
+    "definition": 1191186146,
+    "visual": 520095153,
+    "physical": 1191183848,
+    "appearance": 536871344,
+    "race": 4,
+    "slot": 8,
+    "male": 536871344,
+    "female": 536871344,
+    "armor": null,
+    "hash": 2639379684985004641,
+    "entity_hash": 13326433705648950748,
+    "evidence": [
+      1191193348
+    ],
+    "name": "Bone Leggings"
+  },
+  {
+    "definition": 1191186147,
+    "visual": 520095145,
+    "physical": 1191183840,
+    "appearance": 536871342,
+    "race": 4,
+    "slot": 32,
+    "male": 536871342,
+    "female": 536871342,
+    "armor": null,
+    "hash": 9603266719502079096,
+    "entity_hash": 8424417557623617997,
+    "evidence": [
+      1191193347
+    ],
+    "name": "Bone Bracers"
+  },
+  {
+    "definition": 1191186148,
+    "visual": 520095158,
+    "physical": 1191183853,
+    "appearance": 536871345,
+    "race": 4,
+    "slot": 16,
+    "male": 536871345,
+    "female": 536871345,
+    "armor": null,
+    "hash": 5507298140460574006,
+    "entity_hash": 16771635126932880873,
+    "evidence": [
+      1191193346
+    ],
+    "name": "Bone Moccasins"
+  },
+  {
+    "definition": 1191186385,
+    "visual": 520095129,
+    "physical": 1191183824,
+    "appearance": 536871008,
+    "race": 2,
+    "slot": 2,
+    "male": 536871008,
+    "female": 536871043,
+    "armor": null,
+    "hash": 15473906860402095369,
+    "entity_hash": 17982976426475280218,
+    "evidence": [
+      1191193371
+    ],
+    "name": "Studded Pauldron"
+  },
+  {
+    "definition": 1191186386,
+    "visual": 520095121,
+    "physical": 1191183816,
+    "appearance": 536871011,
+    "race": 2,
+    "slot": 8,
+    "male": 536871011,
+    "female": 536871045,
+    "armor": null,
+    "hash": 12080106209745926639,
+    "entity_hash": 6231108266359784569,
+    "evidence": [
+      1191193383
+    ],
+    "name": "Studded Kilt"
+  },
+  {
+    "definition": 1191186387,
+    "visual": 520095120,
+    "physical": 1191183815,
+    "appearance": 536871010,
+    "race": 2,
+    "slot": 32,
+    "male": 536871010,
+    "female": 536871044,
+    "armor": null,
+    "hash": 10103731158918840181,
+    "entity_hash": 621288365937815941,
+    "evidence": [
+      1191193377
+    ],
+    "name": "Studded Gauntlets"
+  },
+  {
+    "definition": 1191186388,
+    "visual": 520095122,
+    "physical": 1191183817,
+    "appearance": 536871009,
+    "race": 2,
+    "slot": 16,
+    "male": 536871009,
+    "female": 536871042,
+    "armor": null,
+    "hash": 7771993062370351697,
+    "entity_hash": 6973705816876265712,
+    "evidence": [
+      1191193374
+    ],
+    "name": "Studded Sandals"
+  },
+  {
+    "definition": 1191186389,
+    "visual": 520095142,
+    "physical": 1191183837,
+    "appearance": 536870953,
+    "race": 1,
+    "slot": 2,
+    "male": 536870953,
+    "female": 536870961,
+    "armor": null,
+    "hash": 5400779006952962164,
+    "entity_hash": 1321663153893964539,
+    "evidence": [
+      1191193331,
+      1191193332
+    ],
+    "name": "Hard Leather Jacket"
+  },
+  {
+    "definition": 1191186391,
+    "visual": 520095133,
+    "physical": 1191183828,
+    "appearance": 536870952,
+    "race": 1,
+    "slot": 32,
+    "male": 536870952,
+    "female": 536870962,
+    "armor": null,
+    "hash": 7501077272983007273,
+    "entity_hash": 9195587430994610210,
+    "evidence": [
+      1191193337,
+      1191193338
+    ],
+    "name": "Hard Leather Gloves"
+  },
+  {
+    "definition": 1191186393,
+    "visual": 520095143,
+    "physical": 1191183838,
+    "appearance": 536870988,
+    "race": 1,
+    "slot": 2,
+    "male": 536870988,
+    "female": 536870989,
+    "armor": null,
+    "hash": 2439311015043404100,
+    "entity_hash": 8026852634265307762,
+    "evidence": [
+      1191193325
+    ],
+    "name": "Padded Jacket"
+  },
+  {
+    "definition": 1191186394,
+    "visual": 520095138,
+    "physical": 1191183833,
+    "appearance": 536870992,
+    "race": 1,
+    "slot": 8,
+    "male": 536870992,
+    "female": 536870993,
+    "armor": null,
+    "hash": 5817457083646374878,
+    "entity_hash": 17075334058273111500,
+    "evidence": [
+      1191193329
+    ],
+    "name": "Padded Greaves"
+  },
+  {
+    "definition": 1191186395,
+    "visual": 520095134,
+    "physical": 1191183829,
+    "appearance": 536870990,
+    "race": 1,
+    "slot": 32,
+    "male": 536870990,
+    "female": 536870991,
+    "armor": null,
+    "hash": 3061398554612712173,
+    "entity_hash": 14651495210815491853,
+    "evidence": [
+      1191193327
+    ],
+    "name": "Padded Gloves"
+  },
+  {
+    "definition": 1191186396,
+    "visual": 520095116,
+    "physical": 1191183811,
+    "appearance": 536870937,
+    "race": 1,
+    "slot": 16,
+    "male": 536870937,
+    "female": 536870938,
+    "armor": null,
+    "hash": 14602697543902961192,
+    "entity_hash": 12051181084313352465,
+    "evidence": [
+      1191193326
+    ],
+    "name": "Leather Boots"
+  },
+  {
+    "definition": 1191186401,
+    "visual": 520095128,
+    "physical": 1191183823,
+    "appearance": 536871029,
+    "race": 2,
+    "slot": 2,
+    "male": 536871029,
+    "female": 536871032,
+    "armor": null,
+    "hash": 16100442710236347942,
+    "entity_hash": 10132847918609075524,
+    "evidence": [
+      1191193364
+    ],
+    "name": "Quilted Pauldron"
+  },
+  {
+    "definition": 1191186402,
+    "visual": 520095127,
+    "physical": 1191183822,
+    "appearance": 536871026,
+    "race": 2,
+    "slot": 8,
+    "male": 536871026,
+    "female": 536871034,
+    "armor": null,
+    "hash": 3278802979623733896,
+    "entity_hash": 2617028480524669639,
+    "evidence": [
+      1191193368
+    ],
+    "name": "Quilted Kilt"
+  },
+  {
+    "definition": 1191186403,
+    "visual": 520095125,
+    "physical": 1191183820,
+    "appearance": 536871027,
+    "race": 2,
+    "slot": 32,
+    "male": 536871027,
+    "female": 536871033,
+    "armor": null,
+    "hash": 2544632517360034848,
+    "entity_hash": 10157627909363934483,
+    "evidence": [
+      1191193366
+    ],
+    "name": "Quilted Gauntlets"
+  },
+  {
+    "definition": 1191186404,
+    "visual": 520095131,
+    "physical": 1191183826,
+    "appearance": 536871028,
+    "race": 2,
+    "slot": 16,
+    "male": 536871028,
+    "female": 536871031,
+    "armor": null,
+    "hash": 13362315749309742636,
+    "entity_hash": 3777904025342141538,
+    "evidence": [
+      1191193365
+    ],
+    "name": "Quilted Sandals"
+  },
+  {
+    "definition": 1191186435,
+    "visual": 520095164,
+    "physical": 1191183859,
+    "appearance": 536871147,
+    "race": 2,
+    "slot": 8,
+    "male": 536871147,
+    "female": 536871127,
+    "armor": null,
+    "hash": 12846296193803999854,
+    "entity_hash": 11316964584009734696,
+    "evidence": [
+      1191193382
+    ],
+    "name": "Bandolier Kilt"
+  },
+  {
+    "definition": 1191186436,
+    "visual": 520095162,
+    "physical": 1191183857,
+    "appearance": 536871122,
+    "race": 2,
+    "slot": 32,
+    "male": 536871122,
+    "female": 536871123,
+    "armor": null,
+    "hash": 7233764440711173656,
+    "entity_hash": 8843754102742823584,
+    "evidence": [
+      1191193376
+    ],
+    "name": "Bandolier Gauntlets"
+  },
+  {
+    "definition": 1191186438,
+    "visual": 520095149,
+    "physical": 1191183844,
+    "appearance": 536871343,
+    "race": 4,
+    "slot": 2,
+    "male": 536871343,
+    "female": 536871343,
+    "armor": null,
+    "hash": 16870235618502690640,
+    "entity_hash": 17792722545896628409,
+    "evidence": [
+      1191193345
+    ],
+    "name": "Initiate Breastplate"
+  },
+  {
+    "definition": 1191186439,
+    "visual": 520095153,
+    "physical": 1191183848,
+    "appearance": 536871344,
+    "race": 4,
+    "slot": 8,
+    "male": 536871344,
+    "female": 536871344,
+    "armor": null,
+    "hash": 8474352854449786743,
+    "entity_hash": 11731109471656234664,
+    "evidence": [
+      1191193348
+    ],
+    "name": "Initiate Leggings"
+  },
+  {
+    "definition": 1191186440,
+    "visual": 520095145,
+    "physical": 1191183840,
+    "appearance": 536871342,
+    "race": 4,
+    "slot": 32,
+    "male": 536871342,
+    "female": 536871342,
+    "armor": null,
+    "hash": 11507356565351613028,
+    "entity_hash": 12747013770448373383,
+    "evidence": [
+      1191193347
+    ],
+    "name": "Initiate Bracers"
+  },
+  {
+    "definition": 1191186441,
+    "visual": 520095158,
+    "physical": 1191183853,
+    "appearance": 536871345,
+    "race": 4,
+    "slot": 16,
+    "male": 536871345,
+    "female": 536871345,
+    "armor": null,
+    "hash": 4443068265228818662,
+    "entity_hash": 1015361603238574307,
+    "evidence": [
+      1191193346
+    ],
+    "name": "Initiate Moccasins"
+  },
+  {
+    "definition": 1191186446,
+    "visual": 520095152,
+    "physical": 1191183847,
+    "appearance": 536871141,
+    "race": 4,
+    "slot": 2,
+    "male": 536871141,
+    "female": 536871141,
+    "armor": null,
+    "hash": 2291247516861507416,
+    "entity_hash": 888149720873488659,
+    "evidence": [
+      1191193349
+    ],
+    "name": "Spirit Breastplate"
+  },
+  {
+    "definition": 1191186447,
+    "visual": 520095156,
+    "physical": 1191183851,
+    "appearance": 536871143,
+    "race": 4,
+    "slot": 8,
+    "male": 536871143,
+    "female": 536871143,
+    "armor": null,
+    "hash": 11371985428490773498,
+    "entity_hash": 9217008343421384898,
+    "evidence": [
+      1191193361
+    ],
+    "name": "Spirit Leggings"
+  },
+  {
+    "definition": 1191186448,
+    "visual": 520095148,
+    "physical": 1191183843,
+    "appearance": 536871139,
+    "race": 4,
+    "slot": 32,
+    "male": 536871139,
+    "female": 536871139,
+    "armor": null,
+    "hash": 7116927334206486907,
+    "entity_hash": 1381222452088546989,
+    "evidence": [
+      1191193355
+    ],
+    "name": "Spirit Bracers"
+  },
+  {
+    "definition": 1191186449,
+    "visual": 520095160,
+    "physical": 1191183855,
+    "appearance": 536871145,
+    "race": 4,
+    "slot": 16,
+    "male": 536871145,
+    "female": 536871145,
+    "armor": null,
+    "hash": 16030909162727442049,
+    "entity_hash": 13488619778504511369,
+    "evidence": [
+      1191193352
+    ],
+    "name": "Spirit Moccasins"
+  },
+  {
+    "definition": 1191188562,
+    "visual": 520097106,
+    "physical": 1191187724,
+    "appearance": 536871542,
+    "race": 4,
+    "slot": 1,
+    "male": 536871542,
+    "female": 536871542,
+    "armor": 10,
+    "hash": 3194145633126706008,
+    "entity_hash": 10263421175907203345,
+    "evidence": [
+      1191188562,
+      1191193360
+    ],
+    "name": "Horned Shako"
+  },
+  {
+    "definition": 1191189296,
+    "visual": 520097800,
+    "physical": 1191189303,
+    "appearance": 536871649,
+    "race": 4,
+    "slot": 1,
+    "male": 536871649,
+    "female": 536871650,
+    "armor": 10,
+    "hash": 4086432293141053519,
+    "entity_hash": 14925116253368057639,
+    "evidence": [
+      1191189296,
+      1191193358
+    ],
+    "name": "Plumed Shako"
+  }
+]

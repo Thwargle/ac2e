@@ -1,4 +1,5 @@
 #include "AC2GameMode.h"
+#include "AC2Performance.h"
 #include "AC2NativeMaterial.h"
 #include "AC2CellLighting.h"
 #include "AC2CreatureCatalog.h"
@@ -21,6 +22,9 @@
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#if WITH_EDITOR
+#include "ShaderCompiler.h"
+#endif
 
 AAC2GameMode::AAC2GameMode()
 {
@@ -46,8 +50,10 @@ void AAC2GameMode::BeginPlay()
         Viewport->EngineShowFlags.SetMotionBlur(false);
     }
     bSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2Smoke"));
-    bEnvironmentSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2EnvironmentSmoke"));
+    bEnvironmentSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2EnvironmentSmoke")) || AC2Performance::Enabled();
     DatDirectory = AC2::ResolveDatDirectory(DatDirectory);
+    Audio=MakeUnique<FAC2Audio>();
+    Audio->Open(GetWorld(),DatDirectory);
     bUISmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2UISmoke"));
     bMapSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2MapSmoke"));
     bControllerSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2ControllerSmoke"));
@@ -120,7 +126,9 @@ bool AAC2GameMode::OpenWorld()
 }
 void AAC2GameMode::LeaveWorld()
 {
-    FrontEnd=true;OfflineEntering=false;NetworkTravel=false;bWaiting=true;
+    if(Audio){Audio->Music(0);Audio->Environment({},FVector::ZeroVector,true);Audio->SetGroove(0);}
+    FrontEnd=true;OfflineEntering=false;NetworkTravel=false;bWaiting=true;bRevealing=false;
+    ArrivalRender.Reset();
     if(auto* PC=GetWorld()->GetFirstPlayerController())
         if(auto* P=Cast<AAC2Explorer>(PC->GetPawn())){P->SetHeld(true);P->SetActorHiddenInGame(true);}
     for(auto& M:Mobs)if(M.IsValid())M->Destroy();Mobs.Reset();Target=nullptr;
@@ -186,6 +194,7 @@ void AAC2GameMode::EndPlay(const EEndPlayReason::Type Reason)
     Effects.Reset();
     Sky.Reset();
     Stream.Reset();
+    Audio.Reset();
     Super::EndPlay(Reason);
 }
 bool AAC2GameMode::LoadBlock(uint32 Block)
@@ -205,6 +214,7 @@ bool AAC2GameMode::LoadBlock(uint32 Block)
     Stream->SetInteriorCell(0);
     bTeleport = true;
     bWaiting = true;
+    bRevealing=false; ArrivalRender.Reset();
     Notice = TEXT("Traveling...");
     StreamFocus = Destination;
     PositionViewer(GetWorld()->GetFirstPlayerController());
@@ -231,6 +241,7 @@ bool AAC2GameMode::TravelToMap(FVector2D Land)
     PendingCell = InteriorBlock = 0;
     Stream->SetInteriorCell(0);
     bTeleport = bWaiting = true;
+    bRevealing=false; ArrivalRender.Reset();
     StreamFocus = Destination;
     Notice = TEXT("Traveling...");
     PositionViewer(GetWorld()->GetFirstPlayerController());
@@ -260,7 +271,9 @@ void AAC2GameMode::CompleteTravel(const FVector &Position)
         return;
     P->GetCharacterMovement()->StopMovementImmediately();
     P->SetActorLocation(Position, false, nullptr, ETeleportType::TeleportPhysics);
-    P->SetHeld(false);
+    // Final camera/lighting and deferred render resources settle under portal space.
+    P->SetHeld(true);
+    bRevealing=true; ArrivalRender.Reset();
     LastSafe = Position;
     bWaiting = bTeleport = false;
     Notice = TEXT("Arrived");
@@ -351,9 +364,68 @@ void AAC2GameMode::SetHour(float Hour)
     if (Sky && FMath::IsFinite(Hour))
         Sky->SetHour(Hour);
 }
+bool AAC2GameMode::SceneReadyToReveal()
+{
+    bool ShadersReady=true;
+#if WITH_EDITOR
+    // The development launcher uses the editor runtime. First-use material
+    // shaders may still be compiling after the mesh uploads have completed.
+    ShadersReady=!GShaderCompilingManager || !GShaderCompilingManager->IsCompiling();
+#endif
+    uint32 Center=0;
+    const bool LandscapeReady=Stream && Stream->AllReady() &&
+        (!Stream->ExteriorVisible() || !Far ||
+         (AC2::WorldBlock(StreamFocus,Center) && Far->Center()==Center));
+    return ArrivalRender.Poll(ShadersReady && LandscapeReady && (!Network || Network->ArrivalCollisionReady()),
+        Network?Network->ArrivalRevision():0);
+}
+void AAC2GameMode::UpdateEnvironment(float Delta)
+{
+    auto* PC=GetWorld()->GetFirstPlayerController();
+    auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
+    if(!P || !Stream || !Sky)return;
+    Sky->Update(P->Camera->GetComponentLocation(), Delta, Network ? Network->ServerTime() : TOptional<double>());
+    if (Far)
+    {
+        if (Stream->ExteriorVisible()) Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
+        Far->SetVisible(Stream->ExteriorVisible());
+        uint32 Center = 0;
+        AC2::WorldBlock(StreamFocus, Center);
+        Stream->SetDrawRadius(Far->Center() == Center ? ViewRadius : ViewRadius + 1);
+    }
+    RoofTime -= Delta;
+    if (RoofTime <= 0)
+    {
+        RoofTime = .5f;
+        FHitResult Hit;
+        FCollisionQueryParams Q;
+        Q.AddIgnoredActor(P);
+        FVector Eye = P->Camera->GetComponentLocation();
+        bIndoors = InteriorBlock ||
+                   GetWorld()->LineTraceSingleByObjectType(Hit, Eye, Eye + FVector(0, 0, 10000),
+                                                           FCollisionObjectQueryParams(ECC_WorldStatic), Q);
+    }
+    auto K = Sky->Lighting();
+    FAC2PreviewLighting NativeLights;
+    NativeLights.Ambient=K.AmbientColor*K.Ambient;
+    FAC2PreviewLight NativeSun; NativeSun.Directional=true; NativeSun.Direction=K.LightDirection();
+    NativeSun.Diffuse=K.DirectColor; NativeSun.Intensity=K.Direct; NativeLights.Lights.Add(NativeSun);
+    UpdateAC2WorldLighting(GetWorld(),NativeLights,[&](const FVector& Position,FAC2PreviewLighting& Lights){return Stream->InteriorLighting(Position,Lights);});
+    EffectSync -= Delta;
+    if (EffectSync <= 0)
+    {
+        EffectSync = .5f;
+        Effects->SyncSources(Stream->ParticleSources(P->GetActorLocation()));
+    }
+    Effects->Update(P->Camera->GetComponentLocation(), P->Camera->GetRightVector(), P->Camera->GetUpVector(),
+                    Delta, Sky->RainOverride >= 0 ? Sky->RainOverride : K.Rain, FVector(K.WindX, K.WindY, 0),
+                    bIndoors);
+}
 void AAC2GameMode::Tick(float Delta)
 {
+    AC2Performance::FScope Measurement(TEXT("world_tick"));
     Super::Tick(Delta);
+    if(Audio)Audio->Tick(GetWorld()->GetTimeSeconds());
     if(!LoginStarted){ShowLogin();return;}
     if(bControllerSmoke)ControllerSmokeTick(Delta);
     if(Network)Network->Tick(Delta);
@@ -363,6 +435,7 @@ void AAC2GameMode::Tick(float Delta)
     auto *P = PC ? Cast<AAC2Explorer>(PC->GetPawn()) : nullptr;
     if (!P)
         return;
+    bool EnvironmentUpdated=false;
     if (Network)
     {
         if(Network->IsWorld()&&!bWaiting&&!Network->NeedsPlacement)
@@ -381,6 +454,7 @@ void AAC2GameMode::Tick(float Delta)
             // A second map request can replace an obstructed arrival while loading.
             Destination = Network->Feet;
             NetworkTravel=true; bWaiting=true; bTeleport=false; PendingCell=0;
+            bRevealing=false; ArrivalRender.Reset();
             InteriorBlock=(Network->Cell & 65535)>=256 ? Network->Cell>>16 : 0;
             Stream->SetInteriorCell(Network->Cell);
             StreamFocus=AC2::BlockOrigin(Network->Cell>>16)+FVector(8000,8000,Network->Feet.Z);
@@ -389,7 +463,11 @@ void AAC2GameMode::Tick(float Delta)
         if (NetworkTravel)
         {
             Stream->Tick(StreamFocus);
-            if (!Stream->PlacementReadyAt(StreamFocus) || !Network->ArrivalCollisionReady()) return;
+            // Distant terrain and native sky must progress during the loading
+            // hold, not start building after the player is already released.
+            UpdateEnvironment(Delta);
+            EnvironmentUpdated=true;
+            if (!SceneReadyToReveal()) return;
             const auto* Capsule = P->GetCapsuleComponent();
             FVector Center;
             if (!Stream->NetworkLanding(Network->Feet, Network->Cell, Capsule->GetScaledCapsuleRadius(),
@@ -405,13 +483,24 @@ void AAC2GameMode::Tick(float Delta)
             P->SetActorLocation(Center,false,nullptr,ETeleportType::TeleportPhysics);
             P->SetActorRotation(FRotator(0,90-Network->Heading,0));
             PC->SetControlRotation(FRotator(-5,90-Network->Heading,0));
-            P->SetHeld(false); LastSafe=Center; bWaiting=false; NetworkTravel=false; InteriorGrace=2;
+            P->SetHeld(true); LastSafe=Center; bWaiting=false; NetworkTravel=false; InteriorGrace=2;
+            bRevealing=true; ArrivalRender.Reset();
             if(FrontEnd)if(auto* H=Cast<AAC2HUD>(PC->GetHUD()))if(H->GameUI)H->GameUI->RestoreOptions();
             FrontEnd=false;P->SetActorHiddenInGame(false);
-            if (!Network->IsWorld()) Network->SceneComplete(); else Network->NeedsPlacement=false;
+            Network->SceneComplete();
         }
     }
     FVector Here = P->GetActorLocation();
+    AudioEnvironmentSync-=Delta;
+    if(Audio && !FrontEnd && !bWaiting && AudioEnvironmentSync<=0){
+        AudioEnvironmentSync=.25f;
+        Audio->Environment(Stream->AmbientPoints(Here),Here,Stream->PlayerOutside());
+    }
+    AudioGrooveSync-=Delta;
+    if(Audio && !FrontEnd && AudioGrooveSync<=0){
+        AudioGrooveSync=2;
+        Audio->SetGroove(Network?Network->MusicGroove():0);
+    }
     if (!bWaiting && !CharacterUIStarted && !bSmoke && !bEnvironmentSmoke)
     {
         if (auto *HUD = Cast<AAC2HUD>(PC->GetHUD()))
@@ -427,7 +516,7 @@ void AAC2GameMode::Tick(float Delta)
     }
     if(OfflineEntering&&!bWaiting)
     {
-        OfflineEntering=false;FrontEnd=false;P->SetActorHiddenInGame(false);P->SetDead(false);P->SetHeld(false);
+        OfflineEntering=false;FrontEnd=false;P->SetActorHiddenInGame(false);P->SetDead(false);P->SetHeld(bRevealing);
         if(auto* H=Cast<AAC2HUD>(PC->GetHUD()))if(H->GameUI)H->GameUI->RestoreOptions();
         if(auto* H=Cast<AAC2HUD>(PC->GetHUD()))if(H->CharacterUI)H->CharacterUI->NetworkEntered();
     }
@@ -498,7 +587,8 @@ void AAC2GameMode::Tick(float Delta)
         }
     }
     Stream->Tick(StreamFocus);
-    if (PendingCell && Stream->AllReady())
+    if(!EnvironmentUpdated)UpdateEnvironment(Delta);
+    if (PendingCell && SceneReadyToReveal())
     {
         FVector Cell;
         if (Stream->CellPosition(PendingCell, Cell))
@@ -535,7 +625,7 @@ void AAC2GameMode::Tick(float Delta)
     {
         if (bTeleport)
         {
-            if (Stream->PlacementReadyAt(StreamFocus))
+            if (SceneReadyToReveal())
             {
                 FVector Landing;
                 const auto *Capsule = P->GetCapsuleComponent();
@@ -563,42 +653,13 @@ void AAC2GameMode::Tick(float Delta)
     double Water = 0;
     const bool Wet = !InteriorBlock && Stream->WaterAt(P->GetActorLocation(), Water);
     P->UpdateWater(Wet, Water);
-    Sky->Update(P->Camera->GetComponentLocation(), Delta);
-    if (Far)
+    if(bRevealing && SceneReadyToReveal())
     {
-        if (Stream->ExteriorVisible()) Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
-        Far->SetVisible(Stream->ExteriorVisible());
-        uint32 Center = 0;
-        AC2::WorldBlock(StreamFocus, Center);
-        Stream->SetDrawRadius(Far->Center() == Center ? ViewRadius : ViewRadius + 1);
+        bRevealing=false;
+        P->SetHeld(false);
+        UE_LOG(LogTemp,Display,TEXT("AC2 portal destination ready: %s distant=%d frame=%llu"),
+            *Stream->Status(),Far?Far->TileCount():0,GFrameCounter);
     }
-    RoofTime -= Delta;
-    if (RoofTime <= 0)
-    {
-        RoofTime = .5f;
-        FHitResult Hit;
-        FCollisionQueryParams Q;
-        Q.AddIgnoredActor(P);
-        FVector Eye = P->Camera->GetComponentLocation();
-        bIndoors = InteriorBlock ||
-                   GetWorld()->LineTraceSingleByObjectType(Hit, Eye, Eye + FVector(0, 0, 10000),
-                                                           FCollisionObjectQueryParams(ECC_WorldStatic), Q);
-    }
-    auto K = Sky->Lighting();
-    FAC2PreviewLighting NativeLights;
-    NativeLights.Ambient=AC2NativeRGB(K.AmbientColor.ToFColorSRGB())*K.Ambient;
-    FAC2PreviewLight NativeSun; NativeSun.Directional=true; NativeSun.Direction=K.LightDirection();
-    NativeSun.Diffuse=AC2NativeRGB(K.DirectColor.ToFColorSRGB()); NativeSun.Intensity=K.Direct; NativeLights.Lights.Add(NativeSun);
-    UpdateAC2WorldLighting(GetWorld(),NativeLights,[&](const FVector& Position,FAC2PreviewLighting& Lights){return Stream->InteriorLighting(Position,Lights);});
-    EffectSync -= Delta;
-    if (EffectSync <= 0)
-    {
-        EffectSync = .5f;
-        Effects->SyncSources(Stream->ParticleSources(P->GetActorLocation()));
-    }
-    Effects->Update(P->Camera->GetComponentLocation(), P->Camera->GetRightVector(), P->Camera->GetUpVector(),
-                    Delta, Sky->RainOverride >= 0 ? Sky->RainOverride : K.Rain, FVector(K.WindX, K.WindY, 0),
-                    bIndoors);
     for (int32 I = Mobs.Num() - 1; I >= 0; --I)
         if (!Mobs[I].IsValid())
             Mobs.RemoveAtSwap(I);
@@ -1360,14 +1421,15 @@ void AAC2PlayerController::SetupInputComponent()
     InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
     InputComponent->BindKey(EKeys::LeftMouseButton, IE_DoubleClick, this, &AAC2PlayerController::UseUnderCursor);
     InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AAC2PlayerController::InspectUnderCursor);
-    InputComponent->BindKey(EKeys::One, IE_Pressed, this, &AAC2PlayerController::Attack);
-    InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &AAC2PlayerController::Burst);
-    InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &AAC2PlayerController::MissileSkill);
+    const FKey NumberKeys[]={EKeys::One,EKeys::Two,EKeys::Three,EKeys::Four,EKeys::Five,EKeys::Six,EKeys::Seven,EKeys::Eight,EKeys::Nine,EKeys::Zero};
+    for(int32 I=0;I<10;++I){
+        FInputKeyBinding Binding(FInputChord(NumberKeys[I]),IE_Pressed);
+        Binding.KeyDelegate.GetDelegateForManualSet().BindLambda([this,I](){if(auto* H=Cast<AAC2HUD>(GetHUD());H&&H->GameUI)H->GameUI->ActivateShortcut(I);});
+        InputComponent->KeyBindings.Add(MoveTemp(Binding));
+    }
     InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &AAC2PlayerController::CombatMode);
     InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AAC2PlayerController::UseTarget);
     InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &AAC2PlayerController::AC2Recall);
-    InputComponent->BindKey(EKeys::LeftAlt, IE_Pressed, this, &AAC2PlayerController::Cursor);
-    InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Pressed, this, &AAC2PlayerController::Cursor);
     InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AAC2PlayerController::CloseUI);
     InputComponent->BindKey(EKeys::I, IE_Pressed, this, &AAC2PlayerController::Inventory);
     InputComponent->BindKey(EKeys::C, IE_Pressed, this, &AAC2PlayerController::CharacterStats);
@@ -1412,8 +1474,7 @@ void AAC2PlayerController::Cursor()
     auto* H=Cast<AAC2HUD>(GetHUD());
     if(!M || !M->InWorld() || (H && ((H->CharacterUI && H->CharacterUI->IsOpen()) ||
         (H->GameUI && H->GameUI->ChatActive()))))return;
-    MouseLook=bShowMouseCursor;
-    SetCursor(!MouseLook);
+    RestoreCursor(); // Pointer mode is persistent; only held-button gestures capture it.
 }
 void AAC2PlayerController::CloseUI()
 {

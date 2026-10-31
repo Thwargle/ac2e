@@ -11,6 +11,7 @@ pub const PLAYER_ENTITY: u32 = 0x4700110f;
 // which maps the region number through gmregionid.imp before SetRegionByGID.
 pub const REGION: u32 = 1;
 pub struct Bootstrap {
+    pub geometry: Option<crate::geometry::Geometry>,
     qualities: Vec<u8>,
     client_version: &'static str,
     cells: Dat,
@@ -89,6 +90,7 @@ impl Bootstrap {
             cells.read(crate::dat::world_cell_record(body.start.cell)?)?;
         }
         Ok(Self {
+            geometry: crate::geometry::Geometry::open(directory).map_err(|e|{eprintln!("Native geometry unavailable: {e}");e}).ok(),
             qualities,
             client_version,
             cells,
@@ -99,6 +101,10 @@ impl Bootstrap {
     /// The requested entity is ignored; every avatar uses PLAYER_ENTITY.
     pub fn supports(&self, request: &CharacterCreationRequest) -> bool {
         supported(request)
+    }
+    /// Native CObjCell physics ray, including indoor floors and static platforms.
+    pub fn terrain_contact(&mut self, point: crate::movement::Placement) -> bool {
+        self.geometry.as_mut().is_some_and(|g|g.contact(point))
     }
     fn body(request: &CharacterCreationRequest) -> &'static crate::appearance::Body {
         crate::appearance::body(request.race, request.sex)

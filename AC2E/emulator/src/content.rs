@@ -49,18 +49,60 @@ mod motion_tests {
         let home=Placement::HUMAN_START;
         let id=NAMESPACE+1;
         let mut content=Content::default();
-        content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,placement:home,home,
+        content.objects.insert(id,Object {id,entity:crate::quests::TARGET_ENTITY,placement:home,home,home_orientation:home.orientation(),
             spawn:spawn(home,1).into(),destroy:vec![0;16].into(),active:true,instance:1,
-            visual_stamp:0,position_stamp:0,stats:BTreeMap::new(),service:None,door_open:false,door_mode:None});
-        let mut next=home;next.coordinates[0]+=1.5;next.heading=64;
+            visual_stamp:0,position_stamp:0,stats:BTreeMap::new(),service:None,name:None,corpse_name:None,door_open:false,door_mode:None});
+        content.set_stat(id,0x107,60).unwrap();
+        let mut next=home;next.coordinates[0]+=0.5;next.heading=64;
         content.move_creature(id,next,2500).unwrap();
         assert_eq!(&*content.object(id).unwrap().spawn,spawn(next,1));
-        let mut wrong=next;wrong.cell+=1;
+        let mut wrong=next;wrong.cell+=0x10000;
         assert!(content.move_creature(id,wrong,2600).is_err());
         assert_eq!(content.object(id).unwrap().placement,next);
         content.despawn(id).unwrap();content.respawn(id).unwrap();
         assert_eq!(&*content.object(id).unwrap().spawn,spawn(home,2));
         assert_eq!(content.object(id).unwrap().placement,home);
+    }
+    #[test]
+    fn captured_creature_layouts_preserve_pose_scale_name_and_respawn() {
+        for visual in [0x1f000031,0x1f000deb,0x1f0003d1] {
+            let home=Placement::HUMAN_START;let id=NAMESPACE+2;
+            let mut content=Content::fixture(id,home,None);
+            let rotation=[-0.06770791,0.,0.,0.99770516];
+            let raw=world::create_named_stationary_object(&StationaryObject {
+                character_id:id,parent_visual_did:visual,entity_did:0x4700088c,
+                cell_id:home.cell,position:home.coordinates,orientation:rotation,
+                instance_stamp:1,visual_ordering_stamp:0,timestamps:[0;4]},Some(0.75),Some("Captured creature")).unwrap();
+            let offset=Content::position_offset(&raw).unwrap();
+            let tail=raw[offset+32..].to_vec();
+            content.objects.get_mut(&id).unwrap().spawn=raw.into();
+            content.objects.get_mut(&id).unwrap().home_orientation=rotation;
+            assert!(content.object(id).unwrap().supports_pose_updates());
+            let mut next=home;next.coordinates[0]+=0.5;next.heading=32;
+            let update=content.move_creature(id,next,1000).unwrap();
+            assert_eq!(&update[40..44],&0x207f7f7fu32.to_le_bytes(),
+                "authoritative steps must not advertise backwards/downward input");
+            assert!(!content.idol_presentation(id,crate::combat_visual::IdolAction::Swing).unwrap().is_empty());
+            let spawn=&content.object(id).unwrap().spawn;
+            let offset=Content::position_offset(spawn).unwrap();
+            assert_eq!(&spawn[offset+32..],tail);
+            assert_eq!(&spawn[offset+4..offset+8],next.coordinates[0].to_le_bytes());
+            assert_eq!(&spawn[28..32],0x41000012u32.to_le_bytes());
+            // Fresh observers get the same mode/pose; respawn returns to the
+            // captured home without corrupting trailing name/scale properties.
+            content.idol_presentation(id,crate::combat_visual::IdolAction::Death).unwrap();
+            content.despawn(id).unwrap();content.respawn(id).unwrap();
+            let spawn=&content.object(id).unwrap().spawn;
+            assert_eq!(content.object(id).unwrap().placement,home);
+            assert_eq!(&spawn[24..26],2u16.to_le_bytes());
+            assert_eq!(&spawn[28..32],crate::combat_visual::PEACE.to_le_bytes());
+            assert_eq!(&spawn[offset+4..offset+8],home.coordinates[0].to_le_bytes());
+            for (i,v) in rotation.iter().enumerate(){
+                assert_eq!(&spawn[offset+16+i*4..offset+20+i*4],v.to_le_bytes(),"Respawn must retain the exact captured quaternion");
+            }
+            assert_eq!(&spawn[offset+40..],&tail[8..]);
+        }
+        for bytes in [vec![0;24],vec![0;75]] {assert!(Content::position_offset(&bytes).is_err());}
     }
 }
 
@@ -74,11 +116,15 @@ fn invalid(message: impl Into<String>) -> io::Error {
 pub struct Object {
     pub id: u64,
     pub entity: u32,
+    pub name: Option<String>,
+    corpse_name: Option<Arc<[u8]>>,
     pub service: Option<crate::services::Service>,
     door_open: bool,
     door_mode: Option<Arc<[u8]>>,
     pub placement: Placement,
     home: Placement,
+    // Keep the authored quaternion; the movement heading is only eight bits.
+    home_orientation: [f32; 4],
     pub spawn: Arc<[u8]>,
     pub destroy: Arc<[u8]>,
     active: bool,
@@ -88,11 +134,16 @@ pub struct Object {
     stats: BTreeMap<u32, (u32, Arc<[u8]>)>,
 }
 impl Object {
+    /// Packet capability, not an AI classification. A mode/scale slider is
+    /// optional in captured PhysicsDesc records and must not gate pursuit.
+    pub fn supports_pose_updates(&self) -> bool {
+        Content::position_offset(&self.spawn).is_ok()
+    }
     pub fn stat(&self, key: u32) -> Option<u32> {
         self.stats.get(&key).map(|(value, _)| *value)
     }
     pub fn updates(&self) -> impl Iterator<Item = &Arc<[u8]>> {
-        self.door_mode.iter().chain(self.stats
+        self.corpse_name.iter().chain(self.door_mode.iter()).chain(self.stats
             .get(&0x107)
             .map(|(_, wire)| wire)
             .into_iter()
@@ -113,6 +164,28 @@ pub struct Content {
     cells: BTreeMap<u32, Vec<u64>>,
 }
 impl Content {
+    #[cfg(test)]
+    pub(crate) fn fixture(id:u64,point:Placement,service:Option<crate::services::Service>)->Self {
+        let spawn=world::create_stationary_object(&StationaryObject {character_id:id,parent_visual_did:0x1f0003d1,
+            entity_did:crate::quests::TARGET_ENTITY,cell_id:point.cell,position:point.coordinates,orientation:point.orientation(),
+            instance_stamp:1,visual_ordering_stamp:0,timestamps:[0;4]}).unwrap();
+        let mut result=Self::default();
+        result.objects.insert(id,Object{id,entity:crate::quests::TARGET_ENTITY,name:None,corpse_name:None,service,door_open:false,door_mode:None,
+            placement:point,home:point,home_orientation:point.orientation(),spawn:spawn.into(),destroy:world::destroy_inventory_item(id,1).into(),active:true,
+            instance:1,visual_stamp:0,position_stamp:0,stats:BTreeMap::new()});
+        result.cells.insert(point.cell,vec![id]);
+        if service.is_none(){result.set_stat(id,0x107,60).unwrap();}
+        result
+    }
+    pub fn set_chest_open(&mut self,id:u64,open:bool)->io::Result<Option<Arc<[u8]>>> {
+        let object=self.objects.get_mut(&id).filter(|o|o.active).ok_or_else(||invalid("Chest unavailable."))?;
+        if object.service!=Some(crate::services::Service::Chest{locked:false}) {return Err(invalid("Chest cannot be opened."));}
+        if object.door_open==open{return Ok(None);}
+        let stamp=object.visual_stamp.checked_add(2).ok_or_else(||invalid("Chest state limit reached."))?;
+        let wire:Arc<[u8]>=crate::services::door_mode(id,object.instance,stamp,open).into();
+        object.visual_stamp=stamp;object.door_open=open;object.door_mode=Some(wire.clone());
+        Ok(Some(wire))
+    }
     pub fn toggle_door(&mut self,id:u64)->io::Result<Arc<[u8]>> {
         let object=self.objects.get_mut(&id).filter(|o|o.active).ok_or_else(||invalid("Door unavailable."))?;
         match object.service {
@@ -139,8 +212,8 @@ impl Content {
             character_id:id,parent_visual_did:dropped.item.visual,entity_did:dropped.item.definition,
             cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,
             visual_ordering_stamp:1,timestamps:[0;4]}).map_err(io::Error::other)?;
-        self.objects.insert(id,Object {id,entity:dropped.item.definition,placement:p,home:p,spawn:spawn.into(),
-            destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new(),service:None,door_open:false,door_mode:None});
+        self.objects.insert(id,Object {id,entity:dropped.item.definition,placement:p,home:p,home_orientation:p.orientation(),spawn:spawn.into(),
+            destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:1,position_stamp:0,stats:BTreeMap::new(),service:None,name:None,corpse_name:None,door_open:false,door_mode:None});
         self.cells.entry(p.cell).or_default().push(id);Ok(())
     }
     pub fn remove_drop(&mut self,id:u64) -> io::Result<Arc<[u8]>> {
@@ -149,36 +222,66 @@ impl Content {
         if let Some(cell)=self.cells.get_mut(&object.placement.cell) {cell.retain(|v|*v!=id);}
         Ok(object.destroy)
     }
-    /// Bounded same-cell creature pursuit. Retain the new pose in CreateObject
+    /// Bounded creature pursuit. Retain the new pose in CreateObject
     /// too, so late observers receive the same location as existing observers.
     pub fn move_creature(&mut self, id: u64, placement: Placement, now: u64) -> io::Result<Arc<[u8]>> {
-        let object = self.objects.get_mut(&id).filter(|o| o.active && o.entity == crate::quests::TARGET_ENTITY)
+        let object = self.objects.get_mut(&id).filter(|o| o.active && o.stat(0x107).is_some() && o.service.is_none())
             .ok_or_else(|| invalid("unsupported moving creature"))?;
-        if !placement.valid() || placement.cell != object.placement.cell {
-            return Err(invalid("creature pursuit cannot cross cell boundaries"));
+        if object.placement.distance(placement).is_none_or(|d|d>1.0) {
+            return Err(invalid("creature pursuit exceeds one validated walking step"));
         }
-        object.position_stamp = object.position_stamp.checked_add(1).ok_or_else(|| invalid("creature position stamp exhausted"))?;
+        let old_cell=object.placement.cell;
+        let stamp=object.position_stamp.checked_add(1).ok_or_else(|| invalid("creature position stamp exhausted"))?;
         Self::set_pose(object, placement)?;
+        object.position_stamp=stamp;
         let update = crate::movement::ClientPosition {
-            time: now as f64 / 1000.0, placement, motion: u32::from(placement.heading) << 24,
+            // Position is authoritative here. Zero motion is encoded at the
+            // midpoint of each signed byte, not 0 (which means -1 on all axes).
+            time: now as f64 / 1000.0, placement,
+            motion: (u32::from(placement.heading) << 24) | 0x007f7f7f,
             cancel_moveto: false, stamps: [object.instance,0,0,0], jump_velocity: None,
         };
-        crate::movement::server_position(id,object.instance,object.position_stamp,&update)
-            .map(Arc::from).map_err(io::Error::other)
+        let wire=crate::movement::server_position(id,object.instance,object.position_stamp,&update)
+            .map(Arc::from).map_err(io::Error::other)?;
+        self.reindex(id,old_cell,placement.cell);
+        Ok(wire)
+    }
+    fn reindex(&mut self,id:u64,old:u32,new:u32) {
+        if old==new{return;}
+        if let Some(ids)=self.cells.get_mut(&old){ids.retain(|entry|*entry!=id);if ids.is_empty(){self.cells.remove(&old);}}
+        let ids=self.cells.entry(new).or_default();if !ids.contains(&id){ids.push(id);}
     }
     fn set_pose(object: &mut Object, placement: Placement) -> io::Result<()> {
-        // StationaryObject's pinned Idol serializer: mode, one scale slider,
-        // then Position. Do not guess offsets for arbitrary visual profiles.
+        // Captured creatures can omit mode/sliders in their initial descriptor.
+        // Use the layouts emitted by our serializer, retaining every other field.
+        let offset=Self::position_offset(&object.spawn)?;
         let spawn = Arc::make_mut(&mut object.spawn);
-        if spawn.get(20..24) != Some(0x8082u32.to_le_bytes().as_slice()) || spawn.len() < 96
-            || spawn.get(32..36) != Some(1u32.to_le_bytes().as_slice()) {
-            return Err(invalid("unsupported creature position layout"));
-        }
-        // A slider stores its key and two floats; Position starts at byte 48.
-        spawn[48..52].copy_from_slice(&placement.cell.to_le_bytes());
-        for (i,v) in placement.coordinates.iter().enumerate() { spawn[52+i*4..56+i*4].copy_from_slice(&v.to_le_bytes()); }
-        for (i,v) in placement.orientation().iter().enumerate() {spawn[64+i*4..68+i*4].copy_from_slice(&v.to_le_bytes());}
+        spawn[offset..offset+4].copy_from_slice(&placement.cell.to_le_bytes());
+        for (i,v) in placement.coordinates.iter().enumerate() { spawn[offset+4+i*4..offset+8+i*4].copy_from_slice(&v.to_le_bytes()); }
+        for (i,v) in placement.orientation().iter().enumerate() {spawn[offset+16+i*4..offset+20+i*4].copy_from_slice(&v.to_le_bytes());}
         object.placement=placement;
+        Ok(())
+    }
+    fn position_offset(spawn:&[u8])->io::Result<usize> {
+        let flags=spawn.get(20..24).and_then(|s|s.try_into().ok()).map(u32::from_le_bytes);
+        let offset=match flags {
+            Some(0x8000)=>28,
+            Some(0x8080)=>32,
+            Some(0x8082) if spawn.get(32..36)==Some(1u32.to_le_bytes().as_slice())=>48,
+            _=>return Err(invalid("unsupported creature physics layout")),
+        };
+        if spawn.len()<offset+48{return Err(invalid("truncated creature physics layout"));}
+        Ok(offset)
+    }
+    fn ensure_mode(object:&mut Object)->io::Result<()> {
+        if Self::position_offset(&object.spawn)?==28 {
+            // PhysicsDesc mode bit precedes Position. Adding a mode must not
+            // invent a scale slider or overwrite the creature's captured pose.
+            let mut spawn=object.spawn.to_vec();
+            spawn[20..24].copy_from_slice(&0x8080u32.to_le_bytes());
+            spawn.splice(28..28,crate::combat_visual::PEACE.to_le_bytes());
+            object.spawn=spawn.into();
+        }
         Ok(())
     }
     /// The shipped snapshot works independently of the current directory.
@@ -233,6 +336,15 @@ impl Content {
     pub fn object(&self, id: u64) -> Option<&Object> {
         self.objects.get(&id)
     }
+    pub fn corpse_name(&mut self,id:u64,names:&crate::examination::Names)->io::Result<Arc<[u8]>> {
+        let o=self.objects.get_mut(&id).filter(|o|o.active && o.stat(0x102)==Some(0) && o.service.is_none()).ok_or_else(||invalid("not a creature corpse"))?;
+        if let Some(wire)=&o.corpse_name {return Ok(wire.clone());}
+        let name=crate::examination::Name::Corpse(Box::new(o.name.clone().map(crate::examination::Name::Literal).unwrap_or_else(||names.get(o.entity,"Creature"))));
+        let mut wire=0x100bdu32.to_le_bytes().to_vec();
+        wire.extend(o.id.to_le_bytes());wire.extend(o.instance.to_le_bytes());wire.extend(0u16.to_le_bytes());wire.extend(0x100u32.to_le_bytes());
+        wire.extend(name.wire().map_err(|e|invalid(format!("corpse name: {e}")))?);
+        let wire:Arc<[u8]>=wire.into();o.corpse_name=Some(wire.clone());Ok(wire)
+    }
     pub fn set_stat(&mut self, id: u64, key: u32, value: u32) -> io::Result<Option<Arc<[u8]>>> {
         let object = self
             .objects
@@ -267,19 +379,12 @@ impl Content {
             .get_mut(&id)
             .filter(|object| object.active)
             .ok_or_else(|| invalid("inactive creature presentation"))?;
-        // Idol and the two Shelter Drudges use native behavior table 44000018.
-        // Keep unrelated observed creatures out of this validated presentation set.
-        let expected_visual=match object.entity {
-            crate::quests::TARGET_ENTITY=>0x1f0003d1u32,
-            crate::shelter::DIGGER|crate::shelter::SENTINEL=>0x1f000036,
-            _=>return Ok(Vec::new()),
-        };
-        if object.spawn.get(16..20) != Some(expected_visual.to_le_bytes().as_slice()) {
+        // Mode/behavior identifiers are shared; each client resolves its body's
+        // own motion and behavior graphs. Only live encounter actors qualify.
+        if object.stat(0x107).is_none() || object.service.is_some() {
             return Ok(Vec::new());
         }
-        if object.spawn.get(20..24) != Some(0x8082u32.to_le_bytes().as_slice()) {
-            return Err(invalid("unsupported creature physics presentation"));
-        }
+        Self::ensure_mode(object)?;
         let (stamp, mode, events) =
             crate::combat_visual::idol(id, object.instance, object.visual_stamp, action)
                 .map_err(|error| invalid(format!("creature presentation: {error}")))?;
@@ -331,8 +436,10 @@ impl Content {
             .get_mut(&id)
             .filter(|object| !object.active)
             .ok_or_else(|| invalid("content object already active"))?;
+        let old_cell=object.placement.cell;
         if object.placement != object.home { Self::set_pose(object,object.home)?; }
         object.position_stamp=0;
+        object.corpse_name=None;
         object.instance = object
             .instance
             .checked_add(1)
@@ -340,11 +447,14 @@ impl Content {
         Arc::make_mut(&mut object.spawn)[24..26].copy_from_slice(&object.instance.to_le_bytes());
         object.visual_stamp = 0;
         Arc::make_mut(&mut object.spawn)[26..28].copy_from_slice(&0u16.to_le_bytes());
-        if matches!(object.entity,crate::quests::TARGET_ENTITY|crate::shelter::DIGGER|crate::shelter::SENTINEL)
-            && object.spawn.get(20..24) == Some(0x8082u32.to_le_bytes().as_slice())
-        {
+        if object.stat(0x107).is_some() {
+            Self::ensure_mode(object)?;
             Arc::make_mut(&mut object.spawn)[28..32]
                 .copy_from_slice(&crate::combat_visual::PEACE.to_le_bytes());
+        }
+        let offset=Self::position_offset(&object.spawn)?;
+        for (i,v) in object.home_orientation.iter().enumerate() {
+            Arc::make_mut(&mut object.spawn)[offset+16+i*4..offset+20+i*4].copy_from_slice(&v.to_le_bytes());
         }
         Arc::make_mut(&mut object.destroy)[12..14].copy_from_slice(&object.instance.to_le_bytes());
         let keys = object
@@ -357,6 +467,8 @@ impl Content {
             object.stats.insert(key, (value, wire));
         }
         object.active = true;
+        let home_cell=object.home.cell;
+        self.reindex(id,old_cell,home_cell);
         Ok(())
     }
     pub fn at(&self, cell: u32) -> impl Iterator<Item = &Object> {
@@ -390,6 +502,7 @@ impl Content {
             Some("pyrealium-world-v1") => 1,
             Some("pyrealium-world-v2") => 2,
             Some("pyrealium-world-v3") => 3,
+            Some("pyrealium-world-v4") => 4,
             _ => return Err(invalid("unsupported world content header")),
         };
         let mut content = Self::default();
@@ -411,7 +524,8 @@ impl Content {
                     != match version {
                         1 => 8,
                         2 => 11,
-                        _ => 12,
+                        3 => 12,
+                        _ => 13,
                     }
                 {
                     return Err(invalid(
@@ -468,7 +582,7 @@ impl Content {
                         "invalid placement identity, asset type or position",
                     ));
                 }
-                let scale = if version == 3 && fields[11] != "-" {
+                let scale = if version >= 3 && fields[11] != "-" {
                     let scale: f32 = fields[11]
                         .parse()
                         .map_err(|_| invalid("invalid content scale"))?;
@@ -509,7 +623,11 @@ impl Content {
                     invalid(format!("content cell {:#010x}: {error}", placement.cell))
                 })?;
             }
-            let name = match id {
+            let captured_name = if version==4 {text.split('\t').nth(12).filter(|n|*n!="-")}else{None};
+            if captured_name.is_some_and(|n|n.is_empty()||n.len()>256||n.chars().any(char::is_control)) {
+                return Err(invalid("invalid captured object name"));
+            }
+            let name = captured_name.or(match id {
                 0x8140000000030002 | 0x8140000000030004 | 0x8140000000030049 => Some("Arwic Outland Portal"),
                 0x8140000000030005 | 0x8140000000030022 | 0x8140000000030025 => Some("Human Shelter Portal"),
                 0x8140000000030030 => Some("Lugian Shelter Portal"),
@@ -517,7 +635,7 @@ impl Content {
                 0x8140000000030047 => Some("Menhir Vault Portal"),
                 _ if entity == 0x4700084d => Some("Portal"),
                 _ => None,
-            };
+            });
             let spawn = world::create_named_stationary_object(
                 &StationaryObject {
                     character_id: id,
@@ -539,14 +657,16 @@ impl Content {
             destroy.extend(1u16.to_le_bytes());
             destroy.extend(0u16.to_le_bytes());
             let service=profiles.as_mut().and_then(|p|p.get(&mut portal,entity));
-            let door_mode=matches!(service,Some(crate::services::Service::Door{..})).then(||crate::services::door_mode(id,1,1,false).into());
+            let door_mode=matches!(service,Some(crate::services::Service::Door{..}|crate::services::Service::Chest{..})).then(||crate::services::door_mode(id,1,1,false).into());
             content.objects.insert(
                 id,
                 Object {
                     id,
                     entity,
+                    name:name.map(str::to_owned),corpse_name:None,
                     placement,
                     home: placement,
+                    home_orientation: orientation,
                     spawn: spawn.into(),
                     destroy: destroy.into(),
                     active: true,

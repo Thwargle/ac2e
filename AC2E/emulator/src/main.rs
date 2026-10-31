@@ -265,6 +265,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                         "Development grant: {id:#018x}; stack/equipment rules supplied explicitly by the operator."
                     );
                     Command::Grant(Item {
+                        roll: None,
                         id,
                         definition,
                         visual,

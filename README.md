@@ -5,6 +5,23 @@ Rust server derived from Pyrealium. The client is in `Unreal/`, and the server i
 in `AC2E/`. This is an experimental implementation, with offline exploration and
 native multiplayer; it is not yet complete retail emulation.
 
+The client now uses the pinned AC2_Rusted audio engine for DAT SoundInfo/DBWave
+effects and DirectMusic/DLS music. Native UI states trigger their authored sounds;
+the creator and character selector choose the music specified by their layouts.
+Animation FX sounds are positional, including terrain variants. Region sound
+types from nearby land points and visible rooms drive ambient music and intermittent
+sounds. Client options include sound, music, player-music and ambient volumes.
+`Launch-AC2.ps1` builds the audio DLL along with the client. See
+[`Audio/README.md`](Audio/README.md) for setup and verification.
+
+The retail gameplay comparison also exposed missing selection background artwork,
+omitted portal/torch viewports and frozen animated preview materials. Selection now
+preserves the DAT star backdrop; the extra viewports use native scenes and transparent
+compositing. Sky HSB interpolation retains native packed RGB until the lighting stage.
+The video includes different hours and room lights, so it is not a global brightness
+preset. Programmable materials, exact fog/shadow parity and all UI media timing are
+still incomplete; these changes do not claim a frame-exact retail match.
+
 The Shelter sequence now includes the digging-tool exchange, Scout potion rewards,
 Menhir Glyph travel and an authored Vault completion step. Seven additional DAT
 armor profiles join the racial starter clothes, with saved appearance replicated
@@ -15,8 +32,10 @@ use their direct cast/impact path. Full retail spell FX, ballistic physics and t
 Menhir history/cinematic remain unfinished. See `AC2E/AC2E-README.md` for scope.
 
 Scenery now applies native appearance overrides (including the town-sign labels),
-and localized signs render readable on both faces. World materials honor the DAT
-specular switch; the Menhir's independently moving second texture is supported.
+and localized signs render readable on both faces. World materials use the DAT
+highlight color, animated power and enable flags; zero power disables highlights
+without adding Unreal's generic white specular sheen. The Menhir's independently
+moving second texture is supported.
 Distant terrain uses a filtered atlas of native terrain surfaces instead of flat
 palette colors. Closed dungeons stream their own block without waiting for unrelated
 neighboring dungeons. High-resolution DAT surfaces remain preferred where available.
@@ -53,6 +72,8 @@ instead of a floating-point sine hash at large world coordinates.
 The material renderer selects authored high-detail fixed-function alternatives,
 evaluates up to four color/alpha texture stages in native order, retains four UV
 sets and independent animated UV transforms, and honors per-axis texture wrapping.
+Terrain tint filtering stays in native byte RGB until display conversion, avoiding
+the extra color-space conversion that changed terrain brightness and saturation.
 World objects use native ambient/directional lighting before texture combination;
 interior meshes bake the DAT `CLightInfo` per-cell vertex lists and attenuation.
 Nearby actors/props use up to eight static lights from their own room. High-resolution
@@ -65,6 +86,49 @@ simultaneous material passes, and native shadow/fog parity remain unfinished.
 Unsupported programmable materials use an authored fixed-function alternative when
 one exists; otherwise the log identifies the base-texture fallback. Terrain/water
 and standalone particle templates still use their existing rendering paths.
+See the [retail comparison and material audit](Docs/RETAIL_VIDEO_COMPARISON.md)
+for reference evidence, validation and remaining rendering differences.
+
+## Gameplay and recovered world content
+
+The prepared world combines compatible captured placements with a separately
+versioned reconstruction pack. It is playable content, not a complete recovered
+retail server database. Source DATs, captures and reference SQL remain unchanged.
+
+- **Population and AI:** native combat/AI properties identify supported enemies
+  while service NPCs remain noncombat. Spawners manage creation, corpse retirement
+  and regeneration; explicit camp rosters enforce group capacity. Creatures use
+  recovered perception, wandering and homesickness properties with native terrain
+  and collision checks. Unrecovered timing and movement rules are documented.
+- **Quests and services:** readable signs send native descriptions. Supported
+  doors, containers, merchants, lifestones, portals and tutorial actions have
+  server handlers. The inferred pack adds 88 quest profiles, 143 camp groups and
+  702 accepted placements, including 26 noncombat NPCs. These include counted
+  hunts, boss hunts, three hunt elixirs and Gambling Debt; placing an NPC alone
+  does not implement its dialogue, vendor stock or other quests.
+- **Loot and equipment:** native trophy probabilities supplement observed corpse
+  loot. The inferred treasure policy adds variable supported equipment/restorative
+  drops and persistent armor ratings/tints. Pickup, equipment and rewards are
+  journaled. Recovered apparel preserves native models and race restrictions;
+  unknown potion effects and full retail affixes remain unsupported.
+- **Combat and movement:** repeated basic attacks retain their target, missile
+  damage follows projectile flight, and local/remote swimming use native motion
+  modes. Ground contact resets fall tracking. Native damage appearances, temporary
+  ground blood decals and corpse names are connected; damage formulas, generic
+  effect triggers and full retail physics still have documented gaps.
+- **Travel and environment:** portal space covers destination streaming before
+  revealing the world. Server time drives the sky cycle, and dungeon furnishings
+  use their native cell-space positions. A bounded shoreline repair in block
+  `74A9` uses the adjacent lake's 96.7 m height consistently for rendering,
+  swimming and server geometry. It is an explicit content repair, not a DAT edit.
+
+Recovery tools audit Pyreal SQL, historical emulator tables, packet captures,
+quest text, loot and native generator properties. Compatibility and provenance
+reports separate direct evidence from inferred placements and rules. Missing
+generator rosters, exact loot weights, complete dungeon populations and arbitrary
+NPC scripts are still unresolved. See [content recovery](Docs/ADMIN_CONTENT_RECOVERY.md),
+[capture imports](Docs/CAPTURE_REFERENCE_IMPORT.md) and the
+[content manifest guide](AC2E/emulator/content/README.md).
 
 ## Missing content records
 
@@ -138,6 +202,9 @@ HTTP 19400) and the game server (UDP 9000/9001).
 Choose a new name; `local` and `admin` are reserved legacy/service names. After a
 crash, the launcher can recover a stale lock when its recorded process is gone;
 it preserves the old marker and never deletes characters or account records.
+Game builds use `AC2E/target/game/release/ac2e.exe`, separately from the account
+service executable. Stop the game server before rebuilding it; an existing account
+service can stay running. Its executable is refreshed on a later build when stopped.
 Use offline exploration or connect to an AC2E/Pyrealium server. See the guides for
 account setup, hosting, supported gameplay, and remaining implementation limits.
 
@@ -148,19 +215,35 @@ the DAT usage cursor and its name. Right-clicking inventory items inspects them;
 double-clicking equips/uses them. **Hold right mouse** to look and steer;
 **drag left mouse** to orbit without turning the character; **hold both** to run.
 Releasing restores the pointer, and a right-click without dragging still inspects.
-**Middle-click** or **Alt** optionally toggles continuous mouse look,
-**wheel** zooms the camera, and **Tab** switches first/third person. In mouse look,
-the native center crosshair selects/uses/examines the object you aim at. The pointer
-returns to its previous position when leaving mouse look. UI scrolling stays in
+**Alt** and **middle-click** do not toggle persistent mouse capture. **Wheel** zooms
+the camera, and **Tab** switches first/third person. The pointer returns to its
+previous position when a held camera gesture ends. UI scrolling stays in
 the hovered panel, and stationary camera orbit does not rotate the character.
 Drag the character preview or inventory paperdoll to rotate it. Cursor artwork
 and hotspots come from the installed DATs; map zoom and preview rotation retain
 their native pointers. WASD movement and the existing combat hotkeys remain available.
 Running is the default; hold either **Shift** key to walk. **Mouse4** (the first
-thumb/back button) toggles autorun in either cursor mode. Press it again, press
+thumb/back button) toggles autorun. Press it again, press
 forward/backward, or press Escape to stop. Chat, focus loss, death and travel also
 cancel autorun. The radar compass and contacts share the DAT radar center and one
 normalized character heading; stationary camera orbit does not turn the radar.
+
+Drag panel headers to move the main windows; positions persist. Skills and quests
+open from the toolbar. The skill book supports training, raising and untraining;
+learned active skills can be dragged onto any of ten shortcut pages, selected with
+the page arrows. Bindings persist per character. Most active skill effects still
+need implementation even when their native definitions are visible in the book.
+
+Right-click your character to examine yourself. Other inspections include known
+level, health, vigor, descriptions and equipment stats; retail chance-to-hit is
+not yet calculated. Chat and inventory support wheel, arrows and thumb dragging.
+Floating damage numbers can be toggled in options. Native nameplate templates are
+used, but complete retail relationship/color policy remains unfinished.
+
+Double-click corpse items or use **Loot All** to collect them. Looting from combat
+temporarily enters peace, performs the operation and restores combat stance without
+resuming attacks on the corpse. **Transmute All** converts eligible corpse items
+to gold using the current appraisal policy, leaving unsupported/quest items alone.
 
 Open the native world map with **M** and double-click a point to travel there for
 testing. Single-click zoom, dragging, map notes and radar targeting still work.
@@ -178,6 +261,7 @@ as is the R test-spawn shortcut. Developer console commands remain available.
 .\Launch-AC2.ps1 -PortraitSmoke -SkipBuild
 .\Launch-AC2.ps1 -EnvironmentSmoke -SkipBuild
 .\Build-AC2Network.ps1 -Test
+.\AC2E\Build-AC2E.ps1 -Test
 python .\Network\test_environment_content.py
 python -m unittest discover -s Network -p test_prepare_content.py
 python .\AC2E\test_export_source.py
@@ -187,8 +271,8 @@ The launcher creates Unreal material assets from C++ on first play. Build output
 generated materials, accounts, and characters are ignored by Git. The server
 creates its compatible placement file from the local DATs when it starts.
 
-`-EnvironmentSmoke` captures both faces of the native Arwic sign, the Menhir Vault
-crystal, and foliage with textured distant terrain. Results and images go under
+`-EnvironmentSmoke` captures sign faces, the Menhir Vault crystal, foliage,
+character poses and cave furnishings. Results and images go under
 `Unreal/Saved/Diagnostics` and `Unreal/Saved/Screenshots/AC2Environment-*`.
 `test_environment_content.py` checks native portal-name decoding and overlapping
 lifestone snapshots using an isolated UDP server and temporary account store.
@@ -211,6 +295,12 @@ python .\Network\test_shelter.py
 python .\Network\test_login_ui.py --gameplay
 python .\Network\test_server_launcher.py
 python .\Network\test_combat_ui.py --mouse
+python .\Network\test_corpse_loot.py
+python .\Network\test_outdoor_population.py
+python .\Network\test_recovered_equipment.py
+python .\Network\test_inferred_content.py
+python .\Network\test_world_clock.py
+python .\Network\test_falling.py
 python .\Network\test_map_travel.py
 python .\Network\test_map_travel.py --disabled
 python .\Network\test_map_travel.py --render
@@ -226,6 +316,10 @@ on PATH. Pass `-EngineRoot` to the client launcher for another UE 5.8 location.
 - [AC2E setup and hosting](AC2E/AC2E-README.md).
 - [Networking guide](Network/README.md) and the native transport bridge in `Network/Bridge/`.
 - [DAT and decompile investigation](Docs/AC2_CLIENT_FOUNDATION.md).
+- [Native gameplay changes and validation](Docs/NATIVE_GAMEPLAY_PASS.md).
+- [Content recovery and reconstruction policy](Docs/ADMIN_CONTENT_RECOVERY.md).
+- [Retail visual/material comparison](Docs/RETAIL_VIDEO_COMPARISON.md).
+- [Native audio bridge](Audio/README.md) and [retail reference probe](Tools/RetailProbe/README.md).
 - `Tools/AC2/`: DAT inspection and reference preparation tools.
 - `References/AC2_Rusted/`: pinned upstream transport dependency (Git submodule).
 - `Unreal/Saved/Characters/`: local offline characters; AC2E owns its separate server stores.

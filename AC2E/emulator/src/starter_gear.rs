@@ -149,7 +149,7 @@ pub fn candidate(
         let slot = next
             .free_slot()
             .ok_or_else(|| io::Error::other("Make room for your racial starter gear."))?;
-        let item = Item {
+        let item = Item {roll: None,
             id,
             definition: profile.definition,
             visual: profile.visual,

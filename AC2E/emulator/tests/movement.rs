@@ -4,6 +4,24 @@ use pyrealium::{
     world::{self, ClientEvent, WorldError},
 };
 
+#[test]
+fn walking_displacement_rebases_blocks_and_rejects_unrelated_interiors() {
+    use pyrealium::movement::Placement;
+    let west=Placement{cell:0x76b8003a,coordinates:[159.9,21.,182.5],heading:0};
+    let east=west.translated([0.2,0.,0.]).unwrap();
+    assert_eq!(east.cell,0x77b80002);
+    assert!((east.coordinates[0]-0.1).abs()<0.001);
+    assert!((west.offset_to(east).unwrap()[0]-0.2).abs()<0.001);
+    let back=east.translated([-0.2,0.,0.]).unwrap();
+    assert_eq!(back.cell,west.cell);assert!(back.distance(west).unwrap()<0.001);
+    let indoor=Placement::HUMAN_START;
+    assert_eq!(indoor.translated([0.2,0.,0.]).unwrap().cell,indoor.cell);
+    assert!(indoor.offset_to(Placement{cell:indoor.cell+0x10000,..indoor}).is_none());
+    assert!(indoor.offset_to(west).is_none());
+    assert!(west.translated([f32::NAN,0.,0.]).is_none());
+    assert!(Placement{cell:0x00b80001,coordinates:[0.,0.,0.],heading:0}.translated([-0.1,0.,0.]).is_none());
+}
+
 // CPositionPack: double time, PositionOffset, packed motion/heading,
 // flags, four ushort stamps, optional Vector. All fields end on 4-byte boundaries.
 fn packet(jump: bool) -> Vec<u8> {

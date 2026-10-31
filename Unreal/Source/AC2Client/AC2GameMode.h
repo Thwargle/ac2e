@@ -1,11 +1,13 @@
 #pragma once
 #include "AC2Effects.h"
+#include "AC2Audio.h"
 #include "AC2CharacterData.h"
 #include "AC2FarTerrain.h"
 #include "AC2Mob.h"
 #include "AC2Sky.h"
 #include "AC2WorldStream.h"
 #include "AC2Network.h"
+#include "AC2ScenePresentation.h"
 #include "CoreMinimal.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
@@ -41,11 +43,18 @@ class AAC2GameMode : public AGameModeBase
     void CastBurst(uint32 Id = 0x39000003);
     bool bMap = false, bIndoors = false;
     uint32 PreviewEffect = 0x39000003;
+    bool GroundDecal(const FAC2Decal& Data,const FTransform& Frame,AActor* SourceActor)
+    {return Effects && Effects->GroundDecal(Data,Frame,SourceActor);}
+    bool DamageBlood(AActor* SourceActor) {return SourceActor&&Effects&&Effects->Blood(SourceActor->GetActorTransform(),SourceActor);}
+    int32 GroundDecalCount() const {return Effects?Effects->DecalCount():0;}
     float MapHour() const { return Sky ? Sky->Hour() : 12.f; }
     void UIAction(FName Action);
     bool PlaceCharacter();
     bool InWorld() const { return !FrontEnd; }
+    bool WantsPortalSpace() const {return OfflineEntering || NetworkTravel || bTeleport || PendingCell || bRevealing || (Network && (Network->Phase==TEXT("entering") || Network->NeedsPlacement));}
     bool CellVisible(uint32 Cell) const { return Stream && Stream->CellVisible(Cell); }
+    uint32 SoundTerrain(const FVector& Position) const {return Stream?Stream->SoundTerrain(Position):0;}
+    bool WaterAt(const FVector& Position,double& Height) const {return Stream && Stream->WaterAt(Position,Height);}
     bool EnvironmentStats(uint32 Block, FAC2AssetStats& Stats) const { return Stream && Stream->BlockStats(Block,Stats); }
     bool OpenWorld();
     void LeaveWorld();
@@ -76,6 +85,14 @@ class AAC2GameMode : public AGameModeBase
     UPROPERTY(Config) int32 ViewRadius = 2;
 
   private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FAC2PortalArrivalTest;
+#endif
+    FAC2ScenePresentationBarrier ArrivalRender;
+    bool bRevealing=false;
+    void UpdateEnvironment(float Delta);
+    bool SceneReadyToReveal();
+    TUniquePtr<FAC2Audio> Audio;
     TUniquePtr<FAC2WorldStream> Stream;
     TUniquePtr<FAC2SkyRenderer> Sky;
     TUniquePtr<FAC2FarTerrain> Far;
@@ -85,6 +102,8 @@ class AAC2GameMode : public AGameModeBase
     bool bSpawned = false;
     int32 CreatureIndex = 0;
     float EffectSync = 0;
+    float AudioEnvironmentSync = 0;
+    float AudioGrooveSync = 0;
     float AttackCooldown = 0, RoofTime = 0, InteriorGrace = 0;
     FVector Destination = FVector::ZeroVector, LastSafe = FVector::ZeroVector,
             StreamFocus = FVector::ZeroVector;
@@ -149,12 +168,11 @@ class AAC2PlayerController : public APlayerController
     void CharacterSelect();
     void SetCursor(bool Enabled);
     virtual void FlushPressedKeys() override;
-    void RestoreCursor() { SetCursor(!MouseLook); }
-    bool WantsMouseLook() const { return MouseLook; }
-    // Held-button camera gestures are independent of the optional Alt/MMB toggle.
+    void RestoreCursor() { SetCursor(true); }
+    bool WantsMouseLook() const { return false; }
+    // Camera capture lasts only for the held-button gesture.
     bool CameraSteersPlayer=false, MouseForward=false, FreeOrbit=false;
   private:
-    bool MouseLook=false;
     TOptional<FIntPoint> SavedPointer;
 };
 UCLASS()
@@ -169,4 +187,6 @@ class AAC2HUD : public AHUD
     TSharedPtr<class SAC2CharacterUI> CharacterUI;
     TSharedPtr<class SAC2GameUI> GameUI;
     TSharedPtr<class SAC2Cursor> MouseCursor;
+    TSharedPtr<class SAC2PortalSpace> PortalUI;
+    UPROPERTY() TObjectPtr<class AAC2PortalSpace> PortalEffect;
 };

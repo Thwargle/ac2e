@@ -72,7 +72,7 @@ AI, spawn generators and respawn schedules are not reconstructed.
 
 ## Creature combat stats
 
-`creature-combat.tsv` lists 152 placed creatures with the combat fields their
+`creature-combat.tsv` lists 317 candidate creature profiles with the combat fields their
 `portal.dat` entity records carry: health, natural damage, armor, death XP and
 level, with an interval column that is 0 when the record has no natural weapon
 time. Parent records are merged first, as the 2012 server's
@@ -319,3 +319,175 @@ runtime replacement/hot reload is not supported.
 
 No tests or native-client checks were run for this addition. Compilation and
 read-only asset inspection do not prove in-game appearance or interactions.
+
+## Pinned upstream continuation
+
+`capture-spawns-upstream.tsv` is the unmodified v4 capture snapshot from Pyrealium
+revision `468793018b332b87228794b0720ea1ce0400f96d` (22,422 rows). Its optional
+last column preserves captured names. Preparation merges it after existing inputs,
+keeps earlier IIDs/cell snapshots, validates native qualities/physical visuals and
+reports conflicts. It does not enable all 22,422 observations. Current installed
+DATs admitted 1,276 total placements before the subsequent corpus audit below.
+
+`upstream-content.json` records provenance. Combat values were regenerated from
+local DATs against the broader upstream candidate list: 317 usable profiles,
+406 failed/missing candidates. The upstream skill/advancement catalog was not
+copied because the installed DATs disagree with many of its records.
+
+The supplied 2017 SQL archive has no entity/quest population rows and its 160
+portal rows duplicate the retained portal metadata. Use
+`tools/audit_pyreal_sql.py` to inspect it without executing SQL. The raw archive
+and dump stay outside source control.
+
+## Combined packet and historical emulator audit
+
+`capture-spawns-audited.tsv` adds 121 conservative observations in 86 uncovered
+cells from the supplied MEGA capture/emulator collections. Its report records
+capture/message hashes, initial state and exact-row exclusions for historical
+looted/dead observations. Preparation keeps one source snapshot per cell,
+preserves original coordinates, validates installed entity/model mappings and
+admits 1,392 combined placements after all filters. A location observed once is
+not proof of a retail spawn schedule.
+
+The native offline decoder and bounded PCAP/PCAPNG audit tools can regenerate
+this data without publishing captures or account/player information. See
+`Docs/CAPTURE_REFERENCE_IMPORT.md` in the repository root for provenance,
+commands, verification and the limits of the historical emulator/SQL references.
+
+The historical `creature-entities.txt` list includes town NPCs and is only an
+extraction candidate list. It does not establish attackability. Runtime encounters
+require a recovered `creature-combat.tsv` row or an explicit authored rule;
+services and configured quest guides remain protected even if their templates
+carry combat statistics. The current 1,392-object pack has 510 combat actors,
+including 135 outdoor placements in 64 blocks. This is incomplete observed
+coverage, not retail world generators. `@spawns` lists nearby admitted actors;
+it does not generate creatures.
+
+## Population recovered with source-build DATs
+
+The later 2017-client comparison supersedes the coverage counts above.
+`recovered-population.tsv` contains 4,217 placements translated by native
+localized name, AI table and role, with source visuals and native ground contact
+verified. Coordinates, rotations and scales remain those captured. Its report
+records every mapping, capture/message hash and both client DAT fingerprints.
+The manifest has a required content hash and LF line endings.
+
+The recovered rows include 3,931 monsters (3,742 outdoors), 261 scripted actors
+and 25 vendors. The merged pack has 3,872 outdoor combat creatures in 1,642
+blocks and 78 native vendors. One capture snapshot per region prevents repeated
+journeys/respawns from being stacked. Curated and training cells remain prior.
+`population-protected.txt` prevents recovered service/scripted identities from
+becoming generic combat encounters through inherited stats.
+
+The normal launcher prepares this pack automatically. Rebuild the server after
+changing combat/protection catalogs, then restart it. `@spawns` lists nearby
+live monsters on a local test server. A verified Cutter Beetle location is
+`78B8002E`, approximately 44.9N, 5.4W.
+
+Restored placements do not imply completed quest scripts, retail loot tables,
+vendor inventory parity, or retail spawn schedules. Refer to
+`Docs/CAPTURE_REFERENCE_IMPORT.md` for the full source audit, regeneration
+commands, validation and remaining gaps.
+
+## Population ownership
+
+Eligible combat placements become server-managed **point spawners**. The server
+withdraws the imported monster lifetimes before accepting clients, then the
+spawners create their children. Each point has capacity one, including a corpse
+that is still present for loot. Death schedules corpse removal and regeneration
+separately; replacement waits for confirmed removal. Movement and visibility
+changes do not vacate a slot. Vendors, protected quest actors, doors and other
+fixed content do not enter this controller.
+
+`development-encounters.tsv` retains its legacy `npc` regeneration field. An
+optional `spawner` row overrides initial delay and regeneration in milliseconds
+for a placed combat template: `spawner<TAB>entity<TAB>initial_ms<TAB>regen_ms`.
+Without an override, initial delay is zero and the existing authored interval
+applies (30 seconds for imported native combat profiles). These are AC2E rules,
+not recovered retail generation schedules. Lootable corpses remain for 60
+seconds, so their replacement may wait longer than the regeneration interval.
+
+`native-generators.report.json` records the installed DAT evidence: 639 templates
+carry generator properties and 2,111 profile labels exist, but the parsed outdoor
+and interior placements contain no generator profiles, and the encounter table
+is empty. Five unsupported template parses are recorded. The template properties
+include regeneration periods and quantity overrides; the profile child lists,
+region definitions and generator locations have not been recovered. A profile
+name is insufficient to bind a camp or treasure generator to a captured monster.
+The current point spawners preserve verified capture positions, full quaternions
+and scale; they do not add random regional populations.
+
+An optional `spawn-group<TAB>group_hex_id<TAB>capacity<TAB>child_iid_hex,...`
+row binds an explicit roster of existing monster points. Capacity is 1–64 and
+cannot exceed the roster size. Each child belongs to at most one group; services,
+unknown actors and duplicate children are rejected. Pending creation, live
+children, corpses and pending removal all occupy capacity. Group rows do not
+invent positions, clone templates, or change the members' regeneration policy.
+No production grouping is inferred from proximity: native generator rosters and
+quantity overrides for these placements have not been recovered.
+
+## Loot and idle AI
+
+`observed-loot.tsv` contains 698 observed corpse bundles mapped to 146 installed
+monster templates; `loot-items.tsv` contains 222 native item definitions. The
+source/mapping evidence and DAT hashes are in `observed-loot.report.json`.
+The runtime admits 144 creature tables, 123 native death-loot profiles and 218
+items with the current DATs; four unsupported items cause 21 bundles to be
+withheld. Exact creature tables take precedence over a shared native
+`NPC_DeathLootProfile`. `NPC_LootProof` suppresses drops. Unknown profiles return
+an empty corpse, never the old universal potion. Existing authored tutorial
+quest-item/gear rewards remain separate from generic corpse loot.
+
+These are observed base-item bundles. Observed frequencies supply AC2E weights;
+retail probabilities, randomized affixes/quality and unobserved tables have not
+been recovered. A capture is not proof of the complete retail loot generator.
+The separate `native-trophies.json` now provides explicit installed-DAT trophy
+probabilities: matching trophies are removed from observed bundles and rolled
+with their native slot rates. Generic treasure weights remain unrecovered.
+Each corpse rolls once, supports up to 32 items, and retains unclaimed items on
+close/reopen or a full backpack. Single pickup and Loot All use journaled grants;
+claimed inventory survives restart. Unclaimed corpses remain temporary.
+
+`creature-ai.tsv` preserves inherited native perception, homesickness, wandering
+enable/radius/probability, free-attack/idle-only flags and loot-profile bindings.
+Absent properties stay absent. No wandering range is invented for a creature
+without one. The runtime uses native collision for wandering, pursuit and line
+of sight. Nearby actors scan once per second on staggered schedules; distant
+unobserved actors do not load collision merely to roam. Uniform disk wandering
+destinations, the missing-probability fallback (0.2), movement speed, and generic
+hostility exclusions are AC2E policy, not recovered retail AI scripts.
+
+`native-quests.json` is a version-fingerprinted authoring catalog of native quest
+text, phases, related quests and entity/effect links. It does not enable quests
+whose prerequisites, NPC tables and reward flow remain unresolved. Recovery
+methods and runtime changes are documented in `Docs/ADMIN_CONTENT_RECOVERY.md`.
+
+`recovered-quest-text.json` adds historical authoring evidence for 291 missing
+fields across 98 native quests. Installed parent StringTables must be byte-identical
+to the archived Pyreal parent; every private redirect is fingerprinted. Existing
+translations are never replaced, grammar markers remain raw, and these strings
+are not a live localization overlay.
+
+`reference-tables.json` catalogs the additional Pyreal/AC2Util SQL tables and
+the archived wiki's HTTrack cache. It includes 184 NPC guide rows, 67 incursion
+starter rows, 162 quest-index rows, 791 bestiary rows, and native-title candidate
+links to 83 wiki articles/quests. It also retains 46 incursion reference rows,
+eight repeat-timer conflicts, and selected loot/dungeon tables. Full article
+text is generated under `Saved/ContentRecovery/wiki-content.json`.
+
+Both catalogs have `runtime_enabled: false`. Guide coordinates lack exact cell,
+height, heading and generator rosters. Quest kill targets are not simultaneous
+spawn counts; sampled trophy percentages and likely drop-count ranges are not
+retail loot weights. Follow the source hashes and resolve version conflicts
+before authoring gameplay. Neither catalog is loaded by the game server.
+
+The user-authorized `inferred-content-v1.json` pack now derives a separate playable
+reconstruction from those references: 88 quest profiles, 143 capacity-limited
+camp rosters and 26 additional noncombat NPC placements. `inferred-world-v1.tsv`
+contains 702 accepted native-ground placements, with source/manifest hashes and
+rejections in its report. `prepare_content.py` appends this pack after captures;
+it never rewrites them. Additional native combat/AI profiles live in the matching
+`inferred-creature-*-v1.tsv` files. Generic loot now varies and supported armor
+has persistent ratings/tints. These are inferred rules, not recovered retail
+weights. See `Docs/ADMIN_CONTENT_RECOVERY.md` for exact assumptions, provenance,
+limits, regeneration commands and immutable journal-version requirements.

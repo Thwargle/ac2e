@@ -142,6 +142,7 @@ struct FAC2SceneryGenerator::FImpl
     TMap<uint32, FTerrainScenes> Terrains;
     FTerrainScenes DefaultTerrain;
     TMap<uint32, TArray<FSceneWeight>> SceneTypes;
+    TMap<uint32,uint32> SceneSounds;
     TMap<uint32, TSharedPtr<FSceneFile>> Files;
     const FAC2LandscapeDefs *Defs = nullptr;
     const FAC2LandBlock *Land = nullptr;
@@ -426,7 +427,7 @@ bool FAC2SceneryGenerator::Initialize(FString &Error)
     for (int32 I = 0; I < NS && S.Good; ++I)
     {
         const uint32 Index = S.Word();
-        S.Word();
+        Impl->SceneSounds.Add(Index,S.Word());
         const int32 NW = S.Count(12, 16384);
         TArray<FSceneWeight> Weights;
         for (int32 J = 0; J < NW; ++J)
@@ -445,6 +446,22 @@ bool FAC2SceneryGenerator::Initialize(FString &Error)
         return false;
     }
     return true;
+}
+TArray<FAC2AmbientPoint> FAC2SceneryGenerator::AmbientPoints(const FAC2LandscapeDefs& Defs,const FAC2LandBlock& Land) const
+{
+    TArray<FAC2AmbientPoint> Out;
+    if(Land.CellInfo.Num()!=289 || Land.Heights.Num()!=289)return Out;
+    // CLandBlock::CreateAmbientSoundPoints uses block_length / side_vertex_count.
+    const float Spacing=Defs.BlockSize()*100/17;
+    for(int32 X=0;X<17;++X)for(int32 Y=0;Y<17;++Y)
+    {
+        const int32 I=X*17+Y;const uint32 Info=Land.CellInfo[I];
+        const auto* T=Impl->Terrains.Find(Info&Defs.TerrainMask);if(!T)T=&Impl->DefaultTerrain;
+        const auto* Scene=T->Indices.Find((Info>>7)&31);
+        const uint32 Sound=Impl->SceneSounds.FindRef(Scene?*Scene:T->Default);
+        if(Sound && Defs.Heights.IsValidIndex(Land.Heights[I]))Out.Add({Sound,FVector(X*Spacing,Y*Spacing,Defs.Heights[Land.Heights[I]]*100),true});
+    }
+    return Out;
 }
 void FAC2SceneryGenerator::Generate(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Land,
                                     const TArray<FBox> &PlacedBounds, TArray<FAC2SceneryPlacement> &Out,

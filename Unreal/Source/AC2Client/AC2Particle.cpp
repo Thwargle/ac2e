@@ -1,5 +1,20 @@
 #include "AC2Particle.h"
 
+FAC2Decal FAC2Decal::Read(FAC2AssetReader& R)
+{
+    FAC2Decal D;const bool Enabled=R.Word()!=0;
+    D.Color=FColor(R.Word());D.Material=R.Word();D.Origin=R.Vector();D.Lifetime=R.Float();
+    D.Size=FAC2Wave::Read(R);D.Rotation=FAC2Wave::Read(R);D.Radius=FAC2Wave::Read(R);
+    if(!Enabled || D.Material>>24!=0x31 || !FMath::IsFinite(D.Lifetime) || D.Lifetime<=0 || D.Origin.ContainsNaN())D.Material=0;
+    return D;
+}
+float FAC2Decal::Opacity(float Age,float Life)
+{
+    if(!FMath::IsFinite(Age) || !FMath::IsFinite(Life) || Life<=0 || Age<0 || Age>=Life)return 0;
+    // DecalEffect::Think 005DE430.
+    return FMath::Clamp(FMath::Min(Age/FMath::Min(Life*.1f,.25f),1.f)*(Life-Age)/FMath::Min(Life*.2f,1.f),0.f,1.f);
+}
+
 FAC2Wave FAC2Wave::Read(FAC2AssetReader &R)
 {
     FAC2Wave W;
@@ -199,4 +214,10 @@ void FAC2ParticlePreset::Sample(float Age, float &Width, float &Height, FLinearC
     float Mass;
     if (!Emitters.IsEmpty())
         Emitters[0].Sample(Age, Emitters[0].ParticleScale.Value(0), Width, Height, Tint, Mass);
+}
+float FAC2ParticlePreset::RenderScale(float ObjectScale,float VisualParticleScale) const
+{
+    // ParticleSystem::Render (7160 0058A420): all types inherit object scale;
+    // only type 2 additionally applies CVisualDesc's particle scale.
+    return ObjectScale*(ScaleType==2?VisualParticleScale:1.f);
 }

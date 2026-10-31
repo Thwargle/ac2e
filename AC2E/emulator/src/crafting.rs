@@ -213,6 +213,7 @@ pub fn item(definition: u32, id: u64, slot: u16) -> Result<Item, WorldError> {
         return Err(WorldError::InvalidValue);
     }
     Ok(Item {
+        roll: None,
         id,
         definition,
         visual: profile.visual,
@@ -305,7 +306,7 @@ pub fn validate_vigor(portal: &mut Dat) -> io::Result<Metadata> {
 }
 
 pub fn tallow(id: u64, slot: u16) -> Item {
-    Item {
+    Item {roll: None,
         id,
         definition: TALLOW,
         visual: 0x1f000234,

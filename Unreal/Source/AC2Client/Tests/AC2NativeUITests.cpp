@@ -47,11 +47,31 @@ bool FAC2NativeWindowsTest::RunTest(const FString &)
         TestTrue(TEXT("resized template stretches entry"), Entry->Rect.Width() > 400);
         TestTrue(TEXT("log stays inside frame"), UI.Bounds(TEXT("ChatWindow1")).Contains(Log->Rect.Min));
         TestEqual(TEXT("entry DAT font"), Entry->Attr(TEXT("font")), 0x4200000cu);
+        const int32 ChatIndex=int32(UI.Find(TEXT("ChatWindow1"))-UI.Nodes.GetData());
+        const auto* ChatBackground=UI.Nodes.FindByPredicate([&](const auto& N){return N.Parent==ChatIndex && N.Id==0xe930eb61u;});
+        if(!TestNotNull(TEXT("native chat background"),ChatBackground))return false;
+        const int32 BackgroundIndex=int32(ChatBackground-UI.Nodes.GetData());
+        TArray<FIntRect> Tiles;
+        for(const auto& N:UI.Nodes)if(N.Parent==BackgroundIndex)Tiles.Add(N.Clip);
+        TestEqual(TEXT("nine chat background tiles"),Tiles.Num(),9);
+        for(int32 I=0;I<Tiles.Num();++I)for(int32 J=I+1;J<Tiles.Num();++J){
+            FIntRect Overlap=Tiles[I];Overlap.Clip(Tiles[J]);
+            TestTrue(TEXT("translucent chat frame tiles never double-blend a seam"),Overlap.Width()<=0 || Overlap.Height()<=0);
+        }
     }
+    UI.RootOffsets.Add(T(TEXT("RightSidePanel")),FIntPoint(-5000,-5000));
+    UI.Begin(FIntPoint(1600,900));UI.Root(0x22000001,TEXT("RightSidePanel"));
+    TestEqual(TEXT("off-screen saved panel is constrained"),UI.Bounds(TEXT("RightSidePanel")).Min,FIntPoint::ZeroValue);
+    UI.RootOffsets[T(TEXT("RightSidePanel"))]+=FIntPoint(80,40);
+    UI.Begin(FIntPoint(1600,900));UI.Root(0x22000001,TEXT("RightSidePanel"));
+    TestEqual(TEXT("constrained panel moves immediately when dragged"),UI.Bounds(TEXT("RightSidePanel")).Min,FIntPoint(80,40));
+    UI.RootOffsets.Reset();
     UI.Begin(FIntPoint(1024, 768));
     UI.Root(0x22000002, TEXT("Viewport"));
     UI.Root(0x22000002, TEXT("EnterButtonField"));
     UI.Root(0x22000002, TEXT("BackgroundField"));
+    TestEqual(TEXT("Selection music retained from DAT"),UI.Find(TEXT("BackgroundField"))->Attr(TEXT("music")),0x2c00039au);
+    TestTrue(TEXT("Native UI sound media retained"),UI.Layouts[0x22000002].Art.ContainsByPredicate([](const auto& M){return M.Kind==5 && M.Image==0x2a0000ecu;}));
     TArray<uint32> Roots;
     for (int32 I : UI.PaintOrder())
         if (UI.Nodes[I].Parent == INDEX_NONE)

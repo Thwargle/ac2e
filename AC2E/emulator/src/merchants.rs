@@ -43,6 +43,12 @@ pub const LAYOUTS: [(usize, u32); 3] = [(0x385d, 4), (0x382e, 11), (0x3812, 10)]
 const STORE_TEMPLATE: u32 = 0x6f00609a;
 const GOLD_DEFINITION: u32 = 0x47001108;
 const STOCK: [Stock; 4] = [Stock::Potion, Stock::Weapon, Stock::Mucor, Stock::Tallow];
+/// Shared bounded AC2E price policy; unknown/quest items cannot be transmuted.
+pub fn sale_value(item:&Item)->Option<(&'static str,u32)> {
+    if let Some(stock)=Stock::for_item(item) {Some((stock.name(),stock.sell_price()))}
+    else if crate::starter_gear::tradable(item) || crate::apparel::tradable(item) {Some(("equipment",3))}
+    else {None}
+}
 pub const MUCOR_DEFINITION: u32 = 0x47001744;
 pub const MUCOR_VISUAL: u32 = 0x1f000e37;
 pub const MUCOR_PHYSICAL: u32 = 0x4700176b;
@@ -253,7 +259,7 @@ pub fn listing() -> String {
 }
 
 pub fn mucor(id: u64, slot: u16) -> Item {
-    Item {
+    Item {roll: None,
         id,
         definition: MUCOR_DEFINITION,
         visual: MUCOR_VISUAL,
@@ -359,9 +365,7 @@ pub fn plan_sell(
         .items()
         .find(|item| item.location == Location::Bag(slot))
         .ok_or(MerchantError::NotOwned)?;
-    let (name,price)=if let Some(stock)=Stock::for_item(item) {(stock.name(),stock.sell_price())}
-        else if crate::starter_gear::tradable(item) || crate::apparel::tradable(item) {("equipment",3)}
-        else {return Err(MerchantError::NotForSale);};
+    let (name,price)=sale_value(item).ok_or(MerchantError::NotForSale)?;
     let items = vec![if item.quantity > 1 {
         inventory::Command::ConsumeStackDense {
             item: item.id,

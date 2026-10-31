@@ -15,6 +15,9 @@ struct FAC2NativeNode
     TArray<FAC2UIArt> Media;
     FString Text;
     float Rotation=0;
+    float Opacity=1;
+    // Pixel end caps for a runtime-widened single-bitmap window frame.
+    float ImageBorderX=0;
     uint32 Attr(const TCHAR *Name, uint32 Default = 0) const;
     float Float(const TCHAR *Name, float Default = 0) const;
 };
@@ -25,6 +28,7 @@ class FAC2NativeUI
 {
   public:
     bool Open(const FString &Directory, FString &Error);
+    void SetAudioWorld(UWorld* World) { AudioWorld=World; }
     TMap<uint32, FAC2UILayout> Layouts;
     TArray<FAC2NativeNode> Nodes;
     TMap<uint32, bool> Visibility;
@@ -32,6 +36,8 @@ class FAC2NativeUI
     TMap<uint32, FString> Text;
     TMap<uint32, float> Meters;
     TMap<uint32, float> Positions;
+    // User window positions are applied before descendants and hit regions are resolved.
+    TMap<uint32, FIntPoint> RootOffsets;
     uint32 Hovered = 0, Pressed = 0;
     void Begin(FIntPoint Viewport);
     bool Root(uint32 Layout, const TCHAR *Name);
@@ -61,6 +67,8 @@ class FAC2NativeUI
                           FIntPoint ParentSize);
 
   private:
+    TWeakObjectPtr<UWorld> AudioWorld;
+    TMap<uint64,uint32> AudioStates;
     FAC2DatArchive Local;
     FIntPoint Display = FIntPoint(1024, 768);
     TMap<uint64, FString> Strings;

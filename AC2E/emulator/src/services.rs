@@ -10,6 +10,8 @@ use std::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Service {
     Door { locked: bool },
+    Chest { locked: bool },
+    Sign,
     Vendor,
 }
 pub struct Profiles {
@@ -101,6 +103,13 @@ impl Profiles {
                             .iter()
                             .any(|k| props.get(k).is_some_and(|v| *v != 0)),
                     })
+                } else if did == 3723 {
+                    // Chest templates (Drudge Potion, Encomium and Supply chests).
+                    Some(Service::Chest {locked:[0x41000195,0x410000b6,0x41000133,0x41000131,0x41000135]
+                        .iter().any(|k|props.get(k).is_some_and(|v|*v!=0))})
+                } else if did == 411 || (4000..=4075).contains(&did) {
+                    // WLib RoadSignTemplate and its town/gateway subclasses.
+                    Some(Service::Sign)
                 } else if [0x410002de, 0x410002ec]
                     .iter()
                     .any(|k| props.get(k).is_some_and(|v| *v != 0))

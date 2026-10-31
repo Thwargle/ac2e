@@ -177,6 +177,8 @@ pub struct Scene {
     bodies: BTreeMap<u64, Body>,
     cells: BTreeMap<u32, BTreeSet<u64>>,
     content: crate::content::Content,
+    chest_viewers: BTreeMap<u64,u64>,
+    next_chest_check: u64,
 }
 impl Scene {
     pub fn validate_drop(&mut self,dropped:&crate::store::DroppedItem) -> std::io::Result<()> {
@@ -464,9 +466,19 @@ impl Scene {
         self.player_placement(player)?.distance(self.content_placement(creature)?)
     }
     pub fn move_creature(&mut self,id:u64,placement:Placement,now:u64) -> std::io::Result<Vec<Delivery>> {
+        self.prepare_cell(placement.cell)?;
+        let previous=self.bodies.keys().filter(|observer|self.can_observe(**observer,id)).copied().collect::<BTreeSet<_>>();
         let wire=self.content.move_creature(id,placement,now)?;
-        Ok(self.bodies.keys().filter(|observer| self.can_observe(**observer,id))
-            .map(|recipient|Delivery {recipient:*recipient,data:wire.clone()}).collect())
+        let current=self.bodies.keys().filter(|observer|self.can_observe(**observer,id)).copied().collect::<BTreeSet<_>>();
+        let object=self.content.object(id).unwrap();
+        let mut deliveries=Vec::new();
+        for &recipient in previous.difference(&current){deliveries.push(Delivery{recipient,data:object.destroy.clone()});}
+        for &recipient in current.difference(&previous){
+            deliveries.push(Delivery{recipient,data:object.spawn.clone()});
+            for data in object.updates(){deliveries.push(Delivery{recipient,data:data.clone()});}
+        }
+        for &recipient in current.intersection(&previous){deliveries.push(Delivery{recipient,data:wire.clone()});}
+        Ok(deliveries)
     }
     pub fn examination_content(
         &self,
@@ -491,6 +503,39 @@ impl Scene {
         if !player.distance(door.placement).is_some_and(|d|d<=4.) {return Err(std::io::Error::other("Move within four metres of the door."));}
         let wire=self.content.toggle_door(target)?;
         Ok(self.bodies.keys().filter(|id|self.can_observe(**id,target)).map(|id|Delivery{recipient:*id,data:wire.clone()}).collect())
+    }
+    pub fn open_chest(&mut self,observer:u64,target:u64)->std::io::Result<Vec<Delivery>> {
+        if self.examination_content(observer,target).and_then(|o|o.service)!=Some(crate::services::Service::Chest{locked:false})
+            || !self.combat_distance(observer,target).is_some_and(|d|d<=4.) {
+            return Err(std::io::Error::other("Chest is locked, unavailable or out of reach."));
+        }
+        if self.chest_viewers.get(&observer)==Some(&target){return Ok(Vec::new());}
+        let mut updates=self.close_chest(observer,None)?;
+        if let Some(data)=self.content.set_chest_open(target,true)? {
+            updates.extend(self.neighbor_ids(self.content.cell(target).unwrap(),0).map(|recipient|Delivery{recipient,data:data.clone()}));
+        }
+        self.chest_viewers.insert(observer,target);Ok(updates)
+    }
+    /// Only the last viewer closes the shared model. A delayed close for an
+    /// older chest must not dismiss a newly opened container.
+    pub fn close_chest(&mut self,observer:u64,target:Option<u64>)->std::io::Result<Vec<Delivery>> {
+        let Some(&container)=self.chest_viewers.get(&observer).filter(|id|target.is_none_or(|t|t==**id)) else {return Ok(Vec::new());};
+        let mut updates=Vec::new();
+        if !self.chest_viewers.iter().any(|(id,value)|*id!=observer && *value==container) {
+            if let Some(data)=self.content.set_chest_open(container,false)? {
+                updates.extend(self.neighbor_ids(self.content.cell(container).unwrap(),0).map(|recipient|Delivery{recipient,data:data.clone()}));
+            }
+        }
+        self.chest_viewers.remove(&observer);
+        if self.player_placement(observer).is_some(){updates.push(Delivery{recipient:observer,data:crate::loot::closed(container).map_err(std::io::Error::other)?.into()});}
+        Ok(updates)
+    }
+    pub fn expire_chest_views(&mut self,now:u64,alive:impl Fn(u64)->bool)->std::io::Result<Vec<Delivery>> {
+        if now<self.next_chest_check{return Ok(Vec::new());}
+        self.next_chest_check=now.saturating_add(100);
+        let expired=self.chest_viewers.iter().filter(|(player,container)|!alive(**player)
+            || !self.combat_distance(**player,**container).is_some_and(|d|d<=4.)).map(|(&id,_)|id).collect::<Vec<_>>();
+        let mut updates=Vec::new();for id in expired{updates.extend(self.close_chest(id,None)?);}Ok(updates)
     }
     pub fn nearby_service(&self, observer: u64, entity: u32, target: Option<u64>) -> Option<u64> {
         let player = self.player_placement(observer)?;
@@ -534,6 +579,11 @@ impl Scene {
                 data: data.clone(),
             })
             .collect())
+    }
+    pub fn corpse_name(&mut self,id:u64,names:&crate::examination::Names)->std::io::Result<Vec<Delivery>> {
+        let data=self.content.corpse_name(id,names)?;
+        Ok(self.bodies.keys().filter(|observer|self.can_observe(**observer,id))
+            .map(|recipient|Delivery{recipient:*recipient,data:data.clone()}).collect())
     }
     pub fn despawn_content(&mut self, id: u64) -> std::io::Result<Vec<Delivery>> {
         let cell = self
@@ -746,15 +796,15 @@ impl Scene {
         }
     }
     pub fn remove(&mut self, id: u64) -> Vec<Delivery> {
+        let mut deliveries=self.close_chest(id,None).unwrap_or_else(|error|{eprintln!("Closing departed chest viewer: {error}");Vec::new()});
         let Some(body) = self.bodies.remove(&id) else {
-            return Vec::new();
+            return deliveries;
         };
         if !body.ready {
-            return Vec::new();
+            return deliveries;
         }
         self.unindex(body.placement.cell, id);
         let event = body.destroy();
-        let mut deliveries = Vec::new();
         for recipient in self.neighbors(body.placement.cell, id) {
             body.hand_destroys(recipient, &mut deliveries);
             deliveries.push(Delivery {
@@ -946,6 +996,49 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moving_creature_changes_observers_and_cell_index_and_respawns_at_home() {
+        let id=crate::content::NAMESPACE+1;
+        let home=Placement{cell:0x76b8003a,coordinates:[159.9,21.,180.],heading:0};
+        let next=home.translated([0.2,0.,0.]).unwrap();
+        let mut scene=Scene::with_content(crate::content::Content::fixture(id,home,None));
+        scene.enter(body(1,home.cell)).unwrap();scene.enter(body(2,next.cell)).unwrap();
+        let updates=scene.move_creature(id,next,100).unwrap();
+        assert_eq!(updates.iter().filter(|e|e.recipient==1).count(),1);
+        assert_eq!(&updates.iter().find(|e|e.recipient==1).unwrap().data[..4],&0x100c2u32.to_le_bytes());
+        let spawn=updates.iter().find(|e|e.recipient==2 && e.data[..4]==world::CREATE_OBJECT.to_le_bytes()).unwrap();
+        assert_eq!(&spawn.data[48..52],&next.cell.to_le_bytes());
+        assert_eq!(scene.content.at(home.cell).count(),0);assert_eq!(scene.content.at(next.cell).count(),1);
+        assert!(!scene.can_observe(1,id));assert!(scene.can_observe(2,id));
+        let late=scene.enter(body(3,next.cell)).unwrap();
+        assert!(late.iter().any(|e|e.recipient==3 && e.data==spawn.data));
+        let continuous=scene.move_creature(id,next.translated([0.1,0.,0.]).unwrap(),200).unwrap();
+        assert_eq!(continuous.len(),2);assert!(continuous.iter().all(|e|e.data[..4]==movement::SERVER_POSITION.to_le_bytes()));
+        scene.despawn_content(id).unwrap();let respawn=scene.respawn_content(id).unwrap();
+        assert!(respawn.iter().all(|e|e.recipient==1));assert_eq!(scene.content.at(home.cell).count(),1);
+        assert_eq!(scene.content.at(next.cell).count(),0);assert_eq!(scene.content_placement(id),Some(home));
+    }
+    #[test]
+    fn chest_state_has_multiple_viewers_late_observers_and_departure_cleanup() {
+        let id=crate::content::NAMESPACE+1;let home=Placement::HUMAN_START;
+        let mut scene=Scene::with_content(crate::content::Content::fixture(id,home,Some(crate::services::Service::Chest{locked:false})));
+        scene.enter(body(1,home.cell)).unwrap();scene.enter(body(2,home.cell)).unwrap();
+        let open=scene.open_chest(1,id).unwrap();assert_eq!(open.len(),2);
+        assert!(open.iter().all(|e|e.data[16..20]==crate::services::OPEN_MODE.to_le_bytes()));
+        assert!(scene.open_chest(1,id).unwrap().is_empty());assert!(scene.open_chest(2,id).unwrap().is_empty());
+        assert!(scene.close_chest(1,Some(id+1)).unwrap().is_empty());
+        let close=scene.close_chest(1,Some(id)).unwrap();assert_eq!(close.len(),1);assert_eq!(close[0].recipient,1);
+        let late=scene.enter(body(3,home.cell)).unwrap();assert!(late.iter().any(|e|e.recipient==3 && e.data==open[0].data));
+        let removed=scene.remove(2);
+        assert!(removed.iter().any(|e|e.recipient==1 && e.data[..4]==crate::combat_visual::DO_MODE.to_le_bytes()
+            && e.data[16..20]==crate::services::CLOSED_MODE.to_le_bytes()));
+        assert!(scene.chest_viewers.is_empty());
+        scene.open_chest(1,id).unwrap();
+        let expired=scene.expire_chest_views(100,|_|false).unwrap();assert!(!expired.is_empty());assert!(scene.chest_viewers.is_empty());
+        scene.open_chest(1,id).unwrap();scene.bodies.get_mut(&1).unwrap().placement.coordinates[0]+=10.;
+        assert!(!scene.expire_chest_views(200,|_|true).unwrap().is_empty());assert!(scene.chest_viewers.is_empty());
+        assert!(scene.open_chest(1,id).is_err());
+    }
     fn body(id: u64, cell: u32) -> Body {
         let placement = Placement {
             cell,

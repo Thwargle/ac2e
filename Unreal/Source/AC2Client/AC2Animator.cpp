@@ -218,6 +218,16 @@ TArray<uint32> FAC2Animator::ActiveClips(const FAC2AnimatorInput &Input) const
         Ids.AddUnique(C.Node->Id);
     return Ids;
 }
+float FAC2Animator::JumpDelay(const FAC2AnimatorInput& Input) const
+{
+    TArray<FWeighted> Clips;Gather(Root.Get(),Input,1,Clips);
+    const FWeighted* Best=nullptr;
+    for(const auto& C:Clips)if(!Best || C.Weight>Best->Weight)Best=&C;
+    float Phase=1;
+    if(!Best || Best->Node->Clip->JumpTriggers.IsEmpty())return 0;
+    for(float Trigger:Best->Node->Clip->JumpTriggers)Phase=FMath::Min(Phase,Trigger);
+    return Phase*Period(Input);
+}
 TArray<FTransform> FAC2Animator::Sample(float Phase, const FAC2AnimatorInput &Input,
                                         const TArray<FTransform> &Rest) const
 {

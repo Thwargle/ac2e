@@ -8,10 +8,12 @@
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Rendering/DrawElements.h"
 #include "Widgets/SCanvas.h"
+#include "Misc/ConfigCacheIni.h"
 
 namespace
 {
@@ -49,8 +51,16 @@ void SAC2GameUI::Construct(const FArguments &Args)
     FString Error;
     Assets->Open(Mode->DatDirectory, Error);
     Fonts.Open(Mode->DatDirectory, Error);
+    Native.SetAudioWorld(Mode->GetWorld());
+    SkillData.Open(Mode->DatDirectory);
     if (!Native.Open(Mode->DatDirectory, Error))
         UE_LOG(LogTemp, Error, TEXT("Native HUD layout: %s"), *Error);
+    for(const TCHAR* Name:{TEXT("ExternalContainerField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("ChatWindow1"),TEXT("StatusbarField"),TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("Shop")})
+    {
+        FVector2D Offset;
+        if(GConfig->GetVector2D(TEXT("AC2.Windows"),Name,Offset,GGameUserSettingsIni) && !Offset.ContainsNaN())
+            Native.RootOffsets.Add(Token(Name),FIntPoint(FMath::RoundToInt(Offset.X),FMath::RoundToInt(Offset.Y)));
+    }
     if (!MapUI.Open(Mode->DatDirectory, Error))
         UE_LOG(LogTemp, Error, TEXT("Native maps: %s"), *Error);
     BodyFont = ChatFont = Fonts.Get(0x4200000c);
@@ -143,6 +153,7 @@ void SAC2GameUI::Rebuild()
     OptionSliders.Reset();
     ButtonActions.Reset();
     Icons.Reset();
+    SkillLinks.Reset();
     Hints.Reset();
     PointerNodesStart=MAX_int32;
     ModeHasNetwork=Mode->Network.IsValid();
@@ -169,6 +180,13 @@ void SAC2GameUI::Rebuild()
     for (auto Name : SlotNames)
         Show(*(FString(Name) + TEXT("_Durability")), false);
     Show(TEXT("InventoryField"), ShowInventory);
+    Show(TEXT("SkillField"),ShowSkills);Show(TEXT("QuestField"),ShowQuests);
+    // Native panel_page tabs propagate open/closed to their DAT border pieces.
+    const uint32 QuestTabs[]={0x715bdff7,0x70859237,0x92e39d2f};
+    const TCHAR* SkillTabs[]={TEXT("MeleeButton"),TEXT("MissileButton"),TEXT("MagicButton"),TEXT("NoncombatButton")};
+    for(int32 I=0;I<4;++I)Native.States.Add(Token(SkillTabs[I]),Token(I==SkillTab?TEXT("highlight"):TEXT("normal")));
+    for(int32 I=0;I<UE_ARRAY_COUNT(QuestTabs);++I)
+        Native.States.Add(QuestTabs[I],Token(I==QuestTab?TEXT("open"):TEXT("closed")));
     Show(TEXT("ExaminationField"), ShowStats);
     for (int32 I = 0; I < 4; ++I)
     {
@@ -186,6 +204,7 @@ void SAC2GameUI::Rebuild()
     if(P && ModeHasNetwork && !SelectedNetworkItem.IsEmpty())
         SelectedItem=P->Items.IndexOfByPredicate([&](const auto& I){return I.NetworkId==SelectedNetworkItem;});
     const float MaxHealth=Mode->Network ? Mode->Network->MaxHealth : 100, MaxVigor=Mode->Network ? Mode->Network->MaxVigor : 100;
+    if(ShowInventory && Portrait.IsValid() && P)Portrait->SetHealth(P->Health,MaxHealth);
     SetText(TEXT("HealthText"), FString::Printf(TEXT("%.0f / %.0f"), P ? P->Health : 0,MaxHealth));
     SetText(TEXT("VigorText"), FString::Printf(TEXT("%.0f / %.0f"), P ? P->Vigor : 0,MaxVigor));
     SetText(TEXT("AmountLabel"), Mode->Network ? FString::FromInt(Mode->Network->Gold) : TEXT("0"));
@@ -201,15 +220,40 @@ void SAC2GameUI::Rebuild()
     Native.Root(0x2200002b, TEXT("StatusbarField"));
     Native.Root(0x22000001, TEXT("ToolbarField"));
     Native.Root(0x22000001, TEXT("ShortcutField"));
+    const int32 ChatFirst=Native.Nodes.Num();
     Native.Root(0x22000001, TEXT("ChatWindow1"));
     // Preserve the DAT window size, but keep its entry accessible on shorter displays.
     Native.ConstrainRoot(TEXT("ChatWindow1"), FIntRect(0, 0, FMath::RoundToInt(Size.X),
                                                        Native.Bounds(TEXT("ToolbarField")).Min.Y));
+    if(ChatFont && ChatFont->Height>0){
+        const auto Rect=Native.Bounds(TEXT("ChatLog"));int32 Rows=0;
+        for(const auto& Line:Log.Lines)Rows+=ChatFont->Lines(Line.Text,Rect.Width()).Num();
+        MaxScroll=FMath::Max(0,Rows-Rect.Height()/int32(ChatFont->Height));
+        Scroll=FMath::Clamp(Scroll,0,MaxScroll);
+    }
+    ChatBar=ChatThumb=FIntRect();
+    for(int32 I=ChatFirst;I<Native.Nodes.Num();++I)if(Native.Nodes[I].Kind==Token(TEXT("scrollbar")))
+    {
+        const auto& Bar=Native.Nodes[I];ChatBar=Bar.Rect;
+        const float Position=MaxScroll>0?1.f-float(FMath::Clamp(Scroll,0,MaxScroll))/MaxScroll:1.f;
+        for(int32 J=I+1;J<Native.Nodes.Num();++J)if(Native.Nodes[J].Parent==I && Native.Nodes[J].Id==Token(TEXT("widget")))
+        {
+            auto& Node=Native.Nodes[J];
+            const FIntPoint Offset(0,ChatBar.Min.Y+FMath::RoundToInt((ChatBar.Height()-Node.Rect.Height())*Position)-Node.Rect.Min.Y);
+            Node.Rect+=Offset;Node.Clip=Node.Rect;Node.Clip.Clip(ChatBar);
+            ChatThumb=Node.Rect;
+            for(int32 K=J+1;K<Native.Nodes.Num();++K){
+                int32 Parent=Native.Nodes[K].Parent;
+                while(Parent>J)Parent=Native.Nodes[Parent].Parent;
+                if(Parent==J){Native.Nodes[K].Rect+=Offset;Native.Nodes[K].Clip+=Offset;Native.Nodes[K].Clip.Clip(ChatBar);}
+            }
+        }
+    }
     Show(TEXT("OptionField"),ShowOptions);
     if(ShowOptions)Show(TEXT("ExaminationField"),false);
     if (ShowStats || ShowOptions)
         Native.Root(0x22000001, TEXT("LeftSidePanel"));
-    if (ShowInventory)
+    if (ShowInventory || ShowSkills || ShowQuests)
         Native.Root(0x22000001, TEXT("RightSidePanel"));
     Bind(TEXT("InventoryButton"), TEXT("Inventory"));
     Bind(TEXT("InventoryCloseButton"), TEXT("Inventory"));
@@ -234,26 +278,8 @@ void SAC2GameUI::Rebuild()
         Buttons.Add(TEXT("ChatUp"), SlateRect(N->Clip));
     if (const auto *N = Native.Find(0xf94b392b))
         Buttons.Add(TEXT("ChatDown"), SlateRect(N->Clip));
-    FIntRect Shortcuts = Native.Bounds(TEXT("ShortcutListBox"));
-    Native.States.Add(Token(TEXT("ShortcutTemplate")), Token(TEXT("normal")));
-    // Empty shortcut numbers are already part of the native background. Instantiate occupied slots only.
-    for (int32 I = 0; I < (Mode->Network ? 3 : 2) && Shortcuts.Width() > 0; ++I)
-    {
-        SetText(TEXT("NumberDisplay"), FString::FromInt((I + 1) % 10));
-        FIntRect R(Shortcuts.Min + FIntPoint(I * 32, 0), Shortcuts.Min + FIntPoint((I + 1) * 32, 32));
-        const int32 First = Native.Nodes.Num();
-        Native.Template(0x22000001, TEXT("ShortcutTemplate"), R, Shortcuts);
-        for (int32 J = First; J < Native.Nodes.Num(); ++J)
-        {
-            if (Native.Nodes[J].Id == Token(TEXT("ShortcutIcon")))
-            {
-                FAC2UIArt Art;
-                Art.Image = I == 0 ? 0x41000ceb : 0x410002e0;
-                Native.Nodes[J].Media.Add(Art);
-            }
-        }
-        Buttons.Add(I == 0 ? TEXT("Strike") : I == 1 ? TEXT("Cast") : TEXT("MissileSkill"), SlateRect(R));
-    }
+    BuildShortcuts();
+    PackBar=PackThumb=FIntRect();PackMaxScroll=0;
     if (ShowInventory && P)
     {
         auto AddIcon=[&](const FAC2InventoryItem& Item,FIntRect Rect,FIntRect Clip)
@@ -264,8 +290,24 @@ void SAC2GameUI::Rebuild()
             else for(int32 I=0;I<Layers.Num();++I)
                 Icons.Add({Rect,Clip,Layers[I].Image,I==Layers.Num()-1?Item.Quantity:1,FLinearColor(FColor(Layers[I].Color))});
         };
+        Native.RootOffsets.Add(Token(TEXT("PaperDollViewport")),Native.RootOffsets.FindRef(Token(TEXT("RightSidePanel"))));
         Native.Root(0x22000001, TEXT("PaperDollViewport"));
         const FIntRect List = Native.Bounds(TEXT("ContainerListBox"));
+        PackMaxScroll=FMath::Max(0,FMath::DivideAndRoundUp(PackCount(),6)-FMath::Max(1,List.Height()/36));
+        PackRow=FMath::Clamp(PackRow,0,PackMaxScroll);
+        if(const auto* N=Native.Find(0x4132bc32))Buttons.Add(TEXT("InventoryUp"),SlateRect(N->Clip));
+        if(const auto* N=Native.Find(0x312383ed))Buttons.Add(TEXT("InventoryDown"),SlateRect(N->Clip));
+        for(int32 I=0;I<Native.Nodes.Num();++I){
+            const auto& Bar=Native.Nodes[I];
+            if(Bar.Kind!=Token(TEXT("scrollbar")) || !Native.Bounds(TEXT("RightSidePanel")).Contains(Bar.Rect.Min))continue;
+            PackBar=Bar.Rect;
+            for(int32 J=I+1;J<Native.Nodes.Num();++J)if(Native.Nodes[J].Parent==I && Native.Nodes[J].Id==Token(TEXT("widget"))){
+                const auto Offset=FIntPoint(0,PackBar.Min.Y+FMath::RoundToInt((PackBar.Height()-Native.Nodes[J].Rect.Height())*(PackMaxScroll?float(PackRow)/PackMaxScroll:0))-Native.Nodes[J].Rect.Min.Y);
+                for(int32 K=J;K<Native.Nodes.Num();++K){int32 Parent=K;while(Parent>J)Parent=Native.Nodes[Parent].Parent;
+                    if(Parent==J){Native.Nodes[K].Rect+=Offset;Native.Nodes[K].Clip=Native.Nodes[K].Rect;Native.Nodes[K].Clip.Clip(PackBar);}}
+                PackThumb=Native.Nodes[J].Rect;
+            }
+        }
         for (int32 C = 0; C < PackCount(); ++C)
         {
             const int32 Cell = PackStart() + C;
@@ -335,6 +377,10 @@ void SAC2GameUI::Rebuild()
             Lines.Add(FAC2CharacterCatalog::SlotName(D.Preferred));
             if (D.HasArmor)
                 Lines.Add(FString::Printf(TEXT("Armor: %d"), D.Armor));
+            else if(D.Preferred && (D.Preferred&0x3f))
+                Lines.Add(TEXT("Armor rating unavailable."));
+            if(D.Race)Lines.Add(TEXT("Race: ")+FAC2CharacterCatalog::RaceName(D.Race));
+            if(D.MinLevel>1)Lines.Add(FString::Printf(TEXT("Required level: %d"),D.MinLevel));
             if (D.HasDamage)
                 Lines.Add(FString::Printf(TEXT("Damage: %d"), D.Damage));
             Lines.Add(Item.Equipped ? TEXT("Equipped") : TEXT("In backpack"));
@@ -384,13 +430,16 @@ void SAC2GameUI::Rebuild()
         ExamineMaxScroll=FMath::Max(0,Y+ExamineScroll-List.Max.Y);
         ExamineScroll=FMath::Clamp(ExamineScroll,0,ExamineMaxScroll);
     }
+    BuildJournal();
     ShopNodesStart=Native.Nodes.Num();ShopIconsStart=Icons.Num();
     BuildShop();
+    BuildLoot();
     for (auto &Icon : Icons)
         Native.LoadImage(Icon.Image, *Assets);
     Native.Prepare(*Assets, Fonts);
     MapUI.Update(*Mode.Get(), FIntPoint(FMath::RoundToInt(Size.X), FMath::RoundToInt(Size.Y)), *Assets, Fonts);
     PointerNodesStart=Native.Nodes.Num();
+    BuildWorldText();
     BuildPointerFeedback();
     Native.Prepare(*Assets, Fonts);
 }
@@ -401,12 +450,49 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
     if (!Mode.IsValid() || !VisibleWorld())
         return Layer;
     const FGeometry P = G.MakeChild(Size, FSlateLayoutTransform(Scale));
-    Layer = Native.Paint(Out, Layer, P, Fonts,{},0,ShopNodesStart);
+    auto PaintChat = [&](const FAC2NativeNode& Node, int32 ChatLayer)
+    {
+        const int32 NodeIndex=int32(&Node-Native.Nodes.GetData());
+        for(const auto& Icon:Icons)if(Icon.NativeNode==NodeIndex)
+            if(const auto* Brush=Native.Brush(Icon.Image))
+                FSlateDrawElement::MakeBox(Out,++ChatLayer,P.ToPaintGeometry(FVector2D(Icon.Rect.Size()),FSlateLayoutTransform(FVector2D(Icon.Rect.Min))),Brush,ESlateDrawEffect::None,Icon.Tint);
+        if(Node.Id != Token(TEXT("ChatLog")))return ChatLayer;
+        const auto* N=&Node;
+        TArray<FAC2ChatLine> Rows;
+        for (const auto &L : Log.Lines)
+            for (const auto &Line : ChatFont->Lines(L.Text, N->Rect.Width()))
+                Rows.Add({L.Type, Line});
+        const int32 RowHeight = ChatFont->Height;
+        const int32 Count = N->Rect.Height() / RowHeight;
+        MaxScroll = FMath::Max(0, Rows.Num() - Count);
+        const int32 Start = FMath::Max(0, Rows.Num() - Count - FMath::Clamp(Scroll, 0, MaxScroll));
+        Out.PushClip(FSlateClippingZone(
+            P.MakeChild(FVector2D(N->Clip.Size()), FSlateLayoutTransform(FVector2D(N->Clip.Min)))));
+        for (int32 I = Start; I < FMath::Min(Start + Count, Rows.Num()); ++I)
+        {
+            auto &L = Rows[I];
+            FLinearColor Color = L.Type == EAC2ChatType::Local    ? FLinearColor::White
+                                 : L.Type == EAC2ChatType::Combat ? FLinearColor(.9f, .63f, 0)
+                                 : L.Type == EAC2ChatType::Error  ? FLinearColor(1, .35f, .3f)
+                                                                  : FLinearColor(.8f, .8f, .8f);
+            ChatFont->Draw(Out, ++ChatLayer, P, L.Text,
+                           FVector2D(N->Rect.Min) + FVector2D(0, (I - Start) * RowHeight), Color);
+        }
+        Out.PopClip();
+        return ChatLayer;
+    };
+    Layer = Native.Paint(Out, Layer, P, Fonts,PaintChat,0,ShopNodesStart);
+    if(ShowSkills && !SkillLinks.IsEmpty()){
+        Out.PushClip(FSlateClippingZone(P.MakeChild(FVector2D(SkillClip.Size()),FSlateLayoutTransform(FVector2D(SkillClip.Min)))));
+        for(const auto& Link:SkillLinks)FSlateDrawElement::MakeLines(Out,++Layer,P.ToPaintGeometry(),{Link.Key,Link.Value},ESlateDrawEffect::None,SkillLineColor,true,1);
+        Out.PopClip();
+    }
     auto PaintIcons=[&](int32 First,int32 End)
     {
     for (int32 Index=First;Index<FMath::Min(End,Icons.Num());++Index)
     {
         const auto& I=Icons[Index];
+        if(I.NativeNode!=INDEX_NONE)continue;
         if (const auto *B = Native.Brush(I.Image))
         {
             Out.PushClip(FSlateClippingZone(
@@ -427,30 +513,6 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
         FSlateDrawElement::MakeBox(
             Out, ++Layer, P.ToPaintGeometry(FVector2D(R.Size()), FSlateLayoutTransform(FVector2D(R.Min))),
             &PortraitBrush);
-    }
-    if (const auto *N = Native.Find(TEXT("ChatLog")))
-    {
-        TArray<FAC2ChatLine> Rows;
-        for (const auto &L : Log.Lines)
-            for (const auto &Line : ChatFont->Lines(L.Text, N->Rect.Width()))
-                Rows.Add({L.Type, Line});
-        const int32 RowHeight = ChatFont->Height;
-        const int32 Count = N->Rect.Height() / RowHeight;
-        MaxScroll = FMath::Max(0, Rows.Num() - Count);
-        const int32 Start = FMath::Max(0, Rows.Num() - Count - FMath::Clamp(Scroll, 0, MaxScroll));
-        Out.PushClip(FSlateClippingZone(
-            P.MakeChild(FVector2D(N->Clip.Size()), FSlateLayoutTransform(FVector2D(N->Clip.Min)))));
-        for (int32 I = Start; I < FMath::Min(Start + Count, Rows.Num()); ++I)
-        {
-            auto &L = Rows[I];
-            FLinearColor Color = L.Type == EAC2ChatType::Local    ? FLinearColor::White
-                                 : L.Type == EAC2ChatType::Combat ? FLinearColor(.9f, .63f, 0)
-                                 : L.Type == EAC2ChatType::Error  ? FLinearColor(1, .35f, .3f)
-                                                                  : FLinearColor(.8f, .8f, .8f);
-            ChatFont->Draw(Out, ++Layer, P, L.Text,
-                           FVector2D(N->Rect.Min) + FVector2D(0, (I - Start) * RowHeight), Color);
-        }
-        Out.PopClip();
     }
     Layer=SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
     // The shop owns its whole rectangle, including where it overlaps chat.
@@ -473,11 +535,65 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
                                 FSlateDrawElement::MakeBox(Out,++Layer,P.ToPaintGeometry(FVector2D(32,32),FSlateLayoutTransform(Mouse-FVector2D(16,16))),Brush,ESlateDrawEffect::None,Icon.Tint);
                     break;
                 }
+    if(DragSkill && FVector2D::Distance(Mouse,ItemPressPoint)>6)
+        if(const auto* Brush=Native.Brush(const_cast<FAC2SkillData&>(SkillData).Get(DragSkill).Icon))
+            FSlateDrawElement::MakeBox(Out,++Layer,P.ToPaintGeometry(FVector2D(32,32),FSlateLayoutTransform(Mouse-FVector2D(16,16))),Brush);
     return Layer;
+}
+bool SAC2GameUI::BeginWindowDrag(bool PanelsOnly)
+{
+    if(Frontend)return false;
+    for(const TCHAR* Name:{TEXT("ExternalContainerField"),TEXT("Shop"),TEXT("RightSidePanel"),TEXT("LeftSidePanel"),TEXT("ChatWindow1"),TEXT("StatusbarField"),TEXT("ToolbarField"),TEXT("ShortcutField")})
+    {
+        if(PanelsOnly && FCString::Strcmp(Name,TEXT("ChatWindow1"))==0)break;
+        if(const auto* Root=Native.Find(Name))
+        {
+            const FIntRect Header(Root->Rect.Min,FIntPoint(Root->Rect.Max.X,FMath::Min(Root->Rect.Max.Y,Root->Rect.Min.Y+24)));
+            if(Header.Contains(FIntPoint(Mouse.X,Mouse.Y)))
+            {
+                // Header controls still receive clicks, but controls on a HUD
+                // underneath this window must not intercept its drag gesture.
+                for(int32 I=0;I<Native.Nodes.Num();++I)
+                    if(Native.Nodes[I].Kind==Token(TEXT("button")) && Native.Nodes[I].Clip.Contains(FIntPoint(Mouse.X,Mouse.Y)))
+                        for(int32 Parent=I;Native.Nodes.IsValidIndex(Parent);Parent=Native.Nodes[Parent].Parent)
+                            if(Native.Nodes[Parent].Id==Root->Id)return false;
+                DragWindow=Root->Id;WindowPress=Mouse;WindowOffset=Native.RootOffsets.FindRef(DragWindow);return true;
+            }
+        }
+    }
+    return false;
+}
+void SAC2GameUI::EndWindowDrag()
+{
+    if(!DragWindow)return;
+    for(const TCHAR* Name:{TEXT("ExternalContainerField"),TEXT("Shop"),TEXT("RightSidePanel"),TEXT("LeftSidePanel"),TEXT("ChatWindow1"),TEXT("StatusbarField"),TEXT("ToolbarField"),TEXT("ShortcutField")})
+        if(Token(Name)==DragWindow)
+            GConfig->SetVector2D(TEXT("AC2.Windows"),Name,FVector2D(Native.RootOffsets.FindRef(DragWindow)),GGameUserSettingsIni);
+    GConfig->Flush(false,GGameUserSettingsIni);DragWindow=0;
+}
+void SAC2GameUI::DragPack(float Y)
+{
+    const float Travel=PackBar.Height()-PackThumb.Height();
+    if(Travel>0)PackRow=FMath::RoundToInt(FMath::Clamp((Y-PackGrab-PackBar.Min.Y)/Travel,0.f,1.f)*PackMaxScroll);
+    Rebuild();
+}
+void SAC2GameUI::DragChat(float Y)
+{
+    const int32 Travel=ChatBar.Height()-ChatThumb.Height();
+    if(Travel>0)Scroll=FMath::RoundToInt((1.f-FMath::Clamp((Y-ChatGrab-ChatBar.Min.Y)/Travel,0.f,1.f))*MaxScroll);
+    Rebuild();
 }
 FReply SAC2GameUI::OnMouseMove(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(DragWindow)
+    {
+        const FVector2D D=Mouse-WindowPress;
+        Native.RootOffsets.Add(DragWindow,WindowOffset+FIntPoint(FMath::RoundToInt(D.X),FMath::RoundToInt(D.Y)));
+        Rebuild();return FReply::Handled();
+    }
+    if(DraggingPack){DragPack(Mouse.Y);return FReply::Handled();}
+    if(DraggingChat){DragChat(Mouse.Y);return FReply::Handled();}
     if(CameraLeft || CameraRight)return CameraMouseMove(E);
     if(RotatingPortrait)
     {
@@ -501,9 +617,10 @@ void SAC2GameUI::OnMouseCaptureLost(const FCaptureLostEvent& E)
     // to high-precision input. That one synchronous transfer is not focus loss.
     if(CameraRecapturing){CameraRecapturing=false;return;}
     CancelCameraGesture();
-    DragItem.Reset();
+    EndWindowDrag();
+    DragItem.Reset();DragSkill=0;DragShortcut=INDEX_NONE;
     DraggingOption=INDEX_NONE;PressedAction=NAME_None;Native.Pressed=0;
-    RotatingPortrait=false;
+    RotatingPortrait=false;DraggingChat=false;DraggingPack=false;
     if(MapCaptured){MapCaptured=false;MapUI.Release(Mouse,false,false);}
     SCompoundWidget::OnMouseCaptureLost(E);
 }
@@ -517,6 +634,14 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
         return FReply::Handled(); // Do not toggle again through viewport input.
     }
     if(CameraLeft || CameraRight)return CameraButtonDown(E);
+    if(E.GetEffectingButton()==EKeys::RightMouseButton && Mode->Network &&
+        (Native.Bounds(TEXT("PaperDollViewport")).Contains(FIntPoint(Mouse.X,Mouse.Y)) || Native.Bounds(TEXT("StatusbarField")).Contains(FIntPoint(Mouse.X,Mouse.Y))))
+    {InspectTarget(Mode->Network->PlayerId);return FReply::Handled();}
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && BeginWindowDrag(true))
+        return FReply::Handled().CaptureMouse(SharedThis(this));
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && ShowInventory && !ShopOwnsPointer(Mouse) && PackBar.Contains(FIntPoint(Mouse.X,Mouse.Y)))
+    {DraggingPack=true;PackGrab=PackThumb.Contains(FIntPoint(Mouse.X,Mouse.Y))?Mouse.Y-PackThumb.Min.Y:PackThumb.Height()*.5f;
+        DragPack(Mouse.Y);return FReply::Handled().CaptureMouse(SharedThis(this));}
     if(E.GetEffectingButton()==EKeys::LeftMouseButton && ShowInventory && Portrait.IsValid() &&
         Native.Bounds(TEXT("PaperDollViewport")).Contains(FIntPoint(Mouse.X,Mouse.Y)))
     {RotatingPortrait=true;PortraitPointer=Mouse;return FReply::Handled().CaptureMouse(SharedThis(this));}
@@ -529,24 +654,46 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
         MapCaptured = true;
         return FReply::Handled().CaptureMouse(SharedThis(this));
     }
+    bool ChatCovered=ShopOwnsPointer(Mouse);
+    for(const TCHAR* Root:{TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("ExternalContainerField")})
+        ChatCovered|=Native.Bounds(Root).Contains(FIntPoint(Mouse.X,Mouse.Y));
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && !ChatCovered && ChatBar.Contains(FIntPoint(Mouse.X,Mouse.Y)))
+    {DraggingChat=true;ChatGrab=ChatThumb.Contains(FIntPoint(Mouse.X,Mouse.Y))?Mouse.Y-ChatThumb.Min.Y:ChatThumb.Height()*.5f;
+        DragChat(Mouse.Y);return FReply::Handled().CaptureMouse(SharedThis(this));}
     if (E.GetEffectingButton() == EKeys::LeftMouseButton)
     {
         for (const auto &B : Buttons)
-            if ((!ShopOwnsPointer(Mouse) || ShopButton(B.Key)) && Inside(B.Value, Mouse))
+            if (AllowsPanelButton(B.Key,Mouse) && Inside(B.Value, Mouse))
             {
                 PressedAction = B.Key;
-                ItemPressPoint=Mouse;DragItem.Reset();
+                ItemPressPoint=Mouse;DragItem.Reset();DragSkill=0;DragShortcut=INDEX_NONE;
                 if(Mode->Network)
                 {
                     const auto* P=Mode->Characters.Active();const FString Key=B.Key.ToString();
                     const int32 Index=Key.StartsWith(TEXT("Item"))?FCString::Atoi(*Key.Mid(4)):
                         Key.StartsWith(TEXT("Cell"))&&P?P->Items.IndexOfByPredicate([&](const auto& I){return !I.Equipped && I.Cell==FCString::Atoi(*Key.Mid(4));}):INDEX_NONE;
                     if(P && P->Items.IsValidIndex(Index))DragItem=P->Items[Index].NetworkId;
+                    if(Key.StartsWith(TEXT("LearnedSkill"))){
+                        const uint32 Id=FCString::Atoi(*Key.Mid(12));
+                        const auto* Node=SkillData.Panel(SkillPanel).Nodes.FindByPredicate([&](const auto& N){return N.Id==Id;});
+                        if(ShortcutAllowed(Id) && Node && !Node->Passive)DragSkill=Id;
+                    }else if(Key.StartsWith(TEXT("ShortcutSlot"))){
+                        DragShortcut=ShortcutSet*10+FCString::Atoi(*Key.Mid(12));DragSkill=Shortcuts[DragShortcut];
+                    }
+
                 }
                 Native.Pressed = Native.Hovered;
                 return FReply::Handled().CaptureMouse(SharedThis(this));
             }
     }
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && BeginWindowDrag())
+        return FReply::Handled().CaptureMouse(SharedThis(this));
+    if(E.GetEffectingButton()==EKeys::RightMouseButton)
+        for(const auto& B:Buttons)if(B.Key.ToString().StartsWith(TEXT("LootItem")) && AllowsPanelButton(B.Key,Mouse) && Inside(B.Value,Mouse)){
+            const int32 Index=FCString::Atoi(*B.Key.ToString().Mid(8));
+            if(Mode->Network && Mode->Network->LootItems.IsValidIndex(Index))InspectTarget(Mode->Network->LootItems[Index]);
+            return FReply::Handled();
+        }
     if(E.GetEffectingButton()==EKeys::RightMouseButton)
         for(const auto& B:Buttons)
             if(!ShopOwnsPointer(Mouse) && Inside(B.Value,Mouse) && (B.Key.ToString().StartsWith(TEXT("Item")) || B.Key.ToString().StartsWith(TEXT("Cell"))))
@@ -575,6 +722,12 @@ FReply SAC2GameUI::OnMouseButtonDown(const FGeometry &G, const FPointerEvent &E)
 FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(DraggingPack && E.GetEffectingButton()==EKeys::LeftMouseButton)
+    {DragPack(Mouse.Y);DraggingPack=false;return FReply::Handled().ReleaseMouseCapture();}
+    if(DraggingChat && E.GetEffectingButton()==EKeys::LeftMouseButton)
+    {DragChat(Mouse.Y);DraggingChat=false;return FReply::Handled().ReleaseMouseCapture();}
+    if(DragWindow && E.GetEffectingButton()==EKeys::LeftMouseButton)
+    {EndWindowDrag();return FReply::Handled().ReleaseMouseCapture();}
     if(CameraLeft || CameraRight)return CameraButtonUp(E);
     if(RotatingPortrait && E.GetEffectingButton()==EKeys::LeftMouseButton)
     {RotatingPortrait=false;return FReply::Handled().ReleaseMouseCapture();}
@@ -588,6 +741,17 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
     }
     if (E.GetEffectingButton() == EKeys::LeftMouseButton && !PressedAction.IsNone())
     {
+        if(DragSkill && FVector2D::Distance(Mouse,ItemPressPoint)>6){
+            bool Dropped=false;
+            for(const auto& B:Buttons)if(B.Key.ToString().StartsWith(TEXT("ShortcutSlot")) && AllowsPanelButton(B.Key,Mouse) && Inside(B.Value,Mouse)){
+                const int32 Slot=ShortcutSet*10+FCString::Atoi(*B.Key.ToString().Mid(12));
+                if(DragShortcut!=INDEX_NONE)Swap(Shortcuts[Slot],Shortcuts[DragShortcut]);else Shortcuts[Slot]=DragSkill;
+                Dropped=true;break;
+            }
+            if(!Dropped && DragShortcut!=INDEX_NONE && !OwnsPointer(Mouse))Shortcuts[DragShortcut]=0;
+            SaveShortcuts();DragSkill=0;DragShortcut=INDEX_NONE;PressedAction=NAME_None;Native.Pressed=0;Rebuild();
+            return FReply::Handled().ReleaseMouseCapture();
+        }
         if(Mode->Network && !DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
         {
             const auto* P=Mode->Characters.Active();
@@ -609,7 +773,7 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
             DragItem.Reset();PressedAction=NAME_None;Native.Pressed=0;
             return FReply::Handled().ReleaseMouseCapture();
         }
-        DragItem.Reset();
+        DragItem.Reset();DragSkill=0;DragShortcut=INDEX_NONE;
         FName ActionName = PressedAction;
         PressedAction = NAME_None;
         Native.Pressed = 0;
@@ -623,6 +787,16 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
 FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEvent &E)
 {
     Mouse = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(E.GetEffectingButton()==EKeys::LeftMouseButton && Mode->Network)
+        for(const auto& B:Buttons)if(AllowsPanelButton(B.Key,Mouse) && Inside(B.Value,Mouse)){
+            const FString Key=B.Key.ToString();
+            if(Key.StartsWith(TEXT("LearnedSkill"))){const uint32 Skill=FCString::Atoi(*Key.Mid(12));
+                if(!Mode->Network->Skills.ContainsByPredicate([&](const auto& S){return S.Id==Skill && S.Trained;}))return FReply::Handled();
+                const auto* Node=SkillData.Panel(SkillPanel).Nodes.FindByPredicate([&](const auto& N){return N.Id==Skill;});
+                if((Node&&Node->Passive) || Mode->Network->UntrainingSkill==Skill)return FReply::Handled();
+                if(Skill==0x343)Mode->Network->Recall();else Mode->Network->CastSkill(Skill);return FReply::Handled();}
+            if(Key.StartsWith(TEXT("LootItem"))){Mode->Network->TakeLoot(FCString::Atoi(*Key.Mid(8)));return FReply::Handled();}
+        }
     if (E.GetEffectingButton() == EKeys::LeftMouseButton && MapUI.DoubleClick(Mouse))
     {
         MapCaptured = false;
@@ -657,8 +831,12 @@ FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEv
 FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
 {
     auto P = G.AbsoluteToLocal(E.GetScreenSpacePosition()) / Scale;
+    if(Native.Bounds(TEXT("ExternalContainerField")).Contains(FIntPoint(P.X,P.Y)))
+    {LootRow=FMath::Max(0,LootRow-FMath::RoundToInt(E.GetWheelDelta()));Rebuild();return FReply::Handled();}
     if(ShowOptions&&OptionsTab==1&&Inside(SlateRect(Native.Bounds(TEXT("ClientList"))),P))
-    {OptionsScroll=FMath::Clamp(OptionsScroll-FMath::RoundToInt(E.GetWheelDelta()),0,1);Rebuild();return FReply::Handled();}
+    {OptionsScroll=FMath::Clamp(OptionsScroll-FMath::RoundToInt(E.GetWheelDelta()),0,7);Rebuild();return FReply::Handled();}
+    if((ShowSkills||ShowQuests) && Inside(SlateRect(Native.Bounds(TEXT("RightSidePanel"))),P))
+    {JournalScroll=FMath::Max(0,JournalScroll-FMath::RoundToInt(E.GetWheelDelta()*36));Rebuild();return FReply::Handled();}
     if (MapUI.Wheel(P, E.GetWheelDelta())) return FReply::Handled();
     if(ShopOwnsPointer(P)){ShopPage=FMath::Max(0,ShopPage-FMath::RoundToInt(E.GetWheelDelta()));return FReply::Handled();}
     if (ShowInventory && Inside(SlateRect(Native.Bounds(TEXT("ContainerListBox"))), P))
@@ -666,6 +844,7 @@ FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
         const int32 Rows=FMath::DivideAndRoundUp(PackCount(),6);
         const int32 VisibleRows=FMath::Max(1,Native.Bounds(TEXT("ContainerListBox")).Height()/36);
         PackRow = FMath::Clamp(PackRow - FMath::RoundToInt(E.GetWheelDelta()), 0, FMath::Max(0,Rows-VisibleRows));
+        Rebuild();
         return FReply::Handled();
     }
     if(ShowStats && Inside(SlateRect(Native.Bounds(TEXT("ExaminationListBox"))),P))
@@ -673,6 +852,7 @@ FReply SAC2GameUI::OnMouseWheel(const FGeometry &G, const FPointerEvent &E)
     if (Inside(ChatRect(), P))
     {
         Scroll = FMath::Clamp(Scroll + FMath::RoundToInt(E.GetWheelDelta() * 3), 0, MaxScroll);
+        Rebuild();
         return FReply::Handled();
     }
     if(!OwnsPointer(P))if(auto* PC=Controller(Mode))
@@ -692,7 +872,11 @@ void SAC2GameUI::Action(FName Name)
 {
     if (const FName *Bound = ButtonActions.Find(Name))
         Name = *Bound;
-    if(OptionAction(Name) || ShopAction(Name))return;
+    if(Name==TEXT("ShortcutUp") || Name==TEXT("ShortcutDown")){
+        ShortcutSet=(ShortcutSet+(Name==TEXT("ShortcutUp")?9:1))%10;SaveShortcuts();Rebuild();return;
+    }
+    if(Name.ToString().StartsWith(TEXT("ShortcutSlot"))){ActivateShortcut(FCString::Atoi(*Name.ToString().Mid(12)));return;}
+    if(OptionAction(Name) || ShopAction(Name) || JournalAction(Name))return;
     if (Name == TEXT("ChatEntry"))
     {
         BeginChat();
@@ -711,6 +895,13 @@ void SAC2GameUI::Action(FName Name)
     if (Name == TEXT("ChatUp") || Name == TEXT("ChatDown"))
     {
         Scroll = FMath::Clamp(Scroll + (Name == TEXT("ChatUp") ? 1 : -1), 0, MaxScroll);
+        Rebuild();
+        return;
+    }
+    if (Name == TEXT("InventoryUp") || Name == TEXT("InventoryDown"))
+    {
+        PackRow=FMath::Clamp(PackRow+(Name==TEXT("InventoryUp")?-1:1),0,PackMaxScroll);
+        Rebuild();
         return;
     }
     if (Editing)
@@ -720,17 +911,13 @@ void SAC2GameUI::Action(FName Name)
         Mode->SetCombat(Name==TEXT("StartAttack"));
         return;
     }
-    if (Name == TEXT("Skills") || Name == TEXT("Quests") || Name == TEXT("Social"))
+    if(Name==TEXT("Skills") || Name==TEXT("Quests"))
     {
-        if(Mode->Network)
-        {
-            if(Name==TEXT("Quests")) Mode->Network->Chat(TEXT("@quest status"));
-            else Log.Add(EAC2ChatType::System,TEXT("Z: combat/peace. 1: attack. 2: magic skill. 3: missile skill. Equip a matching weapon in Inventory. E: use target. Home: recall. /cast <hex skill ID> uses a learned skill."));
-            return;
-        }
-        Log.Add(EAC2ChatType::System,
-                TEXT("This panel's gameplay data is not available in the offline client yet."));
-        return;
+        EndChat();const bool Skills=Name==TEXT("Skills");
+        const bool WasOpen=Skills?ShowSkills:ShowQuests;
+        ShowInventory=false;ShowSkills=Skills&&!WasOpen;ShowQuests=!Skills&&!WasOpen;JournalScroll=Skills?-1:0;
+        if(Portrait.IsValid()){Portrait->SetActorTickEnabled(false);Portrait->Capture->bCaptureEveryFrame=false;}
+        Rebuild();return;
     }
     if(Name==TEXT("MissileSkill") && Mode->Network){Mode->Network->StarterSkill(1);return;}
     FString Key = Name.ToString();
@@ -776,7 +963,7 @@ void SAC2GameUI::Action(FName Name)
 void SAC2GameUI::ToggleInventory()
 {
     EndChat();
-    ShowInventory = !ShowInventory;
+    ShowInventory = !ShowInventory;ShowSkills=ShowQuests=false;
     if (ShowInventory)
         UpdatePortrait();
     if (Portrait.IsValid())
@@ -794,6 +981,7 @@ void SAC2GameUI::ToggleStats()
     SelectedItem = INDEX_NONE;
     InspectedObject.Reset();InspectedMob.Reset();ExamineScroll=0;
     ShowStats = !ShowStats;
+    if(ShowStats && Mode.IsValid() && Mode->Network){InspectedObject=Mode->Network->PlayerId;Mode->Network->Examine(InspectedObject);}
     if (ShowStats && Mode.IsValid()) { ShowOptions=false; Mode->bMap = false; MapUI.Close(); }
     if (auto *PC = Controller(Mode))
         PC->SetCursor(!PC->WantsMouseLook() || ShowInventory || ShowStats || (Mode.IsValid() && Mode->bMap));
@@ -801,12 +989,13 @@ void SAC2GameUI::ToggleStats()
 }
 bool SAC2GameUI::ClosePanels()
 {
+    if(Mode.IsValid() && Mode->Network && !Mode->Network->LootContainer.IsEmpty()){Mode->Network->CloseLoot();return true;}
     if(Mode.IsValid() && Mode->Network && !Mode->Network->ShopVendor.IsEmpty()){Mode->Network->CloseShop();return true;}
-    if (!ShowInventory && !ShowStats && !ShowOptions && (!Mode.IsValid() || !Mode->bMap))
+    if (!ShowInventory && !ShowSkills && !ShowQuests && !ShowStats && !ShowOptions && (!Mode.IsValid() || !Mode->bMap))
         return false;
     if (Mode.IsValid()) Mode->bMap = false;
     MapUI.Close();
-    ShowInventory = ShowStats = ShowOptions = false;
+    ShowInventory = ShowStats = ShowOptions = ShowSkills = ShowQuests = false;
     DraggingOption=INDEX_NONE;PressedAction=NAME_None;
     if (Portrait.IsValid())
     {
@@ -833,6 +1022,10 @@ void SAC2GameUI::SelectItem(int32 Index)
     const auto* P=Mode.IsValid()?Mode->Characters.Active():nullptr;
     SelectedNetworkItem=P && P->Items.IsValidIndex(Index)?P->Items[Index].NetworkId:FString();
     InspectedObject.Reset();InspectedMob.Reset();ExamineScroll=0;
+    if(Mode.IsValid() && Mode->Network && !SelectedNetworkItem.IsEmpty()){
+        InspectedObject=SelectedNetworkItem;
+        Mode->Network->Examine(InspectedObject);
+    }
     ShowStats = true;
     if (Mode.IsValid()) { Mode->bMap = false; MapUI.Close(); }
 }
@@ -849,7 +1042,7 @@ void SAC2GameUI::UpdatePortrait()
                        Mode->Network ? Mode->Network->Appearance(P->Id) : A->Resolve(P->Appearance, P->ClothingMask(Mode->CharacterCatalog)), 0x21000000))
     {
         Portrait->Image->ResizeTarget(306, 400);
-        PortraitBrush.SetResourceObject(Portrait->Image);
+        PortraitBrush.SetResourceObject(Portrait->Composite);
         PortraitBrush.DrawAs = ESlateBrushDrawType::Image;
         PortraitBrush.ImageSize = FVector2D(153, 200);
     }
@@ -1013,6 +1206,22 @@ bool SAC2GameUI::Smoke(FString &Error)
     }
     Submit(TEXT("/loc"));
     Log.Add(EAC2ChatType::Combat, TEXT("Combat messages appear here when you strike a target."));
+    const auto SavedLines=Log.Lines;
+    for(int32 I=0;I<40;++I)Log.Add(EAC2ChatType::System,FString::Printf(TEXT("Scroll check %d"),I));
+    Rebuild();
+    if(MaxScroll<=0 || ChatThumb.IsEmpty() || ChatBar.Height()<=ChatThumb.Height())
+    {Error=TEXT("Chat history did not create a usable native scroll track");return false;}
+    auto Pointer=[&](FVector2D Local,FKey Button){const auto P=GetCachedGeometry().LocalToAbsolute(Local*Scale);
+        return FPointerEvent(0,P,P,{EKeys::LeftMouseButton},Button,0,FModifierKeysState());};
+    const FVector2D Bottom(ChatThumb.Min+ChatThumb.Size()/2);
+    OnMouseButtonDown(GetCachedGeometry(),Pointer(Bottom,EKeys::LeftMouseButton));
+    const FVector2D Top(Bottom.X,ChatBar.Min.Y+ChatGrab);
+    OnMouseMove(GetCachedGeometry(),Pointer(Top,EKeys::Invalid));
+    if(!DraggingChat || Scroll!=MaxScroll){Error=TEXT("Dragging the chat thumb did not reach oldest history");return false;}
+    OnMouseMove(GetCachedGeometry(),Pointer(FVector2D(Bottom.X,ChatBar.Max.Y),EKeys::Invalid));
+    OnMouseButtonUp(GetCachedGeometry(),Pointer(FVector2D(Bottom.X,ChatBar.Max.Y),EKeys::LeftMouseButton));
+    if(DraggingChat || Scroll!=0){Error=TEXT("Chat thumb did not return to newest history and release capture");return false;}
+    Log.Lines=SavedLines;Rebuild();
     return true;
 }
 void SAC2GameUI::SmokeDraft()

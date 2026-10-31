@@ -28,7 +28,8 @@ def main():
             shutil.copyfile(ROOT/'Unreal/Saved/Logs/AC2Network-smoke.log',run/'client.log')
             print(result.stdout);result.check_returncode()
             assert 'AC2 services render smoke PASS' in (run/'client.log').read_text(encoding='utf-8',errors='replace')
-            print('PASS: native shop mouse sale/purchase/close; door animation and collision. Logs:',run)
+            assert 'AC2 native chest closed=' in (run/'client.log').read_text(encoding='utf-8',errors='replace')
+            print('PASS: native shop mouse sale/purchase/close; door and chest animation/collision. Logs:',run)
         finally:
             if peer:peer.close()
             if server.poll() is None:

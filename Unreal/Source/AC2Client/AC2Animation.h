@@ -18,6 +18,7 @@ struct FAC2Animation
 {
     struct FEffect {uint32 Id=0; float Phase=0, Probability=1, Intensity=1, Variation=0; bool Stop=false,Play=true;};
     TArray<FEffect> Effects;
+    TArray<float> JumpTriggers;
     struct FTrack
     {
         TArray<TPair<float, FVector>> Scale, Offset;
@@ -47,6 +48,12 @@ struct FAC2AnimatorInput
     float Slider(uint32 Id) const;
 };
 
+struct FAC2AnimationTriggerState
+{
+    double Cycle = -1;
+    TArray<FAC2Animation::FEffect> Fired;
+};
+
 // Bounded DBAnimator tree: AnimAsset, AnimCube, AMHuman and AMSwitchME.
 // Assets share a normalized cycle phase so blended gaits remain in step.
 class FAC2Animator
@@ -56,10 +63,13 @@ class FAC2Animator
     static TSharedPtr<FAC2Animator> Load(FAC2DatArchive &Portal, uint32 Map, uint32 Motion);
     static TSharedPtr<FAC2Animator> Load(const FRead &Read, uint32 Map, uint32 Motion);
     float Period(const FAC2AnimatorInput &Input) const;
+    float JumpDelay(const FAC2AnimatorInput &Input) const;
     TArray<FTransform> Sample(float Phase, const FAC2AnimatorInput &Input,
                               const TArray<FTransform> &Rest) const;
     TArray<uint32> ActiveClips(const FAC2AnimatorInput &Input) const;
-    TArray<FAC2Animation::FEffect> EffectsBetween(float From,float To,const FAC2AnimatorInput& Input) const;
+    // Looping tracks pass unwrapped cycle times; pose sampling still uses the fractional phase.
+    TArray<FAC2Animation::FEffect> EffectsBetween(double From,double To,const FAC2AnimatorInput& Input,
+        bool Looping=false,FAC2AnimationTriggerState* State=nullptr) const;
 
   private:
     struct FAxis

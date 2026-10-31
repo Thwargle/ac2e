@@ -2,6 +2,7 @@
 #include "AC2GameMode.h"
 #include "AC2Explorer.h"
 #include "AC2Mob.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 
@@ -24,7 +25,6 @@ FReply SAC2GameUI::CameraButtonDown(const FPointerEvent& E)
     if(!CameraLeft && !CameraRight)
     {
         CameraPress=Mouse;CameraScreenPress=E.GetScreenSpacePosition();CameraTravel=0;CameraMoved=false;CameraPrecision=false;
-        if(Button==EKeys::LeftMouseButton)WorldClick(Button,false);
     }
     if(Button==EKeys::LeftMouseButton)CameraLeft=true;else CameraRight=true;
     CameraDragging|=CameraRight;
@@ -74,6 +74,7 @@ FReply SAC2GameUI::CameraMouseMove(const FPointerEvent& E)
 FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
 {
     const bool Inspect=E.GetEffectingButton()==EKeys::RightMouseButton && CameraRight && !CameraMoved;
+    const bool Select=E.GetEffectingButton()==EKeys::LeftMouseButton && CameraLeft && !CameraMoved && !CameraRight;
     if(E.GetEffectingButton()==EKeys::LeftMouseButton)CameraLeft=false;
     if(E.GetEffectingButton()==EKeys::RightMouseButton)CameraRight=false;
     auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
@@ -83,6 +84,7 @@ FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
     CameraDragging=CameraPrecision=false;CameraTravel=0;
     if(PC)PC->RestoreCursor();
     Mouse=CameraPress;
+    if(Select)WorldClick(EKeys::LeftMouseButton,false);
     if(Inspect)WorldClick(EKeys::RightMouseButton,false);
     return FReply::Handled().ReleaseMouseCapture().SetMousePos(FIntPoint(FMath::RoundToInt(Point.X),FMath::RoundToInt(Point.Y)));
 }
@@ -91,7 +93,7 @@ bool SAC2GameUI::OwnsPointer(FVector2D Point) const
 {
     if(Frontend || MapUI.OwnsPointer(Point))return true;
     for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
-        TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("Shop")})
+        TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("Shop"),TEXT("ExternalContainerField")})
         if(Native.Bounds(Panel).Contains(FIntPoint(Point.X,Point.Y)))return true;
     return false;
 }
@@ -103,8 +105,8 @@ FAC2CursorIcon SAC2GameUI::CursorAt(FVector2D ScreenPoint) const
     else if(OwnsPointer(Point))
     {
         Native.CursorAt(Point,Spec.Image,Spec.Hotspot);
-        // These fields are fixed in the current HUD. Do not advertise unsupported dragging/resizing.
-        if(Spec.Image==0x41000d0b || (Spec.Image>=0x41005998 && Spec.Image<=0x4100599b))Spec={};
+        // Moving is supported; resizing is not yet implemented.
+        if(Spec.Image>=0x41005998 && Spec.Image<=0x4100599b)Spec={};
     }
     else if(!HoverObject.IsEmpty() || HoverMob.IsValid()) {Spec.Image=0x4100751e;Spec.Hotspot=FIntPoint(11,11);}
     return Spec;
@@ -119,6 +121,8 @@ void SAC2GameUI::UpdateHover(const FGeometry& G,double Time)
     {HoverObject.Reset();HoverMob.Reset();return;}
     if(Time<NextHover)return;
     NextHover=Time+.075;
+    for(const auto& Name:WorldNameRects)if(Mouse.X>=Name.Value.Left && Mouse.X<Name.Value.Right && Mouse.Y>=Name.Value.Top && Mouse.Y<Name.Value.Bottom)
+    {HoverObject=Name.Key;HoverMob.Reset();return;}
     FVector Origin,Direction;
     HoverObject.Reset();
     HoverMob.Reset();
@@ -151,7 +155,17 @@ bool SAC2GameUI::WorldClick(FKey Button,bool DoubleClick)
     // a short right-click selects and examines after the camera gesture releases.
     if(Mode->Network)
     {
-        const FString Id=Mode->Network->WorldTargetAtRay(Origin,Direction);
+        // Self is deliberately excluded from combat target cycling. A short
+        // right-click on the local capsule must still be able to inspect it.
+        if(Button==EKeys::RightMouseButton)if(auto* Pawn=Cast<AAC2Explorer>(PC->GetPawn())){
+            FHitResult SelfHit;
+            if(Pawn->GetCapsuleComponent()->LineTraceComponent(SelfHit,Origin,Origin+Direction*15000,FCollisionQueryParams())){
+                InspectTarget(Mode->Network->PlayerId);return true;
+            }
+        }
+        FString Id;
+        for(const auto& Name:WorldNameRects)if(Mouse.X>=Name.Value.Left && Mouse.X<Name.Value.Right && Mouse.Y>=Name.Value.Top && Mouse.Y<Name.Value.Bottom){Id=Name.Key;break;}
+        if(Id.IsEmpty())Id=Mode->Network->WorldTargetAtRay(Origin,Direction);
         if(Id.IsEmpty()){Mode->Network->ClearTarget();return true;}
         Mode->Network->SelectTarget(Id);
         if(Button==EKeys::RightMouseButton)InspectTarget(Id);
@@ -181,6 +195,93 @@ void SAC2GameUI::ClickWorldCenter(FKey Button,bool DoubleClick)
     WorldClick(Button,DoubleClick);
     Mouse=Previous;
 }
+void SAC2GameUI::BuildWorldText()
+{
+    WorldNameRects.Reset();
+    if(Frontend || !Mode.IsValid() || Mode->WantsPortalSpace() || !Mode->Network || !Mode->Network->IsWorld())return;
+    auto* Net=Mode->Network.Get();auto* PC=Mode->GetWorld()->GetFirstPlayerController();
+    if(!PC || !PC->GetPawn())return;
+    const FIntRect View(0,0,Size.X,Size.Y);
+    const auto* Reticle=Native.Layouts[0x22000005].Find(TEXT("TargettingReticle"));
+    auto Tuning=[&](const TCHAR* Key,int32 Default){
+        if(Reticle)for(const auto& State:Reticle->States)
+            if(State.Id==Reticle->DefaultState || State.Id==FAC2UILayout::Token(TEXT("stateless")))
+                if(const auto* Value=State.Attributes.Find(FAC2UILayout::Token(Key)))return int32(*Value);
+        return Default;
+    };
+    const int32 Attempts=FMath::Clamp(Tuning(TEXT("MaxNamePlacementAttempts"),50),1,100);
+    const int32 Travel=FMath::Clamp(Tuning(TEXT("FloatyTextTravel"),3),0,20);
+    TArray<FIntRect> Occupied;
+    auto Place=[&](const TCHAR* Template,const FString& Text,FVector2D Center,float Opacity)->bool
+    {
+        const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(Template,0x4200000c));
+        if(!Font)return false;
+        const int32 Width=FMath::CeilToInt(Font->Width(Text))+8,Height=Font->Height*FMath::Max(1,Font->Lines(Text,0).Num())+4;
+        FIntRect Rect(Center.X-Width/2,Center.Y-Height,Center.X+Width/2+1,Center.Y);
+        for(int32 Attempt=0;Attempt<Attempts && Occupied.ContainsByPredicate([&](const FIntRect& R){return R.Intersect(Rect);});++Attempt)
+            Rect-=FIntPoint(0,Height);
+        if(Rect.Min.X<0 || Rect.Max.X>Size.X || Rect.Min.Y<0 || Rect.Max.Y>Size.Y || OwnsPointer(FVector2D(Rect.Min+Rect.Size()/2)))return false;
+        if(Occupied.ContainsByPredicate([&](const FIntRect& R){return R.Intersect(Rect);}))return false;
+        Occupied.Add(Rect);
+        const int32 First=Native.Nodes.Num();Native.Template(0x22000005,Template,Rect,View);
+        for(int32 I=First;I<Native.Nodes.Num();++I)if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text")))
+        {
+            auto& N=Native.Nodes[I];N.Text=Text;N.Opacity=Opacity;N.Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);
+        }
+        return true;
+    };
+    const double Now=Mode->GetWorld()->GetTimeSeconds();
+    // DoStory damage hooks are authoritative. Snapshot health changes must never
+    // produce a second number (or numbers when loading a wounded character).
+    for(const auto& Hit:Net->DamageTexts)
+    {
+        const float Age=Now-Hit.Born;
+        const bool Personal=Hit.Target==Net->PlayerId || Hit.Attacker==Net->PlayerId;
+        if(Age<0 || Age>=2 || !(Personal?DamageNumbers:ThirdPartyDamage))continue;
+        FVector2D Point;FBox2D Bounds;
+        if(Hit.Target==Net->PlayerId)
+        {if(!PC->ProjectWorldLocationToScreen(PC->GetPawn()->GetActorLocation()+FVector(0,0,100),Point))continue;}
+        else if(Net->ObjectScreenBounds(Hit.Target,Bounds))Point=FVector2D(Bounds.GetCenter().X,Bounds.Min.Y);
+        else continue;
+        if(!Personal)
+        {
+            const auto Contacts=Net->RadarContacts();
+            const auto* Contact=Contacts.FindByPredicate([&](const auto& C){return C.Id==Hit.Target;});
+            if(!Contact || !Contact->Actor.IsValid() || FVector::DistSquared(Contact->Actor->GetActorLocation(),PC->GetPawn()->GetActorLocation())>FMath::Square(15000.f*ThirdPartyDamageRange))continue;
+        }
+        const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(TEXT("DamageTextTemplate"),0x4200000c));
+        const float Rise=(Font?Font->Height:17)*Travel*Age/2;
+        // Keep selected-object damage above the reticle's name, as gm3DTextUI does.
+        Point.Y-=(Hit.Target==Net->TargetId?(Reticle?Reticle->Rect.Height()+1:20)+34:12)+Rise;
+        Place(TEXT("DamageTextTemplate"),FString::Printf(TEXT("%lld"),Hit.Damage),Point,1-Age/2);
+    }
+    if(!ShowObjectNames)return;
+    auto Contacts=Net->RadarContacts();const FVector Origin=PC->GetPawn()->GetActorLocation();
+    Contacts.Sort([&](const auto& A,const auto& B){return FVector::DistSquared(A.Actor->GetActorLocation(),Origin)<FVector::DistSquared(B.Actor->GetActorLocation(),Origin);});
+    int32 Count=0;
+    for(const auto& Contact:Contacts)
+    {
+        if(Contact.Id==Net->TargetId || Contact.Name.IsEmpty())continue;
+        if(++Count>64)break;
+        FBox2D Bounds;if(!Net->ObjectScreenBounds(Contact.Id,Bounds))continue;
+        if(Place(TEXT("NameTextTemplate"),Contact.Name,FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-12),1)){
+            const auto& R=Occupied.Last();WorldNameRects.Add(Contact.Id,FSlateRect(R.Min.X,R.Min.Y,R.Max.X,R.Max.Y));
+        }
+    }
+}
+bool SAC2GameUI::SmokeDamageText(FString& Error)
+{
+    auto* Net=Mode->Network.Get();
+    if(!Net || Net->DamageTexts.IsEmpty()){Error=TEXT("No authoritative damage text events received");return false;}
+    const bool Previous=DamageNumbers,PreviousThird=ThirdPartyDamage;
+    DamageNumbers=false;ThirdPartyDamage=false;Rebuild();
+    const bool Hidden=Native.Find(TEXT("DamageTextTemplate"))==nullptr;
+    DamageNumbers=true;Rebuild();
+    const bool Visible=Native.Find(TEXT("DamageTextTemplate"))!=nullptr;
+    DamageNumbers=Previous;ThirdPartyDamage=PreviousThird;Rebuild();
+    if(!Hidden || !Visible){Error=FString::Printf(TEXT("Damage number toggle: hidden=%d visible=%d"),Hidden,Visible);return false;}
+    return true;
+}
 void SAC2GameUI::BuildPointerFeedback()
 {
     if(Frontend || !Mode.IsValid())return;
@@ -190,15 +291,51 @@ void SAC2GameUI::BuildPointerFeedback()
     auto Label=[&](const FString& Text,FVector2D Point,bool Center=false)
     {
         if(Text.IsEmpty())return;
-        const int32 Width=FMath::Min(420,FMath::Max(80,FMath::CeilToInt(BodyFont->Width(Text))+12));
+        const TCHAR* Template=Center?TEXT("SelectionName"):TEXT("NameTextTemplate");
+        const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(Template,0x4200000c));
+        const int32 Width=FMath::Min(int32(Size.X),FMath::Max(80,FMath::CeilToInt((Font?Font:BodyFont)->Width(Text))+12));
+        const int32 Height=(Font?Font:BodyFont)->Height*FMath::Max(1,(Font?Font:BodyFont)->Lines(Text,0).Num())+4;
         if(Center)Point.X-=Width*.5;
         Point.X=FMath::Clamp(Point.X,0.,FMath::Max(0.,Size.X-Width));
-        Point.Y=FMath::Clamp(Point.Y,0.,FMath::Max(0.,Size.Y-36));
+        Point.Y=FMath::Clamp(Point.Y,0.,FMath::Max(0.,Size.Y-Height));
         const int32 Start=Native.Nodes.Num();
-        Native.Template(0x22000005,TEXT("NameTextTemplate"),
-            FIntRect(Point.X,Point.Y,Point.X+Width,Point.Y+36),FIntRect(0,0,Size.X,Size.Y));
+        Native.Template(0x22000005,Template,
+            FIntRect(Point.X,Point.Y,Point.X+Width,Point.Y+Height),FIntRect(0,0,Size.X,Size.Y));
         for(int32 I=Start;I<Native.Nodes.Num();++I)
-            if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text")))Native.Nodes[I].Text=Text;
+            if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text"))){Native.Nodes[I].Text=Text;Native.Nodes[I].Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);}
+    };
+    auto BuildHint=[&](const FString& Text,FVector2D Point)
+    {
+        if(Text.IsEmpty())return;
+        // Use the authored tooltip field (background, border and DAT font), not
+        // the centered, fixed-height world-name template. Size to all wrapped lines.
+        constexpr uint32 Tooltip=0xf7c721aa,TooltipText=0xd5a32d4d;
+        const FIntRect View(0,0,Size.X,Size.Y);
+        const int32 Start=Native.Nodes.Num();
+        if(!Native.Template(0x22000005,Tooltip,FIntRect(0,0,360,100),View))return;
+        const auto* TextNode=Native.Find(TooltipText);
+        const auto Font=TextNode?Fonts.Get(TextNode->Attr(TEXT("font"),0x4200000c)):BodyFont;
+        const int32 Left=TextNode?TextNode->Attr(TEXT("left_margin")):2;
+        const int32 Right=TextNode?TextNode->Attr(TEXT("right_margin")):2;
+        const int32 Top=TextNode?TextNode->Attr(TEXT("top_margin")):0;
+        const int32 Bottom=TextNode?TextNode->Attr(TEXT("bottom_margin")):0;
+        Native.Nodes.SetNum(Start);
+        if(!Font)return;
+        const int32 MaxWidth=FMath::Max(16,FMath::Min(360,int32(Size.X)-8));
+        int32 TextWidth=0;
+        for(const auto& Line:Font->Lines(Text))TextWidth=FMath::Max(TextWidth,FMath::CeilToInt(Font->Width(Line)));
+        const int32 Width=FMath::Clamp(TextWidth+Left+Right+8,16,MaxWidth);
+        const int32 Height=FMath::Min(int32(Size.Y),Font->Lines(Text,FMath::Max(1,Width-Left-Right-8)).Num()*int32(Font->Height)+Top+Bottom+8);
+        if(Point.X+Width>Size.X)Point.X=Mouse.X-Width-12;
+        if(Point.Y+Height>Size.Y)Point.Y=Mouse.Y-Height-12;
+        const FIntPoint Origin(FMath::Clamp(int32(Point.X),0,FMath::Max(0,int32(Size.X)-Width)),
+                               FMath::Clamp(int32(Point.Y),0,FMath::Max(0,int32(Size.Y)-Height)));
+        Native.Template(0x22000005,Tooltip,FIntRect(Origin,Origin+FIntPoint(Width,Height)),View);
+        for(int32 I=Start;I<Native.Nodes.Num();++I)if(Native.Nodes[I].Id==TooltipText)
+        {
+            auto& N=Native.Nodes[I];N.Text=Text;
+            N.Rect.Min+=FIntPoint(4,4);N.Rect.Max-=FIntPoint(4,4);N.Clip=N.Rect;
+        }
     };
     if(!DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
     {
@@ -223,7 +360,10 @@ void SAC2GameUI::BuildPointerFeedback()
                     FMath::Clamp(int32(I%2?Bounds.Max.Y:Bounds.Min.Y-Corner.Y),0,int32(Size.Y)-Corner.Y));
                 const int32 Start=Native.Nodes.Num();
                 Native.Template(0x22000005,TEXT("TargettingReticle"),FIntRect(Point,Point+Corner),FIntRect(0,0,Size.X,Size.Y));
-                for(int32 N=Start;N<Native.Nodes.Num();++N)Native.Nodes[N].Rotation=I*HALF_PI;
+                // The DAT tip points northwest. In screen order TL, BL, TR, BR
+                // turn it inward: southeast, northeast, southwest, northwest.
+                const float Turns[]={2,1,3,0};
+                for(int32 N=Start;N<Native.Nodes.Num();++N)Native.Nodes[N].Rotation=Turns[I]*HALF_PI;
             }
             Label(Net->ObjectName(Net->TargetId),FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-Corner.Y-30),true);
         }
@@ -231,6 +371,6 @@ void SAC2GameUI::BuildPointerFeedback()
     }
     if(!Mode->Network && HoverMob.IsValid())Label(HoverMob->DisplayName,Mouse+FVector2D(18,22));
     if(OwnsPointer(Mouse))for(const auto& Hint:Hints)
-        if(const auto* R=Buttons.Find(Hint.Key);R && (!ShopOwnsPointer(Mouse) || ShopButton(Hint.Key)) && Mouse.X>=R->Left && Mouse.X<R->Right && Mouse.Y>=R->Top && Mouse.Y<R->Bottom)
-        {Label(Hint.Value,Mouse+FVector2D(18,22));break;}
+        if(const auto* R=Buttons.Find(Hint.Key);R && AllowsPanelButton(Hint.Key,Mouse) && Mouse.X>=R->Left && Mouse.X<R->Right && Mouse.Y>=R->Top && Mouse.Y<R->Bottom)
+        {BuildHint(Hint.Value,Mouse+FVector2D(18,22));break;}
 }

@@ -14,8 +14,10 @@ class SourceOfferTests(unittest.TestCase):
             server = workspace / 'AC2E'
             required = [
                 'LICENSE', 'NOTICE', 'Build-AC2E.ps1', 'export_source.py', 'Recover-StaleLock.ps1',
+                'Server-Binaries.ps1', 'Find-AccountService.ps1',
                 'emulator/Cargo.toml', 'emulator/Cargo.lock', 'emulator/build.rs',
                 'emulator/src/server.rs', 'emulator/content/world.tsv',
+                'emulator/examples/population_ground.rs',
                 'emulator/docs/architecture.md', 'emulator/tools/prepare.py',
                 'emulator/web/accounts/index.html', 'deploy/Caddyfile',
                 'deploy/online.env.example', 'LICENSES/third-party/example.txt',
@@ -34,10 +36,16 @@ class SourceOfferTests(unittest.TestCase):
                 path = workspace / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('fixture', encoding='utf-8')
+            reference_files=['References/AC2_Rusted/Cargo.toml','References/AC2_Rusted/LICENSE',
+                             'Network/Bridge/src/main.rs','Network/Bridge/src/capture_decode.rs',
+                             'References/AC2_Rusted/crates/ac2-physics/Cargo.toml',
+                             'References/AC2_Rusted/crates/ac2-physics/src/lib.rs']
+            for relative in reference_files:
+                path=workspace/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text('fixture')
             output = export(server)
             with zipfile.ZipFile(output) as archive:
                 names = set(archive.namelist())
-                self.assertEqual(names, {'AC2E/' + p for p in required} | set(SUPPORT_FILES))
+                self.assertEqual(names, {'AC2E/' + p for p in required} | set(SUPPORT_FILES) | set(reference_files))
                 unpacked = workspace / 'unpacked'
                 archive.extractall(unpacked)
             with zipfile.ZipFile(export(unpacked / 'AC2E')) as archive:

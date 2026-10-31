@@ -78,6 +78,14 @@ bool SAC2GameUI::ShopAction(FName Name)
 bool SAC2GameUI::SmokeShopInput(int32 Step,FString& Error)
 {
     auto Fail=[&](const TCHAR* Why){Error=Why;return false;};
+    static FIntPoint SavedInventoryOffset;
+    const uint32 InventoryRoot=FAC2UILayout::Token(TEXT("RightSidePanel"));
+    if(Step==0){
+        // A user's saved inventory may be underneath the shop. Exercise an
+        // unobscured drag, without changing their persisted window position.
+        SavedInventoryOffset=Native.RootOffsets.FindRef(InventoryRoot);
+        Native.RootOffsets.Remove(InventoryRoot);Rebuild();
+    }
     auto& App=FSlateApplication::Get();auto Window=App.FindWidgetWindow(SharedThis(this));
     if(!Window)return Fail(TEXT("Shop window unavailable"));
     auto Point=[&](FSlateRect R){return GetCachedGeometry().LocalToAbsolute(FVector2D((R.Left+R.Right)*.5,(R.Top+R.Bottom)*.5)*Scale);};
@@ -106,6 +114,10 @@ bool SAC2GameUI::SmokeShopInput(int32 Step,FString& Error)
         if(Index==INDEX_NONE || !Click(*FString::Printf(TEXT("Offer%d"),Index)))return Fail(TEXT("Offer selection failed"));
         Rebuild();if(!Click(TEXT("PurchaseButton")))return Fail(TEXT("Native purchase button unavailable"));
     }
-    if(Step==2 && !Click(TEXT("ShopCloseButton")))return Fail(TEXT("Native close button unavailable"));
+    if(Step==2){
+        const bool Closed=Click(TEXT("ShopCloseButton"));
+        Native.RootOffsets.Add(InventoryRoot,SavedInventoryOffset);Rebuild();
+        if(!Closed)return Fail(TEXT("Native close button unavailable"));
+    }
     UE_LOG(LogTemp,Display,TEXT("AC2 shop pointer step %d passed"),Step);return true;
 }

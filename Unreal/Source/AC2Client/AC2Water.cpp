@@ -88,6 +88,18 @@ FAC2BlockWater FAC2WaterSource::At(const FAC2LandscapeDefs &Defs, const FAC2Land
     float Min = TNumericLimits<float>::Max();
     for (uint8 H : Land.Heights)
         Min = FMath::Min(Min, Defs.Heights[H]);
+    // Explicit content repair, not a retail rule: 74A9's dry map value cuts
+    // the lake off before its north/east bank. Borrow the adjoining lake
+    // plane only while this block remains dry in the DAT. Terrain depth testing
+    // supplies the real shoreline. Keep in sync with server Geometry::water_height.
+    if((Land.Id>>16)==0x74a9 && Min>=W.Height && Types.At(X,Y)==Types.At(0x75,0xa9))
+    {
+        const float Adjacent=Defs.Heights[Heights.At(0x75,0xa9)]+.95f;
+        bool WetEdge=false;
+        for(int32 I=0;I<17 && Land.Heights.Num()==289;++I)
+            WetEdge|=Defs.Heights[Land.Heights[16*17+I]]<Adjacent;
+        if(WetEdge && Min<Adjacent)W.Height=Adjacent;
+    }
     W.Present = Min < W.Height;
     return W;
 }

@@ -1,18 +1,30 @@
 #include "AC2Portrait.h"
 #include "AC2CharacterData.h"
+#include "AC2Effects.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "ProceduralMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture2D.h"
 
 namespace
 {
-void InitPreviewTarget(UTextureRenderTarget2D* Target, int32 Width, int32 Height)
+UMaterialInstanceDynamic* InitPreviewTarget(UTextureRenderTarget2D* Target, int32 Width, int32 Height)
 {
-    // FinalColorLDR must be display encoded before Slate samples the preview.
-    // InitAutoFormat's float target reports gamma 1, leaving this path too dark.
-    // Keep capture and Slate on the same LDR/sRGB contract, without tone mapping.
-    Target->TargetGamma = 2.2f;
-    Target->InitCustomFormat(Width, Height, PF_B8G8R8A8, false);
+    // Native materials already emit linearized RGB. SceneColor HDR avoids the
+    // final-output gamma pass and carries inverse opacity for compositing on UI art.
+    Target->ClearColor=FLinearColor(0,0,0,1);
+    Target->TargetGamma=1;
+    Target->InitCustomFormat(Width,Height,PF_FloatRGBA,true);
+    auto* Base=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/AC2/Materials/M_AC2Capture.M_AC2Capture"));
+    if(!Base)return nullptr;
+    auto* Material=UMaterialInstanceDynamic::Create(Base,Target->GetOuter());
+    Material->SetTextureParameterValue(TEXT("Capture"),Target);
+    // SceneTool projects camera-local +X to the right. Converting its +Y-forward
+    // camera to UE's +X-forward reverses that axis. Reflect only the UI capture,
+    // not DAT meshes, UVs or placements. Portal-space captures keep default 0.
+    Material->SetScalarParameterValue(TEXT("MirrorHorizontal"),1);
+    return Material;
 }
 }
 
@@ -27,7 +39,7 @@ AAC2Portrait::AAC2Portrait()
     Capture = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("PortraitCamera"));
     Capture->SetupAttachment(RootComponent);
     Capture->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
-    Capture->CaptureSource = ESceneCaptureSource::SCS_FinalColorLDR;
+    Capture->CaptureSource = ESceneCaptureSource::SCS_SceneColorHDR;
     Capture->FOVAngle = 35;
     Capture->bCaptureEveryFrame = true;
     Capture->ShowFlags.SetAtmosphere(false);
@@ -54,12 +66,13 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
     {
         Image = NewObject<UTextureRenderTarget2D>(this);
         Image->ClearColor = FLinearColor(.018f, .026f, .03f, 1);
-        InitPreviewTarget(Image, 640, 674);
+        Composite=InitPreviewTarget(Image, 640, 674);
         Capture->TextureTarget = Image;
         Capture->ShowOnlyActors.Add(this);
     }
     if (SceneId != Scene)
     {
+        SceneEffects.Reset();
         for (auto &C : StageComponents)
             if (C.IsValid())
                 C->DestroyComponent();
@@ -78,6 +91,7 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
             FAC2UISceneInfo SceneInfo;
             if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(Scene, this, Stage, &SceneInfo))
                 UE_LOG(LogTemp, Warning, TEXT("AC2 creator stage %08X could not be drawn"), Scene);
+            RefreshSceneEffects(Directory);
             Lighting = SceneInfo.Lighting;
             TInlineComponentArray<UActorComponent *> AfterStage(this);
             for (auto *C : AfterStage)
@@ -104,6 +118,8 @@ bool AAC2Portrait::Show(const FString &Directory, uint32 Physics, float Height, 
                     }
         }
     }
+    // Appearance edits rebuild the show-only list without recreating the stage.
+    if(SceneEffects)Capture->ShowOnlyActors.AddUnique(SceneEffects->RenderActor());
     Body->SetRelativeTransform(FTransform::Identity);
     TInlineComponentArray<UActorComponent *> Before(this);
     Model = MakeUnique<FAC2AssetLibrary>();
@@ -229,6 +245,7 @@ void AAC2Portrait::Tick(float Delta)
 {
     Super::Tick(Delta);
     Time += Delta;
+    if(SceneEffects)SceneEffects->Update(Capture->GetComponentLocation(),Capture->GetRightVector(),Capture->GetUpVector(),Delta,0,FVector::ZeroVector,true);
     if (!Arms.IsEmpty())
     {
         ArmTime = FMath::Min(1.5f, ArmTime + Delta);
@@ -251,28 +268,32 @@ void AAC2Portrait::Tick(float Delta)
         }
     }
     for (auto &Library : LineupModels)
-        Library->Animate(Time, 0);
+    { Library->Animate(Time, 0); Library->UpdateMaterials(Time); }
+    if (Backdrop) Backdrop->UpdateMaterials(Time);
     if (Ready && Model)
     {
         const FVector V = FVector::ZeroVector;
         Model->Animate(Time, 0, nullptr, &V);
+        Model->UpdateMaterials(Time);
     }
 }
 void AAC2Portrait::EndPlay(const EEndPlayReason::Type Reason)
 {
+    SceneEffects.Reset();
     Model.Reset();
     Backdrop.Reset();
     LineupModels.Reset();
     Super::EndPlay(Reason);
 }
 
-bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatalog &Catalog)
+bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatalog &Catalog,
+                            const TMap<uint32, FAC2CharacterDraft>& Drafts)
 {
     if (!LineupModels.IsEmpty())
         return Ready;
     Image = NewObject<UTextureRenderTarget2D>(this);
     Image->ClearColor = FLinearColor::Black;
-    InitPreviewTarget(Image, 1024, 619);
+    Composite=InitPreviewTarget(Image, 1024, 619);
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();
@@ -281,9 +302,12 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
     FAC2UISceneInfo Scene;
     if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(0x2100000b, this, Stage, &Scene))
         return false;
+    RefreshSceneEffects(Directory);
     Lighting = Scene.Lighting;
     for (const auto &A : Catalog.Avatars)
     {
+        const auto* Draft = Drafts.Find(A.Race | A.Sex);
+        if (!Draft || !A.Heights.IsValidIndex(Draft->Height) || !A.Builds.IsValidIndex(Draft->Build)) return false;
         const auto *At = Scene.Locations.Find(A.HoldingLocation);
         if (!At)
             return false;
@@ -291,13 +315,15 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         AddInstanceComponent(Root);
         Root->SetupAttachment(Stage);
         Root->SetRelativeTransform(*At);
+        Root->SetRelativeScale3D(Root->GetRelativeScale3D() * FVector(A.Builds[Draft->Build], A.Builds[Draft->Build], A.Heights[Draft->Height]));
         Root->RegisterComponent();
         auto Library = MakeUnique<FAC2AssetLibrary>();
         Library->SetPreviewLighting(Lighting, GetActorTransform());
         if (!Library->Open(Directory, Error) ||
-            !Library->DrawModel(A.Physics, this, Root, A.Resolve(A.Defaults())))
+            !Library->DrawModel(A.Physics, this, Root, A.Resolve(Draft->Appearance)))
             return false;
-        const FBox Box = Library->ModelBounds().TransformBy(*At);
+        Library->SetAnimationState(AC2Motion::Ground,AC2Motion::AvatarInactive); // Native avatar MouseOffObject state.
+        const FBox Box = Library->ModelBounds().TransformBy(Root->GetRelativeTransform());
         LineupBounds.Add(Box);
         LineupModels.Add(MoveTemp(Library));
     }
@@ -308,8 +334,35 @@ bool AAC2Portrait::ShowLineup(const FString &Directory, const FAC2CharacterCatal
         FMath::RadiansToDegrees(2 * FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Scene.VerticalFOV / 2)) * 1024 / 619));
     return Ready = LineupModels.Num() == Catalog.Avatars.Num();
 }
+void AAC2Portrait::HoverAvatar(int32 Index)
+{
+    if(SelectedLineupAvatar!=INDEX_NONE || Index==HoveredLineupAvatar)return;
+    if(LineupModels.IsValidIndex(HoveredLineupAvatar))
+        LineupModels[HoveredLineupAvatar]->SetAnimationState(AC2Motion::Ground,AC2Motion::AvatarInactive);
+    HoveredLineupAvatar=LineupModels.IsValidIndex(Index)?Index:INDEX_NONE;
+    if(LineupModels.IsValidIndex(HoveredLineupAvatar))
+        LineupModels[HoveredLineupAvatar]->SetAnimationState(AC2Motion::Ground,AC2Motion::AvatarActive);
+}
+bool AAC2Portrait::BeginAvatarSelection(int32 Index)
+{
+    if(SelectedLineupAvatar!=INDEX_NONE || !LineupModels.IsValidIndex(Index))return false;
+    HoverAvatar(Index);
+    SelectedLineupAvatar=Index;
+    if(!LineupModels[Index]->PlayBehavior(AC2Motion::AvatarSelect))
+        UE_LOG(LogTemp,Warning,TEXT("AC2 avatar %d has no playable selection behavior; proceeding without animation"),Index);
+    return true;
+}
+bool AAC2Portrait::AvatarSelectionComplete() const
+{
+    return LineupModels.IsValidIndex(SelectedLineupAvatar) && AvatarSelectionDuration()<=0;
+}
+float AAC2Portrait::AvatarSelectionDuration() const
+{
+    return LineupModels.IsValidIndex(SelectedLineupAvatar)?LineupModels[SelectedLineupAvatar]->BehaviorDuration(AC2Motion::AvatarSelect):0;
+}
 int32 AAC2Portrait::PickAvatar(FVector2D Point) const
 {
+    Point.X = 1 - Point.X; // From the displayed native scene to the raw UE capture.
     const FTransform View = Capture->GetRelativeTransform().Inverse();
     float Tangent = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
     int32 Best = INDEX_NONE;
@@ -342,7 +395,7 @@ FVector2D AAC2Portrait::AvatarPoint(int32 Index) const
     FBox B = Arms.IsValidIndex(Index) ? LineupBounds[Index].TransformBy(FigureFrames[Index] * Arms[Index]->GetRelativeTransform()) : LineupBounds[Index];
     const FVector P = Capture->GetRelativeTransform().InverseTransformPosition(B.GetCenter());
     const float Tan = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
-    return P.X <= 1 ? FVector2D(-1,-1) : FVector2D(.5 + P.Y/(2*P.X*Tan), .5-P.Z/(2*P.X*Tan*Image->SizeY/Image->SizeX));
+    return P.X <= 1 ? FVector2D(-1,-1) : FVector2D(.5 - P.Y/(2*P.X*Tan), .5-P.Z/(2*P.X*Tan*Image->SizeY/Image->SizeX));
 }
 void AAC2Portrait::SelectCharacter(int32 Index)
 {
@@ -352,7 +405,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
 {
     Image = NewObject<UTextureRenderTarget2D>(this);
     Image->ClearColor = FLinearColor::Black;
-    InitPreviewTarget(Image,706,768);
+    Composite=InitPreviewTarget(Image,706,768);
     Capture->TextureTarget = Image;
     Capture->ShowOnlyActors.Add(this);
     Backdrop = MakeUnique<FAC2AssetLibrary>();
@@ -360,6 +413,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
     FString Error;
     FAC2UISceneInfo Scene;
     if (!Backdrop->Open(Directory, Error) || !Backdrop->DrawUIScene(0x21000001,this,Stage,&Scene)) return false;
+    RefreshSceneEffects(Directory);
     Lighting = Scene.Lighting;
     FTransform Holding;
     if (!Backdrop->HoldingLocation(0x1f000068,1,Holding)) return false;
@@ -395,4 +449,36 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
     Capture->SetRelativeRotation((Scene.Camera.GetRotation()*FQuat(FVector::UpVector,PI/2)).Rotator());
     Capture->FOVAngle=FMath::RadiansToDegrees(2*FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Scene.VerticalFOV/2))*706/768));
     return Ready=true;
+}
+
+bool AAC2Portrait::ShowScene(const FString& Directory,uint32 SceneIdToShow,FIntPoint Size)
+{
+    Image=NewObject<UTextureRenderTarget2D>(this);
+    Image->ClearColor=FLinearColor::Black;
+    Composite=InitPreviewTarget(Image,Size.X,Size.Y);
+    if(!Composite)return false;
+    Capture->TextureTarget=Image;Capture->ShowOnlyActors.Add(this);
+    Backdrop=MakeUnique<FAC2AssetLibrary>();
+    Backdrop->SetPreviewLighting({},GetActorTransform());
+    FAC2UISceneInfo Scene;FString Error;
+    if(!Backdrop->Open(Directory,Error) || !Backdrop->DrawUIScene(SceneIdToShow,this,Stage,&Scene))return false;
+    Capture->SetRelativeLocation(Scene.Camera.GetLocation());
+    Capture->SetRelativeRotation((Scene.Camera.GetRotation()*FQuat(FVector::UpVector,PI/2)).Rotator());
+    Capture->FOVAngle=FMath::RadiansToDegrees(2*FMath::Atan(FMath::Tan(FMath::DegreesToRadians(Scene.VerticalFOV/2))*Size.X/Size.Y));
+    // SceneTool::SetupOrthographicProjection stores vertical extent; UE asks for width.
+    if(Scene.Orthographic){Capture->ProjectionType=ECameraProjectionMode::Orthographic;Capture->OrthoWidth=Scene.OrthoHeight*Size.X/Size.Y;}
+    RefreshSceneEffects(Directory);
+    return Ready=true;
+}
+
+void AAC2Portrait::RefreshSceneEffects(const FString& Directory)
+{
+    SceneEffects.Reset();
+    auto Sources=Backdrop->ParticleSources();
+    if(!Sources.IsEmpty())
+    {
+        SceneEffects=MakeUnique<FAC2Effects>();SceneEffects->Open(GetWorld(),Directory);
+        for(int32 I=0;I<Sources.Num();++I){Sources[I].Key=I+1;Sources[I].Frame=Sources[I].Frame*GetActorTransform();}
+        SceneEffects->SyncSources(Sources);Capture->ShowOnlyActors.Add(SceneEffects->RenderActor());
+    }
 }

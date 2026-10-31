@@ -1,5 +1,6 @@
 #pragma once
 #include "AC2Assets.h"
+#include "AC2GameTime.h"
 
 struct FAC2SkyReplacement
 {
@@ -10,6 +11,7 @@ struct FAC2SkyReplacement
 struct FAC2SkyKey
 {
     float Time = 0, FogMin = 0, FogMax = 1000, FogSky = 0, Direct = 1, Heading = 0, Pitch = 45, Ambient = 0.5f;
+    // Native display RGB, not linear-light values. Convert only at UE light inputs.
     FLinearColor FogColor = FLinearColor::White, DirectColor = FLinearColor::White, AmbientColor = FLinearColor::White;
     float Rain = 0, WindX = 0, WindY = 0;
     TArray<FAC2SkyReplacement> Replacements;
@@ -46,7 +48,7 @@ class FAC2SkyRenderer
   public:
     ~FAC2SkyRenderer();
     bool Open(UWorld *World, const FString &Directory, FString &Error);
-    void Update(const FVector &Viewer, float DeltaTime);
+    void Update(const FVector &Viewer, float DeltaTime, TOptional<double> ServerTime = {});
     void SetHour(float Hour);
     void SetWeather(int32 Index);
     int32 WeatherIndex = 0;
@@ -77,10 +79,12 @@ class FAC2SkyRenderer
     TArray<FAC2SkyDay> Days;
     TArray<float> Weights;
     uint32 DayNumber = 0;
+    FAC2GameTime Calendar;
+    double CurrentTime = 0;
     AExponentialHeightFog *Fog = nullptr;
     TUniquePtr<FAC2AssetLibrary> Assets;
     UWorld *World = nullptr;
     ADirectionalLight *Sun = nullptr;
     ASkyLight *Ambient = nullptr;
-    float DayFraction = 0.5f, DayLength = 14400;
+    float DayFraction = 0.5f;
 };

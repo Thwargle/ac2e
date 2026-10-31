@@ -6,6 +6,8 @@
 #include "Engine/World.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "Misc/AutomationTest.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "ProceduralMeshComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2PreviewLightingTest, "AC2.Data.NativePreviewLightingAndAppearance",
@@ -32,7 +34,18 @@ bool FAC2PreviewLightingTest::RunTest(const FString&)
             if (!Selection.Lighting.Lights.IsEmpty())
                 TestTrue(TEXT("Selection default light direction"), Selection.Lighting.Lights[0].Directional &&
                     Selection.Lighting.Lights[0].Direction.Equals(FVector(.3, -.9, -1).GetSafeNormal()));
+            const int32 PriorSources=SceneAssets.ParticleSources().Num();
             TestTrue(TEXT("Lineup scene decoded"), SceneAssets.DrawUIScene(0x2100000b, Portrait, Portrait->Stage, &Lineup));
+            // Visual 1F0003C6 selects table 20000054/key 81000001/value 1:
+            // its four startup entries resolve to the blue particle family,
+            // rather than the default fire in static FX table 1E00003A.
+            TMap<uint32,int32> LineupDescriptors;
+            for(int32 I=PriorSources;I<SceneAssets.ParticleSources().Num();++I)
+                ++LineupDescriptors.FindOrAdd(SceneAssets.ParticleSources()[I].Descriptor);
+            for(uint32 Id=0x39000136;Id<=0x39000139;++Id)
+                TestEqual(FString::Printf(TEXT("Both braziers use authored blue layer %08X"),Id),LineupDescriptors.FindRef(Id),2);
+            for(uint32 Id=0x39000126;Id<=0x39000129;++Id)
+                TestFalse(TEXT("Default fire does not leak through appearance override"),LineupDescriptors.Contains(Id));
             TestEqual(TEXT("Three authored lineup lights"), Lineup.Lighting.Lights.Num(), 3);
             if (Lineup.Lighting.Lights.Num() == 3)
             {
@@ -56,6 +69,8 @@ bool FAC2PreviewLightingTest::RunTest(const FString&)
     {
         const uint32 Visuals[] = {0x1f000023,0x1f000024,0x1f000025,0x1f000079,0x1f000026,0x1f00007a};
         for (int32 I=0; I<6; ++I)
+        {
+            TArray<FLinearColor> DefaultTints;
             for (bool Last : {false,true})
             {
                 const auto& A = Catalog.Avatars[I];
@@ -73,16 +88,38 @@ bool FAC2PreviewLightingTest::RunTest(const FString&)
                     Creator.DrawModel(A.Physics,First,First->Body,Creation) && LoggedIn.DrawModel(Visuals[I],Second,Second->Body,Login)))
                     TestEqual(FString::Printf(TEXT("Avatar %d %s colors survive native login"),I,Last?TEXT("last"):TEXT("default")),
                         LoggedIn.AppearanceFingerprint(),Creator.AppearanceFingerprint());
+                TArray<FLinearColor> Tints;TInlineComponentArray<UProceduralMeshComponent*> Meshes(First);
+                for(auto* Mesh:Meshes)for(int32 Slot=0;Slot<Mesh->GetNumMaterials();++Slot)
+                    if(auto* M=Cast<UMaterialInstanceDynamic>(Mesh->GetMaterial(Slot))){
+                        Tints.Add(M->K2_GetVectorParameterValue(TEXT("Tint")));
+                        if(M->K2_GetVectorParameterValue(TEXT("AC2Stage1Color")).R==8){
+                            TestNotNull(TEXT("Native signed detail sampler has its DAT default"),M->K2_GetTextureParameterValue(TEXT("AC2Stage1Texture")));
+                            TestTrue(TEXT("Palette stage is reached after detail texture"),M->K2_GetVectorParameterValue(TEXT("AC2Stage2Color")).R>1);
+                        }
+                    }
+                if(!Last)DefaultTints=Tints;
+                else TestTrue(FString::Printf(TEXT("Avatar %d sliders change rendered material colors"),I),Tints!=DefaultTints);
                 First->Destroy(); Second->Destroy();
             }
+        }
     }
     TestTrue(TEXT("Selection render target created"),Portrait->ShowSelection(Directory,{{0x1f000023,1,1,{}}},0,5));
     if(Portrait->Image)
     {
-        TestEqual(TEXT("Final LDR target uses byte sRGB format"),Portrait->Image->GetFormat(),PF_B8G8R8A8);
-        TestFalse(TEXT("Slate target does not force linear gamma"),Portrait->Image->bForceLinearGamma);
-        TestEqual(TEXT("Display gamma retained through capture"),Portrait->Image->TargetGamma,2.2f);
+        TestEqual(TEXT("Native previews use linear HDR with inverse opacity"),Portrait->Image->GetFormat(),PF_FloatRGBA);
+        TestTrue(TEXT("Scene capture keeps linear RGB for the UI compositor"),Portrait->Image->bForceLinearGamma);
+        TestEqual(TEXT("Scene capture does not apply display gamma twice"),Portrait->Image->TargetGamma,1.f);
+        TestTrue(TEXT("Capture compositor retains additive pixels with premultiplied alpha"),
+            Portrait->Composite && Portrait->Composite->GetBlendMode()==BLEND_AlphaComposite);
     }
+    auto* Torch=World->SpawnActor<AAC2Portrait>();
+    TestTrue(TEXT("Native torch scene loads"),Torch->ShowScene(Directory,0x21000009,FIntPoint(396,303)));
+    FAC2AssetLibrary TorchAssets;FAC2UISceneInfo TorchInfo;
+    if(TorchAssets.Open(Directory,Error) && TorchAssets.DrawUIScene(0x21000009,Torch,Torch->Stage,&TorchInfo)){
+        TestTrue(TEXT("Native torch camera is orthographic"),TorchInfo.Orthographic);
+        TestTrue(TEXT("Vertical camera scale converted to horizontal UE width"),
+            FMath::IsNearlyEqual(Torch->Capture->OrthoWidth,TorchInfo.OrthoHeight*396/303));
+    }else AddError(TEXT("Torch scene camera unavailable"));
     World->DestroyWorld(false); GEngine->DestroyWorldContext(World);
     return true;
 }

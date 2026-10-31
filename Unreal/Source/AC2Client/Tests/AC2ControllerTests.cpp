@@ -1,4 +1,5 @@
 #include "AC2MotionData.h"
+#include "AC2Locomotion.h"
 #include "AC2LoginUI.h"
 #include "AC2Projectile.h"
 #include "AC2DatArchive.h"
@@ -23,6 +24,16 @@ bool FAC2MotionTest::RunTest(const FString&)
     TestTrue(TEXT("Ground can move and jump"),Motion.Values(AC2Motion::Ground).Forward>0&&Motion.Values(AC2Motion::Ground).Jump>0);
     TestEqual(TEXT("No native human air steering"),Motion.Values(AC2Motion::Air).ForwardAccel,0.f);
     TestTrue(TEXT("Water has buoyancy and drag"),Motion.Values(AC2Motion::Water).Lift>0&&Motion.Values(AC2Motion::Water).Drag>0);
+    const double Waterline=180.*Motion.Water;
+    TestEqual(TEXT("Each remote body enters water at its own depth"),AC2Locomotion::Element(true,Waterline+1,180,Motion,false,AC2Motion::Air),AC2Motion::Water);
+    TestEqual(TEXT("Waterline hysteresis prevents remote pose flicker"),AC2Locomotion::Element(true,Waterline-10,180,Motion,false,AC2Motion::Water),AC2Motion::Water);
+    TestEqual(TEXT("Shallow grounded swimmer returns to wading"),AC2Locomotion::Element(true,30,180,Motion,true,AC2Motion::Water),AC2Motion::SeaFloor);
+    TestEqual(TEXT("No water under an airborne observer"),AC2Locomotion::Element(false,999,180,Motion,false,AC2Motion::Water),AC2Motion::Air);
+    FAC2MotionValues WaterValues;WaterValues.Lift=20;
+    TestEqual(TEXT("Above water recovery uses gravity, not amplified buoyancy"),AC2Locomotion::WaterLift(-2,WaterValues,-980),-980.);
+    TestEqual(TEXT("Submerged buoyancy saturates at native lift"),AC2Locomotion::WaterLift(2,WaterValues,-980),2000.);
+    TestTrue(TEXT("Drag preserves speed in acceleration direction"),AC2Locomotion::Friction(FVector(100,100,0),FVector(1,0,0),.5,1).Equals(FVector(100,50,0)));
+    TestTrue(TEXT("No input damps all velocity"),AC2Locomotion::Friction(FVector(100,100,0),FVector::ZeroVector,.5,1).Equals(FVector(50,50,0)));
     TestTrue(TEXT("Native behavior table including tail"),Portal.Read(0x44000001,Bytes,Error)&&Behavior.Decode(0x44000001,Bytes));
     TestTrue(TEXT("Retail table exceeds old 4096 limit"),Behavior.Combos.Num()>4096);
     TestEqual(TEXT("Native ordered layer names"),Behavior.LayerOrder.Num(),9);
@@ -114,6 +125,54 @@ bool FAC2ProjectileTest::RunTest(const FString&)
     Bytes.Pop();TestFalse(TEXT("Truncated FX script rejected"),Script.Decode(0x5700000c,Bytes));
     return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2LoopFXTest,"AC2.Data.LoopingAnimationEffectTiming",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2LoopFXTest::RunTest(const FString&)
+{
+    TMap<uint32,TArray<uint8>> Records;
+    auto Word=[](TArray<uint8>& B,uint32 V){for(int32 I=0;I<4;++I)B.Add(uint8(V>>(I*8)));};
+    auto Float=[&](TArray<uint8>& B,float V){uint32 Bits;FMemory::Memcpy(&Bits,&V,4);Word(B,Bits);};
+    auto Clip=[&](uint32 Id,const TArray<FAC2Animation::FEffect>& Effects){
+        auto& B=Records.Add(Id);Word(B,Id);Word(B,0x40000001);Float(B,1);Word(B,1);
+        for(int32 I=0;I<4;++I)Word(B,0); // One bone, empty scale/position/rotation/weight tracks.
+        Word(B,1);Word(B,Effects.Num());
+        for(const auto& E:Effects){Word(B,E.Id);Float(B,E.Phase);Word(B,E.Stop);Float(B,E.Probability);
+            Float(B,E.Intensity);Float(B,E.Variation);Word(B,E.Play);}
+        Word(B,0);Word(B,0);Word(B,0);Float(B,0);Float(B,1);
+    };
+    Clip(0x05000001,{{0x81000001,.25f,1,1},{0x81000002,0,1,1},{0x81000003,1,1,1}});
+    Clip(0x05000002,{{0x81000001,.75f,.5f,3}});
+    auto Read=[&](uint32 Id,TArray<uint8>& B){const auto* Found=Records.Find(Id);if(!Found)return false;B=*Found;return true;};
+    FAC2AnimatorInput Input;
+    const auto Loop=FAC2Animator::Load(Read,0x05000001,0);
+    if(!TestTrue(TEXT("Synthetic event clip decodes"),Loop.IsValid()))return false;
+    FAC2AnimationTriggerState State;
+    TestEqual(TEXT("Phase-zero event fires on first advance"),Loop->EffectsBetween(0,.1,Input,true,&State).Num(),1);
+    TestEqual(TEXT("Stationary clock never replays FX"),Loop->EffectsBetween(.1,.1,Input,true,&State).Num(),0);
+    TestEqual(TEXT("Middle cue fires once"),Loop->EffectsBetween(.1,.5,Input,true,&State).Num(),1);
+    const auto Wrap=Loop->EffectsBetween(.9,1.3,Input,true,&State);
+    TestEqual(TEXT("Wrap includes old end, new start and next cue"),Wrap.Num(),3);
+    if(Wrap.Num()==3){TestEqual(TEXT("Old cycle finishes first"),Wrap[0].Id,0x81000003u);
+        TestEqual(TEXT("New phase-zero cue"),Wrap[1].Id,0x81000002u);TestEqual(TEXT("Next stride cue"),Wrap[2].Id,0x81000001u);}
+    TestEqual(TEXT("Zero cue is not repeated after exact boundary"),Loop->EffectsBetween(1,1.1,Input,true,&State).Num(),0);
+    TestEqual(TEXT("Actions do not loop after completion"),Loop->EffectsBetween(1.1,2,Input).Num(),0);
+    TestEqual(TEXT("Rewinding has no historical triggers"),Loop->EffectsBetween(.9,.2,Input,true).Num(),0);
+    auto& Cube=Records.Add(0x05000003);Word(Cube,0x05000003);Word(Cube,0x40000002);
+    Word(Cube,1);Word(Cube,0x40000001);Word(Cube,2);Float(Cube,0);Float(Cube,10);
+    Word(Cube,2);Word(Cube,0x05000001);Word(Cube,0x05000002);
+    const auto Blend=FAC2Animator::Load(Read,0x05000003,0);
+    if(!TestTrue(TEXT("Walk/run blend graph decodes"),Blend.IsValid()))return false;
+    Input.Forward=5;State={};
+    const auto Events=Blend->EffectsBetween(0,.51,Input,true,&State);
+    const auto* Step=Events.FindByPredicate([](const auto& E){return E.Id==0x81000001;});
+    if(TestNotNull(TEXT("Weighted footstep is reached at halfway"),Step)){
+        TestEqual(TEXT("Weighted timing"),Step->Phase,.5f);TestEqual(TEXT("Weighted strength"),Step->Intensity,2.f);
+        TestEqual(TEXT("Weighted probability"),Step->Probability,.75f);}
+    Input.Forward=7.5f;
+    TestEqual(TEXT("Changing gait cannot replay a reached cue"),Blend->EffectsBetween(.51,.7,Input,true,&State).Num(),0);
+    TestTrue(TEXT("Same cue may play on the next stride"),Blend->EffectsBetween(.9,1.7,Input,true,&State).Num()>0);
+    return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2CombatPoseTest,"AC2.Data.CombatLayersDeathAndParticles",
     EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FAC2CombatPoseTest::RunTest(const FString&)
@@ -135,10 +194,18 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             auto Same=[](const TArray<FVector>& A,const TArray<FVector>& B){if(A.Num()!=B.Num())return false;
                 for(int32 I=0;I<A.Num();++I)if(!A[I].Equals(B[I],.01))return false;return true;};
             const auto Rest=Snapshot();
+            float MovementTime=0;
+            const auto BeforeMoveFX=Model.Stats().AnimationEffectTriggers;
+            for(int32 I=0;I<80;++I){MovementTime+=.05f;Model.Animate(MovementTime,400);}
+            TestTrue(TEXT("Running dispatches native gait effects on a rendered multipart model"),
+                Model.Stats().AnimationEffectTriggers>BeforeMoveFX);
+            const auto AfterMoveFX=Model.Stats().AnimationEffectTriggers;
+            Model.Animate(MovementTime,400);
+            TestEqual(TEXT("No duplicate gait effects on a stationary animation clock"),Model.Stats().AnimationEffectTriggers,AfterMoveFX);
             TestTrue(TEXT("Native attack begins"),Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee));
             TestTrue(TEXT("Native hit begins on separate layer"),Model.PlayBehavior(AC2Motion::Hit));
             TestTrue(TEXT("Hit did not cancel the attack"),Model.BehaviorDuration(AC2Motion::Attack)>0 && Model.BehaviorDuration(AC2Motion::Hit)>0);
-            float Time=.1f;Model.Animate(Time,0);
+            float Time=MovementTime+.1f;Model.Animate(Time,0);
             TestFalse(TEXT("Combat changes actual rendered vertices"),Same(Rest,Snapshot()));
             for(int32 I=0;I<4;++I){Time+=.1f;Model.Animate(Time,0);}
             const auto BeforeStop=Snapshot();
@@ -160,6 +227,18 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             TestTrue(TEXT("Duplicate death does not restart final pose"),Same(Corpse,Snapshot()));
             Model.SetAnimationState(AC2Motion::Ground,AC2Motion::Peace);
             TestEqual(TEXT("Resurrection releases the held death"),Model.BehaviorDuration(AC2Motion::Death),0.f);
+            TestTrue(TEXT("Jump resolves a native impulse"),Model.PlayBehavior(AC2Motion::Jump));
+            TestTrue(TEXT("Jump impulse occurs within its animation"),Model.JumpDelay()>=0 && Model.JumpDelay()<Model.BehaviorDuration(AC2Motion::Jump));
+            Model.StopBehavior();
+            Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee,1,true);
+            Model.SetAnimationState(AC2Motion::Water,AC2Locomotion::AnimationMode(AC2Motion::Water,AC2Motion::Melee));
+            TestEqual(TEXT("Entering water releases held ground attacks"),Model.BehaviorDuration(AC2Motion::Attack),0.f);
+            for(int32 I=0;I<20;++I){Time+=.1f;Model.Animate(Time,150);}
+            const auto Swim=Snapshot();
+            for(int32 I=0;I<3;++I){Time+=.1f;Model.Animate(Time,150);}
+            TestFalse(TEXT("Swimming changes actual rendered vertices"),Same(Swim,Snapshot()));
+            TestFalse(TEXT("Swim pose differs from standing"),Same(Rest,Swim));
+            Model.SetAnimationState(AC2Motion::Ground,AC2Motion::Peace);
             TestTrue(TEXT("Native Mind Lash cast animation"),Model.PlayBehavior(0x410000b9,0x41000011));
             TestTrue(TEXT("Shared native Cast_Attack resolves hand emitters"),Model.PlayEffect(0x810001cd));
             int32 Peak=0;for(int32 I=0;I<80;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
@@ -167,6 +246,11 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             TestTrue(TEXT("Mind Lash impact resolves native FX bank"),Model.PlayEffect(0x41000248));
             Peak=0;for(int32 I=0;I<20;++I){Time+=.05f;Model.Animate(Time,0);Peak=FMath::Max(Peak,Model.EffectParticleCount());}
             TestTrue(TEXT("Impact produces actual native particles"),Peak>0);
+            FAC2AssetLibrary::SetEffectChannel(0x40000001,2);
+            TestFalse(TEXT("Native None blood preference excludes all death blood and comic variants"),Model.PlayEffect(0x810002cf));
+            FAC2AssetLibrary::SetEffectChannel(0x40000001,4);
+            TestTrue(TEXT("Native Normal blood channel resolves the death effect"),Model.PlayEffect(0x810002cf));
+            Model.StopEffect(0x810002cf);
         }
         // These are the actual static projectile entities referenced by racial skill scripts.
         for(uint32 Visual:{0x1f000066u,0x1f000392u,0x1f000393u,0x1f0003ceu,0x1f0003cfu,0x1f0003d0u})
@@ -185,6 +269,83 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
     }
     World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;
 }
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2DamageAppearanceTest,"AC2.Data.ProgressiveDamageAppearance",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2DamageAppearanceTest::RunTest(const FString&)
+{
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false)
+        .CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+    FAC2AssetLibrary::SetEffectChannel(0x40000001,4);FAC2AssetLibrary::SetEffectChannel(0x40000007,2);
+    FAC2CharacterCatalog Catalog;FString Error;
+    TestTrue(TEXT("Appearance catalog"),Catalog.Open(AC2::ResolveDatDirectory(TEXT("")),Error));
+    struct FCase {uint32 Visual;FAC2Appearance Appearance;bool Wounds=true;};
+    TArray<FCase> Cases={{0x1f000023,{}},{0x1f000036,{}},{0x1f0003d1,{},false}};
+    for(const auto& Avatar:Catalog.Avatars)
+    {
+        auto Choices=Avatar.Defaults();
+        for(const auto& Choice:Avatar.Choices)if(!Choice.Value.IsEmpty())Choices.Add(Choice.Key,Choice.Value.Num()/2);
+        Cases.Add({Avatar.Physics,Avatar.Resolve(Choices)});
+    }
+    for(const auto& Case:Cases)
+    {
+        const uint32 Visual=Case.Visual;
+        auto* Actor=World->SpawnActor<AAC2Portrait>();
+        {
+            FAC2AssetLibrary Model;
+            if(!TestTrue(FString::Printf(TEXT("Damage visual %08X"),Visual),Model.Open(AC2::ResolveDatDirectory(TEXT("")),Error)&&Model.DrawModel(Visual,Actor,Actor->Body,Case.Appearance)))continue;
+            auto Textures=[&](){TArray<UTexture*> Result;TInlineComponentArray<UProceduralMeshComponent*> Meshes(Actor);
+                for(auto* Mesh:Meshes)for(int32 S=0;S<Mesh->GetNumSections();++S)
+                    if(auto* M=Mesh->GetMaterial(S))for(int32 I=0;I<4;++I){UTexture* T=nullptr;M->GetTextureParameterValue(*FString::Printf(TEXT("AC2Stage%dTexture"),I),T);Result.Add(T);}
+                return Result;};
+            const auto Clean=Textures();const uint32 CleanHash=Model.DamageAppearanceFingerprint();
+            const uint32 BaseAppearance=Model.AppearanceFingerprint();
+            Model.SetHealth(61,100);
+            TestTrue(TEXT("No wound texture below native 40% damage threshold"),Textures()==Clean);
+            TArray<UTexture*> Previous=Clean;uint32 PreviousHash=CleanHash;
+            // DBFXTable 1E000057 -> appearance key 2: 0.40/0.55/0.70/0.85/1.0.
+            for(float Health:{60.f,45.f,30.f,15.f,0.f})
+            {
+                Model.SetHealth(Health,100);
+                if(Case.Wounds)
+                {
+                    TestNotEqual(TEXT("Each native wound stage changes the rendered appearance"),Model.DamageAppearanceFingerprint(),PreviousHash);
+                    TestFalse(FString::Printf(TEXT("%08X health %.0f changes bound DAT textures"),Visual,Health),Textures()==Previous);
+                }
+                else
+                {
+                    // Idol 3100047D has material type 2: the inherited native
+                    // wound atoms target skin/garment types, never this material.
+                    TestTrue(TEXT("No invented wounds on unsupported native material types"),Textures()==Clean);
+                    TestEqual(TEXT("Unsupported material stays unchanged"),Model.DamageAppearanceFingerprint(),CleanHash);
+                }
+                TestEqual(TEXT("Wounds do not change base skin/dye/armor identity"),Model.AppearanceFingerprint(),BaseAppearance);
+                Previous=Textures();PreviousHash=Model.DamageAppearanceFingerprint();
+            }
+            Model.SetHealth(100,100);TestTrue(TEXT("Healing restores exact base textures"),Textures()==Clean);
+            Model.SetHealth(45,100);const auto Injured=Textures();
+            Model.SetHealth(90,200);TestTrue(TEXT("Wounds use health proportion, not absolute hit points"),Textures()==Injured);
+            Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee);
+            const float Attack=Model.BehaviorDuration(AC2Motion::Attack);
+            Model.SetHealth(60,200);TestEqual(TEXT("Wound updates preserve running animation"),Model.BehaviorDuration(AC2Motion::Attack),Attack);
+            TestTrue(TEXT("Wound updates preserve rig attachments"),Model.AuditAttachments(Error));
+            Model.PlayEffect(0x41000002,.55f);TestTrue(TEXT("Native network FX scalar matches health-derived stage"),Textures()==Injured);
+            FAC2AssetLibrary::SetEffectChannel(0x40000001,2);Model.Animate(.1,0);
+            TestTrue(TEXT("None blood preference removes persistent wounds"),Textures()==Clean);
+            FAC2AssetLibrary::SetEffectChannel(0x40000001,4);Model.Animate(.2,0);
+            TestTrue(TEXT("Restoring blood preference restores current wounds"),Textures()==Injured);
+            FAC2AssetLibrary::SetEffectChannel(0x40000007,1);Model.Animate(.3,0);
+            if(Case.Wounds)TestFalse(TEXT("Native green-blood option changes wound textures"),Textures()==Injured);
+            FAC2AssetLibrary::SetEffectChannel(0x40000007,2);Model.Animate(.4,0);
+            TestTrue(TEXT("Returning to red blood restores current wound stage"),Textures()==Injured);
+            Model.StopEffect(0x41000002);TestTrue(TEXT("StopFX removes wounds without changing skin/dyes"),Textures()==Clean);
+            Model.SetHealth(0,100);Model.SetHealth(100,100);TestTrue(TEXT("Respawn restores clean model"),Textures()==Clean);
+        }
+        Actor->Destroy();
+    }
+    World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2WorldPropTest,"AC2.Data.WorldPropsAndInventoryIcons",
     EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FAC2WorldPropTest::RunTest(const FString&)
@@ -196,7 +357,7 @@ bool FAC2WorldPropTest::RunTest(const FString&)
     {
         FAC2AssetLibrary Assets;FString Error;
         TestTrue(TEXT("DAT assets"),Assets.Open(AC2::ResolveDatDirectory(TEXT("")),Error));
-        for(uint32 Visual:{0x1f00059cu,0x1f0005a4u,0x1f0005a8u,0x1f0002a6u,0x1f0004f8u,0x1f000063u,0x1f00058eu,0x1f00058cu,0x1f00058du})
+        for(uint32 Visual:{0x1f00059cu,0x1f0005a4u,0x1f0005a8u,0x1f0002a6u,0x1f0004f8u,0x1f000063u,0x1f00058eu,0x1f00058cu,0x1f00058du,0x1f0002beu})
         {
             const auto Icons=Assets.IconLayers(Visual);
             TestTrue(FString::Printf(TEXT("Native armor/quest/weapon icon %08X"),Visual),

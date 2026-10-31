@@ -20,6 +20,9 @@ class FAC2Effects
     void Update(const FVector &Camera, const FVector &Right, const FVector &Up, float Delta, float Rain,
                 const FVector &Wind, bool Indoors);
     void Burst(const FVector &Position, const FLinearColor &Color);
+    bool GroundDecal(const FAC2Decal& Data,const FTransform& Frame,AActor* Owner=nullptr);
+    bool Blood(const FTransform& Frame,AActor* SourceActor) {FAC2Decal D;return Assets&&Assets->DamageDecal(D)&&GroundDecal(D,Frame,SourceActor);}
+    int32 DecalCount() const {return Decals.Num();}
     AActor *RenderActor() const
     {
         return Actor;
@@ -38,6 +41,17 @@ class FAC2Effects
     int32 ActiveEmitters(uint32 Descriptor) const;
 
   private:
+    struct FGroundDecal
+    {
+        TWeakObjectPtr<UProceduralMeshComponent> Mesh;
+        TArray<FVector> Vertices,Normals;
+        TArray<FVector2D> UV;
+        FColor Color;
+        double Born=0;
+        float Life=0;
+    };
+    TArray<FGroundDecal> Decals;
+    void UpdateDecals();
     struct FPreset
     {
         FAC2ParticlePreset Data;

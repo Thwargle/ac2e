@@ -11,3 +11,4 @@
 *.lock text eol=lf
 *.md text eol=lf
 *.ini text eol=lf
+/AC2E/emulator/content/recovered-population.tsv text eol=lf

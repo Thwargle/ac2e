@@ -17,6 +17,7 @@ pub const RESURRECT: u32 = 0x8207000e;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Request {
+    Loot(crate::loot::Request),
     Allegiance(crate::allegiance::Query),
     Group(crate::groups::Request),
     MerchantSell(crate::merchants::SellRequest),
@@ -107,6 +108,7 @@ impl Reader<'_> {
 }
 
 pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
+    if crate::loot::handles(function,bytes){return crate::loot::decode(function,bytes).map(Request::Loot);}
     if bytes.len() > MAX_ARGUMENT_BYTES {
         return Err(WorldError::LimitExceeded);
     }
@@ -236,6 +238,7 @@ pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
             r.pos = bytes.len();
             Request::InventoryMove(request)
         }
+        crate::skills::CANCEL_UNTRAIN=>Request::Skill{action:crate::skills::Action::CancelUntrain,skill:0},
         crate::skills::TRAIN | crate::skills::UNTRAIN | crate::skills::RAISE => {
             let skill = r.int()?;
             if skill == 0 || skill > 65535 {

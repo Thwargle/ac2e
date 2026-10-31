@@ -13,6 +13,7 @@ struct FAC2AvatarChoice
     uint32 Race = 1, Sex = 4096, Physics = 0, Appearance = 0;
     // Position in the creation scene, not a starting area in the server world.
     uint32 HoldingLocation = 0;
+    TMap<uint32,uint32> PreviewHeldObjects; // native holding location -> entity DID
     TArray<float> Heights, Builds;
     TMap<uint32, TArray<FAC2AppearanceKey>> Choices;
     TMap<uint32, FString> Labels;
@@ -20,9 +21,24 @@ struct FAC2AvatarChoice
     TMap<uint32, int32> Defaults() const;
     FAC2Appearance Resolve(const TMap<uint32, int32> &Selections, uint32 Clothing = 0x700) const;
 };
+// Private creation-screen random stream; never used for server gameplay rolls.
+struct FAC2CharacterRandom
+{
+    int32 Seed = 1, Second = 123456789, Previous = 0;
+    int32 Shuffle[32] = {};
+    int32 Index(int32 Count);
+};
+struct FAC2CharacterDraft
+{
+    TMap<uint32, int32> Appearance;
+    int32 Height = 0, Build = 0;
+    static FAC2CharacterDraft Create(const FAC2AvatarChoice& Avatar, FAC2CharacterRandom& Random);
+    void Randomize(const FAC2AvatarChoice& Avatar, uint32 Mask, FAC2CharacterRandom& Random);
+};
 struct FAC2ItemDefinition
 {
     uint32 Id = 0, Icon = 0, Slots = 0, Preferred = 0, Excludes = 0, Race = 0;
+    uint32 NativeClass = 0;
     FString Name, Description;
     int32 Armor = 0, Damage = 0, MinLevel = 1;
     bool HasArmor = false, HasDamage = false;

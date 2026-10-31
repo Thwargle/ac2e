@@ -21,6 +21,11 @@ def main():
     with content.open('a') as fixture:
         fixture.write('8140000000030700\t4700157e\t1f000d75\t02990109\t58\t238\t-44.606205\t1\t0\t0\t0\t-\n')
     env = dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1')
+    # Give the UI/camera assertions time while native perception acquires us.
+    # Damage/cadence are isolated test balance, not production creature rules.
+    rules=directory/'encounters.tsv'
+    rules.write_text((ROOT/'AC2E/emulator/content/development-encounters.tsv').read_text().replace(
+        'npc\t470007d1\t60\t6\t1500', 'npc\t470007d1\t60\t1\t10000'))
     if '--mouse' in os.sys.argv:
         env['AC2_MOUSE_SMOKE'] = '1'
     if '--gameplay' in os.sys.argv:
@@ -29,7 +34,7 @@ def main():
     server = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19486',
         '--account', 'local', '--data', str(directory / 'world'), '--game-data', str(DAT_DIRECTORY),
         '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-        '--lifestones', 'false', '--portals', 'false', '--seconds', '180'],
+        '--lifestones', 'false', '--portals', 'false', '--encounters',str(rules),'--seconds', '180'],
         env=env, stdout=log, stderr=log, creationflags=0x08000000)
     peer = None
     try:
@@ -54,6 +59,8 @@ def main():
         assert all(f'AC2 combat input step {step} passed' in client for step in range(8))
         assert 'AC2 combat world pointer selected' in client
         assert 'AC2 network smoke PASS' in client
+        assert ('AC2 native empty corpse window passed' in client or
+                'AC2 native corpse loot window and item double-click passed' in client)
         if '--gameplay' in os.sys.argv:
             assert all(f'AC2 inventory input step {step} passed' in client for step in range(14))
             assert 'AC2 world props passed:' in client
@@ -63,7 +70,7 @@ def main():
         report = {'result': 'PASS', 'directory': str(directory), 'equipped_magic': '--gameplay' in os.sys.argv,
             'checks': ['native start/stop mouse buttons and ghosted states', 'Z toggles server and avatar stance',
                 'chat focus isolation and restored attack key', 'missing-target feedback',
-                'world creature mouse selection', 'server attack/hit/death animations, damage and loot']}
+                'world creature mouse selection', 'server attack/hit/death animations, damage and native corpse loot window']}
         if '--gameplay' in os.sys.argv:
             report['checks'] += ['native portal hull picking', 'placed NPC foot alignment',
                 'mouse double-click replaces equipped weapons', 'native layered item icons and tooltip screenshot',
@@ -73,7 +80,7 @@ def main():
         if '--mouse' in os.sys.argv:
             report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',
                 'double-click use without attacking', 'world zoom and panel scroll isolation',
-                'middle-click capture and pointer restoration', 'camera orbit preserves network heading',
+                'visible default cursor and inert Alt/middle capture toggles', 'camera orbit preserves network heading',
                 'native mouse-look crosshair and center inspection', 'wheel first/third-person transitions',
                 'held LMB orbit, RMB steer, both-button walking and capture-loss cleanup']
         (directory / 'result.json').write_text(json.dumps(report, indent=2))

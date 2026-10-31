@@ -113,7 +113,9 @@ def main():
             # Reproduce the live account child left after its launcher exits.
             # The process below quotes every switch, exactly like Start-Process
             # in Start-AC2E.ps1; stores contain spaces to exercise Windows argv.
-            account_args = [str(SERVER), 'account-web', '--auth-data', str(directory/'accounts'),
+            # The independent account copy may remain running while game
+            # builds are updated. Verify native tickets across both binaries.
+            account_args = [str(ROOT/'AC2E/target/release/ac2e.exe'), 'account-web', '--auth-data', str(directory/'accounts'),
                             '--data', str(world), '--web-bind', f'127.0.0.1:{account_port}',
                             '--public-origin', f'http://127.0.0.1:{account_port}',
                             '--public-host', '127.0.0.1', '--public-port', str(port)]

@@ -10,7 +10,9 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 BRIDGE = ROOT / 'Network/Bridge/target/release/ac2-network-bridge.exe'
-SERVER = Path(os.environ.get('AC2_TEST_SERVER', ROOT / 'AC2E/target/release/ac2e.exe')).resolve()
+_GAME_SERVER = ROOT / 'AC2E/target/game/release/ac2e.exe'
+SERVER = Path(os.environ.get('AC2_TEST_SERVER', _GAME_SERVER if _GAME_SERVER.is_file()
+                             else ROOT / 'AC2E/target/release/ac2e.exe')).resolve()
 PYTHON = os.sys.executable
 DAT_DIRECTORY = Path(os.environ.get('AC2_DAT_DIRECTORY', ROOT / "Asheron's Call 2 - Legions")).resolve()
 
@@ -19,6 +21,11 @@ def prepare_test_content(directory):
     from prepare_content import prepare
     content = directory / 'world.tsv'
     prepare(DAT_DIRECTORY, content)
+    # Existing isolated service fixtures append v3 rows. Names/v4 acceptance is
+    # tested separately; keep fixture construction independent of that format.
+    lines=content.read_text(encoding='utf-8').splitlines()
+    if lines[0]=='pyrealium-world-v4':
+        content.write_text('pyrealium-world-v3\n'+'\n'.join('\t'.join(line.split('\t')[:12]) for line in lines[1:])+'\n',encoding='utf-8')
     return content
 
 class Peer:

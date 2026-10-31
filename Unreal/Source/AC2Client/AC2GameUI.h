@@ -5,6 +5,7 @@
 #include "AC2NativeUI.h"
 #include "AC2MapUI.h"
 #include "AC2Cursor.h"
+#include "AC2SkillData.h"
 #include "Widgets/SCompoundWidget.h"
 class AAC2GameMode;
 class AAC2HUD;
@@ -59,6 +60,11 @@ class SAC2GameUI : public SCompoundWidget
     bool SmokeRadarHeading(float Yaw,FString& Error) const { return MapUI.SmokeHeading(Yaw,Error); }
     bool SmokeInventoryInput(int32 Step, FString &Error);
     bool SmokeShopInput(int32 Step,FString& Error);
+    bool SmokeJournalInput(int32 Step,FString& Error);
+    bool SmokeDamageText(FString& Error);
+    bool SmokeLootInput(bool Take,FString& Error);
+    void ActivateShortcut(int32 Slot);
+    bool SmokeShortcuts(FString& Error);
     bool SmokeWorldTarget(const FString &Id, FString &Error,FKey Button=EKeys::LeftMouseButton,bool DoubleClick=false,bool CenterAim=false);
     bool SmokeMouseControls(int32 Step,const FString& Id,FString& Error);
     FAC2CursorIcon CursorAt(FVector2D ScreenPoint) const;
@@ -82,6 +88,11 @@ class SAC2GameUI : public SCompoundWidget
     TUniquePtr<FAC2AssetLibrary> Assets;
     mutable FAC2Fonts Fonts;
     FAC2NativeUI Native;
+    uint32 DragWindow=0;
+    FVector2D WindowPress;
+    FIntPoint WindowOffset;
+    bool BeginWindowDrag(bool PanelsOnly=false);
+    void EndWindowDrag();
     FAC2MapUI MapUI;
     bool MapCaptured = false;
     bool RotatingPortrait=false;
@@ -108,12 +119,36 @@ class SAC2GameUI : public SCompoundWidget
     FReply CameraMouseMove(const FPointerEvent& E);
     void UpdateHover(const FGeometry&,double Time);
     void BuildPointerFeedback();
+    void BuildWorldText();
+    TMap<FString,FSlateRect> WorldNameRects;
+    bool DamageNumbers=true,ThirdPartyDamage=false,ShowObjectNames=true;
+    float ThirdPartyDamageRange=1;
     bool WorldClick(FKey Button,bool DoubleClick);
     int32 Filter = 0, Scroll = 0;
     mutable int32 MaxScroll = 0;
+    FIntRect ChatBar,ChatThumb,PackBar,PackThumb;
+    int32 PackMaxScroll=0;
+    float PackGrab=0;
+    bool DraggingPack=false;
+    void DragPack(float Y);
+    float ChatGrab=0;
+    bool DraggingChat=false;
+    void DragChat(float Y);
     TWeakObjectPtr<class AAC2Portrait> Portrait;
     FSlateBrush PortraitBrush;
     bool ShowInventory = false, ShowStats = false;
+    bool ShowSkills=false,ShowQuests=false;
+    int32 JournalScroll=0,QuestTab=0,SkillTab=0,LootRow=0;
+    bool AllowsPanelButton(FName Name,FVector2D Point) const;
+    uint32 SelectedSkill=0,SelectedQuest=0,SkillPanel=0;
+    FLinearColor SkillLineColor=FLinearColor::White;
+    FAC2SkillData SkillData;
+    void BuildJournal();
+    void BuildSkills();
+    TArray<TPair<FVector2D,FVector2D>> SkillLinks;
+    FIntRect SkillClip;
+    void BuildLoot();
+    bool JournalAction(FName Name);
     bool ShowOptions=false;
     int32 OptionsTab=0,OptionsScroll=0;
     TArray<float> OptionValues,AppliedOptions;
@@ -135,12 +170,22 @@ class SAC2GameUI : public SCompoundWidget
     FName PressedAction;
     FVector2D ItemPressPoint;
     FString DragItem;
+    uint32 DragSkill=0;
+    int32 DragShortcut=INDEX_NONE,ShortcutSet=0;
+    uint32 Shortcuts[100]={};
+    FString ShortcutOwner;
+    bool TestingShortcuts=false;
+    void LoadShortcuts();
+    void SaveShortcuts();
+    void BuildShortcuts();
+    bool ShortcutAllowed(uint32 Skill) const;
     struct FIcon
     {
         FIntRect Rect, Clip;
         uint32 Image;
         int32 Quantity=1;
         FLinearColor Tint=FLinearColor::White;
+        int32 NativeNode=INDEX_NONE;
     };
     TArray<FIcon> Icons;
     void Rebuild();

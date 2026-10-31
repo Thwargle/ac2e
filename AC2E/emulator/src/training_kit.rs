@@ -46,7 +46,7 @@ const PHYSICAL: u32 = 0x4700035b;
 const VISUAL: u32 = 0x1f000056;
 
 pub fn item(id: u64, slot: u16) -> Item {
-    Item {
+    Item {roll: None,
         id,
         definition: DEFINITION,
         visual: VISUAL,

@@ -16,6 +16,12 @@ impl Placement {
     /// PositionPack coordinates share a landblock origin, not a room origin.
     /// Callers must separately validate native visibility before interacting.
     pub fn distance(self, other: Self) -> Option<f32> {
+        Some(self.offset_to(other)?.iter().map(|v| v * v).sum::<f32>().sqrt())
+    }
+    /// Displacement to another point, expressed in this landblock's axes.
+    /// Adjacent outdoor blocks have different local origins; dungeon instances
+    /// must never acquire a shared coordinate space from similar local XYZs.
+    pub fn offset_to(self, other: Self) -> Option<[f32; 3]> {
         if !self.valid() || !other.valid() {
             return None;
         }
@@ -26,12 +32,24 @@ impl Placement {
         if !(both_outdoor || both_indoor && same_block) {
             return None;
         }
-        let mut delta = std::array::from_fn::<_, 3, _>(|i| self.coordinates[i] - other.coordinates[i]);
+        let mut delta = std::array::from_fn::<_, 3, _>(|i| other.coordinates[i] - self.coordinates[i]);
         if both_outdoor {
-            delta[0] += ((self.cell >> 24) as i32 - (other.cell >> 24) as i32) as f32 * 160.0;
-            delta[1] += (((self.cell >> 16) & 255) as i32 - ((other.cell >> 16) & 255) as i32) as f32 * 160.0;
+            delta[0] += ((other.cell >> 24) as i32 - (self.cell >> 24) as i32) as f32 * 160.0;
+            delta[1] += (((other.cell >> 16) & 255) as i32 - ((self.cell >> 16) & 255) as i32) as f32 * 160.0;
         }
-        Some(delta.iter().map(|v| v * v).sum::<f32>().sqrt())
+        Some(delta)
+    }
+    /// Normalize an outdoor step using native LandDefs addressing. Interior
+    /// cell changes are resolved by collision traversal, never guessed by XYZ.
+    pub fn translated(mut self, offset: [f32; 3]) -> Option<Self> {
+        for (v, d) in self.coordinates.iter_mut().zip(offset) { *v += d; }
+        if !self.valid() { return None; }
+        if (1..=64).contains(&(self.cell & 0xffff)) {
+            let mut point = ac2_physics::Vector::new(self.coordinates[0], self.coordinates[1], self.coordinates[2]);
+            if !ac2_physics::landdefs::adjust_to_outside(&mut self.cell, &mut point) { return None; }
+            self.coordinates = [point.x, point.y, point.z];
+        }
+        Some(self)
     }
     pub const HUMAN_START: Self = Self {
         cell: 0x02990109,
@@ -187,6 +205,7 @@ pub fn server_position(
 
 #[derive(Debug, Clone)]
 pub struct Motion {
+    pub fall: crate::falling::Fall,
     pub placement: Placement,
     pub instance: u16,
     pub position_stamp: u16,
@@ -196,6 +215,7 @@ pub struct Motion {
 impl Motion {
     pub fn new(placement: Placement, instance: u16) -> Self {
         Self {
+            fall: crate::falling::Fall::default(),
             placement,
             instance,
             position_stamp: 0,
@@ -211,6 +231,7 @@ impl Motion {
         }
         // Decode validation also applies to synthetic/direct callers.
         update.validate()?;
+        self.fall.observe(update.time, update.placement);
         self.position_stamp = self.position_stamp.wrapping_add(1);
         self.placement = update.placement;
         self.last = Some(update);
@@ -223,6 +244,7 @@ impl Motion {
             return Err(WorldError::InvalidValue);
         }
         let mut next = self.clone();
+        next.fall = crate::falling::Fall::default();
         next.force_stamp = self
             .force_stamp
             .checked_add(1)

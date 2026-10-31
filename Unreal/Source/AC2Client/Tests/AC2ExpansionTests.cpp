@@ -82,6 +82,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2ParticleBoundsTest, "AC2.Data.NativeParticl
 bool FAC2ParticleBoundsTest::RunTest(const FString &)
 {
     FAC2ParticlePreset P;
+    P.ScaleType=1;
+    TestEqual(TEXT("Native type one inherits entity scale, not visual particle scale"),P.RenderScale(2,.25f),2.f);
+    P.ScaleType=2;
+    TestEqual(TEXT("Native type two combines entity and visual particle scale"),P.RenderScale(2,.25f),.5f);
+    TestEqual(TEXT("Type two retains entity scale when the visual uses its default"),P.RenderScale(2,1),2.f);
     TArray<uint8> B;
     W(B, 0x39000003);
     W(B, 100);

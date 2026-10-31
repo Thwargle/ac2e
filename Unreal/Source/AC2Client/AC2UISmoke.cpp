@@ -5,6 +5,8 @@
 #include "Engine/World.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "UnrealClient.h"
 #if WITH_EDITOR
 #include "ShaderCompiler.h"
@@ -143,6 +145,7 @@ void AAC2GameMode::UISmokeTick(float Delta)
             return;
         }
         UI->Open(SAC2CharacterUI::EScreen::Create);
+        if(!UI->SmokeCreatorDrafts(Error)) {Finish(false,Error);return;}
         UI->SmokeCreatorPage(-1);
     }
     else if (UIStage == 23)
@@ -219,6 +222,11 @@ void AAC2GameMode::UISmokeTick(float Delta)
         Capture(TEXT("AC2UI-character-selection.png"));
     else if (UIStage == 40)
     {
+        if(FParse::Param(FCommandLine::Get(),TEXT("AC2AudioSmoke"))){
+            auto* Player=FAC2Audio::Get(GetWorld());
+            if(!Player || Player->Plays<3){Finish(false,TEXT("Native audio device/UI routing failed"));return;}
+            UE_LOG(LogTemp,Display,TEXT("AC2 audio smoke: native device open; %u DAT playback requests"),Player->Plays);
+        }
         UI->Close();
         HUD->GameUI->ClosePanels();
         Characters.Active()->Health = Characters.Active()->Vigor = 100;

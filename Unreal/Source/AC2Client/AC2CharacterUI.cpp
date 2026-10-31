@@ -1,4 +1,6 @@
 #include "AC2CharacterUI.h"
+#include "AC2Audio.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "AC2GameMode.h"
 #include "AC2GameUI.h"
 #include "AC2Explorer.h"
@@ -35,6 +37,7 @@ void SAC2CharacterUI::Construct(const FArguments &Args)
     Assets->Open(Mode->DatDirectory, Error);
     Fonts.Open(Mode->DatDirectory, Error);
     CreatorLayout.Open(Mode->DatDirectory, Error);
+    CreatorLayout.SetAudioWorld(Mode->GetWorld());
     FAC2DatArchive Local;
     TArray<uint8> Bytes;
     if (Local.Open(FPaths::Combine(Mode->DatDirectory, TEXT("local_English.dat")), 3, Error))
@@ -65,6 +68,8 @@ SAC2CharacterUI::~SAC2CharacterUI()
 }
 void SAC2CharacterUI::Shutdown()
 {
+    for(auto& Pair:SceneOverlays)if(Pair.Value.IsValid())Pair.Value->Destroy();
+    SceneOverlays.Reset();SceneOverlayBrushes.Reset();
     if (Portrait.IsValid())
         Portrait->Destroy();
     Portrait.Reset();
@@ -97,6 +102,8 @@ const FSlateBrush *SAC2CharacterUI::Art(uint32 Id)
 }
 void SAC2CharacterUI::Open(EScreen Next,const FString& InitialMessage)
 {
+    PendingAvatar=INDEX_NONE;
+    HoveredAvatar=INDEX_NONE;
     if (!Mode.IsValid())
         return;
     if ((Next == EScreen::Inventory || Next == EScreen::Stats) && Mode->Characters.Active())
@@ -138,6 +145,10 @@ void SAC2CharacterUI::Open(EScreen Next,const FString& InitialMessage)
     Message = InitialMessage.IsEmpty()?Mode->CharacterError:InitialMessage;
     if (Next == EScreen::Create)
     {
+        CreatorDrafts.Reset(); // Fresh results on entering a new creation session.
+        if (Lineup.IsValid()) Lineup->Destroy();
+        Lineup.Reset();
+        LineupBrush.SetResourceObject(nullptr);
         DraftName.Empty();
         CreationStep = 0;
         AppearanceTab = 1;
@@ -202,6 +213,9 @@ void SAC2CharacterUI::Close()
         Lineup->Capture->bCaptureEveryFrame = false;
     }
     Screen = EScreen::Closed;
+    if(auto* Audio=FAC2Audio::Get(Mode->GetWorld()))Audio->Music(0);
+    for(auto& Pair:SceneOverlays)if(Pair.Value.IsValid())Pair.Value->Destroy();
+    SceneOverlays.Reset();SceneOverlayBrushes.Reset();
     SetVisibility(EVisibility::Collapsed);
     if (Portrait.IsValid())
     {
@@ -214,6 +228,16 @@ void SAC2CharacterUI::Close()
         PC->ResetIgnoreMoveInput();
         PC->RestoreCursor();
     }
+}
+void SAC2CharacterUI::Tick(const FGeometry& Geometry, double CurrentTime, float Delta)
+{
+    SCompoundWidget::Tick(Geometry,CurrentTime,Delta);
+    if(Screen!=EScreen::Create || CreationStep!=0 || PendingAvatar==INDEX_NONE)return;
+    if(!Lineup.IsValid()){PendingAvatar=INDEX_NONE;return;}
+    if(!Lineup->AvatarSelectionComplete())return;
+    PendingAvatar=INDEX_NONE;
+    PreviewDraft();
+    SetCreatorStep(1);
 }
 FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
 {
@@ -258,18 +282,17 @@ FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
 }
 void SAC2CharacterUI::ResetAppearance()
 {
+    // UIPersistantData retains one result per race/sex, shared by lineup and
+    // editor. Returning to an avatar must not discard its customized draft.
+    for (const auto& Avatar : Mode->CharacterCatalog.Avatars)
+        if (!CreatorDrafts.Contains(Avatar.Race | Avatar.Sex))
+            CreatorDrafts.Add(Avatar.Race | Avatar.Sex, FAC2CharacterDraft::Create(Avatar, CreatorRandom));
     if (const auto *A = Mode->CharacterCatalog.Avatar(Race, Sex))
     {
-        auto Nearest = [](const TArray<float> &V) {
-            int32 Best = 0;
-            for (int32 I = 1; I < V.Num(); ++I)
-                if (FMath::Abs(V[I] - 1) < FMath::Abs(V[Best] - 1))
-                    Best = I;
-            return Best;
-        };
-        Appearance = A->Defaults();
-        HeightIndex = Nearest(A->Heights);
-        BuildIndex = Nearest(A->Builds);
+        const auto& Draft = CreatorDrafts.FindChecked(A->Race | A->Sex);
+        Appearance = Draft.Appearance;
+        HeightIndex = Draft.Height;
+        BuildIndex = Draft.Build;
     }
 }
 void SAC2CharacterUI::PreviewDraft()
@@ -294,7 +317,7 @@ void SAC2CharacterUI::PreviewDraft()
             Message=TEXT("Native character selection scene could not be loaded.");
         if (Selection.IsValid())
         {
-            SelectionBrush.SetResourceObject(Selection->Image);
+            SelectionBrush.SetResourceObject(Selection->Composite);
             SelectionBrush.ImageSize=FVector2D(706,768);
             SelectionBrush.DrawAs=ESlateBrushDrawType::Image;
         }
@@ -305,6 +328,8 @@ void SAC2CharacterUI::PreviewDraft()
         return;
     HeightIndex = FMath::Clamp(HeightIndex, 0, A->Heights.Num() - 1);
     BuildIndex = FMath::Clamp(BuildIndex, 0, A->Builds.Num() - 1);
+    if (Screen == EScreen::Create)
+        CreatorDrafts.Add(Race | Sex, {Appearance, HeightIndex, BuildIndex});
     if (!Portrait.IsValid())
         Portrait = Mode->GetWorld()->SpawnActor<AAC2Portrait>(FVector(0, 0, -500000), FRotator::ZeroRotator);
     if (Portrait.IsValid())
@@ -327,7 +352,7 @@ void SAC2CharacterUI::PreviewDraft()
                                             : 0))
             Message = TEXT("This native model could not be loaded.");
         Portrait->SetCamera(Screen == EScreen::Create && CreationStep == 1 && HeadZoom, Rotation);
-        PortraitBrush.SetResourceObject(Portrait->Image);
+        PortraitBrush.SetResourceObject(Portrait->Composite);
         PortraitBrush.ImageSize = FVector2D(640, 674);
         PortraitBrush.DrawAs = ESlateBrushDrawType::Image;
     }

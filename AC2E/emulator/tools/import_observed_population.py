@@ -1,4 +1,4 @@
-"""Extract stationary world actors from retained classic Ethernet/UDP PCAPs.
+"""Legacy narrow-layout importer for PCAP/PCAPNG world observations.
 
 This is a capture observation importer, not an authored spawn schedule or packet
 replay engine. It emits fresh minimal descriptions through the normal runtime.
@@ -71,7 +71,11 @@ def object_description(data):
         raise Unsupported("unsupported-or-unplaced-physics")
     r.take(4)  # Native instance and visual-ordering stamps, not reused.
     if flags & 0x80:
-        r.take(4)
+        mode = r.word()
+        if mode not in (0x40000001,0x41000003):
+            raise Unsupported("non-neutral-initial-state")
+    else:
+        raise Unsupported("unverified-initial-state")
     if flags & 2:
         r.table(12)  # key + SliderData(value, velocity), 00640f40 / 0067cfb0.
     if flags & 0x20000:
@@ -81,7 +85,9 @@ def object_description(data):
                       (8,12),(0x10,12),(0x2000000,8),(0x4000000,4),(0x8000000,4),
                       (0x400,8),(0x800,32),(0x1000,12)]:
         if flags & bit:
-            r.take(size)
+            value = r.take(size)
+            if bit == 4 and any(struct.unpack('<3f',value)):
+                raise Unsupported("moving-initial-state")
     if flags & 0x200:
         r.table(16)  # key + FXScalarAndTarget(float, IID), 006410e0 / 004d5720.
     r.take(8)  # Four native timestamp ushorts.
@@ -113,79 +119,8 @@ def object_description(data):
             "message_sha256":hashlib.sha256(data).hexdigest()}
 
 
-def messages(raw):
-    if len(raw)<24 or raw[:4] not in [b"\xd4\xc3\xb2\xa1",b"\x4d\x3c\xb2\xa1"] or struct.unpack_from("<I",raw,20)[0]!=1:
-        raise ValueError("expected little-endian classic Ethernet PCAP")
-    pos, groups, storage, done = 24, {}, 0, set()
-    while pos<len(raw):
-        if pos+16>len(raw):
-            raise ValueError("truncated PCAP record header")
-        length = struct.unpack_from("<I",raw,pos+8)[0]
-        pos += 16
-        if length>1024*1024 or pos+length>len(raw):
-            raise ValueError("oversized or truncated PCAP record")
-        frame = raw[pos:pos+length]
-        pos += length
-        if len(frame)<42 or frame[12:14]!=b"\x08\x00":
-            continue
-        ip = frame[14:]
-        ih = (ip[0]&15)*4
-        total = struct.unpack_from(">H",ip,2)[0]
-        if total == 0:
-            # Host-side captures with segmentation offload record a zero length.
-            total = len(ip)
-        if ip[0]>>4!=4 or ih<20 or total>len(ip) or total<ih+8 or ip[9]!=17 or struct.unpack_from(">H",ip,6)[0]&0x3fff:
-            continue
-        udp = ip[ih:total]
-        udp_length = struct.unpack_from(">H",udp,4)[0]
-        if udp_length<28 or udp_length>len(udp):
-            continue
-        payload = udp[8:udp_length]
-        flags = struct.unpack_from("<I",payload,4)[0]
-        allowed_flags = 2|4|0x1000|0x2000|0x4000|0x1000000|0x2000000|0x4000000|0x8000000
-        if not flags&4 or flags&~allowed_flags or len(payload)!=20+struct.unpack_from("<H",payload,16)[0]:
-            continue
-        offset = 20
-        for flag,size in [(0x1000,None),(0x2000,None),(0x4000,4),(0x1000000,8),(0x2000000,4),(0x4000000,8),(0x8000000,6)]:
-            if flags&flag:
-                if size is None:
-                    if offset+4>len(payload):
-                        raise ValueError("truncated optional packet header")
-                    count = struct.unpack_from("<I",payload,offset)[0]
-                    if count>256:
-                        raise ValueError("optional packet header count limit")
-                    size = 4+4*count
-                offset += size
-        if offset>len(payload):
-            raise ValueError("truncated optional packet fields")
-        while offset<len(payload):
-            if offset+16>len(payload):
-                raise ValueError("truncated fragment header")
-            blob,count,size,index,queue = struct.unpack_from("<Q4H",payload,offset)
-            if not 0<count<=256 or index>=count or size<=16 or offset+size>len(payload):
-                raise ValueError("invalid fragment bounds")
-            key = (ip[12:20],udp[:4],payload[12:14],payload[18:20],blob,queue,count)
-            fragment = payload[offset+16:offset+size]
-            offset += size
-            if key in done:
-                continue
-            parts = groups.setdefault(key,{})
-            if index in parts and parts[index]!=fragment:
-                raise ValueError("conflicting duplicate fragment")
-            if index not in parts:
-                storage += len(fragment)
-                parts[index] = fragment
-            if sum(map(len,parts.values()))>65536:
-                raise ValueError("capture reassembly limit")
-            # Long captures lose fragments; the oldest unfinished blob is abandoned.
-            while len(groups)>8192 or storage>16*1024*1024:
-                stale = next(iter(groups))
-                storage -= sum(map(len,groups.pop(stale).values()))
-            if len(parts)==count:
-                del groups[key]
-                storage -= sum(map(len,parts.values()))
-                done.add(key)
-                yield b"".join(parts[i] for i in range(count))
+# Shared container reader also accepts PCAPNG and isolates UDP flows.
+from capture_packets import messages
 
 
 def convert(paths, base, game_data, skip_broken=False):

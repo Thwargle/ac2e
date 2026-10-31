@@ -1,8 +1,11 @@
 #include "AC2Network.h"
+#include "AC2Performance.h"
+#include "AC2Locomotion.h"
 #include "AC2Projectile.h"
 #include "AC2GameMode.h"
 #include "AC2CharacterUI.h"
 #include "AC2GameUI.h"
+#include "AC2PortalSpace.h"
 #include "AC2Explorer.h"
 #include "AC2WorldGrid.h"
 #include "AC2MapData.h"
@@ -107,6 +110,7 @@ FAC2Network::~FAC2Network()
 }
 bool FAC2Network::Start(const FAC2ConnectionSettings* Settings)
 {
+    Clock = {};
     FString Executable = FPaths::ConvertRelativePathToFull(
         FPaths::ProjectDir() / TEXT("../Network/Bridge/target/release/ac2-network-bridge.exe"));
     FParse::Value(FCommandLine::Get(), TEXT("AC2Bridge="), Executable);
@@ -177,6 +181,7 @@ void FAC2Network::SetStatus(const FString &State, const FString &Text)
             H->CharacterUI->NetworkMessage(Text);
     if (State == TEXT("disconnected"))
     {
+        Clock = {};
         ClearWorld();
         if (auto P = Pawn(Mode))
             P->SetHeld(true);
@@ -184,13 +189,41 @@ void FAC2Network::SetStatus(const FString &State, const FString &Text)
     }
     UE_LOG(LogTemp, Display, TEXT("AC2 network %s: %s"), *State, *Text);
 }
+void FAC2Network::LootAll()
+{
+    if(!LootContainer.IsEmpty()){auto J=Command(TEXT("loot"));J->SetStringField(TEXT("id"),LootContainer);Send(J);}
+}
+void FAC2Network::TransmuteLoot()
+{
+    if(!LootContainer.IsEmpty()){auto J=Command(TEXT("transmute_loot"));J->SetStringField(TEXT("id"),LootContainer);Send(J);}
+}
+void FAC2Network::TakeLoot(int32 Index)
+{
+    if(!LootItems.IsValidIndex(Index))return;
+    auto J=Command(TEXT("take_item"));J->SetStringField(TEXT("id"),LootItems[Index]);J->SetStringField(TEXT("container"),LootContainer);
+    J->SetNumberField(TEXT("from"),Index);Send(J);
+}
+void FAC2Network::CloseLoot(){
+    if(!LootContainer.IsEmpty()){auto J=Command(TEXT("close_container"));J->SetStringField(TEXT("id"),LootContainer);Send(J);}
+    LootContainer.Reset();LootItems.Reset();
+}
+uint32 FAC2Network::ItemIcon(const FString& Id) const
+{
+    if(const auto* Object=Objects.Find(Id)){
+        Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory,(*Object)->Entity);
+        if(const auto* D=Mode->CharacterCatalog.Items.Find((*Object)->Entity))return D->Icon;
+    }return 0;
+}
 void FAC2Network::ClearWorld()
 {
     for (auto &Pair : Objects)
         if (Pair.Value->Actor.IsValid())
             Pair.Value->Actor->Destroy();
     Objects.Reset();
+    DamageTexts.Reset();
+    PlayerGroove=0;
     ShopVendor.Reset();ShopOffers.Reset();
+    Skills.Reset();Quests.Reset();SkillCredits=0;UntrainingSkill=0;AvailableXp=0;LootContainer.Reset();LootItems.Reset();
     BagSlots.Reset();
     WornSlots.Reset();
     PlayerId.Reset();
@@ -198,13 +231,19 @@ void FAC2Network::ClearWorld()
     ExaminationId.Reset();ExaminationRows.Reset();ExaminationError.Reset();ExaminationPending=false;
     HasPlayerPose = NeedsPlacement = false;
     Dead = Combat = false;
+    MaxHealth=MaxVigor=0;
     MapTravelEnabled = false;
-    if(auto P=Pawn(Mode)){P->ResetMotionParameters();P->SetDead(false);P->SetHeld(true);}
+    if(auto P=Pawn(Mode)){P->ResetMotionParameters();P->SetDead(false);P->SetHealth(100,100);P->SetHeld(true);}
 }
 uint32 FAC2Network::Visual(const FString &Id) const
 {
     auto P = CharacterVisuals.Find(Id);
     return P ? uint32(N(*P, TEXT("did"))) : 0;
+}
+TArray<FAC2IconLayer> FAC2Network::ItemIconLayers(const FString& Id,FAC2AssetLibrary& Assets) const
+{
+    const auto* Object=Objects.Find(Id);
+    return Object?Assets.IconLayers((*Object)->Visual,(*Object)->Aspects):TArray<FAC2IconLayer>();
 }
 FAC2Appearance FAC2Network::Appearance(const FString &Id) const
 {
@@ -216,6 +255,17 @@ FString FAC2Network::StringInfo(const TSharedPtr<FJsonObject> &J) const
     FString Text = S(J, TEXT("literal"));
     if (Text.IsEmpty() && J && Locale)
         Text = AC2ReadUIString(*Locale, uint32(N(J, TEXT("table"))), uint32(N(J, TEXT("key"))));
+    const TArray<TSharedPtr<FJsonValue>>* Variables=nullptr;
+    if(J && J->TryGetArrayField(TEXT("variables"),Variables))for(const auto& Value:*Variables)
+    {
+        const auto Var=Value->AsObject();if(!Var)continue;
+        const FString Replacement=StringInfo(O(Var,TEXT("text")));
+        // The ordinary corpse branch of the native grammatical alternative.
+        // Destroyed objects use a different script state; do not rename living NPCs.
+        if(uint32(N(J,TEXT("key")))==0x509a8ff6 && uint32(N(Var,TEXT("key")))==0xe4ea98e6)
+            Text=TEXT("Corpse of ")+Replacement;
+        else Text.ReplaceInline(*FString::Printf(TEXT("%%%08X%%"),uint32(N(Var,TEXT("key")))),*Replacement);
+    }
     return Text.Left(4096);
 }
 void FAC2Network::AddCharacter(const TSharedPtr<FJsonObject> &J)
@@ -274,7 +324,10 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     {
         CharacterVisuals.Add(PlayerId, J);
         if (auto P = Pawn(Mode))
+        {
             P->ApplyAvatar(Obj.Visual, Obj.Scale.Z, Obj.Scale.X, Obj.Aspects);
+            if(Obj.DamageFX>=0)P->PlayEffect(0x41000002,Obj.DamageFX);
+        }
         if(auto H=HUD(Mode);H && H->GameUI)H->GameUI->RefreshInventoryAppearance();
         return;
     }
@@ -305,6 +358,8 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
     }
     else
     {
+        Obj.Model->SetHealth(Obj.Health,Obj.MaxHealth);
+        if(Obj.DamageFX>=0)Obj.Model->PlayEffect(0x41000002,Obj.DamageFX);
         const bool GroundItem=Obj.GroundItem;
         const FBox FeetBounds=Obj.Model->ModelBounds(GroundItem?0:0x81000001);
         const auto Motion=Obj.Model->MotionData().Values(AC2Motion::Ground);
@@ -316,6 +371,7 @@ void FAC2Network::ApplyVisual(FObject &Obj, const TSharedPtr<FJsonObject> &J, bo
         // Feet are a mesh-type in the DAT. Do not use an effect's bounding box
         // or a tail tip as the humanoid's standing plane.
         Obj.FootZ=GroundedBody?FeetBounds.Min.Z:0;
+        if(GroundedBody)Obj.BodyHeight=FMath::Max(1.,Obj.Model->ModelBounds().Max.Z-Obj.FootZ);
         if(GroundedBody && Obj.Parent.IsEmpty())Body->SetRelativeLocation(FVector(0,0,-Obj.FootZ));
         Obj.Solid=!GroundItem && Obj.Content && Obj.Parent.IsEmpty() && Obj.Model->EnableWorldObjectCollision()>0;
         A->SetActorEnableCollision(Obj.Solid);
@@ -367,6 +423,9 @@ void FAC2Network::Create(const FString &Name, const FAC2AvatarChoice &A, float H
 }
 void FAC2Network::SceneComplete()
 {
+    // The server may send its initial population/inventory only after this
+    // acknowledgement. Keep portal space covering the resulting upload batch.
+    LastSceneChange=Time; ++SceneRevision;
     NeedsPlacement = false;
     Send(Command(TEXT("ready")));
     SetStatus(TEXT("world"), TEXT("Connected to server world"));
@@ -472,6 +531,19 @@ void FAC2Network::TargetNext()
         return;
     }
     SelectTarget(Ids[(Ids.Find(TargetId) + 1) % Ids.Num()]);
+}
+int32 FAC2Network::MusicGroove() const
+{
+    const auto* P=Pawn(Mode);if(!IsWorld()||!P)return 0;
+    // gmRadarUI::UpdateGroove sums signed bytes within the radar's XY range.
+    uint8 Sum=uint8(PlayerGroove);
+    const double Range=(Cell&0xffff)>=0x100?5000.:7500.;
+    for(const auto& Pair:Objects){const auto& O=*Pair.Value;
+        if(Pair.Key!=PlayerId && O.Parent.IsEmpty() && O.Actor.IsValid() && O.Placed &&
+            FVector::DistSquared2D(O.Actor->GetActorLocation(),P->GetActorLocation())<=Range*Range)
+            Sum=uint8(Sum+uint8(O.Groove));
+    }
+    return int8(Sum);
 }
 TArray<FAC2Network::FRadarContact> FAC2Network::RadarContacts() const
 {
@@ -676,6 +748,13 @@ void FAC2Network::CastSkill(uint32 Skill)
     J->SetStringField(TEXT("target"), Skill == 0x55 || Skill == 0x343 ? PlayerId : (TargetId.IsEmpty() ? TEXT("0") : TargetId));
     Send(J);
 }
+void FAC2Network::ChangeSkill(uint32 Skill,FString Action)
+{
+    if(!IsWorld() || Dead || !Skill || Skill>65535 ||
+       (Action!=TEXT("train") && Action!=TEXT("raise") && Action!=TEXT("untrain") && Action!=TEXT("cancel_untrain")))return;
+    const FString Name=TEXT("skill_")+Action;
+    auto J=Command(*Name);J->SetNumberField(TEXT("skill"),Skill);Send(J);
+}
 void FAC2Network::StarterSkill(int32 Category)
 {
     auto P = Mode->Characters.Active(); if (!P || Category < 0 || Category > 2) return;
@@ -783,6 +862,7 @@ void FAC2Network::DropItem(int32 Index)
 }
 bool FAC2Network::ArrivalCollisionReady() const
 {
+    if(!Incoming.IsEmpty() || Time-LastSceneChange<.25)return false;
     for(const auto& Pair:Objects)
     {
         const auto& O=*Pair.Value;
@@ -794,6 +874,14 @@ bool FAC2Network::ArrivalCollisionReady() const
 void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
 {
     FString Event = S(J, TEXT("event")), Id = S(J, TEXT("id"));
+    if(Event==TEXT("object") || Event==TEXT("visual") || Event==TEXT("remove"))
+    { LastSceneChange=Time; ++SceneRevision; }
+    if (Event == TEXT("clock"))
+    {
+        double Seconds;
+        if (J->TryGetNumberField(TEXT("server_time"), Seconds)) Clock.Adopt(Seconds, FPlatformTime::Seconds());
+        return;
+    }
     if(Event==TEXT("examination_error"))
     {ExaminationPending=false;ExaminationError=S(J,TEXT("message"));return;}
     if(Event==TEXT("examination"))
@@ -825,7 +913,22 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             else if(Kind==0x40000001 || Kind==0x40000002 || Kind==0x40000008)
                 Row.Text+=FString::SanitizeFloat(N(Node,TEXT("value")));
         }
-        Flush();return;
+        Flush();
+        // The server supplies instance state and authorization. Descriptions
+        // come from the matching native item definition, as with inventory.
+        if(const auto* Object=Objects.Find(Id)){
+            const auto& Obj=**Object;
+            const uint64 Namespace=FCString::Strtoui64(*Id,nullptr,10)>>48;
+            if(Obj.GroundItem || Namespace==0x8191 || Namespace==0x8130){
+                Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory,Obj.Entity);
+                if(const auto* D=Mode->CharacterCatalog.Items.Find(Obj.Entity)){
+                    if(!D->Description.IsEmpty())ExaminationRows.Add({D->Description});
+                    if(D->MinLevel>1)ExaminationRows.Add({FString::Printf(TEXT("Required level: %d"),D->MinLevel)});
+                    if(D->Race)ExaminationRows.Add({FAC2CharacterCatalog::RaceName(D->Race)});
+                }
+            }
+        }
+        return;
     }
     if (Event == TEXT("combat"))
     {
@@ -858,6 +961,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     {
         auto Found=Objects.Find(Id);if(!Found || (J->HasField(TEXT("instance")) && (*Found)->Instance!=int32(N(J,TEXT("instance")))))return;
         auto Player=Id==PlayerId?Pawn(Mode):nullptr;const uint32 Fx=N(J,TEXT("fx"));
+        if(Fx==0x41000002)(*Found)->DamageFX=Event==TEXT("stop_fx")?0:float(N(J,TEXT("strength"),1));
         if(Event==TEXT("stop_fx"))
         {
             if(Player)Player->StopEffect(Fx);else if((*Found)->Model)(*Found)->Model->StopEffect(Fx);
@@ -899,21 +1003,26 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         const uint32 B=uint32(N(J,TEXT("behavior"))), M=uint32(N(J,TEXT("mode")));
         if(Event==TEXT("mode") && (M==0x41000002 || M==0x41000003))
         {
-            const bool WasDoor=Obj.Door,WasOpen=Obj.DoorOpen;Obj.Door=true;Obj.DoorOpen=M==0x41000002;
+            const bool HadState=Obj.OpenableStateKnown,WasOpen=Obj.OpenableOpen;
+            Obj.OpenableStateKnown=true;Obj.OpenableOpen=M==0x41000002;
+            Obj.DoorOpen=Obj.Door && Obj.OpenableOpen;
             if(Obj.Model)
             {
+                if(HadState && WasOpen!=Obj.OpenableOpen)
+                    Obj.Model->StopBehavior(WasOpen?0x41000008:0x41000007);
                 Obj.Model->SetAnimationState(AC2Motion::Ground,M);
-                if(WasDoor && WasOpen!=Obj.DoorOpen)Obj.Model->PlayBehavior(Obj.DoorOpen?0x41000008:0x41000007,M,1,false);
+                if(HadState && WasOpen!=Obj.OpenableOpen)Obj.Model->PlayBehavior(Obj.OpenableOpen?0x41000008:0x41000007,M,1,false);
             }
             if(Obj.Actor.IsValid())Obj.Actor->SetActorEnableCollision(!Obj.DoorOpen && Obj.Solid);
         }
         if(M){Obj.AnimMode=M;if(Player)Player->SetNativeMode(M);}
-        if(Obj.Model)Obj.Model->SetAnimationState(AC2Motion::Ground,Obj.AnimMode);
+        if(Obj.Model)Obj.Model->SetAnimationState(Obj.Element,AC2Locomotion::AnimationMode(Obj.Element,Obj.AnimMode));
         if(Event==TEXT("behavior"))
         {
             const bool IsAttack=B==AC2Motion::Attack||B==AC2Motion::MeleeNormal||B==0x410000b0||B==0x410000b9||B==0x410000bc||B==0x410000e2;
             bool Hold=false;J->TryGetBoolField(TEXT("hold"),Hold);Hold|=B==AC2Motion::Death;
-            const bool Played=Player?Player->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold):Obj.Model&&Obj.Model->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold);
+            const bool WaterAllows=Obj.Element!=AC2Motion::Water || B==AC2Motion::Death || B==AC2Motion::Hit;
+            const bool Played=Player?Player->PlayBehavior(B,M,float(N(J,TEXT("rate"),1)),Hold):Obj.Model&&WaterAllows&&Obj.Model->PlayBehavior(B,AC2Locomotion::AnimationMode(Obj.Element,M?M:Obj.AnimMode),float(N(J,TEXT("rate"),1)),Hold);
             bool Propagate=false;J->TryGetBoolField(TEXT("propagate"),Propagate);
             if(Propagate)for(auto& Entry:Objects)
                 if(Entry.Value->Parent==Id && Entry.Value->Model)
@@ -930,6 +1039,15 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         if(Event==TEXT("stop_behavior")){if(Player)Player->StopBehavior(B);else if(Obj.Model)Obj.Model->StopBehavior(B);}
         if(Event==TEXT("hit"))
         {
+            const int64 Damage=int64(N(J,TEXT("damage")));
+            if(Damage>0 && Damage<=MAX_int32)
+            {
+                const double Now=Mode->GetWorld()->GetTimeSeconds();
+                DamageTexts.RemoveAll([&](const auto& Text){return Now-Text.Born>=2.;});
+                if(DamageTexts.Num()>=128)DamageTexts.RemoveAt(0);
+                DamageTexts.Add({Id,S(J,TEXT("attacker")),Damage,Now});
+                Mode->DamageBlood(Player?static_cast<AActor*>(Player):Obj.Actor.Get());
+            }
             const bool Played=Player&&!Dead?Player->PlayBehavior(AC2Motion::Hit):Obj.Model&&Obj.AnimMode!=AC2Motion::Dead&&Obj.Model->PlayBehavior(AC2Motion::Hit);
             if(Played)++HitEvents;
         }
@@ -1043,11 +1161,45 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             Mode->Notice = TEXT("You have fallen. Use /resurrect to request resurrection.");
         return;
     }
+    if(Event==TEXT("skills"))
+    {
+        if(J->GetBoolField(TEXT("replace")))Skills.Reset();
+        if(J->HasField(TEXT("credits")))SkillCredits=int32(N(J,TEXT("credits")));
+        if(J->HasField(TEXT("untraining")))UntrainingSkill=N(J,TEXT("untraining"));
+        const TArray<TSharedPtr<FJsonValue>>* List;
+        if(J->TryGetArrayField(TEXT("items"),List))for(const auto& V:*List){const auto A=V->AsObject();if(!A)continue;
+            const uint32 Key=N(A,TEXT("id"));Skills.RemoveAll([&](const auto& E){return E.Id==Key;});
+            Skills.Add({Key,A->GetBoolField(TEXT("trained")),S(A,TEXT("xp"))});}
+        Skills.Sort([](const auto& A,const auto& B){return A.Id<B.Id;});return;
+    }
+    if(Event==TEXT("skill_remove")){const uint32 Key=N(J,TEXT("id"));Skills.RemoveAll([&](const auto& E){return E.Id==Key;});return;}
+    if(Event==TEXT("quests"))
+    {
+        if(J->GetBoolField(TEXT("replace")))Quests.Reset();
+        const TArray<TSharedPtr<FJsonValue>>* List;
+        if(J->TryGetArrayField(TEXT("items"),List))for(const auto& V:*List){const auto A=V->AsObject();if(!A)continue;
+            FQuest Q;Q.Id=N(A,TEXT("id"));Q.Icon=N(A,TEXT("icon"));Q.Status=N(A,TEXT("status"));Q.Phase=N(A,TEXT("phase"));
+            Q.Name=StringInfo(O(A,TEXT("name")));Q.Description=StringInfo(O(A,TEXT("description")));Q.Journal=StringInfo(O(A,TEXT("journal")));
+            Quests.RemoveAll([&](const auto& E){return E.Id==Q.Id;});Quests.Add(MoveTemp(Q));}
+        return;
+    }
+    if(Event==TEXT("container_state")){
+        if(N(J,TEXT("status"))!=0){Mode->Notice=TEXT("The container could not be opened or closed.");return;}
+        if(J->GetBoolField(TEXT("open"))){LootContainer=Id;LootItems.Reset();
+            const TArray<TSharedPtr<FJsonValue>>* List;
+            if(J->TryGetArrayField(TEXT("items"),List))for(const auto& Item:*List)LootItems.Add(Item->AsString());
+        }else if(LootContainer==Id){LootContainer.Reset();LootItems.Reset();}
+        return;
+    }
     if (Event == TEXT("inventory") || Event == TEXT("bag") || Event == TEXT("equipment"))
     {
         const TArray<TSharedPtr<FJsonValue>> *List;
         if (Event == TEXT("inventory"))
             Gold = N(J, TEXT("gold"));
+        if(Event==TEXT("bag") && !Id.IsEmpty() && Id!=PlayerId && J->TryGetArrayField(TEXT("items"),List))
+        {
+            if(LootContainer==Id){LootItems.Reset();for(const auto& Item:*List)LootItems.Add(Item->AsString());}return;
+        }
         if ((Event == TEXT("inventory") || Id.IsEmpty() || Id == PlayerId) &&
             J->TryGetArrayField(TEXT("items"), List))
         {
@@ -1121,6 +1273,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         }
         if(J->HasField(TEXT("slot")))
         {
+            LootItems.Remove(Id);
             const int32 Destination=N(J,TEXT("slot"));
             if(const auto* Previous=BagSlots.Find(Id))
             {
@@ -1136,6 +1289,17 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
                 if(auto* Slot=BagSlots.Find(I.NetworkId)){I.Cell=*Slot;I.Equipped=WornSlots.FindRef(I.NetworkId);}
         }
         return;
+    }
+    if(Event==TEXT("quality") && N(J,TEXT("table"))==10 && N(J,TEXT("key"))==0x100)
+    {
+        if(auto* Object=Objects.Find(Id);Object && int32(N(J,TEXT("instance"),(*Object)->Instance))==(*Object)->Instance)
+        {(*Object)->Name=StringInfo(O(J,TEXT("value")));if(ExaminationId==Id)Examine(Id);}
+        return;
+    }
+    if(Event==TEXT("quality") && N(J,TEXT("table"))==4 && N(J,TEXT("key"))==0x3b6){
+        const int8 Groove=int8(int32(N(J,TEXT("value"))));
+        if(Id.IsEmpty() || Id==PlayerId)PlayerGroove=Groove;
+        else if(auto* Object=Objects.Find(Id))(*Object)->Groove=Groove;
     }
     if (Event == TEXT("quality") && (Id.IsEmpty() || Id == PlayerId))
     {
@@ -1158,8 +1322,26 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
                 else if (Key == 0xc1c)
                     Gold = Value;
             }
+            if (Table == 12 && Key == 0x12d)AvailableXp=FCString::Strtoui64(*S(J,TEXT("value")),nullptr,10);
             if (Table == 12 && Key == 0x12c)
                 P->Experience = FMath::Clamp<int64>(FCString::Atoi64(*S(J, TEXT("value"))), 0, MAX_int32);
+            if(Table==4 && (Key==0x102 || Key==0x107))
+            {
+                if(auto Player=Pawn(Mode))Player->SetHealth(P->Health,MaxHealth);
+                if(auto Object=Objects.Find(PlayerId)){(*Object)->Health=P->Health;(*Object)->MaxHealth=MaxHealth;(*Object)->DamageFX=-1;}
+            }
+        }
+        return;
+    }
+    if(Event==TEXT("quality") && N(J,TEXT("table"))==4)
+    {
+        const uint32 Key=N(J,TEXT("key"));
+        if((Key==0x102 || Key==0x107) && Objects.Contains(Id))
+        {
+            auto& Object=*Objects[Id];
+            if(Key==0x102)Object.Health=N(J,TEXT("value"));else Object.MaxHealth=N(J,TEXT("value"));
+            Object.DamageFX=-1;
+            if(Object.Model && Object.Health>=0)Object.Model->SetHealth(Object.Health,Object.MaxHealth);
         }
         return;
     }
@@ -1168,6 +1350,8 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         if (auto E = Objects.Find(Id))
         {
             if(J->HasField(TEXT("instance")) && (*E)->Instance!=int32(N(J,TEXT("instance"))))return;
+            if(LootContainer==Id){LootContainer.Reset();LootItems.Reset();}
+            LootItems.Remove(Id);
             if ((*E)->Actor.IsValid())
                 (*E)->Actor->Destroy();
             Objects.Remove(Id);
@@ -1187,14 +1371,22 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     const bool IsPlayer = Id == PlayerId;
     if (Event == TEXT("object"))
     {
+        Obj.Health=-1;Obj.MaxHealth=0;Obj.DamageFX=-1;
         // Behavior/mode stamps are instance stamps. Retain the create stamp so
         // valid server actions are not compared against an uninitialized zero.
         Obj.Instance=int32(N(J,TEXT("instance")));
         Obj.Door=Obj.DoorOpen=false;
+        Obj.OpenableStateKnown=Obj.OpenableOpen=false;
         Obj.Missile=Obj.MissileFinished=Obj.MissilePointKnown=false;Obj.MissileAge=0;
         Obj.Parent=S(J,TEXT("parent")); Obj.Holding=uint32(N(J,TEXT("holding")));
         Obj.Name = StringInfo(O(J, TEXT("name")));
         Obj.Entity = N(J, TEXT("entity"));
+        if(Obj.Entity)
+        {
+            Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory,Obj.Entity);
+            if(const auto Definition=Mode->CharacterCatalog.Items.Find(Obj.Entity))
+                Obj.Door=(Definition->NativeClass>=3756 && Definition->NativeClass<=3764) || Definition->NativeClass==3922;
+        }
         const uint64 Namespace=FCString::Strtoui64(*Id,nullptr,10)>>48;
         Obj.Content=Namespace==0x8140 || Namespace==0x8180;
         Obj.GroundItem=Namespace==0x8180;
@@ -1266,8 +1458,13 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     if (auto Vis = O(J, TEXT("visual")))
         ApplyVisual(Obj, Vis, IsPlayer);
 }
+TOptional<double> FAC2Network::ServerTime() const
+{
+    return Clock.Valid ? TOptional<double>(Clock.At(FPlatformTime::Seconds())) : TOptional<double>();
+}
 void FAC2Network::Tick(float Delta)
 {
+    AC2Performance::FScope Measurement(TEXT("network_tick"));
     if(IsWorld() && !ShopVendor.IsEmpty() && Time-LastShopRefresh>10)
     {auto J=Command(TEXT("shop_refresh"));J->SetStringField(TEXT("vendor"),ShopVendor);Send(J);LastShopRefresh=Time;}
 
@@ -1339,8 +1536,12 @@ void FAC2Network::Tick(float Delta)
             if(Visible && Obj.GroundedContent && Obj.Body.IsValid() && Time>=Obj.NextGroundCheck)
             {
                 Obj.NextGroundCheck=Time+.25;
+                double Water=0;
+                const bool Swimming=(Obj.Cell&65535)<256 && Mode->WaterAt(Next,Water) &&
+                    Water-Next.Z>Obj.BodyHeight*A->GetActorScale3D().Z*Obj.Model->MotionData().Water;
+                if(Swimming)Obj.Body->SetRelativeLocation(FVector(0,0,-Obj.FootZ));
                 FHitResult Floor;FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2NPCFloor),true,A);
-                if(Mode->GetWorld()->LineTraceSingleByObjectType(Floor,Next+FVector(0,0,100),Next-FVector(0,0,200),
+                if(!Swimming && Mode->GetWorld()->LineTraceSingleByObjectType(Floor,Next+FVector(0,0,100),Next-FVector(0,0,200),
                     FCollisionObjectQueryParams(ECC_WorldStatic),Query) && Floor.ImpactNormal.Z>.57f)
                 {
                     // Only correct the presentation offset, never the network pose.
@@ -1351,6 +1552,17 @@ void FAC2Network::Tick(float Delta)
             if (Visible && Obj.Model)
             {
                 FVector Velocity = Delta > 0 ? (Next - Old) / Delta : FVector::ZeroVector;
+                if(!Obj.Missile && !Obj.OpenableStateKnown && !Obj.Door && !Obj.Solid && !Obj.Model->MotionData().Lists.IsEmpty())
+                {
+                    double Water=0;
+                    const bool Wet=(Obj.Cell&65535)<256 && Mode->WaterAt(Next,Water);
+                    FHitResult Floor;FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2RemoteFloor),true,A);
+                    const bool Grounded=Mode->GetWorld()->LineTraceSingleByObjectType(Floor,Next+FVector(0,0,30),Next-FVector(0,0,35),
+                        FCollisionObjectQueryParams(ECC_WorldStatic),Query) && Floor.ImpactNormal.Z>.57;
+                    Obj.Element=AC2Locomotion::Element(Wet,Water-Next.Z,Obj.BodyHeight*A->GetActorScale3D().Z,
+                        Obj.Model->MotionData(),Grounded,Obj.Element);
+                    Obj.Model->SetAnimationState(Obj.Element,AC2Locomotion::AnimationMode(Obj.Element,Obj.AnimMode));
+                }
                 FVector Local = A->GetActorTransform().InverseTransformVectorNoScale(Velocity);
                 Obj.Model->Animate(Time, Velocity.Size2D(), nullptr, &Local);
                 if(Smoke && Obj.Missile)
@@ -1382,7 +1594,7 @@ void FAC2Network::Tick(float Delta)
             if(Obj.Model)Obj.Model->Animate(Time,0);
         }
     }
-    if (IsWorld() && P && !Dead && !NeedsPlacement && Time - LastMovement >= .1)
+    if (IsWorld() && P && !P->IsHeld() && !Dead && !NeedsPlacement && Time - LastMovement >= .1)
     {
         FVector Position =
             P->GetActorLocation() - FVector(0, 0, P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
@@ -1445,6 +1657,11 @@ void FAC2Network::Tick(float Delta)
                 if(Started<2)return;
                 FString Error;
                 auto H=HUD(Mode);
+                if(SelectionSmokeStep==15 && H && H->CharacterUI && H->CharacterUI->WaitingForAvatarAnimation())
+                {
+                    if(Started>15){UE_LOG(LogTemp,Error,TEXT("Avatar selection animation did not finish"));FPlatformMisc::RequestExitWithStatus(false,1);}
+                    return;
+                }
                 if(!H || !H->CharacterUI || !H->CharacterUI->SmokeSelection(SelectionSmokeStep,Error))
                 {UE_LOG(LogTemp,Error,TEXT("Selection pointer smoke step %d: %s"),SelectionSmokeStep,*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
                 FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/FString::Printf(TEXT("Screenshots/AC2Login-selection-%02d.png"),SelectionSmokeStep),true,false);
@@ -1456,9 +1673,98 @@ void FAC2Network::Tick(float Delta)
             SmokeEntered = true;
             Enter(Mode->Characters.Characters[0].Id);
         }
+        if(AC2Performance::Enabled())return; // The stationary profiler owns completion.
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_FOLIAGE_SMOKE"))==TEXT("1"))
         {
             FoliageSmokeTick();return;
+        }
+        const FString PopulationTarget=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_POPULATION_SMOKE"));
+        if(!PopulationTarget.IsEmpty())
+        {
+            auto Finish=[&](bool OK,const FString& Error){
+                UE_LOG(LogTemp,Display,TEXT("AC2 outdoor render smoke %s: %s"),OK?TEXT("PASS"):TEXT("FAIL"),*Error);
+                FFileHelper::SaveStringToFile(OK?TEXT("PASS"):TEXT("FAIL: ")+Error,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                Smoke=false;FPlatformMisc::RequestExitWithStatus(false,OK?0:1);};
+            if(Started>100){Finish(false,TEXT("Captured outdoor creature did not become visible"));return;}
+            if(!IsWorld() || NeedsPlacement || Started<12 || Time<ShopSmokeNext || !P)return;
+            const auto* Found=Objects.Find(PopulationTarget);if(!Found)return;
+            const auto& O=**Found;
+            if(!O.Actor.IsValid() || O.Actor->IsHidden() || !O.Model || O.MaxHealth<=0 || !O.Model->ModelBounds().IsValid)return;
+            if(!ShopSmokeStep){
+                SelectTarget(PopulationTarget);
+                auto* PC=Mode->GetWorld()->GetFirstPlayerController();
+                const FRotator View=(O.Actor->GetActorLocation()-P->GetActorLocation()).Rotation();
+                // Offset the view so the local player cannot occlude the beetle
+                // in the rendered acceptance screenshot.
+                PC->SetControlRotation(FRotator(-12,View.Yaw+25,0));
+                P->SetActorRotation(FRotator(0,View.Yaw,0));
+                UE_LOG(LogTemp,Display,TEXT("AC2 outdoor creature entity=%08X name=%s cell=%08X health=%.0f visual=%08X"),O.Entity,*O.Name,O.Cell,O.MaxHealth,O.Visual);
+                ++ShopSmokeStep;ShopSmokeNext=Time+3;return;
+            }
+            if(ShopSmokeStep==1){
+                FBox2D Bounds;if(!ObjectScreenBounds(PopulationTarget,Bounds)){Finish(false,TEXT("Creature has no projected mesh"));return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Population-outdoor.png"),true,false);
+                if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_POPULATION_COMBAT_SMOKE"))==TEXT("1")){
+                    const auto* Profile=Mode->Characters.Active();if(!Profile)return;
+                    const int32 Staff=Profile->Items.IndexOfByPredicate([](const auto& I){return I.Definition==0x470007e0;});
+                    if(Staff<0){Finish(false,TEXT("Outdoor combat observer lacks the native starter staff"));return;}
+                    if(!Profile->Items[Staff].Equipped)UseItem(Staff);
+                }
+                ++ShopSmokeStep;ShopSmokeNext=Time+2;return;
+            }
+            if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_POPULATION_COMBAT_SMOKE"))==TEXT("1")){
+                if(ShopSmokeStep==2){
+                    const auto* Profile=Mode->Characters.Active();if(!Profile)return;
+                    if(!Profile->Items.ContainsByPredicate([](const auto& I){return I.Definition==0x470007e0 && I.Equipped!=0;}))return;
+                    StarterSkill(2);++ShopSmokeStep;ShopSmokeNext=Time+.5;return;
+                }
+                if(ShopSmokeStep==3){
+                    if(O.Model->MovementAnimationUpdates()<5 || O.Health>=O.MaxHealth || MobAttacks<1 || HitEvents<1)return;
+                    if(TargetId!=PopulationTarget){Finish(false,TEXT("First attack cleared the selected creature"));return;}
+                    auto H=HUD(Mode);FString Error;
+                    if(!H || !H->GameUI || !H->GameUI->SmokeDamageText(Error)){Finish(false,Error);return;}
+                    if(Mode->GroundDecalCount()==0){Finish(false,TEXT("Authoritative damage did not project blood onto the ground"));return;}
+                    UE_LOG(LogTemp,Display,TEXT("AC2 outdoor pursuit animation frames=%d health=%.0f/%.0f retaliation=%d"),
+                        O.Model->MovementAnimationUpdates(),O.Health,O.MaxHealth,MobAttacks);
+                    FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Population-pursuit.png"),true,false);
+                    ++ShopSmokeStep;ShopSmokeNext=Time+1;return;
+                }
+                if(ShopSmokeStep==4){Attack();++ShopSmokeStep;ShopSmokeNext=Time+.5;return;}
+                if(ShopSmokeStep==5){
+                    if(O.Health>0)return;
+                    if(TargetId!=PopulationTarget){Finish(false,TEXT("Death cleared the selected corpse"));return;}
+                    if(!O.Name.StartsWith(TEXT("Corpse of "))){Finish(false,TEXT("Dead creature did not receive its corpse name"));return;}
+                    SetCombat(false);++ShopSmokeStep;ShopSmokeNext=Time+.5;return;
+                }
+                const auto* Profile=Mode->Characters.Active();if(!Profile)return;
+                if(ShopSmokeStep==6){
+                    if(Combat)return;LootSmokeCount=Profile->Items.Num();UseTarget();++ShopSmokeStep;ShopSmokeNext=Time+.5;return;
+                }
+                if(ShopSmokeStep==7 || ShopSmokeStep==8){
+                    if(LootItems.IsEmpty())return;
+                    auto H=HUD(Mode);FString Error;
+                    if(!H || !H->GameUI || !H->GameUI->SmokeLootInput(ShopSmokeStep==8,Error)){Finish(false,Error);return;}
+                    if(ShopSmokeStep==7)FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Population-loot.png"),true,false);
+                    ++ShopSmokeStep;ShopSmokeNext=Time+1;return;
+                }
+                if(!LootContainer.IsEmpty() || Profile->Items.Num()<=LootSmokeCount)return;
+                Finish(true,TEXT("Captured outdoor creature remains selected after a ranged hit, pursues with native animated poses, retaliates and supplies a native loot window with item pickup"));return;
+            }
+            Finish(true,TEXT("Captured outdoor actor has native model, server health, selection and visible projected bounds"));return;
+        }
+        if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_JOURNAL_SMOKE"))==TEXT("1"))
+        {
+            auto Finish=[&](bool OK,const FString& Error){
+                UE_LOG(LogTemp,Display,TEXT("AC2 journal render smoke %s: %s"),OK?TEXT("PASS"):TEXT("FAIL"),*Error);
+                FFileHelper::SaveStringToFile(OK?TEXT("PASS"):TEXT("FAIL: ")+Error,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                Smoke=false;FPlatformMisc::RequestExitWithStatus(false,OK?0:1);};
+            if(Started>95){Finish(false,TEXT("Timed out waiting for journal"));return;}
+            if(!IsWorld() || NeedsPlacement || Started<10 || Time<ShopSmokeNext)return;
+            auto H=HUD(Mode);if(!H || !H->GameUI)return;
+            if(ShopSmokeStep==10){Finish(true,TEXT("Native skill training, advancement, untraining/cancellation, window drag and quest tabs"));return;}
+            FString Error;if(!H->GameUI->SmokeJournalInput(ShopSmokeStep,Error)){Finish(false,Error);return;}
+            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/FString::Printf(TEXT("Screenshots/AC2Journal-%d.png"),ShopSmokeStep),true,false);
+            ++ShopSmokeStep;ShopSmokeNext=Time+1.5;return;
         }
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_SHOP_SMOKE"))==TEXT("1"))
         {
@@ -1470,7 +1776,7 @@ void FAC2Network::Tick(float Delta)
             if(Started>95){Finish(false,TEXT("Timed out waiting for shop/door acknowledgement"));return;}
             if(!IsWorld() || NeedsPlacement || Started<10 || Time<ShopSmokeNext)return;
             auto H=HUD(Mode);if(!H || !H->GameUI)return;
-            const FString Vendor=LexToString(0x8140000000030900ull),Door=LexToString(0x8140000000030901ull);
+            const FString Vendor=LexToString(0x8140000000030900ull),Door=LexToString(0x8140000000030901ull),Chest=LexToString(0x8140000000030903ull);
             FString Error;auto* Found=Objects.Find(Door);
             auto DoorBlocksPassage=[&]()
             {
@@ -1523,7 +1829,29 @@ void FAC2Network::Tick(float Delta)
             {
                 if(!Found || (*Found)->DoorOpen)return;
                 if(!(*Found)->Actor->GetActorEnableCollision() || !DoorBlocksPassage()){Finish(false,TEXT("Closed door collision missing"));return;}
-                Finish(true,TEXT("DAT shop pointer sale/purchase/close and native door animation/collision"));return;
+                auto C=Objects.Find(Chest);
+                if(!C || !(*C)->Model || !(*C)->Actor.IsValid()){Finish(false,TEXT("Chest model unavailable"));return;}
+                if((*C)->Door || !(*C)->OpenableStateKnown || (*C)->OpenableOpen){Finish(false,TEXT("Incorrect native chest class/state"));return;}
+                ShopClosedChestBounds=(*C)->Model->ModelBounds();SelectTarget(Chest);UseTarget();
+            }
+            else if(ShopSmokeStep==6)
+            {
+                auto C=Objects.Find(Chest);if(!C || !(*C)->OpenableOpen || LootContainer!=Chest)return;
+                auto& O=**C;const auto Bounds=O.Model->ModelBounds();
+                UE_LOG(LogTemp,Display,TEXT("AC2 native chest closed=%s open=%s collision=%d solid=%d"),*ShopClosedChestBounds.ToString(),*Bounds.ToString(),O.Actor->GetActorEnableCollision(),O.Solid);
+                if(O.Door || O.DoorOpen || O.Actor->GetActorEnableCollision()!=O.Solid || Bounds.Equals(ShopClosedChestBounds,1.0)) {Finish(false,TEXT("Chest failed to animate or changed collision"));return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Chest-open.png"),true,false);CloseLoot();
+            }
+            else if(ShopSmokeStep==7)
+            {
+                auto C=Objects.Find(Chest);if(!C || (*C)->OpenableOpen || !LootContainer.IsEmpty())return;
+                // This cache's native closed idle floats/bobs; frame bounds are
+                // not identical. Closing must interrupt the 4-second open action
+                // even though this asset does not supply a close behavior.
+                if((*C)->AnimMode!=0x41000003 || (*C)->Model->BehaviorDuration(0x41000008)>0 || (*C)->Actor->GetActorEnableCollision()!=(*C)->Solid)
+                    {Finish(false,TEXT("Chest retained its opening action or changed collision"));return;}
+                FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Chest-closed.png"),true,false);
+                Finish(true,TEXT("DAT shop pointer sale/purchase/close, native door and chest animation/collision"));return;
             }
             ++ShopSmokeStep;ShopSmokeNext=Time+2;return;
         }
@@ -1540,6 +1868,7 @@ void FAC2Network::Tick(float Delta)
             if (!IsWorld() || !P || !MapTravelEnabled || NeedsPlacement || P->IsHeld() || Time < MapTravelSmokeNext) return;
             auto H = HUD(Mode);
             if (!H || !H->GameUI) return;
+            if(MapTravelSmokeStep==4 && H->PortalEffect && H->PortalEffect->Active())return;
             FString Error;
             bool OK = true;
             switch (MapTravelSmokeStep)
@@ -1647,7 +1976,25 @@ void FAC2Network::Tick(float Delta)
         if(VerifyEquipment && IsWorld() && SmokeAttacked && !SmokeRepeated && Started>3)
         {Attack();SmokeRepeated=true;}
         const auto Profile = Mode->Characters.Active();
-        const bool HasLoot = Profile && !Profile->Items.IsEmpty() && Profile->Experience > 0;
+        if(IsWorld() && Profile && SmokeAttacked && DeathBehaviors>0 && Combat && LootSmokeStep==0 && Started>6 && Time>LootSmokeNext)
+        {SetCombat(false);LootSmokeNext=Time+.5;}
+        if(IsWorld() && Profile && SmokeAttacked && DeathBehaviors>0 && !Combat && Started>6 && Time>LootSmokeNext)
+        {
+            if(LootSmokeStep==0){LootSmokeCount=Profile->Items.Num();UseTarget();LootSmokeStep=1;LootSmokeNext=Time+.5;}
+            else if((LootSmokeStep==1 || LootSmokeStep==2) && !LootItems.IsEmpty())
+            {
+                auto H=HUD(Mode);FString Error;
+                if(!H || !H->GameUI || !H->GameUI->SmokeLootInput(LootSmokeStep==2,Error))
+                {UE_LOG(LogTemp,Error,TEXT("AC2 loot UI smoke: %s"),*Error);FPlatformMisc::RequestExitWithStatus(false,1);return;}
+                if(LootSmokeStep==1)FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Network-corpse-loot.png"),true,false);
+                ++LootSmokeStep;LootSmokeNext=Time+1;
+            }
+            else if(LootSmokeStep==3 && LootContainer.IsEmpty() && Profile->Items.Num()>LootSmokeCount)
+            {LootSmokeStep=4;UE_LOG(LogTemp,Display,TEXT("AC2 native corpse loot window and item double-click passed"));}
+            else if(LootSmokeStep==1 && !LootContainer.IsEmpty() && LootItems.IsEmpty())
+            {LootSmokeStep=4;UE_LOG(LogTemp,Display,TEXT("AC2 native empty corpse window passed: no unverified replacement loot"));}
+        }
+        const bool HasLoot = Profile && LootSmokeStep==4 && Profile->Experience > 0;
         if ((IsWorld() && SmokeAttacked && HasLoot && Started > 6) || Started > 120)
         {
             bool OK = IsWorld() && ReceivedChats > 0 && P && P->HasModel() && Objects.Num() > 1 && HasLoot && SmokeRadar && PlayerAttacks>0 && MobAttacks>0 && HitEvents>0 && DeathBehaviors>0 && FailedAttacks==0 && (!VerifyEquipment || (SmokeHeld && MagicAttacks>0 && SmokeArmor && PlayedEffects>0 && SmokeParticles>0 && SmokeCastParticles>0));

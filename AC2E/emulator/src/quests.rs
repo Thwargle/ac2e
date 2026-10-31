@@ -46,6 +46,7 @@ pub struct Progress {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Book {
+    pub recovered: crate::recovered_quests::Book,
     training: Option<Progress>,
     supplies: Option<bool>,
     potion: u8, // 0 absent, 1 accepted, 2 crafted, 3 rewarded
@@ -284,7 +285,7 @@ impl Book {
     /// The gmQuestInfoList argument used by UI_Load for saved journal restoration.
     pub fn list_graph(&self) -> Result<Vec<u8>, WorldError> {
         let mut payload = Vec::new();
-        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0));
+        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0) + self.recovered.0.len() as u32);
         if let Some(state) = self.training {
             payload.extend(info_payload(state, false)?);
         }
@@ -292,6 +293,7 @@ impl Book {
         if self.potion != 0 { payload.extend(self.lesson_payload(false, false)?); }
         if self.journey != 0 { payload.extend(self.lesson_payload(true, false)?); }
         if self.shelter != 0 { payload.extend(self.shelter_payload(false)?); }
+        for (id,state) in &self.recovered.0 { payload.extend(recovered_payload(*id,state,false)?); }
         Ok(native_graph(0xa1, &payload))
     }
 }
@@ -357,6 +359,11 @@ impl Book {
     }
     pub fn updates(&self) -> Result<Vec<Vec<u8>>, WorldError> {
         let mut events = Vec::new();
+        for (id,state) in &self.recovered.0 {
+            let mut args=script::integer(0);args.extend(native_graph(0xa0,&recovered_payload(*id,state,true)?));
+            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
+            events.push(script::private_call(UPDATE,&args)?);
+        }
         if self.shelter != 0 {
             let mut args=script::integer(0);
             args.extend(native_graph(0xa0,&self.shelter_payload(true)?));
@@ -481,4 +488,14 @@ pub fn validate_practice_craft(book: &Book, bag: &crate::inventory::Inventory, i
     let expected = crate::crafting::output(recipe, first, candidate.free_slot().ok_or_else(bad)?).ok_or_else(bad)?;
     if output != &expected { return Err(bad()); }
     book.apply(&Command::CraftedPotion).map_err(io::Error::other)
+}
+
+fn recovered_payload(id:u32,state:&crate::recovered_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
+    let q=crate::recovered_quests::profiles().iter().find(|q|q.id==id).ok_or(WorldError::InvalidValue)?;
+    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
+    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
+    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});word(&mut b,u32::from(state.completed==0));
+    b.extend(world::literal_name(&crate::recovered_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
+    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
+    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
 }

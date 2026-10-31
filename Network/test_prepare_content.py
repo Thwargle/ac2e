@@ -1,5 +1,6 @@
 """Content comparisons must explain both recovery and regressions without mixing DAT sets."""
 import json
+import hashlib
 import struct
 from pathlib import Path
 import tempfile
@@ -10,6 +11,49 @@ from content_profile import ContentProfile, nearby_landmark, door_physical
 
 
 class ContentComparisonTest(unittest.TestCase):
+    def test_verified_translation_wins_over_old_cell_snapshots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)
+            row='8140000000000001\t47000001\t1f000001\t01020001\t5\t5\t0\t1\t0\t0\t0\t-\tBeetle'
+            old=row.replace('00000001\t470','00000002\t470')
+            for name,rows in [('world-observed-expanded.tsv',[]),('training-world.tsv',[]),
+                              ('capture-spawns.tsv',[old]),('recovered-population.tsv',[row])]:
+                (content/name).write_text('pyrealium-world-v4\n'+'\n'.join(rows)+'\n')
+            path=content/'recovered-population.tsv'
+            evidence={'native_ground_verified':True,'manifest_sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+            path.with_suffix('.report.json').write_text(json.dumps(evidence))
+            index={'portal.dat':{0x47000001,0x1f000001},'cell_1.dat':{0x0102ffff}}
+            with patch.object(prepare_content,'ROOT',root),patch.object(prepare_content,'asset_index',return_value=index),patch.object(prepare_content,'ContentProfile') as p:
+                p.return_value.visual.return_value=0x1f000001
+                prepare_content.prepare(root,root/'world.tsv')
+                self.assertEqual((root/'world.tsv').read_text().splitlines(),['pyrealium-world-v4',row])
+                path.write_text(path.read_text().replace('5\t5\t0','6\t5\t0'))
+                with self.assertRaisesRegex(ValueError,'ground verification'):prepare_content.prepare(root,root/'other.tsv')
+
+    def test_audited_pack_respects_upstream_cells_and_exact_state_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)
+            row='8140000000000001\t47000001\t1f000001\t01020001\t5\t5\t0\t1\t0\t0\t0\t-\t-'
+            changed=row.replace('00000001\t470','00000002\t470').replace('01020001','01030001')
+            overlap=row.replace('00000001\t470','00000003\t470')
+            fresh=row.replace('00000001\t470','00000004\t470').replace('01020001','01040001')
+            for name,rows in [('world-observed-expanded.tsv',[]),('training-world.tsv',[]),('capture-spawns.tsv',[]),
+                              ('capture-spawns-upstream.tsv',[row,changed]),('capture-spawns-audited.tsv',[overlap,fresh])]:
+                (content/name).write_text('pyrealium-world-v4\n'+'\n'.join(rows))
+            proof={'excluded_existing':[
+                {'id':row.split('\t')[0],'source':'capture-spawns-upstream.tsv','row_sha256':hashlib.sha256(row.encode()).hexdigest()},
+                {'id':changed.split('\t')[0],'source':'capture-spawns-upstream.tsv','row_sha256':'outdated-evidence'}]}
+            (content/'capture-spawns-audited.report.json').write_text(json.dumps(proof))
+            index={'portal.dat':{0x47000001,0x1f000001},'cell_1.dat':{0x0102ffff,0x0103ffff,0x0104ffff}}
+            output=root/'world.tsv'
+            with patch.object(prepare_content,'ROOT',root),patch.object(prepare_content,'asset_index',return_value=index),patch.object(prepare_content,'ContentProfile') as profile:
+                profile.return_value.visual.return_value=0x1f000001
+                prepare_content.prepare(root,output)
+            self.assertEqual(output.read_text().splitlines(),['pyrealium-world-v4',changed,fresh])
+            report=json.loads(output.with_suffix('.report.json').read_text())
+            self.assertEqual(len(report['transient_capture_placements']),1)
+            self.assertEqual(len(report['overlapping_capture_cells']),1)
+
     def test_door_defaults_respect_nested_strings_and_truncated_tables(self):
         words = lambda *values: struct.pack('<'+'I'*len(values), *values)
         # Display name contains a tagged nested StringInfo, followed by a DID table.
@@ -57,11 +101,28 @@ class ContentComparisonTest(unittest.TestCase):
         try:
             self.assertEqual(profile.visual(0x4700334c),0x1f0010a6)
             self.assertEqual(profile.visual(0x47002224),0x1f000bf9)  # Child PhysObj overrides its Gurog parent.
-            self.assertIsNone(profile.visual(0x470007de))  # Script-only lifestone uses curated pair.
+            self.assertEqual(profile.visual(0x470007de),0x1f00002d)  # Native gmQualities physical default.
             self.assertEqual(profile.visual(0x4700114a),0x1f00006c)  # Human door class default.
             self.assertEqual(profile.visual(0x4700079c),0x1f00034a)  # Barred door class default.
         finally:
             profile.close()
+
+    def test_new_capture_names_preserved_without_stacking_cell_snapshots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)
+            old='8140000000000001\t47000001\t1f000001\t01020001\t5\t5\t0\t1\t0\t0\t0\t1'
+            overlap=old.replace('00000001\t470','00000002\t470')+'\tNew observation'
+            fresh=old.replace('00000001\t470','00000003\t470').replace('01020001','01030001')+'\tNamed gateway'
+            for name,rows in [('world-observed-expanded.tsv',[]),('training-world.tsv',[]),
+                              ('capture-spawns.tsv',[old]),('capture-spawns-upstream.tsv',[overlap,fresh])]:
+                (content/name).write_text('pyrealium-world-v4\n'+'\n'.join(rows))
+            index={'portal.dat':{0x47000001,0x1f000001},'cell_1.dat':{0x0102ffff,0x0103ffff}}
+            output=root/'world.tsv'
+            with patch.object(prepare_content,'ROOT',root),patch.object(prepare_content,'asset_index',return_value=index),patch.object(prepare_content,'ContentProfile') as profile:
+                profile.return_value.visual.return_value=0x1f000001
+                prepare_content.prepare(root,output)
+            self.assertEqual(output.read_text().splitlines(),['pyrealium-world-v4',old+'\t-',fresh])
+            self.assertEqual(len(json.loads(output.with_suffix('.report.json').read_text())['overlapping_capture_cells']),1)
 
     def test_candidate_restores_one_room_but_loses_one_visual(self):
         with tempfile.TemporaryDirectory() as directory:

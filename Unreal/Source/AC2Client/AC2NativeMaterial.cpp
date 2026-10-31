@@ -1,4 +1,5 @@
 #include "AC2NativeMaterial.h"
+#include "AC2Performance.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/World.h"
 #include "Components/SceneComponent.h"
@@ -14,16 +15,19 @@ void UpdateAC2WorldLighting(UWorld* W,const FAC2PreviewLighting& Outdoor,
     TFunctionRef<bool(const FVector&,FAC2PreviewLighting&)> Interior)
 {
     const double Now=W->GetTimeSeconds();
+    AC2Performance::FScope Measurement(TEXT("world_lighting"));
     for(auto It=WorldMaterials.CreateIterator();It;++It) {
         auto& Entry=It.Value(); auto* M=It.Key().Get();auto* Source=Entry.Source.Get();
         if(!M || !Source) {It.RemoveCurrent();continue;}
         if(Source->GetWorld()!=W || Now<Entry.NextUpdate) continue;
         Entry.NextUpdate=Now+.1;
         FAC2PreviewLighting Lighting;
-        if(!Interior(Source->Bounds.Origin,Lighting))Lighting=Outdoor;
+        { AC2Performance::FScope Resolve(TEXT("lighting_room_lookup"));
+          if(!Interior(Source->Bounds.Origin,Lighting))Lighting=Outdoor; }
         // Room light lists were baked into their vertex colours; only moving
         // models and props consume these same static lights as runtime lights.
         if(Entry.Baked)Lighting.Lights.Reset();
+        AC2Performance::FScope Parameters(TEXT("lighting_parameters"));
         M->SetVectorParameterValue(TEXT("AC2UIAmbient"),Lighting.Ambient);
         for(int32 I=0;I<8;++I) {
             FVector P=FVector::ZeroVector; FLinearColor Color=FLinearColor::Black; float Range=0;
@@ -62,6 +66,7 @@ FAC2NativeMaterialExpressions BuildAC2NativeStages(UMaterial *M, UMaterialExpres
     auto *Node=NewObject<UMaterialExpressionCustom>(M);Node->OutputType=CMOT_Float4;
     Input(Node,TEXT("Enabled"),Enabled);Input(Node,TEXT("Base"),Base);Input(Node,TEXT("BaseAlpha"),Base,4);Input(Node,TEXT("Tint"),Tint,5);
     Input(Node,TEXT("Diffuse"),Tint);
+    Input(Node,TEXT("Specular"),Vector(TEXT("AC2UnlitSpecular"),FLinearColor::Black));
     auto *Vertex=NewObject<UMaterialExpressionVertexColor>(M);E.AddExpression(Vertex);
     Input(Node,TEXT("Vertex"),Vertex,0);
     Input(Node,TEXT("VertexAlpha"),Vertex,4);
@@ -72,8 +77,8 @@ FAC2NativeMaterialExpressions BuildAC2NativeStages(UMaterial *M, UMaterialExpres
 struct NativeOps {
  float3 gamma(float3 v) { return select(v<=0.0031308,v*12.92,1.055*pow(max(v,0),1.0/2.4)-0.055); }
  float3 toLinear(float3 v) { return select(v<=0.04045,v/12.92,pow((v+0.055)/1.055,2.4)); }
- float4 arg(int a,float4 d,float4 c,float4 t,float4 f) {
-   int id=a&15; float4 v=id==0?d:id==2?t:id==3?f:c;
+ float4 arg(int a,float4 d,float4 c,float4 t,float4 f,float3 s) {
+   int id=a&15; float4 v=id==0?d:id==2?t:id==3?f:id==4?float4(s,0):c;
    if(a&32)v.rgb=v.aaa; if(a&16)v=1-v; return v;
  }
  float4 op(int n,float4 a,float4 b,float4 d,float4 c,float4 t,float4 f) {
@@ -118,20 +123,20 @@ float4 current=d;
         Input(Node,*(TEXT("A")+N),Vector(Prefix+TEXT("Alpha"),FLinearColor(1,1,1,0)));
         Node->Code+=FString::Printf(TEXT(
             "if(C%s.x>1) { float4 t=float4(fn.gamma(T%s.rgb),TA%s); "
-            "float4 a=fn.arg((int)C%s.y,d,current,t,Tint), b=fn.arg((int)C%s.z,d,current,t,Tint); "
+            "float4 a=fn.arg((int)C%s.y,d,current,t,Tint,Specular), b=fn.arg((int)C%s.z,d,current,t,Tint,Specular); "
             "float3 rgb=fn.op((int)C%s.x,a,b,d,current,t,Tint).rgb; "
-            "a=fn.arg((int)A%s.y,d,current,t,Tint); b=fn.arg((int)A%s.z,d,current,t,Tint); "
+            "a=fn.arg((int)A%s.y,d,current,t,Tint,Specular); b=fn.arg((int)A%s.z,d,current,t,Tint,Specular); "
             "float alpha=A%s.x<=1?current.a:fn.op((int)A%s.x,a,b,d,current,t,Tint).a; "
-            "current=saturate(float4(rgb,alpha)); } else return float4(fn.toLinear(current.rgb),current.a);\n"),
+            "current=saturate(float4(rgb,alpha)); } else return float4(fn.toLinear(saturate(current.rgb+Specular)),current.a);\n"),
             *N,*N,*N,*N,*N,*N,*N,*N,*N,*N);
     }
-    Node->Code+=TEXT("return float4(fn.toLinear(current.rgb),current.a);");E.AddExpression(Node);
+    Node->Code+=TEXT("return float4(fn.toLinear(saturate(current.rgb+Specular)),current.a);");E.AddExpression(Node);
     auto *RGB=NewObject<UMaterialExpressionComponentMask>(M);RGB->R=RGB->G=RGB->B=true;RGB->A=false;RGB->Input.Connect(0,Node);E.AddExpression(RGB);
     // Opacity has no dependency on vertex lighting. In particular the depth-only
     // masked pass must not require the colour cascade's vertex interpolators.
     auto *Alpha=NewObject<UMaterialExpressionCustom>(M);Alpha->OutputType=CMOT_Float1;
     for(const auto& In:Node->Inputs)
-        if(In.InputName!=TEXT("Diffuse") && In.InputName!=TEXT("Vertex") && In.InputName!=TEXT("Base")) Alpha->Inputs.Add(In);
+        if(In.InputName!=TEXT("Diffuse") && In.InputName!=TEXT("Specular") && In.InputName!=TEXT("Vertex") && In.InputName!=TEXT("Base")) Alpha->Inputs.Add(In);
     Input(Alpha,TEXT("Opacity"),Vector(TEXT("AC2Opacity"),FLinearColor(1,0,0,0)));
     Alpha->Code=TEXT(R"(
 struct NativeAlpha {

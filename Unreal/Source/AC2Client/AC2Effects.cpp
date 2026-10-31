@@ -4,6 +4,54 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/Paths.h"
 
+bool FAC2Effects::GroundDecal(const FAC2Decal& D,const FTransform& Frame,AActor* Owner)
+{
+    if(!World || !Actor || !Assets || !D.Material || !FMath::IsFinite(D.Lifetime) || D.Lifetime<=0 || Decals.Num()>=96)return false;
+    const float Now=World->GetTimeSeconds(),Size=D.Size.Value(Now)*100,Radius=D.Radius.Value(Now)*100;
+    const float Angle=D.Rotation.Value(Now);
+    if(!FMath::IsFinite(Size) || Size<=0 || Size>2000 || !FMath::IsFinite(Radius) || Radius<0 || Radius>2000 || !FMath::IsFinite(Angle))return false;
+    FGroundDecal Decal;Decal.Born=Now;Decal.Life=FMath::Min(D.Lifetime,120.f);Decal.Color=D.Color;
+    FVector Center=Frame.GetLocation()+D.Origin*100;
+    const float Theta=Random.FRand()*2*PI,Offset=Random.FRand()*Radius;
+    Center+=FVector(FMath::Cos(Theta)*Offset,FMath::Sin(Theta)*Offset,0);
+    const FQuat Rotation=FQuat(FVector::UpVector,FMath::DegreesToRadians(Angle))*Frame.GetRotation();
+    TArray<bool> Valid;TArray<int32> Indices;
+    FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2GroundDecal),true,Owner);Query.AddIgnoredActor(Actor);
+    // Project a bounded grid onto collision geometry. Invalid samples and steep
+    // discontinuities are omitted, so a decal never bridges a ledge or floats.
+    for(int32 Y=0;Y<=4;++Y)for(int32 X=0;X<=4;++X)
+    {
+        const FVector P=Center+Rotation.RotateVector(FVector((X/4.f-.5f)*Size,(Y/4.f-.5f)*Size,0));
+        FHitResult Hit;const bool Found=World->LineTraceSingleByObjectType(Hit,P+FVector(0,0,Size*.5f+30),P-FVector(0,0,Size+220),FCollisionObjectQueryParams(ECC_WorldStatic),Query) && Hit.ImpactNormal.Z>.25;
+        Valid.Add(Found);Decal.Vertices.Add(Found?Hit.ImpactPoint+Hit.ImpactNormal*.15:P);
+        Decal.Normals.Add(Found?Hit.ImpactNormal:FVector::UpVector);Decal.UV.Add(FVector2D(X/4.f,Y/4.f));
+    }
+    auto Triangle=[&](int32 A,int32 B,int32 C){
+        if(Valid[A] && Valid[B] && Valid[C] && FMath::Abs(Decal.Vertices[A].Z-Decal.Vertices[B].Z)<Size*.6f && FMath::Abs(Decal.Vertices[A].Z-Decal.Vertices[C].Z)<Size*.6f)
+            Indices.Append({A,B,C});
+    };
+    for(int32 Y=0;Y<4;++Y)for(int32 X=0;X<4;++X){const int32 A=Y*5+X;Triangle(A,A+5,A+1);Triangle(A+1,A+5,A+6);}
+    if(Indices.IsEmpty())return false;
+    auto* Component=NewObject<UProceduralMeshComponent>(Actor);Actor->AddInstanceComponent(Component);
+    Component->SetAbsolute(true,true,true);Component->SetWorldTransform(FTransform::Identity);
+    Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);Component->SetCastShadow(false);Component->RegisterComponent();
+    TArray<FColor> Colors;Colors.Init(FColor(D.Color.R,D.Color.G,D.Color.B,0),Decal.Vertices.Num());
+    Component->CreateMeshSection(0,Decal.Vertices,Indices,Decal.Normals,Decal.UV,Colors,TArray<FProcMeshTangent>(),false);
+    Component->SetMaterial(0,Assets->ParticleMaterial(D.Material));Decal.Mesh=Component;Decals.Add(MoveTemp(Decal));return true;
+}
+void FAC2Effects::UpdateDecals()
+{
+    for(int32 I=Decals.Num()-1;I>=0;--I)
+    {
+        auto& D=Decals[I];const float Age=World->GetTimeSeconds()-D.Born;
+        if(!D.Mesh.IsValid() || Age>=D.Life)
+        {if(D.Mesh.IsValid())D.Mesh->DestroyComponent();Decals.RemoveAtSwap(I);continue;}
+        FColor Color=D.Color;Color.A=uint8(FMath::RoundToInt(D.Color.A*FAC2Decal::Opacity(Age,D.Life)));
+        TArray<FColor> Colors;Colors.Init(Color,D.Vertices.Num());
+        D.Mesh->UpdateMeshSection(0,D.Vertices,D.Normals,D.UV,Colors,TArray<FProcMeshTangent>());
+    }
+}
+
 FAC2Effects::~FAC2Effects()
 {
     if (IsValid(Actor))
@@ -206,8 +254,7 @@ void FAC2Effects::Discharge(uint64 Key, FSystem &S, int32 Index, float Birth)
     P.Origin = P.P;
     P.V = S.Source.Frame.TransformVectorNoScale(Direction) * FMath::Clamp(E.Speed.Value(T), -1000.f, 1000.f) *
           100;
-    const float ObjectScale = Preset.Data.ScaleType == 2 ? 1.f : S.Source.Frame.GetScale3D().GetAbsMax();
-    P.Scale = E.ParticleScale.Value(T) * ObjectScale * S.Source.ParticleScale;
+    P.Scale = E.ParticleScale.Value(T) * Preset.Data.RenderScale(S.Source.Frame.GetScale3D().GetAbsMax(),S.Source.ParticleScale);
     P.Angle = E.Rotation.Z.Value(T);
     P.Spin = E.Spin.Z.Value(T);
     P.Streak = E.Streak.Value(T);
@@ -387,6 +434,7 @@ void FAC2Effects::Update(const FVector &Camera, const FVector &Right, const FVec
 {
     if (!Mesh)
         return;
+    UpdateDecals();
     Dt = FMath::Clamp(Dt, 0.f, .15f);
     float Remaining = Dt;
     while (Remaining > SMALL_NUMBER)

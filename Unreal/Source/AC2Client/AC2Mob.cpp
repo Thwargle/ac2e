@@ -152,6 +152,7 @@ bool AAC2Mob::Hit(float Damage)
     if (Health <= 0)
         return false;
     Health = FMath::Max(0.f, Health - FMath::Max(0.f, Damage));
+    if(Model)Model->SetHealth(Health,100);
     if (Health == 0)
     {
         GetCharacterMovement()->DisableMovement();

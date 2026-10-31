@@ -48,6 +48,7 @@ class SAC2CharacterUI : public SCompoundWidget
         return true;
     }
     virtual FReply OnKeyDown(const FGeometry &, const FKeyEvent &) override;
+    virtual void Tick(const FGeometry&, double, float) override;
     void Shutdown();
     bool SmokeCreate(FString &Error);
     void SmokeEnter(){Enter();}
@@ -62,11 +63,16 @@ class SAC2CharacterUI : public SCompoundWidget
     bool AuditPortrait(FString& Error) const;
     bool SmokeEyes(bool Last);
     bool SmokeSelection(int32 Step, FString &Error);
+    bool SmokeCreatorDrafts(FString& Error);
+    bool WaitingForAvatarAnimation() const { return PendingAvatar!=INDEX_NONE; }
 
   private:
     TWeakObjectPtr<AAC2GameMode> Mode;
     TWeakObjectPtr<AAC2Portrait> Portrait, Lineup, Selection;
     FSlateBrush SelectionBrush;
+    TMap<uint32,TWeakObjectPtr<AAC2Portrait>> SceneOverlays;
+    TMap<uint32,FSlateBrush> SceneOverlayBrushes;
+    void UpdateSceneOverlays();
     TSharedPtr<SWidget> CreatorView;
     TSharedPtr<class SAC2GameUI> SelectionOptions;
     bool ShowSelectionOptions = false;
@@ -77,6 +83,7 @@ class SAC2CharacterUI : public SCompoundWidget
     void SelectCharacter(int32 Index);
     FSlateBrush LineupBrush;
     int32 HoveredAvatar = INDEX_NONE;
+    int32 PendingAvatar = INDEX_NONE;
     TUniquePtr<FAC2AssetLibrary> Assets;
     TMap<uint32, TSharedPtr<FSlateBrush>> Brushes;
     FSlateBrush PortraitBrush;
@@ -87,6 +94,8 @@ class SAC2CharacterUI : public SCompoundWidget
     void CreatorAction(uint32 Id);
     void CreatorSlider(uint32 Id, float Value);
     TMap<uint32, int32> Appearance;
+    TMap<uint32, FAC2CharacterDraft> CreatorDrafts;
+    FAC2CharacterRandom CreatorRandom;
     int32 CreationStep = 0, AppearanceTab = 1;
     float Rotation = 0;
     bool HeadZoom = false;

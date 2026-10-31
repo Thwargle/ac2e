@@ -20,14 +20,9 @@ $referenceHead=& git -C (Join-Path $root 'References/AC2_Rusted') rev-parse HEAD
 if($LASTEXITCODE -ne 0 -or $referenceHead -ne 'bcf67b4b9ac3ee9eb429d68ba6766cfce47c5a25'){throw 'AC2_Rusted reference does not match the supported protocol revision.'}
 & $cargo build --release --locked --manifest-path (Join-Path $root 'Network/Bridge/Cargo.toml')
 if($LASTEXITCODE -ne 0){throw 'Native bridge build failed.'}
-& $Python (Join-Path $root 'AC2E/export_source.py')
-if($LASTEXITCODE -ne 0){throw 'AC2E source archive generation failed.'}
-& $cargo build --release --locked --manifest-path (Join-Path $root 'AC2E/emulator/Cargo.toml') --target-dir (Join-Path $root 'AC2E/target')
-if($LASTEXITCODE -ne 0){throw 'AC2E server build failed.'}
+& (Join-Path $root 'AC2E/Build-AC2E.ps1') -Python $Python -Test:$Test
 if($Test){
     & $cargo test --locked --manifest-path (Join-Path $root 'Network/Bridge/Cargo.toml')
     if($LASTEXITCODE -ne 0){throw 'Bridge tests failed.'}
-    & $cargo test --locked --manifest-path (Join-Path $root 'AC2E/emulator/Cargo.toml') --target-dir (Join-Path $root 'AC2E/target')
-    if($LASTEXITCODE -ne 0){throw 'AC2E tests failed.'}
 }
 Write-Output 'AC2E server and native network bridge built.'

@@ -4,6 +4,7 @@
 mod events;
 mod examination;
 mod shop;
+mod journal;
 use ac2_net::{protocol::*, Credential, Logon, NetClient, NetClientConfig, NetEvent};
 use serde_json::{json, Value};
 use std::{
@@ -361,6 +362,15 @@ impl Session {
                     arguments: vec![], encrypted: false,
                 })?;
             }
+            "skill_cancel_untrain" if self.ready => {
+                send(&mut self.client,ClientEvent::Interp{function:0x82140001,arguments:vec![],encrypted:false})?;
+            }
+            "skill_train" | "skill_raise" | "skill_untrain" if self.ready => {
+                let skill=word(v,"skill")?;
+                if skill==0 || skill>65535{return Err("Invalid skill ID".into());}
+                let function=match v["command"].as_str().unwrap_or("") {"skill_train"=>0x82140002,"skill_raise"=>0x8214000c,_=>0x82140007};
+                send(&mut self.client,ClientEvent::Interp{function,arguments:pack_values(&[PackValue::Int(skill)]),encrypted:false})?;
+            }
             "skill" if self.ready => {
                 let skill = word(v, "skill")?;
                 if skill == 0 || skill > 65535 { return Err("Invalid skill ID".into()); }
@@ -401,6 +411,16 @@ impl Session {
                     &mut self.client,
                     ScriptRequest::OpenContainer(id(v, "id")?).to_event(),
                 )?;
+            }
+            "transmute_loot" if self.ready => {
+                send(&mut self.client,ScriptRequest::TransmuteAll(InvTransmuteAllDesc::new(id(v,"id")?,self.player)).to_event())?;
+            }
+            "close_container" if self.ready => {
+                send(&mut self.client, ScriptRequest::CloseContainer(id(v,"id")?).to_event())?;
+            }
+            "take_item" if self.ready => {
+                send(&mut self.client, ScriptRequest::MoveItem(InvMoveDesc::new(
+                    id(v,"id")?,id(v,"container")?,word(v,"from")? as i32,self.player,-1,1)).to_event())?;
             }
             "move_item" if self.ready => {
                 send(
@@ -472,6 +492,14 @@ impl Session {
         }
         for event in self.client.poll() {
             match event {
+                NetEvent::Connected { server_time, .. } => {
+                    emit(json!({"event":"clock","server_time":server_time}));
+                }
+                NetEvent::TimeSync(_) => {
+                    // HandleTimeSynch has already applied native monotonic clock adoption.
+                    // Forward that clock, not the process's local elapsed time.
+                    emit(json!({"event":"clock","server_time":self.client.net().timer().cur_time()}));
+                }
                 NetEvent::LoggedOn => {
                     self.logged_on = true;
                     emit(

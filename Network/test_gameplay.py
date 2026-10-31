@@ -91,8 +91,8 @@ def main():
         assert until(b,obs,'visual',lambda e:e['id']==a.id)['visual']==original
         result['armor_local_remote_and_late_observer']=True
         time.sleep(.15)
-        # Failed attacks must return both the HUD and replicated model to peace.
-        # Previously attacking a lifestone stopped combat but left the fighting pose.
+        # A rejected attack stops the queue while preserving stance in the HUD
+        # and replicated model. Peace is an explicit player action.
         start=len(a.events);obs=len(b.events)
         a.send('target',id='0');a.send('combat',enabled=True)
         until(a,start,'combat',lambda e:e['enabled'])
@@ -100,10 +100,11 @@ def main():
         stone=next(e for e in a.events if e.get('event')=='object' and e.get('entity')==0x470007de)
         start=len(a.events);obs=len(b.events)
         a.send('attack',id=stone['id'])
-        until(a,start,'combat',lambda e:not e['enabled'])
-        until(a,start,'mode',lambda e:e['id']==a.id and e['mode']==0x40000001)
-        until(b,obs,'mode',lambda e:e['id']==a.id and e['mode']==0x40000001)
-        result['rejected_attack_restores_local_and_remote_peace']=True
+        until(a,start,'combat',lambda e:e['enabled'])
+        until(a,start,'mode',lambda e:e['id']==a.id and e['mode']==0x4100000f)
+        until(b,obs,'mode',lambda e:e['id']==a.id and e['mode']==0x4100000f)
+        a.send('combat',enabled=False);until(a,start,'combat',lambda e:not e['enabled'])
+        result['rejected_attack_preserves_local_and_remote_stance']=True
         def equip(item,mode):
             start=len(a.events); obs=len(b.events)
             a.send('equip',id=item['id'],location=0x40,slot=bag.index(item['id']))
@@ -154,35 +155,47 @@ def main():
         until(b,obs,'hit',lambda e:e['id']==a.id)
         until(a,start,'quality',lambda e:e.get('id')==ids[0] and e['key']==0x102 and e['value']==0)
         until(b,obs,'quality',lambda e:e.get('id')==ids[0] and e['key']==0x102 and e['value']==0)
+        a.send('combat',enabled=False)
         until(a,start,'combat',lambda e:not e['enabled'])
         result['melee_damage_retaliation_death']=True
-        # The loot grant is in a new dense bag slot.
-        loot=until(a,start,'object',lambda e:e.get('container')==a.id and e['id'] not in bag and e['entity'] not in items)
-        bag.append(loot['id'])
+        # These authored Idols have no recovered loot profile. They must not
+        # manufacture the old universal potion. Native loot has a separate test.
+        def claim(corpse):
+            mark=len(a.events);a.send('open_container',id=corpse)
+            opened=until(a,mark,'container_state',lambda e:e['open'] and e['id']==corpse)
+            assert not opened['items'],opened
+            a.send('close_container',id=corpse)
+            until(a,mark,'container_state',lambda e:not e['open'])
+        claim(ids[0])
         unequip(sword);equip(staff,0x41000011)
         start=len(a.events);obs=len(b.events)
         a.send('skill',skill=0x60,target=ids[1]);until(a,start,'skill_finished')
         until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000b9)
-        mob_pose=until(b,obs,'position',lambda e:e['id']==ids[1])
-        until(a,start,'position',lambda e:e['id']==ids[1] and e['position']==mob_pose['position'])
+        # Native perception may have brought this creature into melee before
+        # the first spell. Its shared approach need not start at that spell.
+        mob_pose=until(b,0,'position',lambda e:e['id']==ids[1])
+        until(a,0,'position',lambda e:e['id']==ids[1] and e['position']==mob_pose['position'])
         # Stop only the player's attack, keeping the hostile creature pursuing.
         a.send('combat',enabled=False);until(a,start,'combat',lambda e:not e['enabled'])
         attack_start=len(a.events);a.send('attack',id=ids[1])
         until(a,start,'quality',lambda e:e.get('id')==ids[1] and e['key']==0x102 and e['value']==0)
+        a.send('combat',enabled=False)
         until(a,attack_start,'combat',lambda e:not e['enabled'])
         result['magic_and_enemy_replication']=True
         until(a,attack_start,'fx',lambda e:e['id']==a.id and e['fx']==0x810001cd)
         until(b,0,'fx',lambda e:e['id']==ids[1] and e['fx']==0x41000248)
         result['native_cast_and_impact_fx_replicated']=True
-        loot2=until(a,start,'object',lambda e:e.get('container')==a.id and e['entity']==loot['entity'])
-        bag.append(loot2['id'])
+        claim(ids[1])
         time.sleep(.3);unequip(staff);equip(bow,0x41000010)
         start=len(a.events);obs=len(b.events)
         a.send('skill',skill=0xcf,target=ids[2]);until(a,start,'skill_finished')
         until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000e2)
-        a.send('attack',id=ids[2]);until(a,start,'quality',lambda e:e.get('id')==ids[2] and e['key']==0x102 and e['value']==0)
+        # A basic missile skill must continue attacking its target without a
+        # second attack command, including the killing blow.
+        until(a,start,'quality',lambda e:e.get('id')==ids[2] and e['key']==0x102 and e['value']==0)
+        a.send('combat',enabled=False)
         until(a,start,'combat',lambda e:not e['enabled']);time.sleep(.3)
-        result['missile_skill']=True
+        result['missile_skill_autorepeats']=True
         # Receive the combat quest reward, bind a real lifestone and leave via portal.
         mentor=next(e for e in a.events if e.get('event')=='object' and e.get('entity')==0x47001699 and e['placement']['cell']==pose['cell'])
         move(mentor['placement']['position']);start=len(a.events)
@@ -204,7 +217,8 @@ def main():
         result['lifestone_recall_and_interest']=True
         # The observer deliberately lets a respawned creature kill it. Death
         # blocks combat, and resurrection restores a fresh native instance.
-        respawn=until(b,0,'object',lambda e:e['id']==ids[0] and e['instance']>1,timeout=35)
+        initial_instance=next(e['instance'] for e in idols if e['id']==ids[0])
+        respawn=until(b,0,'object',lambda e:e['id']==ids[0] and e['instance']>initial_instance,timeout=65)
         start=len(b.events);obs=len(a.events)
         b.send('skill',skill=0xb0,target=ids[0]);until(b,start,'skill_finished')
         b.send('combat',enabled=False)

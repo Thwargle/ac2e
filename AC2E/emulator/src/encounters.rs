@@ -16,9 +16,52 @@ use std::{
 fn invalid(text: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, text)
 }
+
+#[cfg(test)]
+mod spawner_tests {
+    use super::*;
+    #[test]
+    fn policy_overrides_initial_delay_without_moving_the_observed_anchor() {
+        let id=crate::content::NAMESPACE+7;let home=Placement::HUMAN_START;
+        let content=Content::fixture(id,home,None);
+        let text=format!("{}\nspawner\t{:08x}\t2000\t5000\n",
+            include_str!("../content/development-encounters.tsv"),crate::quests::TARGET_ENTITY);
+        let mut runtime=Encounters::parse(&text,&content).unwrap();
+        let mut scene=Scene::with_content(content);
+        runtime.initialize_spawners(&mut scene,100).unwrap();
+        assert!(scene.content_placement(id).is_none());
+        assert!(runtime.spawners.poll(2099).is_empty());
+        assert_eq!(runtime.spawners.poll(2100),vec![crate::spawners::Action::Spawn(id)]);
+        scene.respawn_content(id).unwrap();runtime.spawned(id).unwrap();
+        assert_eq!(scene.content_placement(id),Some(home));
+        let mut moved=home;moved.coordinates[0]+=0.5;
+        scene.move_creature(id,moved,2200).unwrap();
+        assert!(runtime.spawners.poll(10000).is_empty(),"Pursuit is not a vacant population slot");
+        scene.despawn_content(id).unwrap();runtime.removed(id,10000);
+        assert!(runtime.spawners.poll(14999).is_empty());
+        assert_eq!(runtime.spawners.poll(15000),vec![crate::spawners::Action::Spawn(id)]);
+        scene.respawn_content(id).unwrap();runtime.spawned(id).unwrap();
+        assert_eq!(scene.content_placement(id),Some(home));
+        assert!(runtime.spawners.poll(100000).is_empty());
+    }
+    #[test]
+    fn policy_cannot_make_a_fixed_service_attackable_or_create_an_unplaced_creature() {
+        let content=Content::fixture(crate::content::NAMESPACE+7,Placement::HUMAN_START,None);
+        let text=include_str!("../content/development-encounters.tsv");
+        for row in ["spawner\t47000001\t0\t1000", "spawner\t470007d1\t0\t0",
+            "spawner\t470007d1\t86400001\t1000",
+            "spawner\t470007d1\t0\t1000\nspawner\t470007d1\t0\t2000"] {
+            assert!(Encounters::parse(&format!("{text}\n{row}\n"),&content).is_err());
+        }
+        let service=Content::fixture(crate::content::NAMESPACE+8,Placement::HUMAN_START,Some(crate::services::Service::Vendor));
+        assert!(Encounters::parse(text,&service).is_err());
+    }
+}
 #[derive(Clone, Copy)]
 struct Rule {
     health: u32,
+    level: Option<u32>,
+    vigor: Option<u32>,
     damage: u32,
     armor: u32,
     interval: u64,
@@ -26,17 +69,24 @@ struct Rule {
     respawn: u64,
     xp: u64,
     gold: u32,
+    leash: f32,
 }
 struct Actor {
     entity: u32,
+    name: Option<String>,
     home: Placement,
     pursuit: bool,
+    // Verified steps retraced on disengagement, without inventing a path home.
+    route: Vec<Placement>,
     rule: Rule,
     health: u32,
     target: Option<u64>,
     next_attack: u64,
-    respawn_at: Option<u64>,
-    despawn_at: Option<u64>,
+    ai: crate::creature_ai::Profile,
+    next_idle: u64,
+    wander_goal: Option<Placement>,
+    evading: bool,
+    random: u64,
 }
 #[derive(Clone, Copy)]
 struct Attack {
@@ -49,6 +99,7 @@ struct Attack {
     skill: bool,
 }
 pub enum Event {
+    Loot { actor:u64, player:u64, entity:u32, ai:crate::creature_ai::Profile },
     Move { actor: u64, placement: Placement },
     IdolVisual(u64, crate::combat_visual::IdolAction),
     Swing(u64),
@@ -90,6 +141,7 @@ pub enum Event {
 }
 pub struct Encounters {
     actors: BTreeMap<u64, Actor>,
+    spawners: crate::spawners::Spawners,
     attacks: BTreeMap<u64, Attack>,
     cooldowns: BTreeMap<u64, u64>,
     damage: u32,
@@ -104,15 +156,22 @@ pub struct Encounters {
     training_loot: bool,
 }
 fn in_range(a: Option<Placement>, b: Option<Placement>, range: f32) -> bool {
-    a.zip(b).is_some_and(|(a, b)| {
-        a.cell == b.cell
-            && a.coordinates
-                .iter()
-                .zip(b.coordinates)
-                .map(|(a, b)| (a - b) * (a - b))
-                .sum::<f32>()
-                <= range * range
-    })
+    a.zip(b).and_then(|(a,b)|a.distance(b)).is_some_and(|d|d<=range)
+}
+fn facing(from:Placement,target:Placement)->Option<Placement> {
+    let [dx,dy,_]=from.offset_to(target)?;
+    if dx.hypot(dy)<0.001 {return Some(from);}
+    // Native Heading::ToUInt8 truncates, using the f32 1/360 constant.
+    let degrees=dx.atan2(dy).to_degrees().rem_euclid(360.0);
+    Some(Placement{heading:(f64::from(degrees)*f64::from(1f32/360.)*255.).trunc() as u8,..from})
+}
+fn approach(from:Placement,target:Placement,stop:f32)->Option<Placement> {
+    let [dx,dy,_]=from.offset_to(target)?;
+    let distance=dx.hypot(dy);
+    if distance<=stop+0.01{return None;}
+    let step=0.2f32.min(distance-stop);
+    let next=from.translated([dx/distance*step,dy/distance*step,0.])?;
+    facing(next,target)
 }
 impl Encounters {
     pub fn load(path: &Path, content: &Content) -> io::Result<Self> {
@@ -142,11 +201,13 @@ impl Encounters {
         let mut player = None;
         let mut regen = None;
         let mut rules = BTreeMap::new();
+        let mut spawn_policies = BTreeMap::new();
+        let mut spawn_groups=Vec::new();
         for line in lines {
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
-            if line.len() > 512 {
+            if line.len() > if line.starts_with("spawn-group\t") { 2048 } else { 512 } {
                 return Err(invalid("encounter row length"));
             }
             let f: Vec<_> = line.split('\t').collect();
@@ -167,6 +228,22 @@ impl Encounters {
                 Ok(value)
             };
             match f.as_slice() {
+                ["spawn-group",_,_,_] => {
+                    let id=u64::from_str_radix(f[1],16).map_err(|_|invalid("spawner group identity"))?;
+                    let capacity=number(2)? as usize;
+                    let members=f[3].split(',').map(|id|u64::from_str_radix(id,16).map_err(|_|invalid("spawner child identity")))
+                        .collect::<io::Result<Vec<_>>>()?;
+                    spawn_groups.push((id,capacity,members));
+                }
+                ["spawner", _, _, _] => {
+                    let entity=u32::from_str_radix(f[1].trim_start_matches("0x"),16)
+                        .map_err(|_|invalid("spawner entity"))?;
+                    let policy=crate::spawners::Policy{initial_delay_ms:number(2)?,regeneration_ms:number(3)?};
+                    if entity>>24!=0x47 || !policy.valid() || spawn_policies.len()>=4096
+                        || spawn_policies.insert(entity,policy).is_some() {
+                        return Err(invalid("invalid or duplicate spawner policy"));
+                    }
+                }
                 ["player", _, _, _, _] if player.is_none() => {
                     player = Some((small(1)?, small(2)?, number(3)?, range(4)?));
                 }
@@ -178,6 +255,8 @@ impl Encounters {
                         .map_err(|_| invalid("encounter entity"))?;
                     let rule = Rule {
                         health: small(2)?,
+                        level: None,
+                        vigor: None,
                         damage: small(3)?,
                         armor: 0,
                         interval: number(4)?,
@@ -185,6 +264,7 @@ impl Encounters {
                         respawn: number(6)?,
                         xp: number(7)?,
                         gold: small(8)?,
+                        leash: 18.,
                     };
                     if entity >> 24 != 0x47
                         || rule.health == 0
@@ -220,13 +300,14 @@ impl Encounters {
         }
         // An authored row wins: the retail Idol Spawn is level 24 and one-hits a
         // level 1 character. Interval 0 means the record had no natural weapon
-        // time. Creatures with no combat record keep the starter profile.
-        for line in include_str!("../content/creature-combat.tsv").lines() {
+        // time. A catalog entry alone is not evidence that an NPC is attackable.
+        // Only explicit encounter rules or recovered combat records qualify.
+        for line in include_str!("../content/creature-combat.tsv").lines().chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines()) {
             if line.is_empty() || line.starts_with('#') || line.starts_with("pyrealium-") {
                 continue;
             }
             let f: Vec<_> = line.split('\t').collect();
-            if f.len() != 7 {
+            if ![7,13,14].contains(&f.len()) {
                 return Err(invalid("creature combat field count"));
             }
             let entity = u32::from_str_radix(f[0], 16).map_err(|_| invalid("creature combat entity"))?;
@@ -258,6 +339,8 @@ impl Encounters {
             }
             let rule = Rule {
                 health,
+                level: Some(small(6)?).filter(|level| *level>0),
+                vigor: if f.len()==14 && !f[13].is_empty(){Some(small(13)?)}else{None},
                 damage,
                 armor,
                 interval,
@@ -265,6 +348,9 @@ impl Encounters {
                 respawn: 30_000,
                 xp,
                 gold: 2,
+                leash: if f.len()>=13 {let value=f[11].parse::<f32>().map_err(|_|invalid("native homesick radius"))?;
+                    if !value.is_finite() || !(0.0..=500.0).contains(&value){return Err(invalid("native homesick radius bounds"));}
+                    if value>0. {value}else{18.}}else{18.},
             };
             if rules.contains_key(&entity) {
                 continue;
@@ -273,51 +359,75 @@ impl Encounters {
                 return Err(invalid("creature combat rule limit"));
             }
         }
-        let starter = Rule {
-            health: 60,
-            damage: 6,
-            armor: 0,
-            interval: 1500,
-            range: 3.0,
-            respawn: 30_000,
-            xp: 40,
-            gold: 2,
-        };
-        for line in include_str!("../content/creature-entities.txt").lines() {
-            if line.is_empty() || line.starts_with('#') || line.starts_with("pyrealium-") {
-                continue;
-            }
-            let entity = u32::from_str_radix(line, 16).map_err(|_| invalid("creature entity"))?;
-            rules.entry(entity).or_insert(starter);
-        }
+        // Catalog labels are presentation only; unlike the old fallback list,
+        // they must never confer health, rewards or attackability on an NPC.
+        let labels=include_str!("../content/definitions.tsv").lines().filter_map(|line|{
+            let mut fields=line.split('\t');let entity=u32::from_str_radix(fields.next()?,16).ok()?;
+            fields.next()?;let name=fields.next()?;
+            Some((entity,name.split('[').next().unwrap_or(name).trim()))
+        }).collect::<BTreeMap<_,_>>();
+        let protected=include_str!("../content/population-protected.txt").lines()
+            .filter_map(|line|u32::from_str_radix(line,16).ok()).collect::<std::collections::BTreeSet<_>>();
+        let ai_profiles=crate::creature_ai::catalog()?;
         let actors = content
             .objects()
             .filter_map(|object| {
+                // Authored dialogue roles override inherited combat data: the
+                // training mentor's template also carries a monster profile.
+                // Use the same identities as the interaction dispatcher.
+                if object.service.is_some()
+                    || protected.contains(&object.entity)
+                    || object.entity == crate::training_dialogue::MENTOR_ENTITY
+                    || crate::shelter::supported(object.entity)
+                {
+                    return None;
+                }
                 rules.get(&object.entity).map(|&rule| {
+                    let ai=ai_profiles.get(&object.entity).copied().unwrap_or_default();
+                    let mut rule=rule;
+                    if ai.homesick.is_none(){rule.leash=rule.leash.max(ai.perception);}
                     (
                         object.id,
                         Actor {
                             entity: object.entity,
+                            name: object.name.clone().or_else(||labels.get(&object.entity).map(|name|(*name).to_owned())),
                             home: object.placement,
-                            pursuit: object.entity == crate::quests::TARGET_ENTITY
-                                && object.spawn.get(16..20) == Some(0x1f0003d1u32.to_le_bytes().as_slice())
-                                && object.spawn.get(20..24) == Some(0x8082u32.to_le_bytes().as_slice()),
+                            pursuit: object.supports_pose_updates(),
+                            route: Vec::new(),
                             rule,
                             health: rule.health,
                             target: None,
                             next_attack: 0,
-                            respawn_at: None,
-                            despawn_at: None,
+                            ai, next_idle:object.id%1000, wander_goal:None,evading:false,random:object.id,
                         },
                     )
                 })
             })
             .collect::<BTreeMap<_, _>>();
-        if actors.is_empty() || actors.len() > 4096 {
-            return Err(invalid("encounters require 1..4096 matching placed actors"));
+        if actors.is_empty() || actors.len() > 16384 {
+            return Err(invalid("encounters require 1..16384 matching placed actors"));
+        }
+        if spawn_policies.keys().any(|entity|!actors.values().any(|actor|actor.entity==*entity)) {
+            return Err(invalid("spawner policy must name a placed combat creature"));
+        }
+        // Captures keep one point spawner per observation. The separate inferred
+        // pack caps its authored rosters as groups; services remain excluded.
+        let mut spawners=crate::spawners::Spawners::new(actors.iter().map(|(&id,actor)|{
+            (id,spawn_policies.get(&actor.entity).copied().unwrap_or(crate::spawners::Policy{
+                initial_delay_ms:0,regeneration_ms:if id&0xffffff0000000000==0x8140a00000000000 {120000}else{actor.rule.respawn}}))
+        }))?;
+        for (id,capacity,members) in spawn_groups {spawners.group(id,capacity,members)?;}
+        let inferred:serde_json::Value=serde_json::from_str(include_str!("../content/inferred-world-v1.report.json")).map_err(io::Error::other)?;
+        for group in inferred["groups"].as_array().ok_or_else(||invalid("inferred spawn groups"))? {
+            let members=group["members"].as_array().ok_or_else(||invalid("inferred roster"))?.iter().filter_map(|v|v.as_u64()).collect::<Vec<_>>();
+            // External content can select only part of the authored pack.
+            let members=members.into_iter().filter(|id|actors.contains_key(id)).collect::<Vec<_>>();
+            if !members.is_empty(){let capacity=(group["capacity"].as_u64().unwrap() as usize).min(members.len());
+                spawners.group(group["id"].as_u64().unwrap(),capacity,members)?;}
         }
         Ok(Self {
             actors,
+            spawners,
             attacks: BTreeMap::new(),
             cooldowns: BTreeMap::new(),
             damage,
@@ -337,6 +447,32 @@ impl Encounters {
             .iter()
             .map(|(&id, actor)| (id, actor.rule.health))
     }
+    pub fn inspection_stats(&self) -> impl Iterator<Item = (u64, u32, u32)> + '_ {
+        self.actors.iter().flat_map(|(&id, actor)| {
+            [(0x12e,actor.rule.level),(0x108,actor.rule.vigor),(0x103,actor.rule.vigor)]
+                .into_iter().filter_map(move |(stat,value)|value.map(|v|(id,stat,v)))
+        })
+    }
+    pub fn spawners(&self) -> &crate::spawners::Spawners { &self.spawners }
+    /// Called before any client can observe the scene. Only managed monsters
+    /// are withdrawn; vendors, dialogue actors and world objects remain placed.
+    pub fn initialize_spawners(&mut self,scene:&mut Scene,now:u64)->io::Result<()> {
+        for (&id,actor) in &mut self.actors {
+            if scene.content_placement(id).is_some(){scene.despawn_content(id)?;}
+            actor.health=0;actor.target=None;actor.route.clear();
+        }
+        self.spawners.initialize(now);
+        Ok(())
+    }
+    /// Acknowledge only after Scene has created the new network lifetime.
+    pub fn spawned(&mut self,id:u64)->io::Result<()> {
+        if !self.spawners.spawned(id){return Err(invalid("unexpected spawner child"));}
+        let actor=self.actors.get_mut(&id).ok_or_else(||invalid("unknown spawner child"))?;
+        actor.health=actor.rule.health;actor.target=None;actor.route.clear();actor.next_attack=0;
+        actor.evading=false;actor.wander_goal=None;
+        Ok(())
+    }
+    pub fn removed(&mut self,id:u64,now:u64) { self.spawners.removed(id,now); }
     pub fn stop(&mut self, player: u64) {
         self.attacks.remove(&player);
     }
@@ -345,6 +481,31 @@ impl Encounters {
     }
     pub fn is_creature(&self, id: u64) -> bool {
         self.actors.contains_key(&id)
+    }
+    /// Local test navigation to actual runtime actors, never a spawn generator.
+    /// Use current positions and exclude dead/despawned actors and all rooms.
+    pub fn outdoor_survey(&self, scene: &Scene, origin: Placement) -> Vec<String> {
+        if !(1..=64).contains(&(origin.cell & 0xffff)) {
+            return vec!["Go outdoors to locate imported world creatures.".into()];
+        }
+        let mut nearby=self.actors.iter().filter_map(|(&id,actor)| {
+            if actor.health==0 {return None;}
+            let point=scene.content_placement(id)?;
+            if !(1..=64).contains(&(point.cell & 0xffff)) {return None;}
+            Some((origin.distance(point)?,id,point,actor.name.as_deref().unwrap_or("Creature")))
+        }).collect::<Vec<_>>();
+        nearby.sort_by(|a,b|a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let close=nearby.iter().filter(|row|row.0<=300.).count();
+        let mut lines=vec![format!("Imported outdoor creatures: {} alive; {close} within 300 m. {} managed point spawners ({} live across all areas). Nearest locations (local testing):",nearby.len(),self.spawners.len(),self.spawners.live())];
+        for (distance,_,point,name) in nearby.into_iter().take(5) {
+            // Same native land-cell coordinates as the client map (20 m per
+            // cell, 1020 at the origin, 10.2 cells per compass unit).
+            let east=((point.cell>>24) as f32*8.+point.coordinates[0]/20.-1020.)/10.2;
+            let north=(((point.cell>>16)&255) as f32*8.+point.coordinates[1]/20.-1020.)/10.2;
+            lines.push(format!("{name}: {:.1}{}, {:.1}{} ({distance:.0} m away; cell {:08X}).",
+                north.abs(),if north>=0. {'N'}else{'S'},east.abs(),if east>=0. {'E'}else{'W'},point.cell));
+        }
+        lines
     }
     pub fn includes_entity(&self, entity: u32) -> bool {
         self.actors.values().any(|actor| actor.entity == entity)
@@ -366,6 +527,9 @@ impl Encounters {
             .get(&target)
             .filter(|actor| actor.health > 0)
             .ok_or_else(|| invalid("target is not an attackable creature"))?;
+        if actor.evading {
+            return Err(invalid("This creature is returning to its home."));
+        }
         if !store
             .characters
             .get(&player)
@@ -382,8 +546,7 @@ impl Encounters {
                 "Target is out of attack range ({distance:.1} m away; reach {range:.1} m). Move closer, or return to peace with Z to equip a ranged weapon."
             )));
         }
-        if actor.respawn_at.is_some()
-            || self.attacks.len() >= 64 && !self.attacks.contains_key(&player)
+        if self.attacks.len() >= 64 && !self.attacks.contains_key(&player)
         {
             return Err(invalid("encounter attack capacity"));
         }
@@ -411,8 +574,9 @@ impl Encounters {
         );
         Ok(())
     }
-    /// One queued strike shares the normal cooldown, payment and target checks.
-    pub fn once(
+    /// A racial basic attack starts the ordinary repeat chain. Only its first
+    /// strike carries the requested skill; follow-ups retain normal cooldowns.
+    pub fn basic_skill(
         &mut self,
         player: u64,
         target: u64,
@@ -424,7 +588,6 @@ impl Encounters {
             return Err(invalid("An attack is already in progress."));
         }
         self.start(player, target, now, scene, store)?;
-        self.attacks.get_mut(&player).unwrap().repeat = false;
         self.attacks.get_mut(&player).unwrap().skill = true;
         Ok(())
     }
@@ -438,12 +601,14 @@ impl Encounters {
         scene: &Scene,
         store: &mut Store,
         active: impl Iterator<Item = u64>,
+        mut geometry: Option<&mut crate::geometry::Geometry>,
     ) -> io::Result<Vec<Event>> {
         if now < self.next_tick {
             return Ok(Vec::new());
         }
         self.next_tick = now.saturating_add(100);
         let mut events = Vec::new();
+        let active=active.collect::<Vec<_>>();
         let due = self
             .attacks
             .iter()
@@ -457,7 +622,7 @@ impl Encounters {
             let available = self
                 .actors
                 .get(&attack.target)
-                .is_some_and(|actor| actor.health > 0);
+                .is_some_and(|actor| actor.health > 0 && !actor.evading);
             let alive = store
                 .characters
                 .get(&player)
@@ -479,6 +644,12 @@ impl Encounters {
                 }
                 self.stopped(player, &mut events);
                 continue;
+            }
+            if let Some(world)=geometry.as_deref_mut() {
+                let clear=scene.player_placement(player).zip(scene.content_placement(attack.target))
+                    .is_some_and(|(a,b)|world.clear(a,b,1.));
+                if !clear {events.push(Event::Note{player,text:"Attack stopped: your target is obstructed.".into()});
+                    self.stopped(player,&mut events);continue;}
             }
             if attack.category != 0 && attack.stage == 0 {
                 let cost = if attack.category == 2 { self.cost.max(6) } else { self.cost };
@@ -540,7 +711,7 @@ impl Encounters {
             let previous = character.progression.clone();
             let previous_quests = character.quests.clone();
             let quest_drop=crate::shelter::drop(&character.quests,&character.inventory,actor.entity);
-            let loot = if killed && (self.training_loot || quest_drop.is_some()) {
+            let loot = if killed && (quest_drop.is_some() || (self.training_loot && matches!(actor.entity,crate::shelter::DIGGER|crate::shelter::SENTINEL))) {
                 character
                     .inventory
                     .free_slot()
@@ -581,9 +752,8 @@ impl Encounters {
             if killed && quest_drop.is_some() && loot.is_none() {
                 events.push(Event::Note{player,text:"Quest item not collected: free a backpack slot and defeat another Drudge.".into()});
             }
-            if killed && self.training_loot && quest_drop.is_none() && loot.is_none() {
-                events.push(Event::Note {player,text:"No training potion was granted: make room in your bag. XP, gold and quest credit are saved.".into()});
-            }
+            let corpse_loot=killed && self.training_loot && quest_drop.is_none() && loot.is_none();
+            if corpse_loot {events.push(Event::Loot{actor:attack.target,player,entity:actor.entity,ai:actor.ai});}
             if store.characters[&player].quests != previous_quests {
                 events.push(Event::Quest {
                     player,
@@ -621,7 +791,7 @@ impl Encounters {
             });
             if killed {
                 actor.target = None;
-                actor.respawn_at = Some(now.saturating_add(actor.rule.respawn));
+                actor.route.clear();
                 events.push(Event::Note {
                     player,
                     text: format!(
@@ -636,7 +806,9 @@ impl Encounters {
                     crate::combat_visual::IdolAction::Death,
                 ));
                 let grace=crate::combat_visual::death_presentation_ms(actor.entity);
-                actor.despawn_at=Some(now.saturating_add(grace.min(actor.rule.respawn)));
+                if !self.spawners.died(attack.target,now,if corpse_loot{60000}else{grace}) {
+                    return Err(invalid("defeated creature has no occupied spawner"));
+                }
                 let stopped = self
                     .attacks
                     .iter()
@@ -659,43 +831,77 @@ impl Encounters {
             }
         }
         for (&id, actor) in &mut self.actors {
+            // A real removal may also come from a script. Refill the owned slot;
+            // leaving the client's PVS never removes content from the server.
+            if actor.health>0 && scene.content_placement(id).is_none() {
+                actor.health=0;actor.target=None;actor.route.clear();
+                self.spawners.removed(id,now);
+            }
             if actor.health == 0 {
-                if actor.despawn_at.is_some_and(|until| now >= until) {
-                    actor.despawn_at = None;
-                    events.push(Event::Despawn(id));
-                }
-                if actor.respawn_at.is_some_and(|until| now >= until) {
-                    actor.health = actor.rule.health;
-                    actor.respawn_at = None;
-                    actor.target = None;
-                    events.push(Event::Respawn {
-                        actor: id,
-                        health: actor.health,
-                    });
-                }
                 continue;
             }
+            if actor.target.is_none() && !actor.evading && now>=actor.next_idle {
+                // Native detection radius, with a staggered 1s scan. Do not
+                // load collision or roam distant, unobserved regions.
+                actor.next_idle=now.saturating_add(1000);
+                let nearby=active.iter().filter_map(|&player| {
+                    let alive=store.characters.get(&player).is_some_and(|c|!c.deleted && c.progression.alive());
+                    alive.then(||scene.combat_distance(player,id).map(|d|(player,d))).flatten()
+                }).filter(|(_,distance)|*distance<=actor.ai.perception.max(actor.ai.wander_range+20.))
+                  .collect::<Vec<_>>();
+                if actor.ai.aggressive() {
+                    let mut candidates=nearby.iter().filter(|(_,d)|*d<=actor.ai.perception)
+                        .filter(|(p,_)|in_range(Some(actor.home),scene.player_placement(*p),actor.rule.leash))
+                        .copied().collect::<Vec<_>>();
+                    candidates.sort_by(|a,b|a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+                    // A nearer player behind a wall must not mask a visible
+                    // player who is also within the native perception radius.
+                    let target=candidates.into_iter().find(|(player,_)|
+                        scene.player_placement(*player).zip(scene.content_placement(id))
+                            .is_some_and(|(a,b)|geometry.as_deref_mut().is_some_and(|world|world.clear(a,b,1.))));
+                    if let Some((player,_))=target {
+                        actor.target=Some(player);actor.wander_goal=None;
+                        actor.next_attack=now.saturating_add(actor.rule.interval);
+                        events.push(Event::IdolVisual(id,crate::combat_visual::IdolAction::Combat));
+                    }
+                }
+                if actor.target.is_none() && actor.wander_goal.is_none() && actor.route.is_empty()
+                    && actor.pursuit && actor.ai.wanders() && !nearby.is_empty()
+                    && crate::creature_ai::random(&mut actor.random)<actor.ai.probability.unwrap_or(0.2) {
+                    // Native range/probability; uniform disk destinations and
+                    // 1s opportunities are explicitly AC2E scheduling policy.
+                    let angle=crate::creature_ai::random(&mut actor.random)*std::f32::consts::TAU;
+                    let radius=crate::creature_ai::random(&mut actor.random).sqrt()*actor.ai.wander_range.min(actor.rule.leash);
+                    actor.wander_goal=actor.home.translated([angle.cos()*radius,angle.sin()*radius,0.]);
+                }
+            }
             let Some(mut target) = actor.target else {
-                continue;
-            };
-            // Only the validated starter creature pursues, inside its current
-            // room and within an 18m leash. No guessed cross-cell navigation.
-            if actor.pursuit && store.characters.get(&target).is_some_and(|c|c.progression.alive()) {
-                if let (Some(mut point),Some(player))=(scene.content_placement(id),scene.player_placement(target)) {
-                    if in_range(Some(actor.home),Some(player),18.0) && point.cell == player.cell {
-                        let dx=player.coordinates[0]-point.coordinates[0]; let dy=player.coordinates[1]-point.coordinates[1];
-                        let distance=dx.hypot(dy);
-                        if distance>2.05 && (point.coordinates[2]-player.coordinates[2]).abs()<1.0 {
-                            let step=0.2f32.min(distance-2.0);
-                            point.coordinates[0]+=dx/distance*step;point.coordinates[1]+=dy/distance*step;
-                            point.heading=(dx.atan2(dy).to_degrees().rem_euclid(360.0)/360.0*255.0).round() as u8;
-                            events.push(Event::Move {actor:id,placement:point});
-                            // Keep pursuing instead of resetting health while outside melee reach.
-                            if distance>actor.rule.range {continue;}
+                if let Some(point)=scene.content_placement(id) {
+                    if let Some(goal)=actor.wander_goal {
+                        if actor.route.len()<2048 {
+                            if let Some(next)=approach(point,goal,0.2).and_then(|proposed|
+                                geometry.as_deref_mut().and_then(|world|world.walk_step(point,proposed,0.35))) {
+                                actor.route.push(point);events.push(Event::Move{actor:id,placement:next});continue;
+                            }
+                        }
+                        actor.wander_goal=None;
+                    }
+                    // A blocked return waits for geometry; never teleport or
+                    // walk through an obstacle to restore an authored spawn.
+                    while actor.route.last().is_some_and(|homeward|point.offset_to(*homeward)
+                        .is_some_and(|[x,y,z]|x.hypot(y)<0.04 && z.abs()<=0.65)) {actor.route.pop();}
+                    if actor.route.is_empty(){actor.evading=false;}
+                    if let Some(&homeward)=actor.route.last() {
+                        if let Some(mut next)=geometry.as_deref_mut().and_then(|world|world.walk_step(point,homeward,0.35)) {
+                            if actor.route.len()>1 {
+                                if let Some([x,y,_])=point.offset_to(next){next.heading=(x.atan2(y).to_degrees().rem_euclid(360.)/360.*255.).round() as u8;}
+                            }
+                            events.push(Event::Move{actor:id,placement:next});
                         }
                     }
                 }
-            }
+                continue;
+            };
             // Engagement and melee reach are separate. In particular, a ranged
             // hit across visible cells or a slope must not heal the victim on
             // the same tick merely because our bounded pursuit cannot reach it.
@@ -704,7 +910,9 @@ impl Encounters {
                     .characters
                     .get(&player)
                     .is_some_and(|c| !c.deleted && c.progression.alive())
-                    && scene.combat_distance(player, id).is_some_and(|distance| distance <= 18.0)
+                    && actor.route.len()<4096
+                    && in_range(Some(actor.home),scene.player_placement(player),actor.rule.leash)
+                    && scene.combat_distance(player, id).is_some_and(|distance| distance <= actor.rule.leash)
             };
             if !eligible(target) {
                 if let Some((&other, _)) = self
@@ -717,6 +925,7 @@ impl Encounters {
                     actor.next_attack = now.saturating_add(actor.rule.interval);
                 } else {
                     actor.target = None;
+                    actor.evading=true;actor.wander_goal=None;
                     events.push(Event::IdolVisual(
                         id,
                         crate::combat_visual::IdolAction::Peace,
@@ -731,9 +940,28 @@ impl Encounters {
                     continue;
                 }
             }
+            // Apply homesickness before movement. Shared displacement rebases
+            // adjacent blocks; native collision resolves the destination cell.
+            if actor.pursuit {
+                if let (Some(from),Some(player))=(scene.content_placement(id),scene.player_placement(target)) {
+                    let step=approach(from,player,(actor.rule.range-0.5).max(0.5))
+                        .and_then(|proposed|geometry.as_deref_mut().and_then(|world|world.walk_step(from,proposed,0.35)));
+                    if let Some(next)=step {
+                        actor.route.push(from);
+                        events.push(Event::Move{actor:id,placement:next});
+                    } else if let Some(turned)=facing(from,player).filter(|p|p.heading!=from.heading) {
+                        // Targets can circle inside melee range. Turn in place
+                        // without adding a fake walking step to the home route.
+                        events.push(Event::Move{actor:id,placement:turned});
+                    }
+                }
+            }
             if !scene.combat_distance(target, id).is_some_and(|distance| distance <= actor.rule.range)
                 || now < actor.next_attack {
                 continue;
+            }
+            if let Some(world)=geometry.as_deref_mut() {
+                if !scene.player_placement(target).zip(scene.content_placement(id)).is_some_and(|(a,b)|world.clear(a,b,1.)){continue;}
             }
             let account = store.characters[&target].account.clone();
             let previous = store.characters[&target].progression.clone();
@@ -812,6 +1040,12 @@ impl Encounters {
                     previous,
                     state: store.characters[&player].progression.clone(),
                 });
+            }
+        }
+        for action in self.spawners.poll(now) {
+            match action {
+                crate::spawners::Action::Remove(id)=>events.push(Event::Despawn(id)),
+                crate::spawners::Action::Spawn(id)=>events.push(Event::Respawn{actor:id,health:self.actors[&id].rule.health}),
             }
         }
         Ok(events)

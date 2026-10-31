@@ -19,6 +19,18 @@ struct FAC2WaveVector
         return FVector(X.Value(T), Y.Value(T), Z.Value(T));
     }
 };
+// DecalFX::StreamPack (006A9930): packed RGBA, material, world offset,
+// lifespan, then three Waveforms. This is independent of particle emitters.
+struct FAC2Decal
+{
+    uint32 Material=0;
+    FColor Color=FColor::White;
+    FVector Origin=FVector::ZeroVector;
+    float Lifetime=0;
+    FAC2Wave Size,Rotation,Radius;
+    static FAC2Decal Read(FAC2AssetReader& R);
+    static float Opacity(float Age,float Life);
+};
 struct FAC2ParticleKey
 {
     float Time = 0, X = 1, Y = 1, Mass = 1;
@@ -45,6 +57,7 @@ struct FAC2ParticlePreset
     bool WorldSpace = false, ForceDraw = false;
     TArray<FAC2ParticleEmitter> Emitters;
     bool Decode(uint32 Id, TConstArrayView<uint8> Bytes);
+    float RenderScale(float ObjectScale,float VisualParticleScale) const;
     void Sample(float Age, float &Width, float &Height, FLinearColor &Tint) const;
 };
 

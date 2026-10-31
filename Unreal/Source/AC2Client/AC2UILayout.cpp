@@ -109,7 +109,12 @@ struct FLayoutReader
                 }
                 else if (Kind == 2 || Kind == 6 || Kind == 7)
                     R.Take(8);
-                else if (Kind == 5 || Kind == 8)
+                else if (Kind == 5)
+                {
+                    Image.Image=R.Word(); // MD_Data_Sound::m_soundDID
+                    NativeState.Media.Add(Layout.Art.Add(Image));
+                }
+                else if (Kind == 8)
                     R.Word();
                 else if (Kind == 9)
                 {

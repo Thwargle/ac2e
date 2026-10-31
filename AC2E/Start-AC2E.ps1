@@ -24,7 +24,10 @@ if(!$Python){$Python=Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-pri
 if(!$DatDirectory){$DatDirectory=Join-Path $root "Asheron's Call 2 - Legions"}
 if(!$DataDirectory){$DataDirectory=Join-Path $PSScriptRoot 'data/world'}
 $DataDirectory=$ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DataDirectory)
-$server=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
+. (Join-Path $PSScriptRoot 'Server-Binaries.ps1')
+$server=Get-AC2EGameBinary
+$managedBinaries=Get-AC2EManagedBinaries
+$accountServer=Join-Path $PSScriptRoot 'target/release/ac2e.exe'
 if($Stop){& $server stop --data $DataDirectory --seconds 20; if($LASTEXITCODE){throw 'Server stop failed.'};return}
 . (Join-Path $PSScriptRoot 'Recover-StaleLock.ps1')
 . (Join-Path $PSScriptRoot 'Find-AccountService.ps1')
@@ -42,7 +45,7 @@ if(Test-Path -LiteralPath $lockFile -PathType Leaf){
     }
     $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$lockOwner"
     $ownerData=$null
-    if($owner -and $owner.ExecutablePath -eq $server -and $owner.CommandLine -match '^(?:"[^"]+"|\S+)\s+serve(?:-training)?\s'){
+    if($owner -and $owner.ExecutablePath -in $managedBinaries -and $owner.CommandLine -match '^(?:"[^"]+"|\S+)\s+serve(?:-training)?\s'){
         $dataMatch=[regex]::Match($owner.CommandLine,'(?:^|\s)--data\s+(?:"(?<quoted>[^"]+)"|(?<plain>\S+))')
         if($dataMatch.Success){
             $dataArgument=if($dataMatch.Groups['quoted'].Success){$dataMatch.Groups['quoted'].Value}else{$dataMatch.Groups['plain'].Value}
@@ -62,6 +65,7 @@ if(Test-Path -LiteralPath $lockFile -PathType Leaf){
 }
 if($Rebuild -or (!(Test-Path -LiteralPath $server -PathType Leaf) -and !$SkipBuild)){
     & (Join-Path $PSScriptRoot 'Build-AC2E.ps1') -Python $Python
+    $server=Get-AC2EGameBinary
 }
 if(!(Test-Path -LiteralPath $server -PathType Leaf)){
     throw 'AC2E server binary is missing. Run AC2E/Build-AC2E.ps1, or start without -SkipBuild to build it.'
@@ -90,7 +94,7 @@ $accounts=$null
 try {
     if(!$DevelopmentLogin -and !$ExternalAccounts){
         Restore-AC2EStaleLock $AuthDirectory 'accounts.lock'
-        $existingAccounts=Get-AC2EAccountService $server $AuthDirectory $DataDirectory $PublicOrigin $AccountPort $GameHost $Port
+        $existingAccounts=Get-AC2EAccountService $managedBinaries $AuthDirectory $DataDirectory $PublicOrigin $AccountPort $GameHost $Port
         if($existingAccounts){
             Write-Output "Reusing matching account service (PID $existingAccounts) at $PublicOrigin. It will remain running when this game server stops."
         } else {
@@ -105,7 +109,8 @@ try {
             # rather than allowing paths or endpoints to change argument boundaries.
             if($accountArgs | Where-Object {$_ -match '["\r\n]'} ) {throw 'Invalid account-service argument.'}
             $quotedArgs=($accountArgs | ForEach-Object {'"'+$_.TrimEnd('\')+'"'}) -join ' '
-            $accounts=Start-Process -FilePath $server -ArgumentList $quotedArgs -PassThru -WindowStyle Hidden `
+            if(!(Test-Path -LiteralPath $accountServer -PathType Leaf)){throw 'Account service binary is missing. Run AC2E/Build-AC2E.ps1.'}
+            $accounts=Start-Process -FilePath $accountServer -ArgumentList $quotedArgs -PassThru -WindowStyle Hidden `
                 -RedirectStandardOutput (Join-Path $AuthDirectory 'service.log') -RedirectStandardError (Join-Path $AuthDirectory 'service-error.log')
             $ready=$false
             for($attempt=0;$attempt -lt 50;$attempt++){
@@ -122,6 +127,7 @@ try {
     }
     if(!$DevelopmentLogin){Write-Output "Accounts: $PublicOrigin (first sign-in creates an account; passwords require 12-128 characters)."}
     Write-Output "AC2E: UDP $Port and $($Port+1); persistent store $DataDirectory"
+    Write-Output "Game executable: $server"
     & $server @serverArgs
     if($LASTEXITCODE){throw "AC2E exited with code $LASTEXITCODE"}
 } finally {

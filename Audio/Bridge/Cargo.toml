@@ -1,0 +1,16 @@
+[package]
+name = "ac2-audio-bridge"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ac2-audio = { path = "../../References/AC2_Rusted/crates/ac2-audio" }
+ac2-dat = { path = "../../References/AC2_Rusted/crates/ac2-dat" }
+ac2-db = { path = "../../References/AC2_Rusted/crates/ac2-db" }
+
+[workspace]

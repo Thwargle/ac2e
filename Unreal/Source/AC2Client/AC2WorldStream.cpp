@@ -1,4 +1,5 @@
 #include "AC2WorldStream.h"
+#include "AC2Performance.h"
 #include "AC2Placement.h"
 #include "AC2WorldGrid.h"
 #include "Async/Async.h"
@@ -166,6 +167,7 @@ bool FAC2WorldStream::Destination(uint32 Block, FVector &Position, FString &Erro
 }
 void FAC2WorldStream::Tick(const FVector &Position)
 {
+    AC2Performance::FScope Measurement(TEXT("stream_tick"));
     if (Impl->Stopping || !AC2::WorldBlock(Position, Impl->Center))
         return;
     // Closed dungeons occupy their own cell graph. Adjacent grid blocks are
@@ -599,4 +601,29 @@ bool FAC2WorldStream::InteriorLighting(const FVector& Viewer,FAC2PreviewLighting
         return true;
     }
     return false;
+}
+bool FAC2WorldStream::PlayerOutside() const {return Impl->InteriorCell==0;}
+uint32 FAC2WorldStream::SoundTerrain(const FVector& Position) const
+{
+    // Room floor materials need their own classification. Do not borrow the
+    // outdoor terrain above a dungeon for its footsteps.
+    if(Impl->InteriorCell!=0)return 0;
+    uint32 Block=0;
+    if(!AC2::WorldBlock(Position,Block))return 0;
+    const auto* Entry=Impl->Blocks.Find(Block);if(!Entry)return 0;
+    const FVector Local=(Position-AC2::BlockOrigin(Block))/100;
+    const int32 X=FMath::Clamp(FMath::RoundToInt(Local.X/10),0,16),Y=FMath::Clamp(FMath::RoundToInt(Local.Y/10),0,16);
+    const auto& Info=(*Entry)->Land.CellInfo;
+    return Info.IsValidIndex(X*17+Y)?Info[X*17+Y]&Impl->Defs.TerrainMask:0;
+}
+TArray<FAC2AmbientPoint> FAC2WorldStream::AmbientPoints(const FVector& Player) const
+{
+    TArray<FAC2AmbientPoint> Out;
+    for(const auto& Pair:Impl->Blocks)
+        for(auto Point:Pair.Value->Assets->AmbientPoints(Impl->ExteriorVisible))
+        {
+            Point.Position+=AC2::BlockOrigin(Pair.Key);
+            if(FVector::DistSquared(Point.Position,Player)<=FMath::Square(10000.))Out.Add(Point);
+        }
+    return Out;
 }

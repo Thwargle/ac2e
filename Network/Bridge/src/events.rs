@@ -2,8 +2,12 @@
 use ac2_net::protocol::*;
 use serde_json::{json, Value};
 
-fn string(s: &StringInfo) -> Value {
-    json!({"literal":s.literal,"table":s.table_id,"key":s.string_id})
+pub(crate) fn string(s: &StringInfo) -> Value {
+    let variables:Vec<_>=s.variables.iter().filter_map(|(key,value)|match value {
+        StringVariable::Nested(n)=>Some(json!({"key":key,"text":string(n)})),
+        _=>None,
+    }).collect();
+    json!({"literal":s.literal,"table":s.table_id,"key":s.string_id,"variables":variables})
 }
 fn visual(v: &VisualDesc) -> Value {
     let aspects: Vec<Value> = v.global_mods.iter()
@@ -23,7 +27,9 @@ fn character(c: &CharacterIdentity) -> Value {
 }
 fn behavior(id: u64, instance: u16, p: &BehaviorParams) -> Value {
     json!({"event":"behavior","id":id.to_string(),"instance":instance,"behavior":p.behavior,
-        "mode":p.mode,"rate":p.time_scale,"hold":p.hold_cycles==0,"lock":p.lock_actions!=0,
+        // hold_cycles controls completion callbacks on a native hold track; zero
+        // does not turn an arbitrary attack, jump or cast into a held final pose.
+        "mode":p.mode,"rate":p.time_scale,"hold":false,"lock":p.lock_actions!=0,
         "impulse":p.impulse,"propagate":p.propagate!=0})
 }
 fn position(p: &Position) -> Value {
@@ -42,10 +48,11 @@ fn quality(q: QualityUpdate) -> Option<Value> {
         QualityValue::LongInt(v) => json!(v.to_string()),
         QualityValue::DataId(v) => json!(v),
         QualityValue::InstanceId(v) => json!(v.to_string()),
+        QualityValue::StringInfo(v) => string(&v),
         _ => return None,
     };
     Some(
-        json!({"event":"quality","id":q.object.map(|o|o.id.to_string()),"table":table,"key":q.quality,"value":value}),
+        json!({"event":"quality","id":q.object.map(|o|o.id.to_string()),"instance":q.object.map(|o|o.instance),"table":table,"key":q.quality,"value":value}),
     )
 }
 pub fn convert(event: ServerEvent) -> Vec<Value> {
@@ -123,7 +130,12 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                 for hook in story.hooks {
                     if hook.kind()!=1 {continue;}
                     if let Some(health)=hook.target_health_change {
-                        if health<0 {out.push(json!({"event":"hit","id":hook.target.unwrap_or(o.sender.id).to_string(),"damage":-i64::from(health)}));}
+                        if health<0 {
+                            let target=hook.target.unwrap_or(o.sender.id);
+                            let mut hit=json!({"event":"hit","id":target.to_string(),"attacker":story.attacker.unwrap_or(o.sender.id).to_string(),"damage":-i64::from(health)});
+                            if target==o.sender.id {hit["instance"]=json!(o.sender.instance);}
+                            out.push(hit);
+                        }
                     }
                 }
                 return out;
@@ -169,6 +181,7 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
             object,
         } => {
             if let Some(event)=crate::shop::decode(function,&arguments) {return vec![event];}
+            if let Some(event)=crate::journal::decode(function,&arguments) {return vec![event];}
             if function==0x820e0058 {
                 if let Ok(values)=unpack_values(&arguments) {
                     if let [PackValue::LongInt(item)]=values.as_slice() {
@@ -207,9 +220,14 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                                 PackValue::Int(n) => n,
                                 _ => 0,
                             };
-                            return vec![
+                            let mut events=vec![
                                 json!({"event":"inventory","items":bag.items.iter().map(u64::to_string).collect::<Vec<_>>(),"equipment":equipment.locations().unwrap_or_default().iter().map(|(slot,id)|json!({"slot":slot,"id":id.to_string()})).collect::<Vec<_>>(),"gold":gold}),
                             ];
+                            if let Some(q)=crate::journal::quests(&values[2],true) {events.push(q);}
+                            if let PackValue::Reference(r)=&values[4] {
+                                if let Some(r)=SkillRepository::decode(r) {events.push(crate::journal::repository(&r));}
+                            }
+                            return events;
                         }
                     }
                 }
@@ -219,6 +237,13 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
                     json!({"event":"examination_error","message":"Unsupported examination profile from server"}))];
             }
             match ScriptMessage::decode(function, &arguments) {
+                Some(Ok(ScriptMessage::OpenContainerDone { error, packs, items, container })) => {
+                    json!({"event":"container_state","id":container.to_string(),"open":true,"status":error,
+                        "items":packs.into_iter().flatten().chain(items.into_iter().flatten()).map(|id|id.to_string()).collect::<Vec<_>>()})
+                }
+                Some(Ok(ScriptMessage::CloseContainerDone { error, container })) => {
+                    json!({"event":"container_state","id":container.to_string(),"open":false,"status":error})
+                }
                 Some(Ok(ScriptMessage::ContainerContents(c))) => {
                     json!({"event":"bag","id":object.map(|o|o.id.to_string()),"items":c.items.iter().map(u64::to_string).collect::<Vec<_>>()})
                 }
@@ -277,6 +302,19 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
 mod tests {
     use super::*;
     #[test]
+    fn native_container_open_close_and_failure_keep_identity_and_contents() {
+        for error in [0, 17] {
+            let message=ScriptMessage::OpenContainerDone{error,packs:Some(vec![]),items:Some(vec![0x8130000000000011]),container:0x8140000000010001};
+            let events=convert(ServerEvent::Interp{function:message.function(),arguments:pack_values(&message.arguments()),object:None});
+            assert_eq!(events[0]["event"],"container_state");assert_eq!(events[0]["open"],true);
+            assert_eq!(events[0]["status"],error);assert_eq!(events[0]["id"],0x8140000000010001u64.to_string());
+            assert_eq!(events[0]["items"][0],0x8130000000000011u64.to_string());
+        }
+        let message=ScriptMessage::CloseContainerDone{error:0,container:0x8140000000010001};
+        let events=convert(ServerEvent::Interp{function:message.function(),arguments:pack_values(&message.arguments()),object:None});
+        assert_eq!(events[0]["open"],false);assert_eq!(events[0]["status"],0);
+    }
+    #[test]
     fn consumed_item_removal_is_forwarded_without_losing_its_identity() {
         let id=0x813000000000002au64;
         let mut arguments=2u32.to_le_bytes().to_vec();arguments.extend(id.to_le_bytes());
@@ -316,7 +354,7 @@ mod tests {
         let v=convert(object(ObjectAction::DoBehavior(Box::new(p))));
         assert_eq!(v[0]["id"],"9313444029402382339");assert_eq!(v[0]["instance"],7);
         assert_eq!(v[0]["behavior"],0x4100001fu32);assert_eq!(v[0]["mode"],0x41000005u32);
-        assert_eq!(v[0]["rate"],0.75);assert_eq!(v[0]["hold"],true);
+        assert_eq!(v[0]["rate"],0.75);assert_eq!(v[0]["hold"],false);
         let v=convert(object(ObjectAction::DoMode(0x41000012)));
         assert_eq!(v[0]["mode"],0x41000012u32);
     }

@@ -354,6 +354,28 @@ impl Transport {
         }
         Ok(self.pending.len() + count <= MAX_PENDING)
     }
+    /// Native CTimeSyncHeader is reliable (m_Flags=0x18), so it needs a sequence
+    /// and an ISAAC checksum, even without a fragment. A plain sequence-zero
+    /// packet is rejected by the retail SplitPacketData header policy.
+    pub fn send_time_sync(&mut self, seconds: f64, now: Instant) -> Result<Vec<u8>, TransportError> {
+        if !seconds.is_finite() || seconds < 0.0 || !self.send_available(8)? {
+            return Err(TransportError::Capacity);
+        }
+        let mut outgoing = self.outgoing.clone();
+        let bytes = wire::encode_control_packet(Header {
+            sequence: self.next_outgoing,
+            flags: wire::TIME_SYNC | wire::ENCRYPTED_CHECKSUM,
+            recipient: self.recipient,
+            iteration: self.iteration,
+            ..Default::default()
+        }, &seconds.to_le_bytes(), Some(outgoing.next_key()))?;
+        self.pending.insert(self.next_outgoing, Pending {
+            bytes: Arc::from(bytes.as_slice()), sent: now, retries: 0,
+        });
+        self.outgoing = outgoing;
+        self.next_outgoing += 1;
+        Ok(bytes)
+    }
     pub fn send(
         &mut self,
         blob_id: u64,
@@ -535,6 +557,29 @@ impl Transport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_time_sync_is_reliable_and_keeps_following_blob_keys_aligned() {
+        let now = Instant::now();
+        let mut sender = Transport::new(11, 22, 1, 1);
+        let mut receiver = Transport::new(22, 11, 1, 1);
+        let before = sender.diagnostic();
+        assert!(sender.send_time_sync(f64::NAN, now).is_err());
+        assert_eq!(sender.diagnostic(), before);
+        let sync = sender.send_time_sync(7347.25, now).unwrap();
+        let mut keys = Isaac::new(22);
+        let decoded = wire::decode_session_packet(&sync, Some(keys.next_key())).unwrap();
+        assert_eq!(decoded.header.flags, wire::TIME_SYNC | wire::ENCRYPTED_CHECKSUM);
+        assert_eq!(decoded.time_sync, Some(7347.25));
+        assert_eq!(receiver.receive(&sync, now).unwrap().ack, 2);
+        let blob = sender.send(7, 1, b"after clock", now).unwrap();
+        let result = receiver.receive(&blob[0], now).unwrap();
+        assert_eq!(result.ack, 3);
+        assert_eq!(result.messages[0].data, b"after clock");
+        assert!(sender.has_unacknowledged());
+        sender.acknowledge(3).unwrap();
+        assert!(!sender.has_unacknowledged());
+    }
     #[test]
     fn control_fast_path_validates_before_retiring_pending_payloads() {
         let mut transport = Transport::new(7, 9, 1, 1);

@@ -11,6 +11,12 @@ struct FAC2SceneryPlacement
     // Water, frame-relative and deliberately elevated decorations keep their authored height.
     bool GroundFrill = false;
 };
+struct FAC2AmbientPoint
+{
+    uint32 Type=0;
+    FVector Position=FVector::ZeroVector; // centimetres
+    bool Outside=true;
+};
 
 // Native deterministic SceneFile groups with bounded client frills.
 class FAC2SceneryGenerator
@@ -22,6 +28,7 @@ class FAC2SceneryGenerator
     void Generate(const FAC2LandscapeDefs &Defs, const FAC2LandBlock &Land, const TArray<FBox> &PlacedBounds,
                   TArray<FAC2SceneryPlacement> &Out, const FAC2BlockWater &Water = {});
     int32 UnsupportedGroups = 0;
+    TArray<FAC2AmbientPoint> AmbientPoints(const FAC2LandscapeDefs& Defs,const FAC2LandBlock& Land) const;
 
   private:
     struct FImpl;

@@ -12,6 +12,11 @@ name = "ac2e"
 path = "src/main.rs"
 
 [dependencies]
+ac2-physics = { path = "../../References/AC2_Rusted/crates/ac2-physics" }
+ac2-world = { path = "../../References/AC2_Rusted/crates/ac2-world" }
+ac2-core = { path = "../../References/AC2_Rusted/crates/ac2-core" }
+ac2-dat = { path = "../../References/AC2_Rusted/crates/ac2-dat" }
+ac2-db = { path = "../../References/AC2_Rusted/crates/ac2-db" }
 argon2 = "0.5.3"
 getrandom = "0.2.16"
 rpassword = "7.3"

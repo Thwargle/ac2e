@@ -83,7 +83,7 @@ class ContentProfile:
         for _ in range(32):
             if did >> 24 == 0x1f:
                 return did
-            if did in range(3756, 3765) or did == 3922:
+            if did >> 24 != 0x47 and did != 0:
                 try:
                     physical = door_physical(self.portal.read(0x81000000 | (original & 0xffffff)))
                     return self.visual(physical) if physical and physical != original else None

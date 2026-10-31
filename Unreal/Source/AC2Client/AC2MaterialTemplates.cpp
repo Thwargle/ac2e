@@ -9,6 +9,7 @@
 #include "Materials/MaterialExpressionCustom.h"
 #include "Materials/MaterialExpressionDepthFade.h"
 #include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionOneMinus.h"
 #include "Materials/MaterialExpressionPanner.h"
 #include "Materials/MaterialExpressionParticleColor.h"
 #include "Materials/MaterialExpressionTextureCoordinate.h"
@@ -31,11 +32,53 @@ bool PrepareAC2Materials(FString &Error)
 #if WITH_EDITOR
     FString SavedVersion;
     const FString VersionPath=FPaths::Combine(FPaths::ProjectContentDir(),TEXT("AC2/Materials/template-version.txt"));
-    const bool CurrentVersion=FFileHelper::LoadFileToString(SavedVersion,*VersionPath) && SavedVersion.TrimStartAndEnd()==TEXT("10");
-    for (int32 Kind = 0; Kind < 16; ++Kind)
+    const bool CurrentVersion=FFileHelper::LoadFileToString(SavedVersion,*VersionPath) && SavedVersion.TrimStartAndEnd()==TEXT("18");
+    // SceneColor HDR stores inverse opacity. Native UI scenes draw over the
+    // existing page, so preserve transparent pixels instead of a black rectangle.
+    const FString CapturePath=TEXT("/Game/AC2/Materials/M_AC2Capture");
+    auto* CaptureMaterial=LoadObject<UMaterial>(nullptr,*(CapturePath+TEXT(".M_AC2Capture")));
+    if(!CurrentVersion || !CaptureMaterial)
     {
+        auto* Package=CreatePackage(*CapturePath);
+        auto* Material=CaptureMaterial?CaptureMaterial:NewObject<UMaterial>(Package,TEXT("M_AC2Capture"),RF_Public|RF_Standalone);
+        Material->GetExpressionCollection().Empty();
+        // Scene color is premultiplied; additive particles have RGB with zero opacity.
+        Material->MaterialDomain=MD_UI;Material->BlendMode=BLEND_AlphaComposite;
+        auto* Texture=NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
+        Texture->ParameterName=TEXT("Capture");Texture->SamplerType=SAMPLERTYPE_Color;
+        Texture->Texture=LoadObject<UTexture2D>(nullptr,TEXT("/Engine/EngineResources/WhiteSquareTexture.WhiteSquareTexture"));
+        auto* UV=NewObject<UMaterialExpressionTextureCoordinate>(Material);
+        auto* Mirror=NewObject<UMaterialExpressionScalarParameter>(Material);
+        Mirror->ParameterName=TEXT("MirrorHorizontal");Mirror->DefaultValue=0;
+        auto* Coordinates=NewObject<UMaterialExpressionCustom>(Material);
+        Coordinates->OutputType=CMOT_Float2;
+        Coordinates->Inputs.Reset();
+        Coordinates->Code=TEXT("return float2(lerp(UV.x,1-UV.x,Mirror),UV.y);");
+        FCustomInput U;U.InputName=TEXT("UV");U.Input.Connect(0,UV);Coordinates->Inputs.Add(U);
+        FCustomInput M;M.InputName=TEXT("Mirror");M.Input.Connect(0,Mirror);Coordinates->Inputs.Add(M);
+        Texture->Coordinates.Connect(0,Coordinates);
+        Material->GetExpressionCollection().AddExpression(UV);Material->GetExpressionCollection().AddExpression(Mirror);
+        Material->GetExpressionCollection().AddExpression(Coordinates);
+        auto* Opacity=NewObject<UMaterialExpressionOneMinus>(Material);Opacity->Input.Connect(4,Texture);
+        Material->GetExpressionCollection().AddExpression(Texture);Material->GetExpressionCollection().AddExpression(Opacity);
+        Material->GetEditorOnlyData()->EmissiveColor.Connect(0,Texture);
+        Material->GetEditorOnlyData()->Opacity.Connect(0,Opacity);
+        Material->PostEditChange();if(GShaderCompilingManager)GShaderCompilingManager->FinishAllCompilation();
+        FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;
+        if(!UPackage::SavePackage(Package,Material,*FPackageName::LongPackageNameToFilename(CapturePath,FPackageName::GetAssetPackageExtension()),Args))
+        {Error=TEXT("Cannot save native UI scene compositor");return false;}
+    }
+    for (int32 Template = 0; Template < 32; ++Template)
+    {
+        const int32 Kind=Template%16;
+        const bool Alternate=Template>=16;
+        // Native mesh materials need both culling permutations. Sky, particles,
+        // water and generated grass retain their separate rendering policies.
+        if(Alternate && !(Kind==0 || Kind==1 || Kind==8 || Kind==9 || Kind>=12))continue;
         const bool Preview = Kind >= 12, Grass = Kind == 11, Masked = Kind == 1 || Kind == 13 || Grass, Sky = Kind >= 2 && Kind <= 4;
-        const FString Name = Kind == 0    ? TEXT("M_AC2Opaque")
+        const bool DefaultTwoSided=Masked || Sky || (Kind >= 5 && Kind != 12);
+        const bool TwoSided=Alternate?!DefaultTwoSided:DefaultTwoSided;
+        FString Name = Kind == 0    ? TEXT("M_AC2Opaque")
                              : Kind == 1  ? TEXT("M_AC2Cutout")
                              : Kind == 2  ? TEXT("M_AC2Sky")
                              : Kind == 3  ? TEXT("M_AC2SkyAlpha")
@@ -50,6 +93,7 @@ bool PrepareAC2Materials(FString &Error)
                              : Kind == 12 ? TEXT("M_AC2UIOpaque")
                              : Kind == 13 ? TEXT("M_AC2UICutout")
                              : Kind == 14 ? TEXT("M_AC2UIAlpha") : TEXT("M_AC2UIAdd");
+        if(Alternate)Name+=TwoSided?TEXT("TwoSided"):TEXT("OneSided");
         const FString Path = TEXT("/Game/AC2/Materials/") + Name;
         auto *Existing = LoadObject<UMaterial>(nullptr, *(Path + TEXT(".") + Name));
         bool Updated = false;
@@ -64,7 +108,7 @@ bool PrepareAC2Materials(FString &Error)
         if (Existing) for (const auto &E : Existing->GetExpressions())
             if (auto *P = Cast<UMaterialExpressionScalarParameter>(E)) NativeDetail |= P->ParameterName == TEXT("AC2NativeStages");
         const bool NativeSpecular = Existing && Cast<UMaterialExpressionScalarParameter>(Existing->GetEditorOnlyData()->Specular.Expression) != nullptr;
-        if (CurrentVersion && Updated && NativeSpecular && NativeDetail && (!Masked || NativeNormals))
+        if (CurrentVersion && Updated && NativeSpecular && NativeDetail && (!TwoSided || NativeNormals) && Existing->TwoSided==TwoSided)
             continue;
         UPackage *Package = CreatePackage(*Path);
         auto *Material = Existing ? Existing : NewObject<UMaterial>(Package, *Name, RF_Public | RF_Standalone);
@@ -74,7 +118,7 @@ bool PrepareAC2Materials(FString &Error)
                               : (Kind == 4 || Kind == 9 || Kind == 10 || Kind == 15) ? BLEND_Additive
                               : Masked                                         ? BLEND_Masked
                                                                                : BLEND_Opaque;
-        Material->TwoSided = Masked || Sky || (Kind >= 5 && Kind != 12);
+        Material->TwoSided = TwoSided;
         if (Sky || Kind == 7 || Kind == 10 || Preview)
             Material->SetShadingModel(MSM_Unlit);
         Material->OpacityMaskClipValue = 0.4f;
@@ -100,8 +144,8 @@ bool PrepareAC2Materials(FString &Error)
         Expressions.AddExpression(Tint);
         Expressions.AddExpression(Multiply);
         Expressions.AddExpression(Roughness);
-        // Terrain and ordinary DAT materials have no specular term. UE's default
-        // dielectric response otherwise adds a pale reflection over baked colour.
+        // Native highlights use COLOR1 below. UE's separate dielectric response
+        // would otherwise add a pale reflection over the authored finish.
         auto *Specular = NewObject<UMaterialExpressionScalarParameter>(Material);
         Specular->ParameterName = TEXT("AC2Specular");
         Specular->DefaultValue = Kind == 5 ? .5f : 0.f;
@@ -132,7 +176,7 @@ bool PrepareAC2Materials(FString &Error)
         auto Native=BuildAC2NativeStages(Material,Texture,Tint,Preview);
         Multiply->A.Connect(0,Native.Color);
         Multiply->B.Expression=nullptr; Multiply->ConstB=1;
-        if (Masked)
+        if (TwoSided)
         {
             // Retail lights both sides of a leaf/grass card using the authored
             // vertex normal. In UE 5.8 the two-sided flip applies to tangent-space
@@ -157,13 +201,20 @@ bool PrepareAC2Materials(FString &Error)
                 auto *Position = NewObject<UMaterialExpressionWorldPosition>(Material);
                 auto *Camera = NewObject<UMaterialExpressionCameraPositionWS>(Material);
                 Alpha->Code = TEXT("float a=saturate(TexAlpha); "
-                                   "float fade=saturate((8000.0-distance(World,Camera))/2000.0); "
+                                   // Native frill visibility measures planar distance. A raised
+                                   // camera must not shorten ground cover's visible radius.
+                                   "float fade=saturate((16000.0-distance(World.xy,Camera.xy))/4000.0); "
                                    // Integer hashing avoids sin() precision loss at million-cm world positions.
                                    "uint3 p=uint3(int3(floor(World*0.5))); "
                                    "uint h=p.x*73856093u ^ p.y*19349663u ^ p.z*83492791u; "
                                    "h^=h>>16; h*=2246822519u; h^=h>>13; "
                                    "float noise=float(h&65535u)/65536.0; "
-                                   "return a*step(noise+0.00001,fade);");
+                                   // Preserve fractional DAT alpha as coverage, including
+                                   // nearby frills. A hard 0.4 cutout made every surviving
+                                   // texel opaque and exposed the crossed-card grid.
+                                   // Coverage still writes depth, so batched cards do not
+                                   // acquire translucent centre-sorting artifacts.
+                                   "return step(noise+0.00001,a*fade);");
                 Alpha->Inputs.SetNum(3);
                 Alpha->Inputs[1].InputName = TEXT("World");
                 Alpha->Inputs[1].Input.Connect(0, Position);
@@ -179,25 +230,17 @@ bool PrepareAC2Materials(FString &Error)
         }
         if (Sky)
         {
-            auto *Vertex = NewObject<UMaterialExpressionVertexColor>(Material);
             auto *SkyTint = NewObject<UMaterialExpressionVectorParameter>(Material);
             SkyTint->ParameterName = TEXT("SkyTint");
             SkyTint->DefaultValue = FLinearColor::White;
-            auto *V = NewObject<UMaterialExpressionMultiply>(Material);
-            V->A.Connect(0, Multiply);
-            V->B.Connect(0, Vertex);
             auto *S = NewObject<UMaterialExpressionMultiply>(Material);
-            S->A.Connect(0, V);
+            S->A.Connect(0, Native.Color);
             S->B.Connect(0, SkyTint);
-            auto *Alpha = NewObject<UMaterialExpressionMultiply>(Material);
-            Alpha->A.Connect(4, Texture);
-            Alpha->B.Connect(4, Vertex);
             auto *AlphaTint = NewObject<UMaterialExpressionMultiply>(Material);
-            AlphaTint->A.Connect(0, Alpha);
+            AlphaTint->A.Connect(0, Native.Alpha);
             AlphaTint->B.Connect(4, SkyTint);
             for (UMaterialExpression *E :
-                 {(UMaterialExpression *)Vertex, (UMaterialExpression *)SkyTint, (UMaterialExpression *)V,
-                  (UMaterialExpression *)S, (UMaterialExpression *)Alpha, (UMaterialExpression *)AlphaTint})
+                 {(UMaterialExpression *)SkyTint, (UMaterialExpression *)S, (UMaterialExpression *)AlphaTint})
                 Expressions.AddExpression(E);
             Material->GetEditorOnlyData()->EmissiveColor.Connect(0, S);
             Material->GetEditorOnlyData()->Opacity.Connect(0, AlphaTint);
@@ -250,6 +293,36 @@ bool PrepareAC2Materials(FString &Error)
             Expressions.AddExpression(Lighting);
             auto* Interpolate = NewObject<UMaterialExpressionVertexInterpolator>(Material);
             Interpolate->Input.Connect(0, Lighting); Expressions.AddExpression(Interpolate);
+            // RenderDeviceD3D / fragment.dll: specular is interpolated COLOR1,
+            // added in native RGB after texturing. A zero power disables it.
+            // The viewer is view-space (0,0,-1), not a per-pixel reflection ray.
+            auto* Highlight=NewObject<UMaterialExpressionCustom>(Material);
+            Highlight->OutputType=CMOT_Float3;
+            Highlight->Inputs=Lighting->Inputs;
+            Input(Highlight,TEXT("SpecularColor"),Param(TEXT("AC2NativeSpecularColor"),FLinearColor::White));
+            auto Scalar=[&](const TCHAR* Name) {
+                auto* P=NewObject<UMaterialExpressionScalarParameter>(Material);
+                P->ParameterName=Name; P->DefaultValue=0; Expressions.AddExpression(P); return P;
+            };
+            Input(Highlight,TEXT("Power"),Scalar(TEXT("AC2NativeSpecularPower")));
+            Input(Highlight,TEXT("Active"),Scalar(TEXT("AC2NativeSpecularEnabled")));
+            Highlight->Code=TEXT("if(Active<0.5 || Power==0)return float3(0,0,0); "
+                "float3 n=normalize(Normal), eye=-ResolvedView.ViewForward, spec=0;\n");
+            for(int32 I=0;I<8;++I) {
+                const FString L=FString::Printf(TEXT("Light%d"),I),C=FString::Printf(TEXT("Color%d"),I);
+                Highlight->Code+=FString::Printf(TEXT(
+                    "{ float3 d=%s.w>0?%s.xyz-Position:%s.xyz; float d2=dot(d,d); "
+                    "float3 l=d*rsqrt(max(d2,0.000001)); float3 h=%s.w>0?eye:normalize(l+eye); "
+                    "float a=%s.w>0?1.0/(1.0+10.0*d2/(%s.w*%s.w)):1.0; "
+                    "float term=dot(n,l)>0 && dot(n,h)>0?pow(max(dot(n,h),0.000001),clamp(Power,-127.9961,127.9961)):0; "
+                    "spec+=(%s.w>0?float3(1,1,1):%s.rgb)*term*a*a*(1-(%s.w>0?Ignore.y:Ignore.x)); }\n"),
+                    *L,*L,*L,*L,*L,*L,*L,*L,*C,*L);
+            }
+            Highlight->Code+=TEXT("return saturate(spec*SpecularColor.rgb);");
+            Expressions.AddExpression(Highlight);
+            auto* HighlightVertex=NewObject<UMaterialExpressionVertexInterpolator>(Material);
+            HighlightVertex->Input.Connect(0,Highlight);Expressions.AddExpression(HighlightVertex);
+            for(auto& In:Native.Stages->Inputs)if(In.InputName==TEXT("Specular"))In.Input.Connect(0,HighlightVertex);
             auto* NativeColor = NewObject<UMaterialExpressionCustom>(Material);
             NativeColor->OutputType = CMOT_Float3;
             Input(NativeColor, TEXT("Albedo"), Native.Color); Input(NativeColor, TEXT("Tint"), Tint);
@@ -325,7 +398,7 @@ bool PrepareAC2Materials(FString &Error)
         UE_LOG(LogTemp, Display, TEXT("AC2 material template saved: %s"), *File);
     }
     if (!FFileHelper::SaveStringToFile(
-            TEXT("10"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
+            TEXT("18"), *FPaths::Combine(FPaths::ProjectContentDir(), TEXT("AC2/Materials/template-version.txt"))))
     {
         Error = TEXT("Cannot save AC2 material template version");
         return false;

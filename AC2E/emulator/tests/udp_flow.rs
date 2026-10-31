@@ -169,7 +169,9 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         if Header::decode(&buf[..len]).unwrap().flags == wire::CONNECT {
             continue;
         }
-        break peer.receive(&buf[..len], Instant::now()).unwrap();
+        // Native world-clock control packets can precede application events.
+        let received=peer.receive(&buf[..len], Instant::now()).unwrap();
+        if !received.messages.is_empty(){break received;}
     };
     assert_eq!(ready.messages.len(), 1);
     assert_eq!(ready.messages[0].queue, 5);
@@ -193,7 +195,8 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         if Header::decode(&buf[..len]).unwrap().flags == wire::CONNECT {
             continue;
         }
-        break peer.receive(&buf[..len], Instant::now()).unwrap();
+        let received=peer.receive(&buf[..len], Instant::now()).unwrap();
+        if !received.messages.is_empty(){break received;}
     };
     assert_eq!(list.messages.len(), 1);
     assert_eq!(list.messages[0].queue, 1);
@@ -393,6 +396,7 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         }
     }
     std::fs::remove_file(dir.join("characters.journal")).unwrap();
+    std::fs::remove_file(dir.join("clock-origin.json")).unwrap();
     if expect_bootstrap {
         std::fs::remove_file(dir.join("positions.snapshot")).unwrap();
     }

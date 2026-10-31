@@ -58,7 +58,8 @@ struct FAC2FarTerrain::FImpl
                 const int32 TX = X - int32(J.Center >> 8) + FarRadius;
                 const int32 TY = Y - int32(J.Center & 255) + FarRadius;
                 constexpr int32 Gutter = 2, ContentPixels = TilePixels - Gutter * 2;
-                const auto Pixels = Assets->TerrainPixels(Defs, Land, BuildAC2TerrainMesh(Defs, Land), ContentPixels);
+                const auto NativeMesh = BuildAC2TerrainMesh(Defs, Land);
+                const auto Pixels = Assets->TerrainPixels(Defs, Land, NativeMesh, ContentPixels);
                 for (int32 V = 0; V < TilePixels; ++V)
                     for (int32 U = 0; U < TilePixels; ++U)
                         J.Pixels[(TY * TilePixels + V) * AtlasSize + TX * TilePixels + U] =
@@ -66,7 +67,10 @@ struct FAC2FarTerrain::FImpl
                 const int32 Base = J.Vertices.Num();
                 // 8x8 quads nearby and 4x4 beyond 1.3 km. Full-resolution edge samples
                 // are unnecessary because adjoining far blocks use a short skirt.
-                int32 Step = AC2::BlockDistance(Id, J.Center) < 8 ? 2 : 4;
+                const auto W = Water.At(Defs, Land);
+                // Coarse diagonals can put the shoreline below the water plane,
+                // erasing narrow banks. Preserve the authored shore triangles.
+                int32 Step = W.Present ? 1 : (AC2::BlockDistance(Id, J.Center) < 8 ? 2 : 4);
                 const int32 Row = 16 / Step + 1;
                 for (int32 I = 0; I <= 16; I += Step)
                     for (int32 K = 0; K <= 16; K += Step)
@@ -84,7 +88,8 @@ struct FAC2FarTerrain::FImpl
                             (TY * TilePixels + Gutter + .5f + K / 16.f * (ContentPixels - 1)) / AtlasSize));
                         J.Colors.Add(FColor::White);
                     }
-                for (int32 I = 0; I < Row - 1; ++I)
+                if(Step==1)for(int32 Index:NativeMesh.Indices)J.Indices.Add(Base+Index);
+                else for (int32 I = 0; I < Row - 1; ++I)
                     for (int32 K = 0; K < Row - 1; ++K)
                     {
                         int32 A = Base + I * Row + K;
@@ -106,7 +111,6 @@ struct FAC2FarTerrain::FImpl
                     Skirt(Base + (I + 1) * Row, Base + I * Row);
                     Skirt(Base + I * Row + Row - 1, Base + (I + 1) * Row + Row - 1);
                 }
-                auto W = Water.At(Defs, Land);
                 if (W.Present)
                 {
                     int32 N = J.Vertices.Num();

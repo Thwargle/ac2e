@@ -59,6 +59,7 @@ struct Peer {
     unhandled_scripts: BTreeSet<u32>,
     scene_outbox: VecDeque<(Arc<[u8]>, bool)>,
     scene_bytes: usize,
+    last_time_sync_ms: u64,
 }
 #[derive(Default)]
 struct Counters {
@@ -530,6 +531,8 @@ fn examine_target(
     store: &Store,
     scene: &crate::scene::Scene,
     names: &crate::examination::Names,
+    loot: &crate::loot::Loot,
+    now: u64,
 ) -> io::Result<Vec<u8>> {
     use crate::{
         examination::{self, Name},
@@ -545,6 +548,9 @@ fn examine_target(
             format!("Level {}", state.level().number),
             format!("Health: {} / {}", state.health, state.level().health),
         ];
+        if let Some(creation)=&player.creation {
+            lines.insert(0,match creation.race {1=>"Human",2=>"Lugian",4=>"Tumerok",8=>"Drudge",16=>"Empyrean",_=>"Player"}.into());
+        }
         if !state.alive() {
             lines.push("Dead".to_owned());
         }
@@ -558,6 +564,7 @@ fn examine_target(
             if player.binding.is_some() {
                 lines.push("Bound to a lifestone.".to_owned());
             }
+            lines.push(format!("Available skill credits: {}",player.skills.available_credits(state)));
         }
         return examination::response(target, Name::Literal(player.name.clone()), &lines)
             .map_err(other);
@@ -576,18 +583,40 @@ fn examine_target(
         return examination::response(
             target,
             names.get(item.definition, "Item"),
-            &[format!("Quantity: {}", item.quantity), location.to_owned()],
+            &names.item_lines(item,location),
         )
         .map_err(other);
+    }
+    if let Some(item)=loot.inspect_item(target,character,now,|container|scene.can_observe(character,container)&&scene.combat_distance(character,container).is_some_and(|d|d<=4.)) {
+        return examination::response(target,names.get(item.definition,"Item"),&names.item_lines(item,"In the loot container.")).map_err(other);
+    }
+    if let Some(drop)=store.drops.get(&target).filter(|_|scene.can_observe(character,target)) {
+        return examination::response(target,names.get(drop.item.definition,"Item"),&names.item_lines(&drop.item,"On the ground. Double-click nearby to pick up.")).map_err(other);
     }
     if let Some(definition) = scene.visible_hand_definition(character, target) {
         return examination::response(target, names.get(definition, "Item"), &[]).map_err(other);
     }
     if let Some(object) = scene.examination_content(character, target) {
         let mut lines = Vec::new();
+        let dead=object.stat(0x102)==Some(0) && object.stat(0x107).is_some();
+        if dead {lines.push("Defeated creature. Double-click to examine its remaining loot.".into());}
+        else if let Some(level)=object.stat(0x12e) {lines.push(format!("Level {level}"));}
+        if let Some(service)=object.service {
+            use crate::services::Service;
+            lines.push(match service {
+                Service::Vendor=>"Vendor. Double-click nearby to trade.",
+                Service::Door{locked:true}=>"Locked door.",Service::Door{locked:false}=>"Door. Double-click nearby to open or close.",
+                Service::Chest{locked:true}=>"Locked chest.",Service::Chest{locked:false}=>"Chest. Double-click nearby to open.",
+                Service::Sign=>"Sign. Double-click to read.",
+            }.into());
+        }
         if let Some((health, maximum)) = object.stat(0x102).zip(object.stat(0x107)) {
             lines.push(format!("Health: {health} / {maximum}"));
         }
+        if let Some((vigor, maximum)) = object.stat(0x103).zip(object.stat(0x108)) {
+            lines.push(format!("Vigor: {vigor} / {maximum}"));
+        }
+        lines.extend(names.description_lines(object.entity));
         if object.entity == TRAINING_MENTOR_ENTITY {
             lines.push("Use to accept training lessons, check progress or deliver supplies.".into());
             lines.push("Nearby conversation topics: @mentor help, gear, combat, healing, supplies, crafting, travel.".into());
@@ -598,7 +627,9 @@ fn examine_target(
             lines.push("Use while alive and out of combat, within four metres.".into());
             return examination::response(target, Name::Literal(name.into()), &lines).map_err(other);
         }
-        return examination::response(target, names.get(object.entity, "Object"), &lines)
+        let mut name=object.name.clone().map(Name::Literal).unwrap_or_else(||names.get(object.entity, "Object"));
+        if dead {name=Name::Corpse(Box::new(name));}
+        return examination::response(target, name, &lines)
             .map_err(other);
     }
     Err(invalid("That object is not available to examine."))
@@ -741,6 +772,59 @@ fn publish_health_story(
         }
         Err(_) => Vec::new(),
     }
+}
+
+fn use_recovered_elixir(peer:&mut Peer,character:u64,item:u64,store:&mut Store,scene:&mut crate::scene::Scene)->io::Result<()> {
+    if !scene.can_observe(character,character)||peer.combat{return Err(invalid("Leave combat before drinking a quest elixir."));}
+    let c=&store.characters[&character];let account=c.account.clone();
+    let owned=c.inventory.items().find(|i|i.id==item).ok_or_else(||invalid("Elixir not owned"))?;
+    let q=crate::recovered_quests::use_profile(owned.definition).ok_or_else(||invalid("Unsupported quest elixir"))?;
+    let instance=scene.inventory_instance(character,item).map_err(other)?;
+    let mut quests=c.quests.clone();
+    quests.recovered=quests.recovered.accept(q.id,c.progression.level().number,crate::recovered_quests::now())?;
+    let mut events=vec![crate::item_services::removed(item).map_err(other)?,world::destroy_inventory_item(item,instance)];
+    events.extend(quests.updates().map_err(other)?);
+    events.push(script::chat(&format!("{} accepted. Defeat {} targets before the time limit.",q.title,q.goal),1).map_err(other)?);
+    peer.validate_scene_batch(&events)?;
+    store.recovered_elixir(&account,character,item)?;
+    scene.inventory_removed(character,item).map_err(other)?;peer.queue_ordered_batch(events)?;Ok(())
+}
+
+fn use_recovered_delivery(peer:&mut Peer,character:u64,target:u64,store:&mut Store,scene:&mut crate::scene::Scene,
+    metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>)->io::Result<Vec<crate::scene::Delivery>> {
+    if peer.combat||!store.characters[&character].progression.alive(){return Err(invalid("Speak to the quest NPC while alive and out of combat."));}
+    let npc=scene.examination_content(character,target).ok_or_else(||invalid("Quest NPC is not visible."))?.entity;
+    let completion=npc_use_completion(character,target,scene)?;
+    let saved=&store.characters[&character];let account=saved.account.clone();let time=crate::recovered_quests::now();
+    let first=store.next_item_id()?;
+    let (items,changes,book)=saved.quests.recovered.delivery(&saved.inventory,npc,saved.progression.level().number,time,first)?;
+    let (bag,state)=if items.is_empty()&&changes.is_empty(){(saved.inventory.clone(),saved.progression.clone())}else{
+        crate::player_transaction::candidate(&saved.inventory,&saved.progression,&items,&changes,Some(first))?};
+    let mut quests=saved.quests.clone();quests.recovered=book;
+    let mut events=vec![completion];let mut granted=Vec::new();let mut removed=Vec::new();
+    for command in &items {match command {
+        crate::inventory::Command::Grant(item)=>{
+            let info=metadata.get(&item.definition).and_then(|i|*i).ok_or_else(||invalid("Quest bag metadata unavailable"))?;
+            let instance=scene.admit_inventory_grant(character,item.id).map_err(other)?;
+            events.push(world::create_inventory_item(item,character,instance).map_err(other)?);
+            events.push(crate::item_services::acquired(character,item,info).map_err(other)?);granted.push((item.id,instance));
+        },
+        crate::inventory::Command::ConsumeDense{item}=>{
+            let instance=scene.inventory_instance(character,*item).map_err(other)?;
+            events.push(crate::item_services::removed(*item).map_err(other)?);events.push(world::destroy_inventory_item(*item,instance));removed.push(*item);
+        },_=>return Err(invalid("Unsupported delivery inventory transition"))
+    }}
+    events.extend(state.private_changes(&saved.progression));
+    events.extend(quests.updates().map_err(other)?);
+    events.push(script::chat(if npc==crate::recovered_quests::KANTEN {"Gambling Debt: deliver Kanten's Bag to Orven in Arwic (44.9N, 7.1W) within two hours."}
+        else {"Gambling Debt complete. You receive 1,000 experience."},1).map_err(other)?);
+    if saved.skills.available_credits(&state)!=saved.skills.available_credits(&saved.progression){events.push(crate::ui::skills_state(&saved.skills,&state).map_err(other)?);}
+    peer.validate_scene_batch(&events)?;
+    store.recovered_delivery(&account,character,npc,time)?;
+    debug_assert_eq!(store.characters[&character].inventory,bag);
+    for item in removed {scene.inventory_removed(character,item).map_err(other)?;}
+    for (item,instance) in granted {scene.inventory_granted(character,item,instance).map_err(other)?;}
+    let updates=scene.player_stats(character,&state);peer.queue_ordered_batch(events)?;Ok(updates)
 }
 
 fn use_training_potion(
@@ -900,7 +984,7 @@ fn quest_action(
     if saved.skills.available_credits(&state) != saved.skills.available_credits(&saved.progression)
     {
         events
-            .push(crate::ui::skill_credits(saved.skills.available_credits(&state)).map_err(other)?);
+            .push(crate::ui::skills_state(&saved.skills, &state).map_err(other)?);
     }
     peer.validate_scene_batch(&events)?;
     if let Some(command) = command {
@@ -945,11 +1029,20 @@ fn change_hand_item(
     if !saved.inventory.dense_bags() {
         return Err(invalid("This equipment profile requires a dense bag list."));
     }
+    let repair=saved.inventory.items().find(|i|i.id==request.item && i.equipment_mask==0 && i.quantity==1 && i.stack_limit==1)
+        .and_then(|i|crate::apparel::recovered_slot(i.definition,i.visual).map(|mask|crate::inventory::Command::RepairEquipment{item:i.id,definition:i.definition,mask}));
+    if let Some(command)=repair {store.inventory_command(&peer.session.account,character,command)?;}
+    let saved=&store.characters[&character];
     let item = saved
         .inventory
         .items()
         .find(|item| item.id == request.item)
         .ok_or_else(|| invalid("Item is not owned."))?;
+    if let Some(race)=crate::apparel::required_race(item.definition) {
+        if !saved.creation.as_ref().is_some_and(|r|r.race==race) {
+            return Err(invalid(match race {1=>"This equipment requires a Human.",2=>"This equipment requires a Lugian.",4=>"This equipment requires a Tumerok.",_=>"This equipment requires another race."}));
+        }
+    }
     let apparel = saved.creation.as_ref().and_then(|r| crate::starter_gear::apparel_slot(item,r.race).or_else(||crate::apparel::slot(item,r.race)));
     let hand = metadata
         .get(&item.definition)
@@ -1261,7 +1354,7 @@ fn item_service_transaction_profile(
     }
     events.extend(state.private_changes(&saved.progression));
     if saved.skills.available_credits(&state) != saved.skills.available_credits(&saved.progression) {
-        events.push(crate::ui::skill_credits(saved.skills.available_credits(&state)).map_err(other)?);
+        events.push(crate::ui::skills_state(&saved.skills, &state).map_err(other)?);
     }
     events.append(&mut completion);
     if supplies {
@@ -1673,6 +1766,71 @@ fn craft_item(
     Ok(updates)
 }
 
+fn corpse_action(peer:&mut Peer,character:u64,request:crate::loot::Request,loot:&mut crate::loot::Loot,
+    store:&mut Store,scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,now:u64)
+    ->io::Result<Vec<crate::scene::Delivery>> {
+    use crate::loot::Request;
+    let container=match request {Request::Open(id)|Request::Close(id)=>id,Request::Take{container,..}|Request::Transmute{container,..}=>container};
+    if matches!(request,Request::Close(_)){
+        peer.queue_ordered_batch(vec![crate::loot::closed(container).map_err(other)?])?;return scene.close_chest(character,Some(container));
+    }
+    if !store.characters[&character].progression.alive() || !scene.combat_distance(character,container).is_some_and(|d|d<=4.) {
+        return Err(invalid("Move within four meters of the defeated creature to loot it."));
+    }
+    if let Some(crate::services::Service::Chest{locked})=scene.examination_content(character,container).and_then(|o|o.service) {
+        if locked{return Err(invalid("This chest requires a key or quest condition."));}
+        if matches!(request,Request::Open(_)) {
+            let events=vec![crate::loot::opened(container,None).map_err(other)?,
+                script::chat("This chest has no configured contents.",1).map_err(other)?];
+            peer.validate_scene_batch(&events)?;
+            let updates=scene.open_chest(character,container)?;
+            peer.queue_ordered_batch(events)?;return Ok(updates);
+        }
+        return Err(invalid("No loot is available in this chest."));
+    }
+    let reward=loot.get(container,character,now).ok_or_else(||invalid("No loot is available to your character."))?;
+    let pending=reward.items.clone();
+    if matches!(request,Request::Open(_)){
+        let mut events=pending.iter().map(|item|world::create_inventory_item(item,container,1).map_err(other)).collect::<io::Result<Vec<_>>>()?;
+        events.push(crate::loot::opened_items(container,&pending.iter().map(|i|i.id).collect::<Vec<_>>()).map_err(other)?);
+        peer.queue_ordered_batch(events)?;
+        return scene.close_chest(character,None);
+    }
+    if let Request::Transmute{player,..}=request {
+        if player!=character{return Err(invalid("Loot request does not match this container."));}
+        let eligible=pending.iter().filter_map(|i|crate::merchants::sale_value(i).map(|(_,price)|(i.id,price*u32::from(i.quantity)))).collect::<Vec<_>>();
+        if eligible.is_empty(){return Err(invalid("No items in this container can be transmuted."));}
+        let total=eligible.iter().map(|(_,price)|price).sum();
+        let remaining=pending.iter().filter(|i|!eligible.iter().any(|(id,_)|*id==i.id)).map(|i|i.id).collect::<Vec<_>>();
+        let mut completion=eligible.iter().map(|(id,_)|world::destroy_inventory_item(*id,1)).collect::<Vec<_>>();
+        completion.push(if remaining.is_empty(){crate::loot::closed(container)}else{crate::loot::opened_items(container,&remaining)}.map_err(other)?);
+        completion.push(script::chat(&format!("Loot transmuted for {total} gold."),1).map_err(other)?);
+        // Journal the award before removing any corpse items. Quest and unknown
+        // item profiles have no sale value and remain in the container.
+        let updates=item_service_transaction(peer,character,&[],&[crate::progression::Command::AwardGold(total)],completion,store,scene,metadata)?;
+        for (id,_) in eligible{loot.claimed(container,id);}
+        return Ok(updates);
+    }
+    let Request::Take{player,item,..}=request else {unreachable!()};
+    if player!=character || item.is_some_and(|id|!pending.iter().any(|i|i.id==id)){return Err(invalid("Loot request does not match this container."));}
+    if pending.is_empty(){return Err(invalid("This container is empty."));}
+    let mut updates=Vec::new();let mut collected=0;
+    for pending in pending.iter().filter(|i|item.is_none_or(|id|id==i.id)) {
+        let Some(slot)=store.characters[&character].inventory.free_slot() else {
+            peer.queue_ordered_batch(vec![script::chat("Your backpack is full. Remaining loot stays in the container.",1).map_err(other)?])?;break;
+        };
+        let mut owned=pending.clone();owned.id=store.next_item_id()?;owned.location=crate::inventory::Location::Bag(slot);
+        let remaining=loot.get(container,character,now).unwrap().items.iter().filter(|i|i.id!=pending.id).map(|i|i.id).collect::<Vec<_>>();
+        let state=if remaining.is_empty(){crate::loot::closed(container)}else{crate::loot::opened_items(container,&remaining)}.map_err(other)?;
+        let completion=vec![world::destroy_inventory_item(pending.id,1),state,script::chat("Loot collected.",1).map_err(other)?];
+        // Each item is journaled before it leaves the corpse. A full bag or a
+        // failed transaction retains every item that was not granted.
+        updates.extend(item_service_transaction(peer,character,&[crate::inventory::Command::Grant(owned)],&[],completion,store,scene,metadata)?);
+        loot.claimed(container,pending.id);collected+=1;
+    }
+    if collected==0 && store.characters[&character].inventory.free_slot().is_some(){return Err(invalid("No loot was collected."));}
+    Ok(updates)
+}
 fn drop_ground_item(peer:&mut Peer, character:u64, request:&crate::inventory_request::DropRequest,
     store:&mut Store, scene:&mut crate::scene::Scene,
     metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,now_ms:u64) -> io::Result<Vec<crate::scene::Delivery>> {
@@ -1825,6 +1983,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             }
             if unreal_gameplay {
                 for (definition,metadata) in crate::shelter::validate(&mut portal)?.into_iter().chain(crate::apparel::validate(&mut portal)?) {inventory_metadata.insert(definition,Some(metadata));}
+                inventory_metadata.insert(crate::recovered_quests::BAG,Some(crate::recovered_quests::delivery_metadata(&mut portal)?));
             }
             if starter_equipment {
                 for (definition, metadata) in crate::starter_gear::validate(&mut portal)? {
@@ -1918,6 +2077,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
         },
     };
     let mut projectiles = crate::projectiles::Projectiles::default();
+    let mut corpse_loot=crate::loot::Loot::default();
+    if let Ok(value)=std::env::var("AC2_TEST_LOOT_SEED") {
+        corpse_loot.seed_for_test(value.parse().map_err(|_|invalid("invalid test loot seed"))?)?;
+        println!("Test-only reproducible loot seed enabled.");
+    }
+    if unreal_gameplay {
+        let mut portal=crate::dat::Dat::open(config.game_data.as_ref().unwrap().join("portal.dat"))?;
+        corpse_loot.catalog=crate::loot::Catalog::load(&mut portal,&mut inventory_metadata)?;
+    }
     let mut encounters = config
         .encounters
         .as_deref()
@@ -1931,6 +2099,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             runtime.enable_training_loot();
         }
     }
+    let combat_count=content.objects().filter(|o|encounters.as_ref().is_some_and(|e|e.is_creature(o.id))).count();
+    let outdoor_count=content.objects().filter(|o|(1..=64).contains(&(o.placement.cell&65535))
+        && encounters.as_ref().is_some_and(|e|e.is_creature(o.id))).count();
+    let vendor_count=content.objects().filter(|o|o.service==Some(crate::services::Service::Vendor)).count();
+    println!("Population: {combat_count} combat actors ({outdoor_count} outdoors), {vendor_count} native vendors. Captured and separately documented inferred placements; AC2E combat/loot rules.");
     let portal_routes = if config.portals {
         let routes = crate::portals::Routes::for_content(
             &content,
@@ -1986,6 +2159,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
         );
     }
     let start = Instant::now();
+    let world_clock = crate::clock::WorldClock::open(&config.data)?;
+    println!("Native world clock: {:.3} seconds; persistent origin; time sync every 5 seconds.", world_clock.seconds());
     let mut peers: BTreeMap<SocketAddr, Peer> = BTreeMap::new();
     let mut active_characters = BTreeMap::new();
     let mut scene = crate::scene::Scene::with_content(content);
@@ -1993,14 +2168,22 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
         scene = scene.with_visibility(crate::visibility::Visibility::open(directory)?);
     }
     for dropped in store.drops.values() {scene.add_drop(dropped)?;}
-    if let Some(runtime) = &encounters {
+    if let Some(runtime) = &mut encounters {
+        let mut total=0;let mut outdoor=0;let mut blocks=std::collections::BTreeSet::new();
         for (id, health) in runtime.initial_health() {
+            total+=1;
+            if let Some(point)=scene.content_placement(id) {
+                if (1..=64).contains(&(point.cell&65535)){outdoor+=1;blocks.insert(point.cell>>16);}
+            }
             scene.content_stat(id, 0x107, health)?;
             scene.content_stat(id, 0x102, health)?;
         }
+        for (id,stat,value) in runtime.inspection_stats() {scene.content_stat(id,stat,value)?;}
         println!(
             "Development encounters enabled with explicit authored rules; original combat parity is unfinished."
         );
+        runtime.initialize_spawners(&mut scene,0)?;
+        println!("Managed creature point spawners: {total}; outdoors: {outdoor} in {} blocks; {} capacity-limited groups. One lifetime per point; inferred camp capacities and regeneration are authored AC2E policy.",blocks.len(),runtime.spawners().group_count());
     }
     let training_quest_enabled = starter_equipment
         && encounters
@@ -2021,6 +2204,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
     let mut counters = Counters::default();
     let mut buffer = [0u8; 65536];
     let mut next_report = 10_000;
+    let mut next_untraining_tick = 0;
     let mut next_stop_check = 0;
     let mut next_checkpoint = 5000;
     let mut diagnosed_events = BTreeSet::new();
@@ -2195,7 +2379,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         let incoming = u32::from_le_bytes(secrets[8..12].try_into().unwrap());
                         let outgoing = u32::from_le_bytes(secrets[12..].try_into().unwrap());
                         let connect = wire::Connect {
-                            server_time: start.elapsed().as_secs_f64(),
+                            server_time: world_clock.seconds(),
                             cookie,
                             net_id: u32::from(id),
                             outgoing_seed: outgoing,
@@ -2240,6 +2424,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 unhandled_scripts: BTreeSet::new(),
                                 scene_outbox: VecDeque::new(),
                                 scene_bytes: 0,
+                                last_time_sync_ms: now_ms,
                             },
                         );
                         if let Some(previous) = previous {
@@ -2273,10 +2458,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         let first = peer.session.phase == Phase::Connecting;
                         peer.session.connect_ack(cookie, now_ms).map_err(other)?;
                         if !first {
-                            return Ok(vec![peer.control(
-                                wire::TIME_SYNC,
-                                &start.elapsed().as_secs_f64().to_le_bytes(),
-                            )?]);
+                            return Ok(vec![peer.transport.send_time_sync(world_clock.seconds(), now).map_err(other)?]);
                         }
                         counters.connected += 1;
                         let characters: Vec<_> = store
@@ -2317,7 +2499,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         // selection can invoke CharacterGenSystem. OnEndDDD initializes
                         // the native VM; skipping it dereferences a null resolver.
                         peer.selection_pending = Some(list);
-                        return peer.send_to_queue(5, &0x1003bu32.to_le_bytes(), now);
+                        let mut packets = vec![peer.transport.send_time_sync(world_clock.seconds(), now).map_err(other)?];
+                        packets.extend(peer.send_to_queue(5, &0x1003bu32.to_le_bytes(), now)?);
+                        return Ok(packets);
                     }
                     if peer.session.phase == Phase::Connecting || peer.session.expired(now_ms) {
                         return Err(invalid("session not connected"));
@@ -2418,6 +2602,28 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         }
                                     };
                                     match request {
+                                        script::Request::Loot(request)=>{
+                                            let restore=peer.combat && matches!(request,crate::loot::Request::Take{..}|crate::loot::Request::Transmute{..}) && store.characters[&character].progression.alive();
+                                            if restore {
+                                                if let Some(runtime)=&mut encounters{runtime.stop(character);}
+                                                peer.combat=false;
+                                                peer.queue_ordered_batch(vec![script::private_call(script::COMBAT_STATE,&script::integer(0)).map_err(other)?])?;
+                                                deliveries.extend(training_combat_visual(peer,character,&store,&mut scene,false,false,false)?);
+                                            }
+                                            let result=corpse_action(peer,character,request,&mut corpse_loot,&mut store,&mut scene,&inventory_metadata,now_ms);
+                                            // Restore stance on success and rejection, without restarting an
+                                            // attack against the selected corpse.
+                                            if restore {
+                                                peer.combat=true;
+                                                peer.queue_ordered_batch(vec![script::private_call(script::COMBAT_STATE,&script::integer(1)).map_err(other)?])?;
+                                                deliveries.extend(training_combat_visual(peer,character,&store,&mut scene,true,false,false)?);
+                                            }
+                                            match result{
+                                                Ok(updates)=>deliveries.extend(updates),
+                                                Err(error)=>peer.queue_ordered_batch(vec![script::chat(&format!("Loot rejected: {error}"),1).map_err(other)?])?,
+                                            }
+                                            return Ok(replies);
+                                        }
                                         script::Request::Allegiance(query) => {
                                             let target = query.target.unwrap_or(character);
                                             if !store
@@ -2739,6 +2945,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             skill,
                                             target,
                                         } => {
+                                            if store.characters[&character].skills.untraining_id()==skill {
+                                                peer.queue_ordered_batch(vec![script::chat("This skill is being untrained.",1).map_err(other)?,script::skill_finished(request_id).map_err(other)?])?;
+                                                return Ok(replies);
+                                            }
                                             if peer.pending_skill.is_some() {
                                                 peer.queue_ordered_batch(vec![
                                                     script::chat("Finish or cancel your current attack before using another skill.", 1).map_err(other)?,
@@ -2862,7 +3072,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     encounters
                                                         .as_mut()
                                                         .ok_or_else(|| invalid("Combat rules are not enabled on this server."))?
-                                                        .once(character, target, now_ms, &scene, &store)?;
+                                                        .basic_skill(character, target, now_ms, &scene, &store)?;
                                                     peer.queue_ordered_batch(events)?;
                                                     peer.combat = true;
                                                     peer.target = Some(target);
@@ -2945,6 +3155,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 &store,
                                                 &scene,
                                                 &examination_names,
+                                                &corpse_loot,
+                                                now_ms,
                                             ) {
                                                 Ok(packet) => {
                                                     deliveries.push(crate::scene::Delivery {
@@ -2962,6 +3174,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             }
                                         }
                                         script::Request::UseObject(request) => {
+                                            if corpse_loot.contains(request.item,now_ms) || scene.examination_content(character,request.item)
+                                                .is_some_and(|o|matches!(o.service,Some(crate::services::Service::Chest{..}))){
+                                                if request.owner!=character{return Err(invalid("Container owner mismatch"));}
+                                                match corpse_action(peer,character,crate::loot::Request::Open(request.item),&mut corpse_loot,&mut store,&mut scene,&inventory_metadata,now_ms){
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>peer.queue_ordered_batch(vec![script::chat(&format!("Loot rejected: {error}"),1).map_err(other)?])?,
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if request.item>>48==0x8180 {
                                                 if !config.initialize_ui || request.owner!=character || request.target!=0 {return Err(invalid("Invalid ground item pickup."));}
                                                 match pickup_ground_item(peer,character,request.item,&mut store,&mut scene,&inventory_metadata,now_ms) {
@@ -2970,11 +3191,31 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 }
                                                 return Ok(replies);
                                             }
+                                            let quest_target=if request.target!=0 && store.characters[&character].inventory.items().any(|i|i.id==request.item&&i.definition==crate::recovered_quests::BAG) {request.target}else{request.item};
+                                            if unreal_gameplay && scene.examination_content(character,quest_target).is_some_and(|o|crate::recovered_quests::delivery_npc(o.entity)) {
+                                                if request.owner!=character{return Err(invalid("Quest use owner mismatch"));}
+                                                match use_recovered_delivery(peer,character,quest_target,&mut store,&mut scene,&inventory_metadata) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if request.target!=0 && !(unreal_gameplay && store.characters[&character].inventory.items().any(|i|i.id==request.item && i.definition==crate::shelter::GLYPH)) {
                                                 return Err(invalid("Targeted use is only supported for your Menhir Glyph."));
                                             }
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
+                                            if scene.examination_content(character,request.item).is_some_and(|o|o.service==Some(crate::services::Service::Sign)) {
+                                                if request.owner!=character || !store.characters[&character].progression.alive(){return Err(invalid("Use the sign with your living character."));}
+                                                if !scene.combat_distance(character,request.item).is_some_and(|d|d<=4.) {
+                                                    peer.queue_ordered_batch(vec![script::chat("Move within four metres to read this sign.",1).map_err(other)?])?;
+                                                } else if let Some(message)=service_entity.and_then(|id|examination_names.description_chat(id)) {
+                                                    peer.queue_ordered_batch(vec![message.map_err(other)?])?;
+                                                } else {
+                                                    peer.queue_ordered_batch(vec![examine_target(character,request.item,&store,&scene,&examination_names,&corpse_loot,now_ms)?])?;
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if scene.examination_content(character,request.item).is_some_and(|o|matches!(o.service,Some(crate::services::Service::Door{..}))) {
                                                 let result=(||->io::Result<Vec<crate::scene::Delivery>>{
                                                     if request.owner!=character || !store.characters[&character].progression.alive() {return Err(invalid("Use a door with your living character."));}
@@ -3050,6 +3291,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             now,
                                                         )?,
                                                     ),
+                                                }
+                                                return Ok(replies);
+                                            }
+                                            if store.characters[&character].inventory.items().any(|i|i.id==request.item&&crate::recovered_quests::use_profile(i.definition).is_some()) {
+                                                if request.owner!=character{return Err(invalid("Quest elixir owner mismatch"));}
+                                                if let Err(error)=use_recovered_elixir(peer,character,request.item,&mut store,&mut scene) {
+                                                    replies.extend(peer.send_event(&script::chat(&error.to_string(),1).map_err(other)?,now)?);
                                                 }
                                                 return Ok(replies);
                                             }
@@ -3235,7 +3483,13 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 return Ok(replies);
                                             }
                                             if service_entity.is_some() {
-                                                peer.queue_ordered_batch(vec![script::chat("This world object's interaction is not implemented yet.",1).map_err(other)?])?;
+                                                if request.owner!=character || !store.characters[&character].progression.alive(){return Err(invalid("Use the object with your living character."));}
+                                                if !scene.combat_distance(character,request.item).is_some_and(|d|d<=4.) {
+                                                    peer.queue_ordered_batch(vec![script::chat("Move within four metres to use this object.",1).map_err(other)?])?;
+                                                }else{
+                                                    peer.queue_ordered_batch(vec![examine_target(character,request.item,&store,&scene,&examination_names,&corpse_loot,now_ms)?,
+                                                        script::chat("Examining this object. Additional scripted actions are not available yet.",1).map_err(other)?])?;
+                                                }
                                                 return Ok(replies);
                                             }
                                             let result = if config.initialize_ui {
@@ -3489,6 +3743,14 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 }
                                                 return Ok(replies);
                                             }
+                                            if store.debit_untraining(character)? {
+                                                for wire in store.characters[&character].progression.private_updates() {
+                                                    if wire[..4]==0x100d4u32.to_le_bytes(){deliveries.push(crate::scene::Delivery{recipient:character,data:wire.into()});}
+                                                }
+                                                let saved=&store.characters[&character];
+                                                deliveries.push(crate::scene::Delivery{recipient:character,
+                                                    data:crate::ui::skills_state(&saved.skills,&saved.progression).map_err(other)?.into()});
+                                            }
                                             let command = match action {
                                                 crate::skills::Action::Train => {
                                                     crate::skills::Command::Train(skill)
@@ -3496,6 +3758,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 crate::skills::Action::Untrain => {
                                                     crate::skills::Command::Untrain(skill)
                                                 }
+                                                crate::skills::Action::CancelUntrain => crate::skills::Command::CancelUntrain,
                                                 crate::skills::Action::Raise => {
                                                     return Err(invalid(
                                                         "advancement dispatch invariant",
@@ -3527,29 +3790,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 command,
                                             )?;
                                             let saved = &store.characters[&character];
-                                            let wire = match action {
-                                                crate::skills::Action::Train => {
-                                                    crate::ui::skill_update(
-                                                        skill,
-                                                        saved.skills.get(skill).unwrap(),
-                                                    )
-                                                }
-                                                _ => crate::ui::skill_remove(skill),
-                                            }
-                                            .map_err(other)?;
+                                            let wire = crate::ui::skills_state(&saved.skills, &saved.progression).map_err(other)?;
                                             deliveries.push(crate::scene::Delivery {
                                                 recipient: character,
                                                 data: wire.into(),
-                                            });
-                                            deliveries.push(crate::scene::Delivery {
-                                                recipient: character,
-                                                data: crate::ui::skill_credits(
-                                                    saved
-                                                        .skills
-                                                        .available_credits(&saved.progression),
-                                                )
-                                                .map_err(other)?
-                                                .into(),
                                             });
                                         }
                                         script::Request::GameplayOptions(options) => {
@@ -3603,7 +3847,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             now,
                                                         )?);
                                                     }
-                                                } else if target.is_none() {
+                                                } else {
                                                     if let Some(runtime) = encounters.as_mut() {
                                                         runtime.stop(character);
                                                     }
@@ -3640,7 +3884,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     false
                                                 }
                                                 script::Request::Combat(enabled) => {
-                                                    let mut enabled = enabled;
+                                                    let enabled = enabled;
                                                     if enabled
                                                         && !store.characters[&character]
                                                             .progression
@@ -3670,12 +3914,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         if let Err(error) = encounters.as_mut().unwrap().start(
                                                             character, target, now_ms, &scene, &store,
                                                         ) {
-                                                            // A rejected combat-button attack must follow
-                                                            // the same recovery as a rejected Attack request:
-                                                            // stop any previous target and publish peace to
-                                                            // the owner, observers and saved appearance.
+                                                            // Stance and selection survive an interrupted attack.
                                                             encounters.as_mut().unwrap().stop(character);
-                                                            enabled = false;
                                                             replies.extend(peer.send_event(
                                                                 &script::chat(&error.to_string(), 1)
                                                                     .map_err(other)?,
@@ -3685,7 +3925,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     } else if encounters.is_some() {
                                                         replies.extend(peer.send_event(
                                                             &script::chat(
-                                                                "Click an Idol Spawn, stand within three metres, then enter combat.",
+                                                                "Combat stance. Select a creature and move within your weapon's reach.",
                                                                 1,
                                                             )
                                                             .map_err(other)?,
@@ -3710,8 +3950,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             if let Some(runtime) = &mut encounters {
                                                                 runtime.stop(character);
                                                             }
-                                                            peer.combat = false;
-                                                            peer.target = None;
+                                                            peer.target = Some(target);
                                                             replies.extend(
                                                                 peer.send_event(
                                                                     &script::chat(
@@ -3740,7 +3979,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             if config.initialize_ui {
                                                                 deliveries.extend(training_combat_visual(
                                                                     peer, character, &store, &mut scene,
-                                                                    false, false, false,
+                                                                    peer.combat, false, false,
                                                                 )?);
                                                             }
                                                             return Ok(replies);
@@ -3817,6 +4056,20 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     }
                                                     let words =
                                                         text.split_whitespace().collect::<Vec<_>>();
+                                                    if text.trim().eq_ignore_ascii_case("@spawns") {
+                                                        peer.last_chat_ms = Some(now_ms);
+                                                        let lines=if !config.map_travel {
+                                                            vec!["Spawn surveying is available only with local test map travel.".into()]
+                                                        } else if let Some((runtime,point))=encounters.as_ref().zip(scene.player_placement(character)) {
+                                                            runtime.outdoor_survey(&scene,point)
+                                                        } else {
+                                                            vec!["No encounter population is loaded.".into()]
+                                                        };
+                                                        for line in lines {
+                                                            replies.extend(peer.send_event(&script::chat(&line,1).map_err(other)?,now)?);
+                                                        }
+                                                        return Ok(replies);
+                                                    }
                                                     if words.first().is_some_and(|word| word.eq_ignore_ascii_case("@maptravel")) {
                                                         peer.last_chat_ms = Some(now_ms);
                                                         let result = (|| -> io::Result<Vec<crate::scene::Delivery>> {
@@ -4200,12 +4453,35 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                     }
                                     scene.prepare_cell(update.placement.cell)?;
                                     motion.accept(update).map_err(other)?;
+                                    let fall_damage = motion.fall.resolve_landing(
+                                        update.placement.coordinates[2],
+                                        store.characters[&character].progression.level().health,
+                                        ||bootstrap.as_mut().is_some_and(|b|b.terrain_contact(update.placement)),
+                                    );
                                     store.set_placement(character, motion.placement)?;
                                     deliveries.extend(
                                         scene
                                             .update(character, motion.position_stamp, &update)
                                             .map_err(other)?,
                                     );
+                                    if fall_damage>0 && matches!(peer.session.phase,Phase::InWorld{..}) {
+                                        let old=store.characters[&character].progression.clone();
+                                        store.progression_command(&peer.session.account,character,crate::progression::Command::Damage(fall_damage))?;
+                                        let state=store.characters[&character].progression.clone();
+                                        deliveries.extend(scene.player_stats(character,&state));
+                                        let mut events=state.private_changes(&old);
+                                        events.push(script::chat(&format!("You take {} fall damage.",old.health-state.health),1).map_err(other)?);
+                                        if !state.alive(){
+                                            if let Some(runtime)=&mut encounters {runtime.stop(character);}
+                                            peer.combat=false;peer.target=None;
+                                            if let Some(request)=peer.pending_skill.take(){events.push(script::skill_finished(request).map_err(other)?);}
+                                            events.push(script::private_call(script::COMBAT_STATE,&script::integer(0)).map_err(other)?);
+                                            events.push(crate::ui::death_notice("You died from a fall.").map_err(other)?);
+                                            events.push(crate::ui::lock_player(true).map_err(other)?);
+                                        }
+                                        deliveries.extend(publish_health_story(peer,&mut scene,character,store.characters[&character].instance,character,-((old.health-state.health) as i32)));
+                                        peer.queue_ordered_batch(events)?;
+                                    }
                                     return Ok(replies);
                                 }
                                 world::ClientEvent::LookAt { target } => {
@@ -4750,12 +5026,15 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 )?;
             }
         }
+        let chest_updates=scene.expire_chest_views(now_ms,|id|store.characters.get(&id).is_some_and(|c|!c.deleted && c.progression.alive()))?;
+        deliver_scene(chest_updates,&active_characters,&mut peers,&primary,now,&mut failed_peers)?;
         if let Some(runtime) = &mut encounters {
             let events = runtime.tick(
                 now_ms,
                 &scene,
                 &mut store,
                 active_characters.keys().copied(),
+                bootstrap.as_mut().and_then(|b|b.geometry.as_mut()),
             )?;
             let mut updates = Vec::new();
             for event in events {
@@ -4812,7 +5091,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         }
                     }
                     crate::encounters::Event::Move {actor,placement} => {
-                        updates.extend(scene.move_creature(actor,placement,now_ms)?);
+                        // Native PositionPack time shares the synchronized world clock;
+                        // pursuit scheduling above remains on process monotonic time.
+                        updates.extend(scene.move_creature(actor,placement,(world_clock.seconds()*1000.0) as u64)?);
                     }
                     crate::encounters::Event::Projectile { player, target, profile, flight_ms } => {
                         // A saturated cosmetic pool must never terminate the world server.
@@ -4852,6 +5133,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                             }
                         }
                     }
+                    crate::encounters::Event::Loot {actor,player,entity,ai}=>{
+                        let count=corpse_loot.add(actor,player,now_ms,entity,ai);
+                        if count>0 {updates.push(crate::scene::Delivery{recipient:player,data:script::chat("Loot remains on the defeated creature. Double-click its body to open it.",1).map_err(other)?.into()});}
+                    }
                     crate::encounters::Event::Item {
                         player,
                         item,
@@ -4889,16 +5174,16 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         });
                     }
                     crate::encounters::Event::Quest { player, book } => {
-                        updates.push(crate::scene::Delivery {
-                            recipient: player,
-                            data: book.update().map_err(other)?.into(),
-                        });
+                        for event in book.updates().map_err(other)? {
+                            updates.push(crate::scene::Delivery {recipient:player,data:event.into()});
+                        }
                         if book.ready() {
                             updates.push(crate::scene::Delivery {recipient:player,data:script::chat(&book.guidance(),1).map_err(other)?.into()});
                         }
                     }
                     crate::encounters::Event::Health { actor, health } => {
                         updates.extend(scene.content_stat(actor, 0x102, health)?);
+                        if health==0 {updates.extend(scene.corpse_name(actor,&examination_names)?);}
                         for (&recipient, addr) in &active_characters {
                             if peers
                                 .get(addr)
@@ -4914,11 +5199,14 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         }
                     }
                     crate::encounters::Event::Despawn(actor) => {
-                        updates.extend(scene.despawn_content(actor)?)
+                        if scene.content_placement(actor).is_some(){updates.extend(scene.despawn_content(actor)?);}
+                        runtime.removed(actor,now_ms);
                     }
                     crate::encounters::Event::Respawn { actor, health } => {
+                        corpse_loot.remove(actor);
                         scene.content_stat(actor, 0x102, health)?;
                         updates.extend(scene.respawn_content(actor)?);
+                        runtime.spawned(actor)?;
                     }
                     crate::encounters::Event::Owner {
                         player,
@@ -4933,7 +5221,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         {
                             updates.push(crate::scene::Delivery {
                                 recipient: player,
-                                data: crate::ui::skill_credits(skills.available_credits(&state))
+                                data: crate::ui::skills_state(skills, &state)
                                     .map_err(other)?
                                     .into(),
                             });
@@ -4968,8 +5256,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                             .get(&player)
                             .and_then(|addr| peers.get_mut(addr))
                         {
-                            peer.combat = false;
-                            peer.target = None;
+                            if !store.characters[&player].progression.alive(){peer.combat=false;}
                             if let Some(request_id) = peer.pending_skill.take() {
                                 updates.push(crate::scene::Delivery {
                                     recipient: player,
@@ -4977,7 +5264,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 });
                             }
                             match training_combat_visual(
-                                peer, player, &store, &mut scene, false, false, false,
+                                peer, player, &store, &mut scene, peer.combat, false, false,
                             ) {
                                 Ok(deliveries) => updates.extend(deliveries),
                                 Err(_) => {
@@ -4987,12 +5274,9 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 }
                             }
                         }
-                        updates.push(crate::scene::Delivery {
-                            recipient: player,
-                            data: script::private_call(script::COMBAT_STATE, &script::integer(0))
-                                .map_err(other)?
-                                .into(),
-                        });
+                        let combat=active_characters.get(&player).and_then(|addr|peers.get(addr)).is_some_and(|p|p.combat);
+                        updates.push(crate::scene::Delivery {recipient:player,
+                            data:script::private_call(script::COMBAT_STATE,&script::integer(u32::from(combat))).map_err(other)?.into()});
                     }
                 }
             }
@@ -5006,6 +5290,23 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             )?;
         }
         deliver_scene(projectiles.retire(now_ms), &active_characters, &mut peers, &primary, now, &mut failed_peers)?;
+        if now_ms >= next_untraining_tick {
+            next_untraining_tick = now_ms + 250;
+            let mut updates=Vec::new();
+            for &character in active_characters.keys() {
+                if store.debit_untraining(character)? {
+                    let saved=&store.characters[&character];
+                    updates.push(crate::scene::Delivery {recipient:character,
+                        data:crate::ui::skills_state(&saved.skills,&saved.progression).map_err(other)?.into()});
+                    for wire in saved.progression.private_updates() {
+                        if wire[..4]==0x100d4u32.to_le_bytes() {
+                            updates.push(crate::scene::Delivery {recipient:character,data:wire.into()});
+                        }
+                    }
+                }
+            }
+            deliver_scene(updates,&active_characters,&mut peers,&primary,now,&mut failed_peers)?;
+        }
         let mut remove = std::mem::take(&mut failed_peers);
         for (addr, peer) in &mut peers {
             if peer.native_shop.is_some() {
@@ -5040,6 +5341,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             if peer.session.expired(now_ms) {
                 remove.insert(*addr);
                 continue;
+            }
+            if peer.session.phase != Phase::Connecting && now_ms.saturating_sub(peer.last_time_sync_ms) >= 5000 &&
+                peer.transport.send_available(8).map_err(other)? {
+                primary.send_to(&peer.transport.send_time_sync(world_clock.seconds(), now).map_err(other)?, addr)?;
+                peer.last_time_sync_ms = now_ms;
             }
             match peer.transport.retransmit_due(now) {
                 Ok(packets) => {
@@ -5209,6 +5515,7 @@ mod tests {
             unhandled_scripts: BTreeSet::new(),
             scene_outbox: VecDeque::new(),
             scene_bytes: 0,
+            last_time_sync_ms: 0,
         }
     }
 

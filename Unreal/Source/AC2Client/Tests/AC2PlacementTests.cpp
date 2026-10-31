@@ -117,12 +117,20 @@ public:
         Test->TestFalse(TEXT("Sealed starter dungeon hides exterior terrain"),Stream->ExteriorVisible());
         uint32 Cell=0;
         Test->TestTrue(TEXT("Starter feet resolve to their native cell"),Stream->InteriorCellAt(Feet,Cell)&&Cell==0x02990109);
+        Test->TestFalse(TEXT("Outdoor point far above a loaded room is not interior lighting"),
+            Stream->InteriorCellAt(Feet+FVector(0,0,100000),Cell));
         for (FVector2D Size : {FVector2D(34,103),FVector2D(55,165)})
         {
             FVector Center = FVector::ZeroVector;
             Test->TestTrue(TEXT("Native arrival has a walkable clear landing"),Stream->NetworkLanding(Feet,0x02990109,Size.X,Size.Y,Center,nullptr));
             Test->TestTrue(TEXT("Full arrival capsule clear"),AC2::CapsuleClear(World,Center,Size.X,Size.Y));
             Test->TestTrue(TEXT("Landing stays near the server position"),FVector::Dist2D(Center,Feet)<401);
+            // Query around the actual floor, not the saved arrival height.
+            // Near another storey the closest visible room is allowed to win.
+            const FVector Floor=Center-FVector(0,0,Size.Y+3);
+            for(double Height:{-150.,150.})
+                Test->TestTrue(TEXT("Interior floor proximity survives room bounds culling"),
+                    Stream->InteriorCellAt(Floor+FVector(0,0,Height),Cell));
         }
         FVector AirCenter = FVector::ZeroVector;
         const FVector AirFeet=Feet+FVector(0,0,200);

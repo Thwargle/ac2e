@@ -7,6 +7,7 @@ pub(super) struct Curve {
     xp: Vec<u64>,
 }
 impl Curve {
+    pub(super) fn rank(&self,spent:u64)->u16 {self.xp.partition_point(|xp|*xp<=spent).saturating_sub(1) as u16}
     pub(super) fn next(&self, spent: u64, cap: u16) -> Result<(u16, u64), SkillError> {
         let level = self.xp.partition_point(|xp| *xp <= spent).saturating_sub(1);
         let cap = usize::from(cap).min(self.xp.len() - 1);

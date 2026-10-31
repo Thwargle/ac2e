@@ -6,6 +6,7 @@
 #include "Engine/TextureRenderTarget2D.h"
 #include "Engine/World.h"
 #include "Engine/Texture2D.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
@@ -46,7 +47,15 @@ const FPhysControl Controls[] = {{2, TEXT("Height"), TEXT("Height"), 1},
 
 void SAC2CharacterUI::SetCreatorStep(int32 Step)
 {
+    PendingAvatar=INDEX_NONE;
     CreationStep = FMath::Clamp(Step, 0, 2);
+    if (CreationStep == 0 && Lineup.IsValid())
+    {
+        // Rebuild from the retained drafts after customization.
+        Lineup->Destroy();
+        Lineup.Reset();
+        LineupBrush.SetResourceObject(nullptr);
+    }
     Message.Empty();
     if (Portrait.IsValid())
         Portrait->SetCamera(CreationStep == 1 && HeadZoom, Rotation);
@@ -84,16 +93,13 @@ void SAC2CharacterUI::Randomize(bool All)
     const auto *A = Mode->CharacterCatalog.Avatar(Race, Sex);
     if (!A)
         return;
-    for (const auto &C : Controls)
-        if (All || C.Tab == AppearanceTab)
-        {
-            if (C.Type == 1)
-                BuildIndex = FMath::RandHelper(A->Builds.Num());
-            else if (C.Type == 2)
-                HeightIndex = FMath::RandHelper(A->Heights.Num());
-            else if (auto *Values = A->Choices.Find(C.Type))
-                Appearance.Add(C.Type, FMath::RandHelper(Values->Num()));
-        }
+    uint32 Mask = 0;
+    for (const auto& C : Controls) if (All || C.Tab == AppearanceTab) Mask |= C.Type;
+    FAC2CharacterDraft Draft{Appearance, HeightIndex, BuildIndex};
+    Draft.Randomize(*A, Mask, CreatorRandom);
+    Appearance = MoveTemp(Draft.Appearance);
+    HeightIndex = Draft.Height;
+    BuildIndex = Draft.Build;
     PreviewDraft();
     Refresh();
 }
@@ -316,6 +322,7 @@ void SAC2CharacterUI::BuildCreatorLayout()
     if (Screen == EScreen::Select)
     {
         CreatorLayout.Root(0x22000002, TEXT("Viewport"));
+        CreatorLayout.Root(0x22000002, TEXT("PortalViewport"));
         CreatorLayout.Visibility.Add(T(TEXT("RestoreButton")),false);
         CreatorLayout.States.Add(T(TEXT("DeleteButton")),T(Mode->Characters.Active()?TEXT("normal"):TEXT("ghosted")));
         const bool Connected=!Mode->Network || Mode->Network->IsSelection();
@@ -405,6 +412,7 @@ void SAC2CharacterUI::BuildCreatorLayout()
         CreatorLayout.Positions.Add(T(TEXT("RotationSlider")), (Rotation + 180) / 360);
         CreatorLayout.Root(0x22000007, *(FAC2CharacterCatalog::RaceName(Race).ToLower() + TEXT("Viewport")));
         CreatorLayout.Root(0x22000007, TEXT("AvatarModificationField"));
+        CreatorLayout.Root(0x22000007, TEXT("TorchViewport"));
         if (CreationStep == 2)
         {
             CreatorLayout.States.Add(T(TEXT("ButtonField")), T(TEXT("nonadminclient")));
@@ -414,6 +422,30 @@ void SAC2CharacterUI::BuildCreatorLayout()
         }
     }
     CreatorLayout.Prepare(*Assets, Fonts);
+    UpdateSceneOverlays();
+}
+
+void SAC2CharacterUI::UpdateSceneOverlays()
+{
+    TSet<uint32> Active;
+    for(const TCHAR* Name:{TEXT("PortalViewport"),TEXT("TorchViewport")})
+        if(const auto* N=CreatorLayout.Find(Name);N && N->Attr(TEXT("uiscene")))
+        {
+            Active.Add(N->Id);
+            if(SceneOverlays.Contains(N->Id))continue;
+            auto* P=Mode->GetWorld()->SpawnActor<AAC2Portrait>(FVector(0,0,-800000-SceneOverlays.Num()*100000),FRotator::ZeroRotator);
+            SceneOverlays.Add(N->Id,P);
+            if(P && P->ShowScene(Mode->DatDirectory,N->Attr(TEXT("uiscene")),N->Rect.Size()))
+            {
+                FSlateBrush B;B.SetResourceObject(P->Composite);B.ImageSize=FVector2D(N->Rect.Size());B.DrawAs=ESlateBrushDrawType::Image;
+                // AAC2Portrait's compositor handles SceneTool's screen-right axis.
+                SceneOverlayBrushes.Add(N->Id,B);
+            }
+        }
+    for(auto It=SceneOverlays.CreateIterator();It;++It)
+        if(!Active.Contains(It.Key()))
+        {if(It.Value().IsValid())It.Value()->Destroy();SceneOverlayBrushes.Remove(It.Key());It.RemoveCurrent();}
+
 }
 void SAC2CharacterUI::CreatorSlider(uint32 Id, float Value)
 {
@@ -568,9 +600,9 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
     if (Screen == EScreen::Create && CreationStep == 0 && !Lineup.IsValid())
     {
         Lineup = Mode->GetWorld()->SpawnActor<AAC2Portrait>(FVector(0, 0, -600000), FRotator::ZeroRotator);
-        if (Lineup.IsValid() && Lineup->ShowLineup(Mode->DatDirectory, Mode->CharacterCatalog))
+        if (Lineup.IsValid() && Lineup->ShowLineup(Mode->DatDirectory, Mode->CharacterCatalog, CreatorDrafts))
         {
-            LineupBrush.SetResourceObject(Lineup->Image);
+            LineupBrush.SetResourceObject(Lineup->Composite);
             LineupBrush.ImageSize = FVector2D(1024, 619);
             LineupBrush.DrawAs = ESlateBrushDrawType::Image;
         }
@@ -628,20 +660,21 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                     }
                     return;
                 }
-                if (CreationStep != 0 || !Lineup.IsValid())
+                if (CreationStep != 0 || !Lineup.IsValid() || PendingAvatar!=INDEX_NONE)
                     return;
                 FIntRect R = CreatorLayout.Bounds(TEXT("AvatarSelectionViewport"));
                 HoveredAvatar = R.Contains(FIntPoint(P.X, P.Y))
                                     ? Lineup->PickAvatar((P - FVector2D(R.Min)) / FVector2D(R.Size()))
                                     : INDEX_NONE;
+                Lineup->HoverAvatar(HoveredAvatar);
                 if (Click && Mode->CharacterCatalog.Avatars.IsValidIndex(HoveredAvatar))
                 {
+                    if(!Lineup->BeginAvatarSelection(HoveredAvatar))return;
+                    PendingAvatar=HoveredAvatar;
                     const auto &A = Mode->CharacterCatalog.Avatars[HoveredAvatar];
                     Race = A.Race;
                     Sex = A.Sex;
                     ResetAppearance();
-                    PreviewDraft();
-                    SetCreatorStep(1);
                 }
             })
             .Scene([this](const FAC2NativeNode &N, FSlateWindowElementList &Out, int32 Layer,
@@ -650,6 +683,12 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                     Screen == EScreen::Select ? TEXT("Viewport")
                     : CreationStep == 0 ? TEXT("AvatarSelectionViewport")
                                         : FAC2CharacterCatalog::RaceName(Race).ToLower() + TEXT("Viewport");
+                if (const auto* Overlay=SceneOverlayBrushes.Find(N.Id))
+                {
+                    if(Overlay->GetResourceObject())FSlateDrawElement::MakeBox(Out,++Layer,
+                        G.ToPaintGeometry(FVector2D(N.Rect.Size()),FSlateLayoutTransform(FVector2D(N.Rect.Min))),Overlay);
+                    return Layer;
+                }
                 if (N.Id != FAC2UILayout::Token(ViewportName))
                     return Layer;
                 FIntRect R = N.Rect;
@@ -700,7 +739,7 @@ bool SAC2CharacterUI::SmokeAppearance(FString &Error)
         if (!Choices || Choices->Num() < 2)
             continue;
         const uint32 Before = Portrait->Fingerprint();
-        SetChoice(C.Type, Choices->Num() - 1);
+        SetChoice(C.Type, Appearance.FindRef(C.Type) == Choices->Num() - 1 ? 0 : Choices->Num() - 1);
         if (!PreviewReady() || Before == Portrait->Fingerprint())
         {
             Error = FString::Printf(TEXT("Appearance did not change rendered assets: %s"), C.Name);
@@ -744,6 +783,31 @@ bool SAC2CharacterUI::SmokeEyes(bool Last)
     PreviewDraft();
     SmokeCreatorPage(0);
     return PreviewReady();
+}
+bool SAC2CharacterUI::SmokeCreatorDrafts(FString& Error)
+{
+    auto Fail = [&](const TCHAR* Why) { Error = Why; return false; };
+    Race=1;Sex=4096;ResetAppearance();CreationStep=1;
+    const auto* A=Mode->CharacterCatalog.Avatar(Race,Sex);
+    if(!A) return Fail(TEXT("Missing Human draft"));
+    Appearance[256]=(Appearance.FindRef(256)+1)%A->Choices[256].Num();
+    HeightIndex=A->Heights.Num()-1;PreviewDraft();
+    const auto Saved=Appearance;const int32 SavedHeight=HeightIndex;
+    if(!Portrait.IsValid()) return Fail(TEXT("Missing draft preview"));
+    const uint32 Visual=Portrait->Fingerprint();
+    Race=16;Sex=8192;ResetAppearance();PreviewDraft();
+    Race=1;Sex=4096;ResetAppearance();PreviewDraft();
+    if(HeightIndex!=SavedHeight || !Saved.OrderIndependentCompareEqual(Appearance) || Portrait->Fingerprint()!=Visual)
+        return Fail(TEXT("Switching avatars lost the customized draft"));
+    SetCreatorStep(0);
+    const int32 Index=Mode->CharacterCatalog.Avatars.IndexOfByPredicate([](const auto& V){return V.Race==1 && V.Sex==4096;});
+    if(!Lineup.IsValid() || !Lineup->Ready || Lineup->LineupFingerprint(Index)!=Visual)
+        return Fail(TEXT("Lineup does not show the retained creator appearance"));
+    const FVector2D Point=Lineup->AvatarPoint(Index);
+    if(Point.X<=.5 || Lineup->PickAvatar(Point)!=Index)
+        return Fail(TEXT("Native screen-right Human avatar or mirrored picking is incorrect"));
+    UE_LOG(LogTemp,Display,TEXT("AC2 creator drafts: appearance/body retained across avatars; native lineup and picking verified"));
+    return true;
 }
 bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
 {
@@ -839,13 +903,16 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         const FVector2D Point=Lineup->AvatarPoint(Index);
         if(Lineup->PickAvatar(Point)!=Index)return Fail(TEXT("Human avatar not pickable"));
         const auto R=CreatorLayout.Bounds(TEXT("AvatarSelectionViewport"));
-        if(!LocalPointer(FVector2D(R.Min)+Point*FVector2D(R.Size()),true) || CreationStep!=1 || Race!=1 || Sex!=4096)
+        if(!LocalPointer(FVector2D(R.Min)+Point*FVector2D(R.Size()),true) || CreationStep!=0 || PendingAvatar!=Index || Race!=1 || Sex!=4096 || Lineup->AvatarSelectionDuration()<=0)
             return Fail(TEXT("Mouse did not select Human male for creation"));
     }
     if(Step==15)
     {
+        if(CreationStep!=1 || PendingAvatar!=INDEX_NONE)return Fail(TEXT("Native avatar animation did not finish before modification"));
         const int32 Before=Appearance.FindRef(4);
-        if(!PreviewReady() || !Button(TEXT("SkinToneRightButton")) || Appearance.FindRef(4)!=Before+1)
+        const auto* A=Mode->CharacterCatalog.Avatar(Race,Sex);
+        const int32 Direction=A && Before+1<A->Choices.FindChecked(4).Num()?1:-1;
+        if(!PreviewReady() || !Button(Direction>0?TEXT("SkinToneRightButton"):TEXT("SkinToneLeftButton")) || Appearance.FindRef(4)!=Before+Direction)
             return Fail(TEXT("Native skin-tone choice did not update"));
     }
     if(Step==16) {if(!Button(TEXT("NextButton")) || CreationStep!=2)return Fail(TEXT("Creator Next did not open naming"));}

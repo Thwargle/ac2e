@@ -1,4 +1,5 @@
 #include "AC2GameUI.h"
+#include "AC2Audio.h"
 #include "AC2GameMode.h"
 #include "AC2Explorer.h"
 #include "Camera/CameraComponent.h"
@@ -23,7 +24,17 @@ const FSetting Settings[]={
     {TEXT("View distance quality"),2,0,3,1,false},
     {TEXT("Health numbers"),1,0,1,1,true},
     {TEXT("Vigor numbers"),1,0,1,1,true},
-    {TEXT("Chat font size"),14,12,18,2,false}
+    {TEXT("Chat font size"),14,12,18,2,false},
+    {TEXT("Sound volume"),1,0,1,.1f,false},
+    {TEXT("Music volume"),1,0,1,.1f,false},
+    {TEXT("Player music volume"),1,0,1,.1f,false},
+    {TEXT("Ambient volume"),1,0,1,.1f,false},
+    {TEXT("Blood effects"),4,1,4,1,false},
+    {TEXT("Green blood"),0,0,1,1,true},
+    {TEXT("Damage numbers"),1,0,1,1,true},
+    {TEXT("Third-party damage"),0,0,1,1,true},
+    {TEXT("Third-party damage range"),1,0,1,.1f,false},
+    {TEXT("Object names"),1,0,1,1,true}
 };
 uint32 T(const TCHAR* V){return FAC2UILayout::Token(V);}
 }
@@ -53,7 +64,12 @@ void SAC2GameUI::RestoreOptions()
     if(auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr)
     {P->Camera->SetFieldOfView(AppliedOptions[0]);P->MouseSensitivity=AppliedOptions[1];P->InvertMouse=AppliedOptions[2]>.5;P->SetCameraDistance(AppliedOptions[3]);}
     HealthNumbers=AppliedOptions[10]>.5;VigorNumbers=AppliedOptions[11]>.5;
+    DamageNumbers=AppliedOptions[19]>.5;ThirdPartyDamage=AppliedOptions[20]>.5;
+    ThirdPartyDamageRange=AppliedOptions[21];ShowObjectNames=AppliedOptions[22]>.5;
     ChatFont=Fonts.Body(AppliedOptions[12]);if(Entry)Entry->SetFont(ChatFont);
+    if(auto* Audio=FAC2Audio::Get(Mode->GetWorld()))for(uint32 I=0;I<4;++I)Audio->SetVolume(I,AppliedOptions[13+I]);
+    FAC2AssetLibrary::SetEffectChannel(0x40000001,uint32(AppliedOptions[17]));
+    FAC2AssetLibrary::SetEffectChannel(0x40000007,AppliedOptions[18]>.5?1:2);
 }
 void SAC2GameUI::BuildOptions()
 {
@@ -76,15 +92,18 @@ void SAC2GameUI::BuildOptions()
     }
     Bind(TEXT("ApplyButton"),TEXT("OptionsApply"));Bind(TEXT("RecallButton"),TEXT("OptionsRecall"));Bind(TEXT("DefaultButton"),TEXT("OptionsDefault"));
     const FIntRect List=Native.Bounds(OptionsTab==1?TEXT("ClientList"):OptionsTab==2?TEXT("CharacterList"):TEXT("ChatOptionsList"));
-    const int32 First=OptionsTab==2?10:OptionsTab==3?12:OptionsScroll;
-    const int32 Last=OptionsTab==1?10:OptionsTab==2?12:13;
-    for(int32 I=First;I<FMath::Min(First+9,Last)&&OptionValues.IsValidIndex(I);++I)
+    const TArray<int32> Rows=OptionsTab==2?TArray<int32>{10,11,19,20,21,22}:OptionsTab==3?TArray<int32>{12}:TArray<int32>{0,1,2,3,4,5,6,7,8,9,13,14,15,16,17,18};
+    const int32 First=OptionsTab==1?OptionsScroll:0;
+    for(int32 R=First;R<FMath::Min(First+9,Rows.Num());++R)
     {
+        const int32 I=Rows[R];
         const auto& S=Settings[I];
         Native.Text.Add(T(TEXT("OptionText")),S.Check?FString(S.Label):FString::Printf(TEXT("%s: %g"),S.Label,OptionValues[I]));
+        if(I==17){const TCHAR* Names[]={TEXT("Fun"),TEXT("None"),TEXT("Low"),TEXT("Normal")};
+            Native.Text.Add(T(TEXT("OptionText")),FString::Printf(TEXT("Blood effects: %s"),Names[FMath::Clamp(int32(OptionValues[I])-1,0,3)]));}
         Native.States.Add(T(TEXT("CheckboxButton")),T(OptionValues[I]>.5?TEXT("highlight"):TEXT("normal")));
         Native.Positions.Add(T(TEXT("SliderBar")),(OptionValues[I]-S.Min)/(S.Max-S.Min));
-        FIntRect Row(List.Min+FIntPoint(0,(I-First)*33),List.Min+FIntPoint(233,(I-First+1)*33));
+        FIntRect Row(List.Min+FIntPoint(0,(R-First)*33),List.Min+FIntPoint(233,(R-First+1)*33));
         int32 Before=Native.Nodes.Num();
         Native.Template(0x22000001,S.Check?TEXT("OptionCheckbox"):TEXT("OptionSlider"),Row,List);
         for(int32 J=Before;J<Native.Nodes.Num();++J)
@@ -121,7 +140,12 @@ void SAC2GameUI::ApplyOptions()
         U->ApplySettings(false);
     }
     HealthNumbers=OptionValues[10]>.5;VigorNumbers=OptionValues[11]>.5;
+    DamageNumbers=OptionValues[19]>.5;ThirdPartyDamage=OptionValues[20]>.5;
+    ThirdPartyDamageRange=OptionValues[21];ShowObjectNames=OptionValues[22]>.5;
     ChatFont=Fonts.Body(OptionValues[12]);if(Entry)Entry->SetFont(ChatFont);
+    if(auto* Audio=FAC2Audio::Get(Mode->GetWorld()))for(uint32 I=0;I<4;++I)Audio->SetVolume(I,OptionValues[13+I]);
+    FAC2AssetLibrary::SetEffectChannel(0x40000001,uint32(OptionValues[17]));
+    FAC2AssetLibrary::SetEffectChannel(0x40000007,OptionValues[18]>.5?1:2);
     for(int32 I=0;I<OptionValues.Num();++I)GConfig->SetFloat(TEXT("AC2.Options"),Settings[I].Label,OptionValues[I],GGameUserSettingsIni);
     GConfig->Flush(false,GGameUserSettingsIni);AppliedOptions=OptionValues;
     Mode->Notice=TEXT("Options applied");
@@ -161,6 +185,9 @@ bool SAC2GameUI::SmokeOptions(int32 Step,FString& Error)
         if(!Slider){Error=TEXT("Native FOV slider missing");return false;}
         DraggingOption=0;DragOption((Slider->Left+Slider->Right)*.5f);DraggingOption=INDEX_NONE;
         if(OptionValues[0]!=85){Error=TEXT("Native option slider interaction failed");return false;}
+        OptionsScroll=5;Rebuild();
+        if(!OptionSliders.Contains(13)||!OptionSliders.Contains(14)||!OptionSliders.Contains(16))
+        {Error=TEXT("Native sound, music and ambient volume controls missing");return false;}
     }
     if(Step==2)OptionAction(TEXT("Logout"));
     return true;

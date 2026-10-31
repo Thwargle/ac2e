@@ -34,7 +34,7 @@ class FAC2MapData
     // Native radar updates in whole degrees. Use one normalized heading for
     // both the compass and contacts; camera orbit never changes this frame.
     static float RadarYaw(float ActorYaw) { return FMath::RoundToFloat(FMath::UnwindDegrees(ActorYaw)); }
-    static float RadarRotation(float ActorYaw) { return FMath::DegreesToRadians(FMath::UnwindDegrees(RadarYaw(ActorYaw)-90.f)); }
+    static float RadarRotation(float ActorYaw) { return FMath::DegreesToRadians(FMath::UnwindDegrees(90.f-RadarYaw(ActorYaw))); }
     static FString Coordinates(FVector2D Cell);
     FString PortalLabel(FVector2D Cell) const;
 

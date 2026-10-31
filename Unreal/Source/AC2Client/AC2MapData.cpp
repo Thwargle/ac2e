@@ -140,10 +140,11 @@ FVector2D FAC2MapData::DetailOrigin(FVector2D Center)
 }
 FVector2D FAC2MapData::RadarOffset(FVector Delta, float ActorYaw, float RangeMetres)
 {
-    // AC2's forward axis is +Y; Unreal's character forward is +X. Screen Y points down.
-    const double Angle = FMath::DegreesToRadians(90. - ActorYaw);
-    double C = FMath::Cos(Angle), S = FMath::Sin(Angle);
-    return FVector2D(C * Delta.X - S * Delta.Y, -S * Delta.X - C * Delta.Y) *
+    // Use the same right/forward axes as the Unreal view. Native east/north
+    // coordinates are retained in the world, so the old planar formula mirrored X.
+    const FRotationMatrix Basis(FRotator(0,ActorYaw,0));
+    return FVector2D(FVector::DotProduct(Delta,Basis.GetUnitAxis(EAxis::Y)),
+                     -FVector::DotProduct(Delta,Basis.GetUnitAxis(EAxis::X))) *
            (60. / (100. * FMath::Max(1.f, RangeMetres)));
 }
 FString FAC2MapData::Coordinates(FVector2D Cell)

@@ -1,5 +1,6 @@
 #include "AC2Explorer.h"
 #include "AC2CharacterMovement.h"
+#include "AC2Locomotion.h"
 #include "AC2GameMode.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -144,10 +145,10 @@ void AAC2Explorer::StartJump()
     {
         if (bSwim)
         {bSwimUp=true;AddMovementInput(FVector::UpVector, 1);}
-        else if(GroundTime>=.5f && GetCharacterMovement()->IsMovingOnGround())
+        else if(PendingJump<0 && GroundTime>=.5f && GetCharacterMovement()->IsMovingOnGround())
         {
             PlayBehavior(AC2Motion::Jump);
-            Jump();
+            PendingJump=Model?Model->JumpDelay():0;
             GroundTime=0;
         }
     }
@@ -157,7 +158,7 @@ void AAC2Explorer::UpdateSpeed()
 {
     auto* M=Cast<UAC2CharacterMovement>(GetCharacterMovement());
     const uint32 Element=bSwim?AC2Motion::Water:bWade?AC2Motion::SeaFloor:M->IsFalling()?AC2Motion::Air:AC2Motion::Ground;
-    auto Values=Model?Model->MotionData().Values(Element,bSwim?AC2Motion::Swim:NativeMode,0x80000001,GlobalModifier):FAC2MotionValues();
+    auto Values=Model?Model->MotionData().Values(Element,AC2Locomotion::AnimationMode(Element,NativeMode),0x80000001,GlobalModifier):FAC2MotionValues();
     auto Ground=Model?Model->MotionData().Values(bWade?AC2Motion::SeaFloor:AC2Motion::Ground,NativeMode,0x80000001,GlobalModifier):FAC2MotionValues();
     for(auto* V:{&Values,&Ground})
     {
@@ -194,6 +195,7 @@ void AAC2Explorer::SetHeld(bool Held)
     bHeld = Held || bDead;
     if (bHeld)
     {
+        PendingJump=-1;
         StopAutoRun();
         EndJump();
         GetCharacterMovement()->StopMovementImmediately();
@@ -231,6 +233,7 @@ bool AAC2Explorer::ApplyAvatar(uint32 Physics, float Height, float Build, const 
     bModel = Model->Open(AC2::ResolveDatDirectory(Mode->DatDirectory), Error) &&
              Model->DrawModel(Physics, this, Body, Appearance);
     if(MotionDescriptor)Model->SetMotionDescriptor(MotionDescriptor);
+    Model->SetHealth(AppearanceHealth,AppearanceMaxHealth);
     TInlineComponentArray<UActorComponent *> After(this);
     for (auto *C : After)
         if (!Before.Contains(C))
@@ -265,12 +268,35 @@ void AAC2Explorer::Tick(float Delta)
     AnimationTime += Delta;
     GroundTime=GetCharacterMovement()->IsMovingOnGround()?GroundTime+Delta:0;
     UpdateSpeed();
+    if(PendingJump>=0)
+    {
+        PendingJump-=Delta;
+        if(PendingJump<=0)
+        {
+            PendingJump=-1;
+            if(!bHeld && !bDead && !bSwim && GetCharacterMovement()->IsMovingOnGround())
+                LaunchCharacter(FVector(0,0,GetCharacterMovement()->JumpZVelocity),false,true);
+        }
+    }
     if (Model && bModel)
     {
+        if(auto* Mode=GetWorld()->GetAuthGameMode<AAC2GameMode>();Mode && !Mode->Network)
+            if(auto* Profile=Mode->Characters.Active())SetHealth(Profile->Health,100);
+        // CMotionInterp::UpdateMovement: long fall and near-ground preparation,
+        // driven by walkable distance, not by a hard-coded animation timer.
+        if(!bSwim && !bHeld && GetCharacterMovement()->IsFalling() && GetVelocity().Z < -200)
+        {
+            FHitResult Floor;FCollisionQueryParams Query(SCENE_QUERY_STAT(AC2FallPose),true,this);
+            const FVector Feet=GetActorLocation()-FVector(0,0,GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+            const bool Found=GetWorld()->LineTraceSingleByChannel(Floor,Feet,Feet-FVector(0,0,10000),ECC_Visibility,Query);
+            const float Height=Found&&Floor.ImpactNormal.Z>.57f?(Feet-Floor.ImpactPoint).Z:10000;
+            if(Height<130 && !Model->BehaviorDuration(AC2Motion::Land)){StopBehavior(AC2Motion::Fall);PlayBehavior(AC2Motion::Land);}
+            else if((Height>5000 || (Height>1000 && GetVelocity().Z<-1900)) && !Model->BehaviorDuration(AC2Motion::Fall))PlayBehavior(AC2Motion::Fall,0,1,true);
+        }
         const FVector LocalVelocity =
             Body->GetComponentTransform().InverseTransformVectorNoScale(GetVelocity());
-        Model->SetAnimationState(bSwim?AC2Motion::Water:bWade?AC2Motion::SeaFloor:GetCharacterMovement()->IsFalling()?AC2Motion::Air:AC2Motion::Ground,
-                                bDead?AC2Motion::Dead:bSwim?AC2Motion::Swim:NativeMode);
+        const uint32 Element=bSwim?AC2Motion::Water:bWade?AC2Motion::SeaFloor:GetCharacterMovement()->IsFalling()?AC2Motion::Air:AC2Motion::Ground;
+        Model->SetAnimationState(Element,AC2Locomotion::AnimationMode(Element,bDead?AC2Motion::Dead:NativeMode));
         Model->Animate(AnimationTime, GetVelocity().Size2D(), nullptr, &LocalVelocity);
     }
     if (bSwim && !bFly && !bHeld)
@@ -328,7 +354,8 @@ bool AAC2Explorer::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool Hold
     if(Mode)NativeMode=Mode;
     // A mode packet and its first behavior often arrive in the same frame.
     // Use the pending native mode immediately, before the next animation tick.
-    return Model && Model->PlayBehavior(Behavior,NativeMode,Rate,Hold);
+    if(bSwim && Behavior!=AC2Motion::Death && Behavior!=AC2Motion::Hit)return false;
+    return Model && Model->PlayBehavior(Behavior,AC2Locomotion::AnimationMode(bSwim?AC2Motion::Water:AC2Motion::Ground,NativeMode),Rate,Hold);
 }
 void AAC2Explorer::StopBehavior(uint32 Behavior){if(Model)Model->StopBehavior(Behavior);}
 void AAC2Explorer::SetNativeMode(uint32 Mode){NativeMode=Mode;}
@@ -356,7 +383,10 @@ void AAC2Explorer::SetDead(bool Dead)
 }
 void AAC2Explorer::Landed(const FHitResult& Hit)
 {
-    Super::Landed(Hit);GroundTime=0;PlayBehavior(AC2Motion::Land);
+    if(Model)Model->PlayEffect(0x40000002,FMath::Clamp(float(FMath::Abs(GetVelocity().Z)/650),.2f,1.f));
+    StopBehavior(AC2Motion::Fall);
+    Super::Landed(Hit);GroundTime=0;
+    if(!Model || !Model->BehaviorDuration(AC2Motion::Land))PlayBehavior(AC2Motion::Land);
 }
 void AAC2Explorer::Hit(float Damage)
 {
@@ -365,6 +395,7 @@ void AAC2Explorer::Hit(float Damage)
     if(auto* Profile=Mode->Characters.Active())
     {
         Profile->Health=FMath::Max(0.f,Profile->Health-Damage);
+        SetHealth(Profile->Health,100);
         if(Profile->Health<=0)SetDead(true);
         else PlayBehavior(AC2Motion::Hit);
         Mode->Notice=bDead?TEXT("You have fallen. Recall to return to safety."):FString::Printf(TEXT("Hit for %.0f damage"),Damage);

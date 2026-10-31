@@ -32,7 +32,7 @@ const ACQUIRE_TAGS: [u8; 51] = [
 ];
 
 pub fn potion(id: u64, slot: u16) -> Item {
-    Item {
+    Item {roll: None,
         id,
         definition: POTION_DEFINITION,
         visual: POTION_VISUAL,

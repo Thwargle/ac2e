@@ -8,6 +8,8 @@ and does not invent values that are absent from the record or its parent.
 from __future__ import annotations
 
 import struct
+import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -15,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ac2_dat import Dat
 
 MAX_HEALTH = 0x4100016E
+MAX_VIGOR = 0x41000170
 NATURAL_DAMAGE = 0x41000184
 NATURAL_VARIANCE = 0x41000185
 NATURAL_VIGOR = 0x41000186
@@ -22,6 +25,18 @@ NATURAL_TIME = 0x41000187
 ARMOR = 0x410000DE
 DEATH_XP = 0x41000172
 LEVEL = 0x41000173
+HOMESICK = 0x41000178
+PERCEPTION = 0x4100017A
+DAMAGE_TYPE = 0x410002F9
+# NPC_StartingSkill1..20 and NPC_StartingSkill1Level..20Level (EmpPropNames).
+SKILL_TYPES = [0x410001BA, 0x410001BC, 0x410001BE, 0x410001C0, 0x410001C2,
+               0x410001D3, 0x410001D5, 0x410001D7, 0x410001D9, 0x410001DB,
+               0x410001E0, 0x410001E2, 0x410001E4, 0x410001E6, 0x410001E8,
+               0x410001EA, 0x410001EC, 0x410001EE, 0x410001F0, 0x410001F2]
+SKILL_LEVELS = list(range(0x410001F4, 0x41000208))
+# SkillList: magic/melee/missile attack and defense.
+ATTACK_SKILLS = {0x1, 0x7, 0xC}
+DEFENSE_SKILLS = {0x2, 0x8, 0xD}
 
 BOOL, INTEGER, FLOAT = 0x40000001, 0x40000002, 0x40000003
 VECTOR, COLOR, STRING = 0x40000004, 0x40000005, 0x40000006
@@ -146,6 +161,8 @@ def read_entity(archive, types, entity, stack=None):
                 raise ValueError(f"0x{entity:08x} missing index type for 0x{token:08x}")
             if token == MAX_HEALTH:
                 values["health"] = reader.i32()
+            elif token == MAX_VIGOR:
+                values["max_vigor"] = reader.i32()
             elif token == NATURAL_DAMAGE:
                 values["damage"] = reader.u32()
             elif token == NATURAL_VARIANCE:
@@ -163,6 +180,14 @@ def read_entity(archive, types, entity, stack=None):
                 values["xp"] = reader.u64()
             elif token == LEVEL:
                 values["level"] = reader.u32()
+            elif token in (HOMESICK, PERCEPTION) and kind == FLOAT:
+                values["homesick" if token == HOMESICK else "perception"] = reader.f32()
+            elif token == DAMAGE_TYPE:
+                values["damage_type"] = reader.u32()
+            elif token in SKILL_TYPES:
+                values.setdefault("skills", {})[SKILL_TYPES.index(token)] = reader.u32()
+            elif token in SKILL_LEVELS:
+                values.setdefault("skill_levels", {})[SKILL_LEVELS.index(token)] = reader.u32()
             else:
                 reader.skip_value(kind)
     return values
@@ -176,15 +201,23 @@ def interval_ms(time):
 
 
 def main():
-    portal = Path(sys.argv[1])
-    creatures = Path(sys.argv[2])
-    output = Path(sys.argv[3])
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('portal',type=Path);parser.add_argument('creatures',type=Path);parser.add_argument('output',type=Path)
+    parser.add_argument('--population-report',type=Path)
+    args=parser.parse_args();portal,creatures,output=args.portal,args.creatures,args.output
     wanted = []
     for line in creatures.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or line.startswith("pyrealium-"):
             continue
         wanted.append(int(line, 16))
+    if args.population_report:
+        report=json.loads(args.population_report.read_text(encoding='utf-8'))
+        if not report.get('native_ground_verified'): raise ValueError('Population is not verified')
+        wanted.extend(int(did,16) for did in report['combat_entities'])
+        protected={int(did,16) for did in report['protected_entities']}
+        wanted=[did for did in wanted if did not in protected]
+    wanted=sorted(set(wanted))
     with Dat(portal) as archive:
         archive.index()
         types = load_index(archive)
@@ -200,17 +233,30 @@ def main():
             damage = values.get("damage") or 0
             if health <= 0 or damage <= 0:
                 continue
+            skills = values.get("skills", {})
+            levels = values.get("skill_levels", {})
+            rating = lambda kinds: max((levels.get(slot, 0) for slot, skill in skills.items() if skill in kinds), default=0)
+            variance = values.get("variance")
+            if variance is None or not 0 <= variance <= 1:
+                variance = 0.0
+            radius = lambda key: round(values[key], 2) if values.get(key) and 0 < values[key] <= 500 else 0
             rows.append((
                 entity, health, damage,
                 interval_ms(values["time"]) if values.get("time") else 0,
                 values.get("armor") or 0, values.get("xp") or 0, values.get("level") or 0,
+                round(variance, 4), rating(ATTACK_SKILLS), rating(DEFENSE_SKILLS),
+                radius("perception"), radius("homesick"), values.get("damage_type") or 0,
+                values.get("max_vigor", ""),
             ))
     lines = [
-        "pyrealium-creature-combat-v1",
-        "# Health, natural damage, armor, death XP, and level from portal.dat entity records.",
-        "# interval_ms is natural weapon time when the record has one, otherwise 0.",
+        "pyrealium-creature-combat-v3",
+        "# Health, natural damage and variance, armor, death XP, level, attack/defense",
+        "# skill levels, AI perception/homesick radii and damage type from portal.dat",
+        "# entity records (inherited parents merged). interval_ms is natural weapon time",
+        "# when present, otherwise 0. Radii of 0 mean the record had none.",
         "# Gold and attack range are not these fields.",
-        "# entity health damage interval_ms armor xp level",
+        "# max_vigor is GameplayStatistics_MaxVigor, not the natural weapon vigor cost; empty means absent.",
+        "# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor",
     ]
     for row in rows:
         lines.append("\t".join(str(item) if index else f"{item:08x}" for index, item in enumerate(row)))

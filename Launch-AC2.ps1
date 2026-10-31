@@ -54,6 +54,7 @@ if (!$SkipBuild) {
     }
 }
 if (!$SkipBuild) {
+    & (Join-Path $PSScriptRoot 'Build-AC2Audio.ps1')
     & $build AC2UnrealEditor Win64 Development "-Project=$project" -WaitMutex -NoHotReloadFromIDE
     if ($LASTEXITCODE -ne 0) { throw "AC2 editor build failed ($LASTEXITCODE)." }
 }
@@ -73,8 +74,10 @@ if ($Mode -eq 'Inspect') {
 $materialRoot = Join-Path $PSScriptRoot 'Unreal/Content/AC2/Materials'
 $missingMaterials = @('M_AC2Opaque','M_AC2Cutout','M_AC2Sky','M_AC2SkyAlpha','M_AC2SkyAdd','M_AC2Water','M_AC2Far','M_AC2Particle','M_AC2SceneryAlpha','M_AC2SceneryAdd','M_AC2ParticleAdd','M_AC2Grass','M_AC2UIOpaque','M_AC2UICutout','M_AC2UIAlpha','M_AC2UIAdd') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $materialVersion = Join-Path $materialRoot 'template-version.txt'
+$missingMaterials += @('M_AC2Capture') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $needsMaterialUpdate = !(Test-Path -LiteralPath $materialVersion)
-if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '10' }
+if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '18' }
+$missingMaterials += @('M_AC2OpaqueTwoSided','M_AC2CutoutOneSided','M_AC2SceneryAlphaOneSided','M_AC2SceneryAddOneSided','M_AC2UIOpaqueTwoSided','M_AC2UICutoutOneSided','M_AC2UIAlphaOneSided','M_AC2UIAddOneSided') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 if ($missingMaterials -or $needsMaterialUpdate) {
     & $commandlet $project -run=AC2Inspect -MaterialsOnly -unattended -nop4 -NullRHI -stdout -FullStdOutLogOutput
     if ($LASTEXITCODE -ne 0) { throw "AC2 material preparation failed ($LASTEXITCODE)." }

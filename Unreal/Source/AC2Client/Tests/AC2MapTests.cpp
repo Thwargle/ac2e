@@ -24,12 +24,12 @@ bool FAC2MapCoordinatesTest::RunTest(const FString &)
              FAC2MapData::DetailOrigin(FVector2D(-1, -100)).Equals(FVector2D::ZeroVector));
     TestTrue(TEXT("upper map boundary"),
              FAC2MapData::DetailOrigin(FVector2D(2040, 5000)).Equals(FVector2D(1912, 1912)));
-    TestTrue(TEXT("north facing: east is right"),
-             FAC2MapData::RadarOffset(FVector(7500, 0, 0), 90, 75).Equals(FVector2D(60, 0), .001));
+    TestTrue(TEXT("north facing: east matches Unreal view left"),
+             FAC2MapData::RadarOffset(FVector(7500, 0, 0), 90, 75).Equals(FVector2D(-60, 0), .001));
     TestTrue(TEXT("east facing: east is ahead"),
              FAC2MapData::RadarOffset(FVector(7500, 0, 0), 0, 75).Equals(FVector2D(0, -60), .001));
-    TestTrue(TEXT("east facing: north is left"),
-             FAC2MapData::RadarOffset(FVector(0, 5000, 0), 0, 50).Equals(FVector2D(-60, 0), .001));
+    TestTrue(TEXT("east facing: north matches Unreal view right"),
+             FAC2MapData::RadarOffset(FVector(0, 5000, 0), 0, 50).Equals(FVector2D(60, 0), .001));
     for(float Yaw:{0.f,90.f,180.f,270.f,-180.f,359.9f,-.1f})
     {
         const float RadarYaw=FAC2MapData::RadarYaw(Yaw);
@@ -39,6 +39,15 @@ bool FAC2MapCoordinatesTest::RunTest(const FString &)
             CompassNorth.Equals(FAC2MapData::RadarOffset(FVector(0,7500,0),RadarYaw,75),.001));
         TestTrue(TEXT("a contact straight ahead remains at the top"),
             FAC2MapData::RadarOffset(FRotator(0,RadarYaw,0).Vector()*7500,RadarYaw,75).Equals(FVector2D(0,-60),.001));
+        const FRotationMatrix View(FRotator(0,RadarYaw,0));
+        TestTrue(TEXT("an object on camera right stays on radar right"),
+            FAC2MapData::RadarOffset(View.GetUnitAxis(EAxis::Y)*7500,RadarYaw,75).Equals(FVector2D(60,0),.001));
+        const FVector Cardinal[]={FVector(0,1,0),FVector(1,0,0),FVector(0,-1,0),FVector(-1,0,0)};
+        for(int32 I=0;I<4;++I){
+            const double A=Rotation+I*HALF_PI+(I%2?UE_PI:0.f);
+            TestTrue(TEXT("each native cardinal mark agrees with its world contact"),
+                FVector2D(FMath::Sin(A)*60,-FMath::Cos(A)*60).Equals(FAC2MapData::RadarOffset(Cardinal[I]*7500,RadarYaw,75),.001));
+        }
     }
     TestEqual(TEXT("heading wrap cannot cause a full spin"),FAC2MapData::RadarRotation(359.9f),FAC2MapData::RadarRotation(-.1f));
     TestEqual(TEXT("retail N/E coordinate convention"), FAC2MapData::Coordinates(FVector2D(1122, 918)),

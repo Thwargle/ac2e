@@ -127,6 +127,7 @@ impl Runtime {
             return Err(AbilityError::InvalidCharacter);
         }
         let learned = book.get(skill).ok_or(AbilityError::NotLearned)?;
+        if !book.usable(skill) {return Err(AbilityError::NotLearned);}
         if race != 1 || state.level().number < 3 || learned.rank > 50 {
             return Err(AbilityError::UnsupportedCharacter);
         }

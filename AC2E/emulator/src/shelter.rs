@@ -84,7 +84,7 @@ pub fn validate(dat:&mut crate::dat::Dat)->std::io::Result<std::collections::BTr
 }
 pub fn item(definition:u32,id:u64,slot:u16)->Option<crate::inventory::Item> {
     let p=ITEMS.iter().find(|p|p.definition==definition)?;
-    Some(crate::inventory::Item{id,definition,visual:p.visual,quantity:1,stack_limit:1,equipment_mask:0,location:crate::inventory::Location::Bag(slot)})
+    Some(crate::inventory::Item{roll:None,id,definition,visual:p.visual,quantity:1,stack_limit:1,equipment_mask:0,location:crate::inventory::Location::Bag(slot)})
 }
 pub fn owned(inventory:&crate::inventory::Inventory,definition:u32)->Option<u64> {
     inventory.items().find(|i|matches!(i.location,crate::inventory::Location::Bag(s) if item(definition,i.id,s).as_ref()==Some(i))).map(|i|i.id)

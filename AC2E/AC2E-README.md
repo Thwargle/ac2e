@@ -4,6 +4,42 @@ AC2E is this workspace's persistent multiplayer server project, derived from Pyr
 
 ## Running
 
+Game builds now use `target/game/release/ac2e.exe`; the account service keeps
+`target/release/ac2e.exe`. This lets a game build finish while standalone accounts
+are running. The build refreshes the account copy only when it is not in use;
+otherwise it reports the pending account update. The normal launcher prefers
+the game copy and prints its path, with a fallback for older installations.
+It recognizes either managed executable when verifying an existing service.
+
+World time advances while idle and across server restarts. The server preserves
+its origin in `data/world/clock-origin.json` and sends native time synchronization
+every five seconds. Back up that file with the world store. Clients use the
+installed DAT calendar: a Legions day lasts 7,347 real seconds (2h 2m 27s), with
+lighting and weather selected from its authored sky keys. New worlds establish
+their own origin; this does not reproduce the date of a historical retail server.
+
+For local population testing, enter `@spawns` in chat while outdoors. It lists
+the nearest five live imported creatures with map coordinates and distance.
+This requires local test map travel (enabled by the default loopback launcher).
+It does not add spawns or bypass interaction distance checks. A verified Edge
+Beetle location is approximately **42.2N, 7.0W**, cell `76B5002B`.
+
+Wild creatures now use native perception and defined wandering controls; their
+movement is shared with nearby players. Corpse loot combines observed item
+profiles, recovered native trophy rates and the versioned inferred treasure
+policy. Supported equipment can roll persistent armor ratings and palette tints.
+There is no universal potion fallback. Full retail treasure probabilities,
+weapon/jewelry affixes and AI/generator scripts remain unverified. See
+`emulator/content/README.md` for catalog coverage and spawner group configuration,
+and [content recovery](../Docs/ADMIN_CONTENT_RECOVERY.md) for the inferred quest,
+camp and loot rules and their evidence.
+
+Attacking retains the selected target and combat stance, including after a kill.
+Use Z/Stop Combat to return to peace before changing equipment. Corpse pickup,
+Loot All and Transmute All temporarily enter peace and restore combat afterward,
+without restarting attacks on the corpse. Camera drags no longer clear selection
+on mouse-down.
+
 Run `start-ac2e.bat` from the workspace root, or `AC2E/Start-AC2E.ps1`. This uses the existing AC2E binary (building it if missing), prepares a compatible world placement file from the installed DATs, starts the account service on loopback HTTP 19400, and listens for game traffic on 127.0.0.1 UDP 9000 and 9001. Rust is needed for builds, not for starting an existing binary. After changing server source, run `start-ac2e.bat -Rebuild` or `Build-AC2E.ps1`. In another terminal run `Launch-AC2.ps1 -Online`. The client builds its native bridge if missing. Sign in with a new account name (1–32 letters, digits or underscores) and a password (12–128 characters). First login creates the account; subsequent logins verify the saved password. Account names are case-insensitive. The server owns character creation, progression and inventory.
 
 Parameters: `-Port`, `-Account`, `-DatDirectory`, `-DataDirectory`, `-Content`, `-Python`, `-SkipBuild`, `-Rebuild`. `-SkipBuild` also prevents the first build when no binary exists; it cannot be combined with `-Rebuild`. Defaults resolve relative to the project directory, regardless of the current working directory. Graceful shutdown: `Start-AC2E.ps1 -Stop`. Back up `data/world` with the server stopped. The store uses append-only journals with exclusive writer locks, validated replay, atomic transactions and persisted placements; it is not a MySQL schema. The CLI also exposes store inspection and compaction commands inherited from Pyrealium.
@@ -19,9 +55,9 @@ services use this recovery path.
 
 ## Initial gameplay ruleset
 
-The default server loads 15,132 DAT-compatible placements from the retained population and authored starter content. Twenty-two rows reference assets absent from this Legions installation and are excluded with a report next to the generated TSV. The authored portal routes and four compatible lifestone fixtures are enabled along with the server's native binding/recall handlers. Recovered world placements are retained. Static NPC/portal placements do not imply complete NPC scripting.
+The compatible capture pack was audited at 5,606 placements, including 4,428 combat point spawners and 78 vendor identities. The separately versioned inferred pack adds 702 accepted placements in 143 camp groups plus noncombat NPCs, with 88 quest profiles. Counts depend on the installed content and recovered evidence; the generated report next to the prepared TSV is authoritative. Version mapping, per-cell snapshot selection and duplicate/dead-object filtering withhold incompatible observations. Authored portal routes and compatible lifestone fixtures use the native binding/recall handlers. Recovered NPC or vendor identity does not imply complete scripting or retail stock.
 
-The authored starter encounter supports targeting, range-checked melee/missile/magic attacks, learned racial starter skills, retaliation, health/vigor, mob death/despawn/respawn, XP, gold and automatic potion loot. Rewards and loot commit together before publication and survive logout/restart. The Legions profile validates and grants racial starter gear independently of the obsolete merchant/crafting catalog. Starter weapons can be equipped and their native modes/animations are broadcast to nearby players. The normal launcher enables validated portal routes, lifestones, and the three-Idol combat quest. The human starter circuit can be completed through its reward, outdoor exit and recall; it is authored development content, not full retail tutorial parity. Merchant/crafting lessons remain disabled because their catalog references absent records. Native loot-container protocol requests are forwarded by the client, but retail corpse generation/looting and complete quest/merchant behavior remain separate work. PvP, full original AI, server terrain collision and complete anti-cheat enforcement are not implemented by this integration.
+The authored starter encounter supports targeting, range-checked melee/missile/magic attacks, learned racial starter skills, retaliation, health/vigor, death/despawn/respawn, XP and gold. Claimed loot is journaled before publication and survives logout/restart; unclaimed corpse contents expire. Separate authored tutorial rewards remain independent of recovered creature loot tables. The Legions profile validates racial starter gear, and equipped weapons publish their native modes/animations to nearby players. The human starter circuit can be completed through its reward, outdoor exit and recall; it is authored development content, not full retail tutorial parity. Complete quest/crafting scripts, original loot generation probabilities and affixes, PvP and complete anti-cheat enforcement remain unfinished.
 
 The native server/client layer also supports persistent character appearance, multiple players, scene visibility, cell changes, server position corrections, local/tell/emote chat, owned inventory replication, item use/equipment requests, death/resurrection, and authenticated ticket login. Client compatibility details and verification commands are in `../Network/README.md`.
 
@@ -142,14 +178,15 @@ full retail quest or spell parity.
 - `emulator` retains the `pyrealium` library name for existing tests/modules; the executable is **ac2e.exe**. Original licensing/notices remain intact. `UPSTREAM.md` describes upstream features, not the completion level of this AC2E/Unreal ruleset.
 - Upstream native-client launcher assets and launcher-specific startup scripts are omitted. The `deploy/` templates and upstream documentation remain reference material for porting; use the AC2E scripts above for this Windows/Legions setup.
 
-Build the server independently with `Build-AC2E.ps1 -Test`, or build the server and Unreal transport bridge with `../Build-AC2Network.ps1 -Test`. Protocol/render integration tests are in `../Network`; they use isolated temporary stores. The source archive can be regenerated with Python `export_source.py`, then `cargo build --release --locked --manifest-path emulator/Cargo.toml --target-dir target`.
+Build the server independently with `Build-AC2E.ps1 -Test`, or build the server and Unreal transport bridge with `../Build-AC2Network.ps1 -Test`. Protocol/render integration tests are in `../Network`; they use isolated temporary stores. For a manual game-only build, regenerate the source archive with Python `export_source.py`, then run `cargo build --release --locked --manifest-path emulator/Cargo.toml --target-dir target/game`. Use the PowerShell build script to also refresh the stopped account-service executable.
 
 Inventory drags reorder the native dense backpack list, including adjacent slots.
 Release a backpack item over the world to drop the whole item or stack at your feet;
 double-click it within four meters to pick it up. Unequip worn items first. Nearby
 players see the same dropped model and may pick it up. Drops and pickups commit
 atomically in the character journal and survive server restart. Ground items are
-bounded to 512 per server; partial-stack drops and corpse containers remain unfinished.
+bounded to 512 per server; partial-stack world drops remain unfinished. Corpse
+containers now support owned multi-item drops, single pickup and Loot All.
 
 The reconstructed Vault arrival and Advance Scout now use floor positions clear
 of the authored Menhir Shard. Logging in at the old obstructed arrival moves the

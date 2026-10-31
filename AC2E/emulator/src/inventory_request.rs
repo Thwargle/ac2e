@@ -382,9 +382,9 @@ impl Metadata {
             | 0x100000
             | 0x8000000
             | 0x10000000;
-        // Pinned starter records retain 0x800000, which has no payload in
-        // native gmWeenieDesc::StreamPack 006037c0. Do not relax other records.
-        let allowed = DESC_BITS | if starter { 0x800000 } else { 0 };
+        // Native gmWeenieDesc::StreamPack 006037c0 has no payload for 0x800000, including the
+        // ordinary weapon/armor defaults recovered from corpse captures.
+        let allowed = DESC_BITS | 0x800000;
         if desc & !allowed != 0 {
             return Err(invalid());
         }
@@ -447,8 +447,9 @@ impl Metadata {
             Some(Equipment {
                 valid: *integers.get(&0x113)?,
                 preferred: *integers.get(&0x11a)?,
-                primary: *integers.get(&0x114)?,
-                secondary: *integers.get(&0x115)?,
+                // Body armor has slots but no hand parenting qualities.
+                primary: integers.get(&0x114).copied().unwrap_or(0),
+                secondary: integers.get(&0x115).copied().unwrap_or(0),
             })
         })();
         Ok(Self {

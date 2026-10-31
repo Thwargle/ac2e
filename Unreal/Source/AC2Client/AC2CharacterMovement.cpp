@@ -1,4 +1,5 @@
 #include "AC2CharacterMovement.h"
+#include "AC2Locomotion.h"
 #include "GameFramework/Character.h"
 void UAC2CharacterMovement::CalcVelocity(float Dt,float Friction,bool Fluid,float Braking)
 {
@@ -33,10 +34,9 @@ void UAC2CharacterMovement::PhysCustom(float Dt,int32 Iterations)
         FVector Input=Acceleration.GetClampedToMaxSize(Native.ForwardAccel*100);
         Input.Z=FMath::Clamp(Acceleration.Z/FMath::Max(1.f,MaxAcceleration),-1.,1.)*Native.VerticalAccel*100;
         const double Depth=(WaterLevel-(Start.Z+WaterDepthOffset))/100.;
-        const double Lift=Native.Lift*FMath::Clamp(Depth,-1.,1.)*100.;
+        const double Lift=AC2Locomotion::WaterLift(Depth,Native,GetGravityZ());
         Velocity+=(Input+FVector(0,0,Lift+(Native.Gravity?GetGravityZ():0)))*Step;
-        const FVector Along=Input.GetSafeNormal()*FMath::Max(0.,FVector::DotProduct(Velocity,Input.GetSafeNormal()));
-        Velocity=Along+(Velocity-Along)*FMath::Pow(FMath::Clamp(1.f-Native.Drag,0.f,1.f),Step);
+        Velocity=AC2Locomotion::Friction(Velocity,Input,Native.Drag,Step);
         const FVector Horizontal=FVector(Velocity.X,Velocity.Y,0).GetClampedToMaxSize(Native.Forward*100);
         Velocity.X=Horizontal.X;Velocity.Y=Horizontal.Y;
         if(Input.Z!=0)Velocity.Z=FMath::Clamp(Velocity.Z,-Native.Vertical*100.,Native.Vertical*100.);

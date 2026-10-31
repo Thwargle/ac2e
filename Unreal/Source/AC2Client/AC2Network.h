@@ -1,6 +1,7 @@
 #pragma once
 #include "AC2Assets.h"
 #include "AC2CharacterData.h"
+#include "AC2GameTime.h"
 #include "Dom/JsonObject.h"
 #include "HAL/PlatformProcess.h"
 
@@ -18,6 +19,7 @@ class FAC2Network
     ~FAC2Network();
     bool Start(const FAC2ConnectionSettings* Settings=nullptr);
     void Tick(float Delta);
+    TOptional<double> ServerTime() const;
     void Send(TSharedRef<FJsonObject> Message);
     void Enter(const FString &Id);
     void DeleteCharacter(const FString &Id);
@@ -34,6 +36,9 @@ class FAC2Network
         TWeakObjectPtr<AActor> Actor;
     };
     TArray<FRadarContact> RadarContacts() const;
+    struct FDamageText { FString Target, Attacker; int64 Damage=0; double Born=0; };
+    TArray<FDamageText> DamageTexts;
+    int32 MusicGroove() const;
     void SelectTarget(const FString &Id);
     void ClearTarget();
     FString ObjectName(const FString& Id) const;
@@ -48,6 +53,8 @@ class FAC2Network
     void Attack();
     void SetCombat(bool Enabled);
     void CastSkill(uint32 Skill);
+    void ChangeSkill(uint32 Skill,FString Action);
+    uint64 AvailableXp=0;
     void StarterSkill(int32 Category);
     void UseTarget();
     void UseItem(int32 Index, uint32 EquipSlot=0);
@@ -59,7 +66,22 @@ class FAC2Network
     void BuyOffer(int32 Index);
     void SellItem(int32 Index);
     void CloseShop();
+    struct FSkill {uint32 Id=0;bool Trained=false;FString Xp;};
+    struct FQuest {uint32 Id=0,Icon=0,Status=0,Phase=0;FString Name,Description,Journal;};
+    TArray<FSkill> Skills;
+    TArray<FQuest> Quests;
+    int32 SkillCredits=0;
+    uint32 UntrainingSkill=0;
+    FString LootContainer;
+    TArray<FString> LootItems;
+    void LootAll();
+    void TransmuteLoot();
+    void TakeLoot(int32 Index);
+    void CloseLoot();
+    uint32 ItemIcon(const FString& Id) const;
+    TArray<FAC2IconLayer> ItemIconLayers(const FString& Id,FAC2AssetLibrary& Assets) const;
     bool ArrivalCollisionReady() const;
+    uint64 ArrivalRevision() const { return SceneRevision; }
     uint32 Gold = 0;
     int32 AllowedCharacters = 8;
     bool Dead = false, Combat = false;
@@ -89,28 +111,37 @@ class FAC2Network
     }
 
   private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FAC2DamageNetworkTest;
+    friend class FAC2SwimmingRenderTest;
+#endif
     TUniquePtr<class FAC2MapData> PortalMap;
     bool PortalMapAttempted = false;
     bool SmokeWorldProps(FString& Error) const;
     void FoliageSmokeTick();
     int32 FoliageSmokeStep=0;
+    int8 PlayerGroove=0;
     double FoliageSmokeNext=0;
     struct FObject
     {
         uint32 Visual = 0, Cell = 0, Entity = 0;
         int32 Instance = 0;
+        int8 Groove=0;
         float EntityScale = 1;
+        float Health=-1,MaxHealth=0,DamageFX=-1;
         FString Name, Parent;
         uint32 Holding=0;
         FVector Scale = FVector::OneVector, Goal = FVector::ZeroVector;
         float Yaw = 0;
         FQuat Rotation = FQuat::Identity;
         uint32 AnimMode=AC2Motion::Peace;
+        uint32 Element=AC2Motion::Ground;
+        float BodyHeight=180;
         FAC2Appearance Aspects;
         TWeakObjectPtr<AActor> Actor;
         TWeakObjectPtr<USceneComponent> Body;
         bool Content=false, GroundedContent=false, Solid=false, GroundItem=false;
-        bool Door=false,DoorOpen=false;
+        bool Door=false,DoorOpen=false,OpenableStateKnown=false,OpenableOpen=false;
         float FootZ=0;
         double NextGroundCheck=0;
         TUniquePtr<FAC2AssetLibrary> Model;
@@ -129,12 +160,17 @@ class FAC2Network
     TMap<FString, TSharedPtr<FJsonObject>> CharacterVisuals;
     TUniquePtr<FAC2DatArchive> Locale;
     double Time = 0, LastMovement = 0, Started = 0;
+    double LastSceneChange = 0;
+    uint64 SceneRevision = 0;
+    FAC2ServerClock Clock;
     double LastShopRefresh=0;
     double ExaminationStarted=0;
     bool Smoke = false, SmokeEntered = false, SmokeChat = false;
     int32 ReceivedChats = 0;
     double SmokeFinish = 0;
     bool SmokeAttacked = false;
+    int32 LootSmokeStep=0,LootSmokeCount=0;
+    double LootSmokeNext=0;
     bool SmokeEquipped=false, SmokeRepeated=false, SmokeHeld=false;
     int32 MagicAttacks=0;
     bool SmokeRadar = false;
@@ -146,6 +182,7 @@ class FAC2Network
     int32 ShopSmokeStep=0;
     double ShopSmokeNext=0;
     FBox ShopClosedDoorBounds=FBox(ForceInit);
+    FBox ShopClosedChestBounds=FBox(ForceInit);
     double InventorySmokeNext=0;
     int32 MapTravelSmokeStep=0;
     double MapTravelSmokeNext=0;

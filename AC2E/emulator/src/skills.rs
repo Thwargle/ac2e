@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::OnceLock};
 mod advancement;
 pub const TRAIN: u32 = 0x82140002;
 pub const UNTRAIN: u32 = 0x82140007;
+pub const CANCEL_UNTRAIN: u32 = 0x82140001;
 pub const RAISE: u32 = 0x8214000c;
 pub const USE: u32 = 0x8204000b;
 pub const LIFESTONE_RECALL: u32 = 0x343;
@@ -20,6 +21,7 @@ fn playable(race: u32) -> bool {
 pub enum Action {
     Train,
     Untrain,
+    CancelUntrain,
     Raise,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -32,12 +34,14 @@ pub struct Trained {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Book {
     entries: BTreeMap<u32, Trained>,
+    untraining: Option<(u32,u64)>, // skill and total XP at the last debit
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Command {
     Train(u32),
     Grant(u32),
     Untrain(u32),
+    CancelUntrain,
 }
 #[derive(Clone, Debug)]
 pub enum SkillError {
@@ -296,6 +300,7 @@ impl Book {
             return Err(SkillError::Dead);
         }
         let known = self.entries.get(&id).ok_or(SkillError::NotTrained)?;
+        if self.untraining_id()==id {return Err(SkillError::Locked);}
         let definition = catalog()?.definitions.get(&id).ok_or(SkillError::Unknown)?;
         if !playable(race)
             || definition.race != race
@@ -323,6 +328,24 @@ impl Book {
     }
     pub fn get(&self, id: u32) -> Option<&Trained> {
         self.entries.get(&id)
+    }
+    pub fn untraining_id(&self)->u32 {self.untraining.map_or(0,|(id,_)|id)}
+    pub fn usable(&self,id:u32)->bool {self.entries.contains_key(&id) && self.untraining_id()!=id}
+    /// Recovered SkillManager::DebitUnTrainingSkill: new earned XP removes
+    /// invested XP one-for-one. Refunding available XP never raises total XP.
+    pub fn debit_untraining(&self,state:&Progression)->Result<Option<(Self,Progression)>,SkillError> {
+        let Some((id,baseline))=self.untraining else {return Ok(None)};
+        let earned=state.xp.checked_sub(baseline).ok_or(SkillError::Catalog)?;
+        if earned==0{return Ok(None)}
+        let mut next=self.clone();let entry=next.entries.get_mut(&id).ok_or(SkillError::Catalog)?;
+        let refund=earned.min(entry.xp);entry.xp-=refund;
+        let definition=catalog()?.definitions.get(&id).ok_or(SkillError::Catalog)?;
+        entry.rank=advancement::get(definition.curve)?.rank(entry.xp);
+        next.untraining=Some((id,state.xp));
+        if entry.xp==0 {next.entries.remove(&id);next.untraining=None;}
+        let mut progression=state.clone();
+        progression.available_xp=progression.available_xp.checked_add(refund).filter(|xp|*xp<=state.xp).ok_or(SkillError::Catalog)?;
+        Ok(Some((next,progression)))
     }
     pub fn entries(&self) -> impl Iterator<Item = (u32, &Trained)> {
         self.entries.iter().map(|(&id, entry)| (id, entry))
@@ -375,7 +398,7 @@ impl Book {
                         !self
                             .entries
                             .get(id)
-                            .is_some_and(|entry| entry.rank >= *rank)
+                            .is_some_and(|entry| entry.rank >= *rank && self.untraining_id()!=*id)
                     })
                 {
                     return Err(SkillError::Prerequisite);
@@ -420,13 +443,11 @@ impl Book {
                 }) {
                     return Err(SkillError::Dependents);
                 }
-                // Immediate rank-zero untraining is the supported local policy.
-                // XP advancement/timed untraining must not be guessed here.
-                if known.rank != 0 {
-                    return Err(SkillError::AdvancementUnavailable);
-                }
-                next.entries.remove(&id);
+                if self.untraining.is_some(){return Err(SkillError::Locked);}
+                if known.xp==0 {next.entries.remove(&id);}
+                else {next.untraining=Some((id,state.xp));}
             }
+            Command::CancelUntrain=>{if next.untraining.take().is_none(){return Err(SkillError::NotTrained);}}
         }
         Ok(next)
     }
@@ -437,6 +458,7 @@ impl Command {
             Self::Train(id) => format!("t,{id:x}"),
             Self::Grant(id) => format!("g,{id:x}"),
             Self::Untrain(id) => format!("u,{id:x}"),
+            Self::CancelUntrain=>"c,0".into(),
         }
     }
     pub fn decode(text: &str) -> Result<Self, SkillError> {
@@ -445,13 +467,14 @@ impl Command {
         }
         let (kind, id) = text.split_once(',').ok_or(SkillError::Catalog)?;
         let id = u32::from_str_radix(id, 16).map_err(|_| SkillError::Catalog)?;
-        if id == 0 || id > 65535 {
+        if (id == 0 && kind!="c") || id > 65535 {
             return Err(SkillError::Unknown);
         }
         Ok(match kind {
             "t" => Self::Train(id),
             "g" => Self::Grant(id),
             "u" => Self::Untrain(id),
+            "c" if id==0=>Self::CancelUntrain,
             _ => return Err(SkillError::Catalog),
         })
     }

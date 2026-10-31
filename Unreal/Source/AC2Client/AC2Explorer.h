@@ -21,6 +21,8 @@ class AAC2Explorer : public ACharacter
     bool PlayEffect(uint32 Effect,float Strength=1,USceneComponent* Target=nullptr) {return Model && Model->PlayEffect(Effect,Strength,Target);}
     bool PlayEffectScript(uint32 Script) {return Model && Model->PlayEffectScript(Script);}
     void StopEffect(uint32 Effect) {if(Model)Model->StopEffect(Effect);}
+    void SetHealth(float Current,float Maximum) {AppearanceHealth=Current;AppearanceMaxHealth=Maximum;if(Model)Model->SetHealth(Current,Maximum);}
+    uint32 DamageAppearanceFingerprint() const {return Model?Model->DamageAppearanceFingerprint():0;}
     int32 EffectParticleCount() const {return Model?Model->EffectParticleCount():0;}
     uint32 AvatarAppearanceFingerprint() const {return Model?Model->AppearanceFingerprint():0;}
     void StopBehavior(uint32 Behavior=0);
@@ -69,6 +71,7 @@ class AAC2Explorer : public ACharacter
 
   private:
     TUniquePtr<FAC2AssetLibrary> Model;
+    float AppearanceHealth=-1,AppearanceMaxHealth=0;
     TArray<TWeakObjectPtr<UActorComponent>> ModelComponents;
     float AnimationTime = 0;
     bool bThirdPerson = true, bSwim = false, bWade=false, bModel = false;
@@ -81,6 +84,7 @@ class AAC2Explorer : public ACharacter
     uint32 GlobalModifier=0,MotionDescriptor=0;
     float VelocityScale=1,AccelerationScale=1,JumpScale=1;
     float GroundTime=0;
+    float PendingJump=-1;
     void Forward(float V);
     void Right(float V);
     void Up(float V);

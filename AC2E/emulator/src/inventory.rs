@@ -10,6 +10,7 @@ pub enum Location {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
+    pub roll: Option<Roll>,
     pub id: u64,
     pub definition: u32,
     pub visual: u32,
@@ -18,6 +19,9 @@ pub struct Item {
     pub equipment_mask: u16,
     pub location: Location,
 }
+/// Persisted inferred armor roll. Zero/None retains historical item semantics.
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+pub struct Roll {pub armor:u16,pub tint:u16,pub level:u16}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inventory {
     items: BTreeMap<u64, Item>,
@@ -40,6 +44,9 @@ impl Default for Inventory {
 #[derive(Clone, Debug)]
 pub enum Command {
     Grant(Item),
+    /// Restore missing native equipment metadata on a historical loot grant.
+    /// This is a journaled server migration, never a client-selected mask.
+    RepairEquipment { item:u64, definition:u32, mask:u16 },
     Move {
         item: u64,
         source: u16,
@@ -158,6 +165,16 @@ impl Inventory {
     pub fn apply(&self, command: &Command) -> Result<Self, InventoryError> {
         let mut next = self.clone();
         match command {
+            Command::RepairEquipment {item,definition,mask} => {
+                let old=self.owned(*item)?;
+                if old.definition!=*definition || old.equipment_mask!=0
+                    || old.quantity!=1 || old.stack_limit!=1
+                    || !matches!(old.location,Location::Bag(_))
+                    || !mask.is_power_of_two() || *mask>32 {
+                    return Err(InventoryError::IncompatibleEquipment);
+                }
+                next.items.get_mut(item).unwrap().equipment_mask=*mask;
+            }
             Command::Grant(item) => {
                 if item.id <= self.high_water()
                     || item.id >> 48 != ITEM_NAMESPACE >> 48
@@ -167,6 +184,8 @@ impl Inventory {
                     || item.stack_limit == 0
                     || item.quantity > item.stack_limit
                     || item.equipment_mask & !0x7ff != 0
+                    || item.roll.is_some_and(|r|r.armor==0||r.armor>1000||r.tint>1000||!(1..=150).contains(&r.level)
+                        ||item.quantity!=1||item.stack_limit!=1||crate::apparel::recovered_slot(item.definition,item.visual)!=Some(item.equipment_mask))
                     || !matches!(item.location,Location::Bag(slot) if slot<BAG_SLOTS)
                 {
                     return Err(InventoryError::InvalidItem);
@@ -389,6 +408,11 @@ impl Command {
     /// Local journal format; independent of the native serialized request graphs.
     pub fn encode(&self) -> String {
         match self {
+            Self::RepairEquipment {item,definition,mask} => format!("q,{item},{definition},{mask}"),
+            Self::Grant(item) if item.roll.is_some() => {
+                let r=item.roll.unwrap();format!("G,{},{},{},{},{},{},{},{},{},{}",item.id,item.definition,item.visual,item.quantity,item.stack_limit,item.equipment_mask,
+                    match item.location{Location::Bag(s)|Location::Equipped(s)=>s},r.armor,r.tint,r.level)
+            },
             Self::Grant(item) => format!(
                 "g,{},{},{},{},{},{},{}",
                 item.id,
@@ -445,7 +469,11 @@ impl Command {
         let small = |v: u64| u16::try_from(v).map_err(|_| InventoryError::InvalidItem);
         let word = |v: u64| u32::try_from(v).map_err(|_| InventoryError::InvalidItem);
         Ok(match (kind, values.as_slice()) {
-            ("g", [id, did, visual, quantity, limit, mask, slot]) => Self::Grant(Item {
+            ("G",[id,did,visual,quantity,limit,mask,slot,armor,tint,level])=>Self::Grant(Item{
+                id:*id,definition:word(*did)?,visual:word(*visual)?,quantity:small(*quantity)?,stack_limit:small(*limit)?,equipment_mask:small(*mask)?,location:Location::Bag(small(*slot)?),
+                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?})}),
+            ("q",[item,definition,mask]) => Self::RepairEquipment {item:*item,definition:word(*definition)?,mask:small(*mask)?},
+            ("g", [id, did, visual, quantity, limit, mask, slot]) => Self::Grant(Item {roll: None,
                 id: *id,
                 definition: word(*did)?,
                 visual: word(*visual)?,

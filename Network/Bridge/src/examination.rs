@@ -81,7 +81,7 @@ pub fn convert(bytes: &[u8]) -> Option<Value> {
             let mut out = json!({"kind":kind(&n.value),"appearance":n.appearance,"order":n.order});
             match &n.value {
                 ExaminationValue::Text(s) => {
-                    out["text"] = json!({"literal":s.literal,"table":s.table_id,"key":s.string_id})
+                    out["text"] = crate::events::string(&s)
                 }
                 ExaminationValue::Int(v) => out["value"] = json!(v),
                 ExaminationValue::Float(v) => out["value"] = json!(v),

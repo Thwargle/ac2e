@@ -337,30 +337,6 @@ pub fn hand_equipment_at(
 pub fn empty_player() -> Result<Vec<u8>, WorldError> {
     player(None, None)
 }
-pub fn skill_credits(credits: u16) -> Result<Vec<u8>, WorldError> {
-    let mut args = Vec::new();
-    graph(
-        &mut args,
-        &[
-            Object::interpreted(
-                0x233,
-                &[
-                    (u32::from(credits), INT),
-                    (0, 0x82),
-                    (0, 0xcd),
-                    (0, INT),
-                    (2, REF),
-                    (0, INT),
-                    (3, REF),
-                    (NULL, REF),
-                ],
-            ),
-            Object::native(1, &[0]),
-            Object::native(1, &[0]),
-        ],
-    );
-    script::private_call(0x82140011, &args)
-}
 /// Retail 2017 login SkillData: state flags 1 known / 2 bought with credits /
 /// 0x20 last-use stamp set, rank at field 10 and credits spent at field 12.
 fn skill_object(id: u32, entry: &crate::skills::Trained) -> Object {
@@ -462,45 +438,7 @@ pub fn player_all_quests_options(
     // A zero mask retains native Clear/default values; no captured settings.
     let options = crate::preferences::options_words_with_gameplay(settings, hotbar, gameplay)?;
     graph(&mut args, &[Object::native(0x9b, &options)]);
-    let mut trained = skills
-        .into_iter()
-        .flat_map(|book| book.entries())
-        .collect::<Vec<_>>();
-    trained.sort_unstable_by_key(|(id, _)| (id % SKILL_BUCKETS, *id));
-    let mut skill_map = vec![0x02000000 | trained.len() as u32];
-    for (index, (id, _)) in trained.iter().enumerate() {
-        skill_map.extend([*id, 5 + index as u32]);
-    }
-    let mut skill_objects =
-        vec![
-            Object::interpreted(
-                0x233,
-                &[
-                    (
-                        progression.map_or(0, |state| {
-                            u32::from(skills.map_or(state.level().credits, |book| {
-                                book.available_credits(state)
-                            }))
-                        }),
-                        INT,
-                    ),
-                    (0, 0x82),
-                    (0, 0xcd),
-                    (0, INT),
-                    (2, REF),
-                    (0, INT),
-                    (3, REF),
-                    (4, REF),
-                ],
-            ),
-            Object::native(1, &[0]),
-            Object::native(1, &[0]),
-            Object::native(0x11, &skill_map),
-        ];
-    for (id, entry) in trained {
-        skill_objects.push(skill_object(id, entry));
-    }
-    graph(&mut args, &skill_objects);
+    skill_graph(&mut args, skills, progression);
     graph(
         &mut args,
         &[
@@ -747,4 +685,51 @@ mod tests {
         assert!(packages.contains(&0x02330000));
         assert!(bytes.len() < 2048);
     }
+}
+
+fn skill_graph(args: &mut Vec<u8>, skills: Option<&crate::skills::Book>, progression: Option<&crate::progression::Progression>) {
+    let mut trained = skills
+        .into_iter()
+        .flat_map(|book| book.entries())
+        .collect::<Vec<_>>();
+    trained.sort_unstable_by_key(|(id, _)| (id % SKILL_BUCKETS, *id));
+    let mut skill_map = vec![0x02000000 | trained.len() as u32];
+    for (index, (id, _)) in trained.iter().enumerate() {
+        skill_map.extend([*id, 5 + index as u32]);
+    }
+    let mut skill_objects =
+        vec![
+            Object::interpreted(
+                0x233,
+                &[
+                    (
+                        progression.map_or(0, |state| {
+                            u32::from(skills.map_or(state.level().credits, |book| {
+                                book.available_credits(state)
+                            }))
+                        }),
+                        INT,
+                    ),
+                    (0, 0x82),
+                    (0, 0xcd),
+                    (0, INT),
+                    (2, REF),
+                    (skills.map_or(0, |book| book.untraining_id()), INT),
+                    (3, REF),
+                    (4, REF),
+                ],
+            ),
+            Object::native(1, &[0]),
+            Object::native(1, &[0]),
+            Object::native(0x11, &skill_map),
+        ];
+    for (id, entry) in trained {
+        skill_objects.push(skill_object(id, entry));
+    }
+    graph(args, &skill_objects);
+}
+pub fn skills_state(skills: &crate::skills::Book, progression: &crate::progression::Progression) -> Result<Vec<u8>, WorldError> {
+    let mut args=Vec::new();
+    skill_graph(&mut args, Some(skills), Some(progression));
+    script::private_call(0x8214000e, &args)
 }

@@ -146,7 +146,14 @@ bool FAC2Animation::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
         }
         N=R.Count(20,4096);R.Take(int64(N)*20); // Server-owned attack hooks never apply damage locally.
         N=R.Count(12,4096);
-        for(int32 I=0;I<N && R.Good;++I){if(!R.Word())R.Take(12);R.Take(8);}
+        for(int32 I=0;I<N && R.Good;++I)
+        {
+            const bool Jump=R.Word()!=0;
+            if(!Jump)R.Take(12);
+            R.Word();const float Phase=R.Float();
+            if(!FMath::IsFinite(Phase)||Phase<0||Phase>1)R.Good=false;
+            if(Jump)JumpTriggers.Add(Phase);
+        }
         R.Take(12); // hold flag, loop start/end
     }
     return R.End() && !Tracks.IsEmpty();
@@ -169,14 +176,64 @@ float FAC2Animation::BoneWeight(int32 Bone, float Phase) const
     return Tracks.IsValidIndex(Bone) ? SampleKeys(Tracks[Bone].Weight, FMath::Frac(Phase) * Period, 1.f)
                                      : 0.f;
 }
-TArray<FAC2Animation::FEffect> FAC2Animator::EffectsBetween(float From,float To,const FAC2AnimatorInput& Input) const
+TArray<FAC2Animation::FEffect> FAC2Animator::EffectsBetween(double From,double To,const FAC2AnimatorInput& Input,
+    bool Looping,FAC2AnimationTriggerState* State) const
 {
-    TArray<FWeighted> Leaves;Gather(Root.Get(),Input,1,Leaves);
-    const FWeighted* Best=nullptr;
-    for(const auto& L:Leaves)if(L.Node->Clip && (!Best || L.Weight>Best->Weight))Best=&L;
     TArray<FAC2Animation::FEffect> Out;
-    if(Best && To>From)for(const auto& E:Best->Node->Clip->Effects)
-        if((E.Phase>From || (From==0 && E.Phase==0)) && E.Phase<=To)Out.Add(E);
+    if(!FMath::IsFinite(From)||!FMath::IsFinite(To)||From<0||To<=From)return Out;
+    const FNode* Node=Root.Get();
+    while(Node && !Node->Clip && Node->Kind!=0x40000002)
+    {
+        int32 Child=0;
+        if(Node->Kind==0x40000008)
+        {
+            const uint32 Key=Node->SwitchKind==0?Input.Mode:Node->SwitchKind==1?Input.Element:Input.Terrain;
+            Child=Node->Keys.IndexOfByKey(Key)+1;
+        }
+        Node=Node->Children.IsValidIndex(Child)?Node->Children[Child].Get():nullptr;
+    }
+    if(!Node)return Out;
+    TArray<FAC2Animation::FEffect> Events;
+    if(Node->Clip)Events=Node->Clip->Effects;
+    else
+    {
+        // AnimCube::GetTriggers merges by effect name, summing weighted time,
+        // probability and intensity. Choosing the dominant gait loses quieter
+        // footsteps and snaps their timing when walk/run blend weights cross.
+        TArray<FWeighted> Leaves;Gather(Node,Input,1,Leaves);
+        TMap<uint32,FAC2Animation::FEffect> Merged;
+        for(const auto& Leaf:Leaves)for(const auto& E:Leaf.Node->Clip->Effects)
+        {
+            auto* Total=Merged.Find(E.Id);
+            if(!Total){FAC2Animation::FEffect Empty;Empty.Id=E.Id;Empty.Probability=Empty.Intensity=0;Total=&Merged.Add(E.Id,Empty);}
+            Total->Phase+=E.Phase*Leaf.Weight;
+            Total->Probability+=E.Probability*Leaf.Weight;
+            Total->Intensity+=E.Intensity*Leaf.Weight;
+            Total->Variation+=E.Variation*Leaf.Weight;
+        }
+        Merged.GenerateValueArray(Events);
+    }
+    Events.StableSort([](const auto& A,const auto& B){return A.Phase<B.Phase || (A.Phase==B.Phase && A.Id<B.Id);});
+    // Catch the tail and head of a wrapped cycle, including phase-zero cues.
+    // Bound catch-up after an invalid/very long time jump rather than flooding FX.
+    const double First=Looping?FMath::Max(FMath::FloorToDouble(From),FMath::FloorToDouble(To)-16):0;
+    const double Last=Looping?FMath::FloorToDouble(To):0;
+    for(int32 Offset=0;Offset<=16 && First+Offset<=Last;++Offset)
+    {
+        const double Cycle=First+Offset;
+        if(State && State->Cycle!=Cycle){State->Cycle=Cycle;State->Fired.Reset();}
+        for(const auto& E:Events)
+        {
+            const double At=Cycle+E.Phase;
+            if(!((At>From || (From==0 && At==0)) && At<=To))continue;
+            // Cube event times vary as speed changes; crossing the same cue a
+            // second time in one stride must not play a second footstep.
+            if(State && State->Fired.ContainsByPredicate([&](const auto& Known){return Known.Id==E.Id &&
+                (!Node->Clip || (Known.Phase==E.Phase && Known.Probability==E.Probability));}))continue;
+            Out.Add(E);
+            if(State)State->Fired.Add(E);
+        }
+    }
     return Out;
 }
 bool FAC2FXScript::Decode(uint32 Id,TConstArrayView<uint8> Bytes)

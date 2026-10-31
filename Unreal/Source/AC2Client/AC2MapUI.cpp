@@ -266,11 +266,23 @@ int32 FAC2MapUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometr
         if (N.Id == T(TEXT("HeadingField")))
         {
             if (const auto *B = Native.Brush(0x41100000))
-                FSlateDrawElement::MakeRotatedBox(
-                    Out, ++L,
-                    G.ToPaintGeometry(B->ImageSize, FSlateLayoutTransform(FVector2D(N.Rect.Min)+RadarCenter-B->ImageSize*.5)), B,
-                    ESlateDrawEffect::None, Heading, TOptional<FVector2D>(),
-                    FSlateDrawElement::RelativeToElement);
+            {
+                // The native compass atlas has four disconnected cardinal marks.
+                // Keep each glyph readable while placing it in the world/view basis;
+                // mirroring the entire atlas would also reverse the lettering.
+                const FVector2D Cells[]={{1,0},{2,1},{1,2},{0,1}}; // N,E,S,W
+                const FVector2D Step=B->ImageSize/3.;
+                for(int32 I=0;I<4;++I)
+                {
+                    FSlateBrush Mark=*B;
+                    Mark.SetUVRegion(FBox2D(Cells[I]/3.,(Cells[I]+FVector2D(1,1))/3.));
+                    const FVector2D Origin=Cells[I]*Step;
+                    FSlateDrawElement::MakeRotatedBox(Out,++L,
+                        G.ToPaintGeometry(Step,FSlateLayoutTransform(FVector2D(N.Rect.Min)+RadarCenter-B->ImageSize*.5+Origin)),&Mark,
+                        ESlateDrawEffect::None,Heading+(I%2?UE_PI:0.f),B->ImageSize*.5-Origin,
+                        FSlateDrawElement::RelativeToElement);
+                }
+            }
             for (const auto &C : Contacts)
             {
                 if (C.Selected)
