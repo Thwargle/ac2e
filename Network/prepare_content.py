@@ -32,6 +32,13 @@ def missing_records(fields, index):
                                       ('cell', 'cell_1.dat', record)]
             if did not in index[archive]]
 
+def sha256_any_eol(path):
+    """A checked-in file's digest with LF or CRLF endings: `* text=auto` checks
+    text out with CRLF on Windows and LF elsewhere, and evidence may come from either."""
+    lf = path.read_bytes().replace(b'\r\n', b'\n')
+    return {hashlib.sha256(lf).hexdigest(), hashlib.sha256(lf.replace(b'\n', b'\r\n')).hexdigest()}
+
+
 def prepare(directory, output, compare_directory=None):
     index = asset_index(directory)
     comparison = asset_index(compare_directory) if compare_directory else None
@@ -54,7 +61,7 @@ def prepare(directory, output, compare_directory=None):
     recovered_cells = set()
     if recovered.exists():
         evidence = json.loads(recovered.with_suffix('.report.json').read_text(encoding='utf-8'))
-        if not evidence.get('native_ground_verified') or evidence.get('manifest_sha256') != hashlib.sha256(recovered.read_bytes()).hexdigest():
+        if not evidence.get('native_ground_verified') or evidence.get('manifest_sha256') not in sha256_any_eol(recovered):
             raise ValueError('Recovered population requires current native ground verification')
         sources.append(recovered.name)
         version = 4
@@ -66,8 +73,8 @@ def prepare(directory, output, compare_directory=None):
     if inferred.exists():
         evidence = json.loads(inferred.with_suffix('.report.json').read_text(encoding='utf8'))
         if (not evidence.get('native_ground_verified')
-            or evidence['manifest_sha256'] != hashlib.sha256(inferred.read_bytes()).hexdigest()
-            or evidence['source_sha256'] != hashlib.sha256((content/'inferred-content-v1.json').read_bytes()).hexdigest()):
+            or evidence['manifest_sha256'] not in sha256_any_eol(inferred)
+            or evidence['source_sha256'] not in sha256_any_eol(content/'inferred-content-v1.json')):
             raise ValueError('Inferred content requires fresh native ground validation')
         sources.append(inferred.name)
     state_file=content / 'capture-spawns-audited.report.json'
