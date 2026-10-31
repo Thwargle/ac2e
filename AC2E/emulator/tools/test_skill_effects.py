@@ -26,6 +26,12 @@ def effect(kind, slot):
 
 
 class SkillEffects(unittest.TestCase):
+    def test_7230_layout_is_explicit_and_does_not_change_legions(self):
+        for kind in (0x21, 0x22, 0x11, 0x12):
+            portal = Portal(effect(kind, 37))
+            self.assertEqual(effect_record(portal, 1, set(), profile='7230')[0]['values'], [(1.0, 25.0)])
+            self.assertEqual(effect_record(portal, 1, set())[0]['values'], [])
+
     def test_local_vital_layouts_are_distinct(self):
         for kind, slot in [(0x21, 36), (0x22, 36), (0x11, 38), (0x12, 38)]:
             result = effect_record(Portal(effect(kind, slot)), 1, set())[0]

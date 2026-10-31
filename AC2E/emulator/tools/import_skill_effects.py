@@ -157,7 +157,7 @@ def stat_tables(values, graph):
     return sorted(best.items())
 
 
-def effect_record(portal, did, seen, own_field=37):
+def effect_record(portal, did, seen, own_field=37, profile="legions"):
     if did in seen or did not in portal.entries:
         return []
     seen.add(did)
@@ -178,7 +178,10 @@ def effect_record(portal, did, seen, own_field=37):
         # Instant Health/Vigor append their magnitude at 36; periodic vitals
         # append it at 38. Validate the referenced LIST/ROW types above rather
         # than mistaking a scalar zero for root object 0 or taking a duration.
-        "values": value_rows(values, graph, get(38 if get(3) in (0x11, 0x12) else 36)),
+        # The archived 7230 graph and Pyreal SkillEffectFile use field 37.
+        # Select a release explicitly; never guess from a plausible value table.
+        "values": value_rows(values, graph, get(37 if profile == "7230" else
+                                                38 if get(3) in (0x11, 0x12) else 36)),
         "stats": stat_tables(values, graph),
         "telepad": next(iter(texts(data, values, graph)), ""),
     }
@@ -188,11 +191,11 @@ def effect_record(portal, did, seen, own_field=37):
         if table is not None and table < len(graph) and graph[table][0] == NODE:
             for item in list_items(values, graph[table][1]):
                 if item < len(graph) and graph[item][0] == REF:
-                    out.extend(effect_record(portal, values[graph[item][1] + 1], seen))
+                    out.extend(effect_record(portal, values[graph[item][1] + 1], seen, profile=profile))
     return out
 
 
-def skill(portal, did):
+def skill(portal, did, profile="legions"):
     data = portal.read(did)
     values, graph = objects(data)
     if not graph or graph[0][0] != ROOT:
@@ -233,9 +236,9 @@ def skill(portal, did):
                 result["values"] = value_rows(values, graph, sub[32])
     seen = set()
     for target in refs(get(58)):
-        result["effects"].extend(("target", e) for e in effect_record(portal, target, seen))
+        result["effects"].extend(("target", e) for e in effect_record(portal, target, seen, profile=profile))
     for own in refs(get(36)):
-        result["effects"].extend(("self", e) for e in effect_record(portal, own, seen, own_field=36))
+        result["effects"].extend(("self", e) for e in effect_record(portal, own, seen, own_field=36, profile=profile))
     return result
 
 
@@ -264,6 +267,7 @@ def destinations(pads, prefix):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game-data", type=Path, required=True)
+    parser.add_argument("--profile", choices=("legions", "7230"), default="legions")
     parser.add_argument("--telepads", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, default=Path(__file__).resolve().parents[1] / "content" / "skills.tsv")
     parser.add_argument("--output", type=Path, required=True)
@@ -295,7 +299,7 @@ def main():
             try:
                 if hashlib.sha256(portal.read(did)).hexdigest() != row[2]:
                     raise ValueError("skill record differs from the eligibility catalog")
-                s = skill(portal, did)
+                s = skill(portal, did, args.profile)
                 if s['skill'] != int(row[0], 16):
                     raise ValueError("skill identity mismatch")
                 tables = [s['values']]
@@ -335,7 +339,8 @@ def main():
                     break
     args.output.write_text("\n".join(out) + "\n", encoding="utf-8", newline="\n")
     args.travel.write_text("\n".join(travel) + "\n", encoding="utf-8", newline="\n")
-    report = {'source':'Vanquish-6/Pyrealium@468793018b332b87228794b0720ea1ce0400f96d, adapted for local Legions DAT layouts',
+    report = {'source':'Vanquish-6/Pyrealium@468793018b332b87228794b0720ea1ce0400f96d, with explicit release-specific effect layouts',
+              'profile':args.profile,
               'catalog_records':len(catalog), 'effect_records':len(out)-7,
               'unresolved':unresolved, 'record_sha256':dict(sorted(provenance.items()))}
     args.output.with_suffix('.report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

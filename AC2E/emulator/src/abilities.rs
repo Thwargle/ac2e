@@ -39,7 +39,9 @@ pub fn validate_assets(portal: &mut crate::dat::Dat) -> std::io::Result<()> {
         record_sha256: BTreeMap<String, String>,
     }
     let report: Report =
-        serde_json::from_str(include_str!("../content/skill-effects.report.json"))?;
+        serde_json::from_str(crate::data_profile::table(
+            include_str!("../content/skill-effects.report.json"),
+            include_str!("../content/7230/skill-effects.report.json")))?;
     for (record, expected) in report.record_sha256 {
         let did = u32::from_str_radix(&record, 16).map_err(std::io::Error::other)?;
         let actual = format!("{:x}", Sha256::digest(portal.read(did)?));
@@ -424,8 +426,8 @@ pub struct Runtime {
 impl Runtime {
     pub fn load() -> Result<Self, AbilityError> {
         Self::parse(
-            include_str!("../content/skill-effects.tsv"),
-            include_str!("../content/skill-travel.tsv"),
+            crate::data_profile::table(include_str!("../content/skill-effects.tsv"), include_str!("../content/7230/skill-effects.tsv")),
+            crate::data_profile::table(include_str!("../content/skill-travel.tsv"), include_str!("../content/7230/skill-travel.tsv")),
         )
     }
 

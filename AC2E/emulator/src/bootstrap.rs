@@ -44,12 +44,24 @@ impl Bootstrap {
     pub fn supports_client(&self, version: &str) -> bool {
         version == self.client_version
     }
+    /// The data release's client version: "7148" or "7230".
+    pub fn client_version(&self) -> &'static str {
+        self.client_version
+    }
     pub fn load(directory: &Path) -> io::Result<Self> {
         let mut portal = Dat::open(directory.join("portal.dat"))?;
         let player_state = portal.read(0x7100110f)?;
         let package_state = portal.read(0x7000037f)?;
         let client_version = match (fingerprint(&player_state), fingerprint(&package_state)) {
-            (0x0fb49f0fddeda7f2, 0x3594e7ba65dcd613) => "7230",
+            // The installed 7230 data, served as it is to 7230 clients (the 7230 executable
+            // and clients that read its records, such as AC2_Rusted): GameplayOptionsProfile
+            // version 6 with its 0x2000 table, and the 7230 skill tables (data_profile). The
+            // original 7148 executable cannot read it and still needs
+            // tools/make_7148_test_assets.py.
+            (0x0fb49f0fddeda7f2, 0x3594e7ba65dcd613) => {
+                crate::data_profile::set_unconverted_7230(true);
+                "7230"
+            }
             (0xc0b0230d626998c2, 0x83c30e31275ab0e3) => "7148",
             // AC2:Unreal integration: the installed Legions data is read-only and the
             // Unreal client does not execute these WState scripts. Opt in explicitly;

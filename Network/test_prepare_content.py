@@ -11,6 +11,18 @@ from content_profile import ContentProfile, nearby_landmark, door_physical
 
 
 class ContentComparisonTest(unittest.TestCase):
+    def test_evidence_hash_accepts_checkout_line_endings_without_accepting_edits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'content.tsv'
+            lf = b'header\nentry\tvalue\n'
+            crlf = lf.replace(b'\n', b'\r\n')
+            expected = {hashlib.sha256(lf).hexdigest(), hashlib.sha256(crlf).hexdigest()}
+            for data in (lf, crlf):
+                path.write_bytes(data)
+                self.assertEqual(prepare_content.sha256_any_eol(path), expected)
+            path.write_bytes(b'header\nentry\tchanged\n')
+            self.assertTrue(prepare_content.sha256_any_eol(path).isdisjoint(expected))
+
     def test_regional_population_requires_matching_ground_proof_and_native_visual(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)

@@ -113,7 +113,7 @@ fn fingerprint(data: &[u8]) -> u64 {
 fn catalog() -> Result<&'static Catalog, SkillError> {
     static CATALOG: OnceLock<Result<Catalog, SkillError>> = OnceLock::new();
     CATALOG
-        .get_or_init(|| Catalog::decode(include_str!("../content/skills.tsv")))
+        .get_or_init(|| Catalog::decode(crate::data_profile::table(include_str!("../content/skills.tsv"), include_str!("../content/7230/skills.tsv"))))
         .as_ref()
         .map_err(Clone::clone)
 }
