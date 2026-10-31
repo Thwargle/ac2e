@@ -168,6 +168,22 @@ assets folder and recovered executable separately. For this experiment select
 `target/compat-7148`, the original recovered 7148 executable, and port 19270. Game
 files are not included in the launcher distribution.
 
+## Unconverted 7230 data for Legions-based clients
+
+Clients built from the Legions code (for example the AC2_Rusted Rust client) read the installed
+7230 DATs as they are, including the version-6 GameplayOptionsProfile table that the original 7148
+executable cannot parse. For those clients, skip the 7148 conversion above and opt in:
+
+```sh
+AC2E_UNCONVERTED_7230_DATA=1 ac2e serve --game-data <7230 DATs> --initialize-ui true \
+    --training-kit false --content <prepared world> ...
+```
+
+The 7230 data is then served as the 7148 profile, with the skill tables imported from it
+(`content/7230/skills.tsv` and `skill-advancement.tsv`, from `tools/import_skill_catalog.py` and
+`tools/import_skill_advancement.py`). Prepare the world with `Network/prepare_content.py` against
+the same DATs. The original 7148 executable still needs the converted `target/compat-7148` set.
+
 ## Character recovery and durability
 
 Run offline against the same data directory:

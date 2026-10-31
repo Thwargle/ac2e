@@ -69,7 +69,7 @@ pub struct Runtime {
 impl Runtime {
     /// Caller must enable this only as an explicit authored development profile.
     pub fn development() -> Result<Self, AbilityError> {
-        let mut matching = include_str!("../content/skills.tsv")
+        let mut matching = crate::data_profile::table(include_str!("../content/skills.tsv"), include_str!("../content/7230/skills.tsv"))
             .lines()
             .filter(|line| line.split('\t').next() == Some("55"));
         let record = matching.next().ok_or(AbilityError::Catalog)?;

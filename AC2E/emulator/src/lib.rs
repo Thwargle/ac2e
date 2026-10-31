@@ -6,6 +6,7 @@ pub mod allegiance;
 pub mod appearance;
 pub mod auth;
 pub mod bootstrap;
+pub mod data_profile;
 pub mod combat_visual;
 pub mod clock;
 pub mod projectiles;
