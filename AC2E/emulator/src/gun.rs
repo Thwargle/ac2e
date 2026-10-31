@@ -297,6 +297,9 @@ pub enum GunAuth {
     Tickets(PathBuf),
 }
 
+/// The retail GUN port (`ac2l.ini`'s `GunPort`, `gmClient`'s `gunport` default 0x906).
+pub const DEFAULT_PORT: u16 = 2310;
+
 #[derive(Debug, Clone)]
 pub struct GunConfig {
     pub bind: SocketAddr,

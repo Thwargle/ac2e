@@ -5,8 +5,11 @@ AC2 clients reach the MSN Gaming Zone "GUN" service through `GunDll.dll` (`-guns
 (WSOCK32 sockets and a CryptoAPI RSA key exchange inside `GunDll.dll`) is not decoded, and the
 original servers are gone, so AC2e serves GUN on a transport of its own that keeps the retail
 message names and ids. Two clients speak it: `gun-stub` (a `GunDll.dll` replacement for the retail
-client) and `ac2-net`'s `gun` module (AC2_Rusted). Start it with
-`ac2e serve --gun-bind 127.0.0.1:2310`.
+client) and `ac2-net`'s `gun` module (AC2_Rusted). It starts with every `ac2e serve`, on the
+game address's IP at port 2310, so the players on a server always have friends, ignore lists,
+presence and tells there; `--gun-bind ADDR` moves it and `--gun-bind off` turns it off. A shared
+GUN server for players of several game servers is the clients' choice: each client's
+`-gunserver` / `-gunport` points at it instead.
 
 ## Framing
 
