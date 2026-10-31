@@ -22,6 +22,7 @@ pub mod geometry;
 pub mod equipment;
 pub mod examination;
 pub mod groups;
+pub mod gun;
 pub mod interaction;
 pub mod inventory;
 pub mod inventory_request;

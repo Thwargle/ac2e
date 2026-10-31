@@ -2205,6 +2205,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
     let mut next_untraining_tick = 0;
     let mut next_stop_check = 0;
     let mut next_checkpoint = 5000;
+    let mut next_gun_publish = 0;
     let mut diagnosed_events = BTreeSet::new();
     let mut diagnosed_application_errors = BTreeSet::new();
     let mut diagnosed_packet_errors = BTreeSet::new();
@@ -5474,6 +5475,16 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 counters.events
             );
             next_report = now_ms + 10_000;
+        }
+        if now_ms >= next_gun_publish {
+            next_gun_publish = now_ms + 500;
+            // Friends see a character in the world as logged in and in game.
+            crate::gun::publish_online(active_characters.keys().filter_map(|id| {
+                store
+                    .characters
+                    .get(id)
+                    .map(|character| (character.name.clone(), character.account.clone()))
+            }));
         }
         std::thread::sleep(Duration::from_millis(2));
     }

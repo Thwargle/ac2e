@@ -15,6 +15,9 @@ fn usage() {
         pyrealium::licensing::notice()
     );
     println!(
+        "  serve --gun-bind 127.0.0.1:2310\n    GUN service for clients started with -gunserver/-gunport: friends, ignore list, presence and tells (docs/gun-protocol.md). Developer tickets (the account name) need a loopback bind; with --auth-data or --local-accounts a ticket is account:token."
+    );
+    println!(
         "  serve --initialize-ui true --portals true --game-data PATH\n    Explicit development instant portal routes; enabled by serve-training."
     );
     println!(
@@ -90,6 +93,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut lifestones = None;
     let mut portals = None;
     let mut map_travel = false;
+    let mut gun_bind: Option<SocketAddr> = None;
     let mut item_id = None;
     let mut slot = None;
     let mut source_slot = None;
@@ -128,6 +132,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "--lifestones" => lifestones = Some(value.parse::<bool>()?),
             "--portals" => portals = Some(value.parse::<bool>()?),
             "--test-map-travel" => map_travel = value.parse::<bool>()?,
+            "--gun-bind" => gun_bind = Some(value.parse()?),
             "--item-id" => {
                 item_id = Some(if let Some(hex) = value.strip_prefix("0x") {
                     u64::from_str_radix(hex, 16)?
@@ -396,6 +401,25 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if auth_data.is_some() && local_accounts.is_some() {
                 return Err("--auth-data and --local-accounts are mutually exclusive".into());
             }
+            // The GUN service (friends, ignore list, presence, tells) for -gunserver clients.
+            // Tickets are `account:token` with --auth-data / --local-accounts, else the account.
+            let gun_service = match gun_bind {
+                Some(gun_addr) => {
+                    let gun_auth = match auth_data.as_ref().or(local_accounts.as_ref()) {
+                        Some(root) => pyrealium::gun::GunAuth::Tickets(root.clone()),
+                        None => pyrealium::gun::GunAuth::Developer,
+                    };
+                    std::fs::create_dir_all(&data)?;
+                    let service = pyrealium::gun::start(pyrealium::gun::GunConfig {
+                        bind: gun_addr,
+                        data: data.clone(),
+                        auth: gun_auth,
+                    })?;
+                    println!("GUN service listening on {}.", service.addr);
+                    Some(service)
+                }
+                None => None,
+            };
             let config = Config {
                     bind,
                     account,
@@ -416,6 +440,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 server::run_with_auth(config, auth_data)?;
             }
+            drop(gun_service);
         }
         "stop" => {
             if !data.join("server.lock").is_file() {
