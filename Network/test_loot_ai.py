@@ -27,7 +27,7 @@ def main():
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19510','--account','local','--data',str(run/'world'),
             '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--encounters',str(rules),'--initialize-ui','true',
             '--training-kit','false','--portals','false','--lifestones','false','--seconds','130'],
-            env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='3'),stdout=log,stderr=log,creationflags=0x08000000)
+            env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='5'),stdout=log,stderr=log,creationflags=0x08000000)
         try:
             time.sleep(1);assert server.poll() is None,(run/'server.log').read_text()
             for name in ['Loot AI Hunter','Loot AI Observer']:

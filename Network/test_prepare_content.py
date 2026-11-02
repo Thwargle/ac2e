@@ -24,13 +24,25 @@ class ContentComparisonTest(unittest.TestCase):
             self.assertTrue(prepare_content.sha256_any_eol(path).isdisjoint(expected))
 
     def test_regional_population_requires_matching_ground_proof_and_native_visual(self):
+        self.assert_authored_pack_evidence('regional')
+
+    def test_exploration_population_requires_matching_ground_proof_and_native_visual(self):
+        self.assert_authored_pack_evidence('exploration')
+
+    def test_hunting_expansion_requires_matching_ground_proof_and_native_visual(self):
+        self.assert_authored_pack_evidence('hunting', 2)
+
+    def test_npc_population_requires_matching_ground_proof_and_native_visual(self):
+        self.assert_authored_pack_evidence('npc', catalog_name='npc-dialogue-v1.json')
+
+    def assert_authored_pack_evidence(self, pack, version=1, catalog_name=None):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);content=root/'AC2E/emulator/content';content.mkdir(parents=True)
             for name in ['world-observed-expanded.tsv','training-world.tsv','capture-spawns.tsv']:
                 (content/name).write_text('pyrealium-world-v4\n')
             row='8140c0000077b800\t47000001\t1f000001\t01020001\t5\t5\t0\t1\t0\t0\t0\t-\tCreature'
-            manifest=content/'regional-world-v1.tsv';manifest.write_text('pyrealium-world-v4\n'+row+'\n')
-            catalog=content/'regional-content-v1.json';catalog.write_text('{}')
+            manifest=content/f'{pack}-world-v{version}.tsv';manifest.write_text('pyrealium-world-v4\n'+row+'\n')
+            catalog=content/(catalog_name or f'{pack}-content-v{version}.json');catalog.write_text('{}')
             evidence={'native_ground_verified':True,
                       'manifest_sha256':hashlib.sha256(manifest.read_bytes()).hexdigest(),
                       'source_sha256':hashlib.sha256(catalog.read_bytes()).hexdigest()}

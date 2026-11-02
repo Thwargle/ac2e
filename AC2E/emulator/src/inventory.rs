@@ -19,9 +19,9 @@ pub struct Item {
     pub equipment_mask: u16,
     pub location: Location,
 }
-/// Persisted inferred armor roll. Zero/None retains historical item semantics.
-#[derive(Clone,Copy,Debug,PartialEq,Eq)]
-pub struct Roll {pub armor:u16,pub tint:u16,pub level:u16}
+/// Persisted equipment roll. Zero/None retains historical item semantics.
+#[derive(Clone,Copy,Debug,Default,PartialEq,Eq)]
+pub struct Roll {pub armor:u16,pub tint:u16,pub level:u16,pub damage:u16,pub crafted:bool,pub wear:u16}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Inventory {
     items: BTreeMap<u64, Item>,
@@ -44,6 +44,8 @@ impl Default for Inventory {
 #[derive(Clone, Debug)]
 pub enum Command {
     Grant(Item),
+    /// Server-only, monotonic per-instance durability; never accepted from a packet.
+    ToolWear { item:u64, previous:u16, used:u16 },
     /// Restore missing native equipment metadata on a historical loot grant.
     /// This is a journaled server migration, never a client-selected mask.
     RepairEquipment { item:u64, definition:u32, mask:u16 },
@@ -165,6 +167,17 @@ impl Inventory {
     pub fn apply(&self, command: &Command) -> Result<Self, InventoryError> {
         let mut next = self.clone();
         match command {
+            Command::ToolWear {item,previous,used} => {
+                let old=self.owned(*item)?;
+                let durability=crate::professions::tool_durability(old.definition).ok_or(InventoryError::InvalidItem)?;
+                let creation=crate::professions::creation_tool(old.definition).is_some();
+                if !(matches!(old.location,Location::Bag(_))||creation&&old.location==Location::Equipped(0x40)) || old.quantity!=1 || old.stack_limit!=1
+                    || old.roll.map_or(0,|r|r.wear)!=*previous || used<=previous || u32::from(*used)>durability || !creation&&u32::from(*used)==durability {
+                    return Err(InventoryError::InvalidItem);
+                }
+                let next=next.items.get_mut(item).unwrap();
+                let r=next.roll.get_or_insert(Roll{level:1,crafted:true,..Default::default()});r.wear=*used;
+            }
             Command::RepairEquipment {item,definition,mask} => {
                 let old=self.owned(*item)?;
                 if old.definition!=*definition || old.equipment_mask!=0
@@ -184,8 +197,8 @@ impl Inventory {
                     || item.stack_limit == 0
                     || item.quantity > item.stack_limit
                     || item.equipment_mask & !0x7ff != 0
-                    || item.roll.is_some_and(|r|r.armor==0||r.armor>1000||r.tint>1000||!(1..=150).contains(&r.level)
-                        ||item.quantity!=1||item.stack_limit!=1||crate::apparel::recovered_slot(item.definition,item.visual)!=Some(item.equipment_mask))
+                    || item.roll.is_some_and(|r|r.armor>1000||r.damage>1000||r.tint>1000||!(1..=150).contains(&r.level)
+                        ||item.quantity!=1||item.stack_limit!=1||if r.crafted { !crate::professions::valid_finish(item) }else if r.damage>0{!crate::treasure_weapons::valid_finish(item)}else{r.wear!=0||r.armor==0||crate::apparel::recovered_slot(item.definition,item.visual)!=Some(item.equipment_mask)})
                     || !matches!(item.location,Location::Bag(slot) if slot<BAG_SLOTS)
                 {
                     return Err(InventoryError::InvalidItem);
@@ -408,7 +421,20 @@ impl Command {
     /// Local journal format; independent of the native serialized request graphs.
     pub fn encode(&self) -> String {
         match self {
+            Self::ToolWear {item,previous,used} => format!("j,{item},{previous},{used}"),
+            Self::Grant(item) if item.roll.is_some_and(|r|r.crafted&&r.wear>0) => {
+                let r=item.roll.unwrap();format!("H,{},{},{},{},{},{},{},{},{},{},{},{}",item.id,item.definition,item.visual,item.quantity,item.stack_limit,item.equipment_mask,
+                    match item.location{Location::Bag(s)|Location::Equipped(s)=>s},r.armor,r.tint,r.level,r.damage,r.wear)
+            },
             Self::RepairEquipment {item,definition,mask} => format!("q,{item},{definition},{mask}"),
+            Self::Grant(item) if item.roll.is_some_and(|r|r.crafted) => {
+                let r=item.roll.unwrap();format!("F,{},{},{},{},{},{},{},{},{},{},{}",item.id,item.definition,item.visual,item.quantity,item.stack_limit,item.equipment_mask,
+                    match item.location{Location::Bag(s)|Location::Equipped(s)=>s},r.armor,r.tint,r.level,r.damage)
+            },
+            Self::Grant(item) if item.roll.is_some_and(|r| r.damage > 0) => {
+                let r=item.roll.unwrap();format!("W,{},{},{},{},{},{},{},{},{},{},{}",item.id,item.definition,item.visual,item.quantity,item.stack_limit,item.equipment_mask,
+                    match item.location{Location::Bag(s)|Location::Equipped(s)=>s},r.armor,r.tint,r.level,r.damage)
+            },
             Self::Grant(item) if item.roll.is_some() => {
                 let r=item.roll.unwrap();format!("G,{},{},{},{},{},{},{},{},{},{}",item.id,item.definition,item.visual,item.quantity,item.stack_limit,item.equipment_mask,
                     match item.location{Location::Bag(s)|Location::Equipped(s)=>s},r.armor,r.tint,r.level)
@@ -469,9 +495,19 @@ impl Command {
         let small = |v: u64| u16::try_from(v).map_err(|_| InventoryError::InvalidItem);
         let word = |v: u64| u32::try_from(v).map_err(|_| InventoryError::InvalidItem);
         Ok(match (kind, values.as_slice()) {
+            ("j",[item,previous,used])=>Self::ToolWear{item:*item,previous:small(*previous)?,used:small(*used)?},
+            ("H",[id,did,visual,quantity,limit,mask,slot,armor,tint,level,damage,wear])=>Self::Grant(Item{
+                id:*id,definition:word(*did)?,visual:word(*visual)?,quantity:small(*quantity)?,stack_limit:small(*limit)?,equipment_mask:small(*mask)?,location:Location::Bag(small(*slot)?),
+                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?,damage:small(*damage)?,wear:small(*wear)?,crafted:true})}),
+            ("F",[id,did,visual,quantity,limit,mask,slot,armor,tint,level,damage])=>Self::Grant(Item{
+                id:*id,definition:word(*did)?,visual:word(*visual)?,quantity:small(*quantity)?,stack_limit:small(*limit)?,equipment_mask:small(*mask)?,location:Location::Bag(small(*slot)?),
+                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?,damage:small(*damage)?,crafted:true,..Default::default()})}),
+            ("W",[id,did,visual,quantity,limit,mask,slot,armor,tint,level,damage])=>Self::Grant(Item{
+                id:*id,definition:word(*did)?,visual:word(*visual)?,quantity:small(*quantity)?,stack_limit:small(*limit)?,equipment_mask:small(*mask)?,location:Location::Bag(small(*slot)?),
+                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?,damage:small(*damage)?,..Default::default()})}),
             ("G",[id,did,visual,quantity,limit,mask,slot,armor,tint,level])=>Self::Grant(Item{
                 id:*id,definition:word(*did)?,visual:word(*visual)?,quantity:small(*quantity)?,stack_limit:small(*limit)?,equipment_mask:small(*mask)?,location:Location::Bag(small(*slot)?),
-                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?})}),
+                roll:Some(Roll{armor:small(*armor)?,tint:small(*tint)?,level:small(*level)?,..Default::default()})}),
             ("q",[item,definition,mask]) => Self::RepairEquipment {item:*item,definition:word(*definition)?,mask:small(*mask)?},
             ("g", [id, did, visual, quantity, limit, mask, slot]) => Self::Grant(Item {roll: None,
                 id: *id,

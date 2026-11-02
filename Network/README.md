@@ -58,6 +58,66 @@ See the AC2E guide for reconstructed placements and remaining retail gaps.
 
 ## Build and verify
 
+The bridge carries native `WM_Craft` registry, ingredient-validation, execution
+and rank-increase messages, including full-width profession XP and item IDs.
+Skills → Craft lists 356 default recipes across 26 disciplines, plus the Arwic
+sword recipe after the Overseer teaches it. The server
+rechecks ingredients, recipe level, workshop distance, ownership, life/combat
+state, costs and cooldown before committing inventory and progress together.
+Manufacturing, refining, dyeing, surveying, five mining disciplines and butchery
+use the same durable journal. Recipe grants and missing server formulas are
+explicit AC2E reconstruction policies; spellbinding extraction is not enabled.
+The authored mentor's Field Supplies/Potion Practice continuation is enabled in
+the Unreal profile as well as the development-kit profile. These lessons and
+recipe grants are AC2E policy, not recovered retail entitlement rules.
+
+`Network/test_crafting.py` checks the entire mentor prerequisite chain, both
+potion recipes, rejection of wrong/foreign ingredients, unknown recipes, combat
+and stale requests, then restarts the server to verify persistence. Add `--render`
+to click the native Craft tab, recipe row, craft and close buttons in Unreal and
+verify the inventory and quest updates after restarting the server. These tests
+use isolated ports 19528/19529 and save evidence in `Saved/AC2NetworkTests`.
+`Network/test_professions.py` verifies multi-stack manufacture, XP/rank increases,
+item stats, refining, pickaxe manufacture, survey cooldowns, native-ground
+deposit discovery, mining, depletion and restart persistence over real UDP.
+It also uses port 19528; run the two acceptance scripts sequentially.
+
+`Network/test_arwic_mines.py` uses isolated port 19525 to verify the Overseer
+conversation, quest-only hammer loot, targeted hammer/sword hand-ins, learned
+recipe validation, multi-stage rewards, readable book pages and three restarts.
+It rejects combat/distant NPC use, an unlearned recipe and stale ingredients.
+Its combat fixture lowers Outcast health; a separate native-DAT unit test checks
+all six production mine actors, their native combat/AI values and corpse-aware
+spawner refill. Native `MessageDialog` StringInfo is decoded into readable chat
+while the original script event remains available for protocol diagnostics.
+
+`Network/test_vigor_loot.py` uses two clients and isolated port 19526 to check
+Lightning Bolt's learned-skill/drum requirements, periodic vigor drain, observer
+updates and live examination. It also checks Baron Colier's native 3–6 generic
+loot slots, ownership, stable reopening and rolled equipment stats preserved on
+pickup. Locations, training XP and weakened boss health are disposable fixtures;
+target vigor and loot limits come from the installed DAT.
+
+`Network/test_weapon_loot.py` uses isolated ports 19532/19533 to check four
+rolled weapon drops, pickup/inspection, native minimum-level refusal, equipped
+Flame Bolt damage, unchanged burn ticks, remote spell FX and a full server
+restart retaining equipment and stats. The corpse seed, positions, XP and
+weakened boss health are test fixtures; generated damage is documented AC2E
+reconstruction. Weapon identities and minimum use levels come from the DAT.
+
+`Network/test_wilderness_population.py` uses ports 19534/19535 and two disposable
+characters to verify seven regions in the full prepared world: all five Knorr
+areas, Arramora and Drudge Citadel. It checks visibility, death replication and
+loot pickup. Sample targets have reduced health; native-DAT tests separately
+validate every expansion actor's ground, stats, loot and managed spawner refill.
+
+`Network/test_hunting_quests.py` uses ports 19536/19537 to complete all 35 NPC
+hunts from both immutable catalogs, including Ikeras, Arramora and Foundry
+chains, a partial-progress restart, fixed/capped return rewards, level gates,
+duplicate-turn-in protection and completed-journal replay. NPC positions are
+production content; ten low-health copies per hunt cycle through its placed
+qualifying variants at native ground positions. Production saves are never used.
+
 `Build-AC2Network.ps1 -Test` builds the bridge and AC2E and runs their Rust tests. Install Rust with rustup so `cargo` is on PATH; an optional local installation in `Tools/Rust` is also supported. Python defaults to the bundled runtime if present, otherwise `python`; use `-Python` for another installation. Build Unreal with `Launch-AC2.ps1 -Mode Build`.
 
 The bridge dependency is pinned at AC2_Rusted commit `bcf67b4b9ac3ee9eb429d68ba6766cfce47c5a25`, in `References/AC2_Rusted`; `Cargo.lock` pins registry dependencies. Initialize it with `git submodule update --init --recursive`, or clone this repository with `--recurse-submodules`. Do not silently update that checkout when building.
@@ -177,6 +237,18 @@ It checks per-block generated/resolved/uploaded foliage, depth-tested materials
 and high-resolution texture availability after server-authorized map travel.
 The bare samples must stay bare; no substitute scenery is generated. Screenshots
 and logs are preserved under `Saved/AC2NetworkTests/foliage-*` for visual review.
+
+## NPC conversations
+
+Wiki NPC conversations use the existing native use completion, named speech and
+MessageDialog messages. Double-click an NPC without a dedicated action to read
+its next topic. Select any catalog NPC and enter `@talk` to browse information
+without invoking its working quest or vendor action. Range, life/combat state,
+native noncombat identity and a shared one-second dialogue limit are enforced by
+the server. The catalog does not grant quests or rewards. See
+[`npc-dialogue-v1.audit.json`](../AC2E/emulator/content/npc-dialogue-v1.audit.json)
+for coverage and [`test_npc_dialogue.py`](test_npc_dialogue.py) for the isolated
+UDP regression on ports 19540/19541.
 
 ## Sources and licenses
 

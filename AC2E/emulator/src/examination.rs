@@ -15,11 +15,17 @@ pub fn item_lines(item:&crate::inventory::Item,location:&str)->Vec<String> {
     let mask=crate::apparel::recovered_slot(item.definition,item.visual).unwrap_or(item.equipment_mask);
     let names:Vec<_>=slots.iter().filter(|(slot,_)|mask&slot!=0).map(|(_,name)|*name).collect();
     if !names.is_empty(){lines.push(format!("Equipment: {}",names.join(", ")));}
-    if let Some(armor)=item.roll.map(|r|u32::from(r.armor)).or_else(||crate::apparel::item_armor(item.definition)){lines.push(format!("Armor: {armor}"));}
+    if let Some(armor)=item.roll.map(|r|u32::from(r.armor)).or_else(||crate::apparel::item_armor(item.definition)).filter(|v|*v>0){lines.push(format!("Armor: {armor}"));}
     else if crate::apparel::required_race(item.definition).is_some(){lines.push("Armor rating unavailable.".into());}
-    if let Some(r)=item.roll {lines.push(format!("Treasure level: {}",r.level));}
+    if let Some(r)=item.roll {lines.push(format!("{} level: {}",if r.crafted{"Crafted"}else{"Treasure"},r.level));if r.damage>0{lines.push(format!("Weapon damage: {}",r.damage));}}
+    if let Some(p)=crate::treasure_weapons::profile(item) {
+        lines.push(format!("Required level: {}",p.minimum_level));
+        if item.roll.is_none(){lines.push("Weapon damage rating unavailable.".into());}
+    }
+    if item.definition==crate::arwic_mines::SWORD {lines.push("Weapon damage: 10".into());lines.push("Return this quest sword to the Arwic Mines Overseer in your backpack.".into());}
+    if item.definition==crate::arwic_mines::GUIDE {lines.push("Double-click to read the next of 15 pages. Text appears in chat.".into());}
     if let Some(q)=crate::recovered_quests::use_profile(item.definition){lines.push(format!("Begins {}. Level {}+. Defeat {} targets for {} XP.",q.title,q.level,q.goal,q.xp));}
-    if let Some(race)=crate::apparel::required_race(item.definition){lines.push(format!("Race: {}",match race{1=>"Human",2=>"Lugian",4=>"Tumerok",_=>"Unknown"}));}
+    if let Some(race)=crate::apparel::required_race(item.definition){lines.push(format!("Race: {}",match race{1=>"Human",2=>"Lugian",4=>"Tumerok",8=>"Drudge",16=>"Empyrean",_=>"Unknown"}));}
     if item.definition==crate::item_services::POTION_DEFINITION && item.visual==crate::item_services::POTION_VISUAL {
         lines.push(format!("Restores {} health.",crate::item_services::POTION_HEALTH));
         lines.push("Requires missing health. Potion recovery: 5 seconds.".into());
@@ -133,6 +139,7 @@ impl Names {
         Ok(names)
     }
     pub fn get(&self, definition: u32, fallback: &str) -> Name {
+        if definition==crate::arwic_mines::GLYPH {return Name::Literal(crate::arwic_mines::name(definition).unwrap().into());}
         self.0
             .get(&definition)
             .and_then(|name| name.clone())

@@ -42,11 +42,11 @@ pub fn close(merchant: u64) -> Result<Vec<u8>, WorldError> {
 pub const LAYOUTS: [(usize, u32); 3] = [(0x385d, 4), (0x382e, 11), (0x3812, 10)];
 const STORE_TEMPLATE: u32 = 0x6f00609a;
 const GOLD_DEFINITION: u32 = 0x47001108;
-const STOCK: [Stock; 4] = [Stock::Potion, Stock::Weapon, Stock::Mucor, Stock::Tallow];
+pub const STOCK: [Stock; 16] = [Stock::Potion, Stock::Weapon, Stock::Mucor, Stock::Tallow, Stock::Material(0x470010f2),Stock::Material(0x470010f3),Stock::Material(0x470010f4),Stock::Material(0x470010f5),Stock::Material(0x470010fe),Stock::Material(0x470027a0),Stock::Material(0x470027a3),Stock::Material(0x4700141f),Stock::Material(0x47001400),Stock::Material(0x47002ad4),Stock::Material(0x470010fa),Stock::Material(0x470027a2)];
 /// Shared bounded AC2E price policy; unknown/quest items cannot be transmuted.
 pub fn sale_value(item:&Item)->Option<(&'static str,u32)> {
     if let Some(stock)=Stock::for_item(item) {Some((stock.name(),stock.sell_price()))}
-    else if crate::starter_gear::tradable(item) || crate::apparel::tradable(item) {Some(("equipment",3))}
+    else if crate::starter_gear::tradable(item) || crate::apparel::tradable(item) || crate::treasure_weapons::valid_finish(item) {Some(("equipment",3))}
     else {None}
 }
 pub const MUCOR_DEFINITION: u32 = 0x47001744;
@@ -60,6 +60,7 @@ pub enum Stock {
     Weapon,
     Mucor,
     Tallow,
+    Material(u32),
 }
 impl Stock {
     pub fn name(self) -> &'static str {
@@ -68,6 +69,7 @@ impl Stock {
             Self::Weapon => "weapon",
             Self::Mucor => "mushroom",
             Self::Tallow => "tallow",
+            Self::Material(d)=>match d{0x470010f2=>"Crystal (100)",0x470010f3=>"Iron (100)",0x470010f4=>"Stone (100)",0x470010f5=>"Wood (100)",0x470010fe=>"Silver (100)",0x470027a0=>"Chitin (100)",0x470027a3=>"Hide (100)",0x4700141f=>"Sinew (100)",0x47001400=>"Bone (100)",0x47002ad4=>"Coal (100)",0x470010fa=>"Flawless Pyreal (100)",0x470027a2=>"Gathered Deruwood (100)",_=>"Material"},
         }
     }
     pub fn definition(self) -> u32 {
@@ -76,6 +78,7 @@ impl Stock {
             Self::Weapon => crate::training_kit::DEFINITION,
             Self::Mucor => MUCOR_DEFINITION,
             Self::Tallow => crate::crafting::CATALYST,
+            Self::Material(d)=>d,
         }
     }
     pub fn buy_price(self) -> u32 {
@@ -84,6 +87,7 @@ impl Stock {
             Self::Weapon => 12,
             Self::Mucor => 2,
             Self::Tallow => 2,
+            Self::Material(_)=>5,
         }
     }
     pub fn sell_price(self) -> u32 {
@@ -92,6 +96,7 @@ impl Stock {
             Self::Weapon => 3,
             Self::Mucor => 1,
             Self::Tallow => 1,
+            Self::Material(_)=>1,
         }
     }
     pub fn item(self, id: u64, slot: u16) -> Item {
@@ -100,6 +105,7 @@ impl Stock {
             Self::Weapon => crate::training_kit::item(id, slot),
             Self::Mucor => mucor(id, slot),
             Self::Tallow => crate::crafting::tallow(id, slot),
+            Self::Material(d)=>Item{id,definition:d,visual:crate::professions::catalog().items.iter().find(|i|i.id==d).expect("supplier material").visual,quantity:100,stack_limit:u16::MAX,equipment_mask:0,location:Location::Bag(slot),roll:None},
         }
     }
     fn by_name(value: &str) -> Option<Self> {
@@ -164,15 +170,14 @@ impl Catalog {
         let weapon = crate::training_kit::validate(portal)?;
         let mucor = validate_mucor(portal)?;
         let tallow = crate::crafting::validate_tallow(portal)?;
-        Ok(Self {
-            store_template,
-            metadata: BTreeMap::from([
+        let mut metadata=BTreeMap::from([
                 (Stock::Potion.definition(), potion),
                 (Stock::Weapon.definition(), weapon),
                 (Stock::Mucor.definition(), mucor),
                 (Stock::Tallow.definition(), tallow),
-            ]),
-        })
+            ]);
+        if legions {for stock in STOCK.iter().skip(4){let d=stock.definition();metadata.insert(d,Metadata::load(portal,d)?);}}
+        Ok(Self{store_template,metadata})
     }
     pub fn metadata(&self, definition: u32) -> Option<Metadata> {
         self.metadata.get(&definition).copied()
@@ -337,8 +342,27 @@ pub fn plan_buy(
     if state.gold < stock.buy_price() {
         return Err(MerchantError::InsufficientGold);
     }
-    let slot = inventory.free_slot().ok_or(MerchantError::FullBag)?;
-    let items = vec![inventory::Command::Grant(stock.item(next_item, slot))];
+    let mut product = stock.item(next_item, 0);
+    let mut items = Vec::new();
+    let mut bag = inventory.clone();
+    // Ordinary supply materials accumulate in a compatible stack, including
+    // when every bag slot is occupied. Preserve the exact Tallow lesson bundle.
+    if matches!(stock, Stock::Material(_)) {
+        if let Some(stack) = inventory.items().find(|i| {
+            i.definition == product.definition && i.visual == product.visual
+                && i.roll.is_none() && i.equipment_mask == 0
+                && i.stack_limit == product.stack_limit
+                && matches!(i.location, Location::Bag(_))
+                && i.quantity.checked_add(product.quantity).is_some()
+        }) {
+            let consume = inventory::Command::ConsumeStackDense { item: stack.id, quantity: stack.quantity };
+            bag = bag.apply(&consume).map_err(|_| MerchantError::InvalidState)?;
+            product.quantity += stack.quantity;
+            items.push(consume);
+        }
+    }
+    product.location = Location::Bag(bag.free_slot().ok_or(MerchantError::FullBag)?);
+    items.push(inventory::Command::Grant(product));
     let changes = vec![progression::Command::SpendGold(stock.buy_price())];
     let (next_inventory, next_progression) =
         crate::player_transaction::candidate(inventory, state, &items, &changes, Some(next_item))
@@ -466,11 +490,12 @@ pub fn sale_result(owner: u64, ordinal: u16) -> Result<Vec<u8>, WorldError> {
 #[derive(Clone, Debug)]
 pub struct Shop {
     merchant: u64,
-    offers: [u64; 4],
+    offers: Vec<u64>,
 }
 impl Shop {
-    pub fn new(merchant: u64, offers: [u64; 4]) -> Result<Self, WorldError> {
-        if [0, u64::MAX].contains(&merchant)
+    pub fn new(merchant: u64, offers: impl Into<Vec<u64>>) -> Result<Self, WorldError> {
+        let offers=offers.into();
+        if [0, u64::MAX].contains(&merchant) || offers.is_empty() || offers.len()>STOCK.len()
             || offers.iter().enumerate().any(|(index, id)| {
                 [0, u64::MAX, merchant].contains(id) || offers[..index].contains(id)
             })
@@ -491,14 +516,14 @@ impl Shop {
     pub fn open(&self, _validated_catalog: &Catalog) -> Result<Vec<u8>, WorldError> {
         let mut objects = vec![ShopObject::interpreted(
             0x385d,
-            vec![(2, 1), (_validated_catalog.store_template, 4), (4, 4), (0, 2)],
+            vec![(2, 1), (_validated_catalog.store_template, 4), (self.offers.len()as u32, 4), (0, 2)],
         )];
-        let mut list = 4u32.to_le_bytes().to_vec();
-        for index in 0..4 {
+        let mut list = (self.offers.len()as u32).to_le_bytes().to_vec();
+        for index in 0..self.offers.len()as u32 {
             list.extend((3 + index * 2u32).to_le_bytes());
         }
         objects.push(ShopObject::native(0x65, list));
-        for (index, stock) in STOCK.into_iter().enumerate() {
+        for (index, stock) in STOCK.into_iter().take(self.offers.len()).enumerate() {
             let identity = self.offers[index];
             let texture = match stock {
                 Stock::Potion => 0x41006f81,
@@ -506,6 +531,7 @@ impl Shop {
                 Stock::Weapon => 0x4100432b,
                 Stock::Mucor => 0x41006fb0,
                 Stock::Tallow => 0x410082d6,
+                Stock::Material(_)=>0,
             };
             objects.push(ShopObject::interpreted(
                 0x382e,
@@ -532,6 +558,7 @@ impl Shop {
                     Stock::Weapon => "Training Weapon",
                     Stock::Mucor => "Mucor Mushroom",
                     Stock::Tallow => "Tallow Bundle (100)",
+                    Stock::Material(_)=>stock.name(),
                 })?,
             ));
         }
@@ -677,4 +704,35 @@ fn shop_graph(objects: &[ShopObject]) -> Vec<u8> {
         }
     }
     bytes
+}
+
+#[cfg(test)]
+mod supply_tests {
+    use super::*;
+    #[test]
+    fn material_purchase_merges_in_full_bag_and_rejects_overflow_without_payment() {
+        let stock = Stock::Material(0x470010fe);
+        let mut bag = Inventory::default();
+        let mut silver = stock.item(inventory::ITEM_NAMESPACE + 1, 0);
+        silver.quantity = 65_400;
+        bag = bag.apply(&inventory::Command::Grant(silver.clone())).unwrap();
+        for slot in 1..BAG_SLOTS {
+            bag = bag.apply(&inventory::Command::Grant(mucor(bag.high_water()+1, slot))).unwrap();
+        }
+        let gold = Progression { gold: 100, ..Default::default() };
+        let plan = plan_buy(stock, &bag, &gold, bag.high_water()+1).unwrap();
+        let new = plan.next_inventory.items().find(|i| i.definition == silver.definition).unwrap();
+        assert_eq!(new.quantity, 65_500);
+        assert_ne!(new.id, silver.id, "Old stack identities must become stale");
+        assert_eq!(plan.next_inventory.items().count(), BAG_SLOTS as usize);
+        assert_eq!(plan.next_progression.gold, 95);
+        let replay = plan.items.iter().fold(bag.clone(), |b,c| b.apply(&inventory::Command::decode(&c.encode()).unwrap()).unwrap());
+        assert_eq!(replay, plan.next_inventory);
+        assert!(plan_buy(stock, &plan.next_inventory, &plan.next_progression, new.id+1).is_err());
+        assert_eq!(plan.next_progression.gold, 95);
+        assert_eq!(bag.items().find(|i|i.id==silver.id).unwrap().quantity, 65_400);
+        assert_eq!(gold.gold, 100);
+        let no_gold = Progression::default();
+        assert!(plan_buy(stock, &bag, &no_gold, bag.high_water()+1).is_err());
+    }
 }

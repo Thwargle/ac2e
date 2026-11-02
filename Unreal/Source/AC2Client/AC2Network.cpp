@@ -224,6 +224,7 @@ void FAC2Network::ClearWorld()
     PlayerGroove=0;
     ShopVendor.Reset();ShopOffers.Reset();
     Skills.Reset();Quests.Reset();SkillCredits=0;UntrainingSkill=0;AvailableXp=0;LootContainer.Reset();LootItems.Reset();
+    CraftRecipes.Reset();CloseCraft();
     BagSlots.Reset();
     WornSlots.Reset();
     PlayerId.Reset();
@@ -243,6 +244,12 @@ uint32 FAC2Network::Visual(const FString &Id) const
 }
 TArray<FAC2IconLayer> FAC2Network::ItemIconLayers(const FString& Id,FAC2AssetLibrary& Assets) const
 {
+    // Backpack creates keep their appearance in the inventory record and return
+    // before world-actor visual setup. Use that authoritative visual for owned
+    // items as the inventory panel does, rather than an empty world proxy.
+    if(const auto* Player=Mode->Characters.Active())
+        if(const auto* Item=Player->Items.FindByPredicate([&](const auto& I){return I.NetworkId==Id;}))
+            return Item->Visual?Assets.IconLayers(Item->Visual,Item->Aspects):TArray<FAC2IconLayer>();
     const auto* Object=Objects.Find(Id);
     return Object?Assets.IconLayers((*Object)->Visual,(*Object)->Aspects):TArray<FAC2IconLayer>();
 }
@@ -829,6 +836,11 @@ void FAC2Network::UseItem(int32 Index, uint32 EquipSlot)
     auto D = Mode->CharacterCatalog.Items.Find(I.Definition);
     if (!D)
         return;
+    if(I.Definition==0x47002de4||I.Definition==0x47002de7||I.Definition==0x47002de8||I.Definition==0x47002dea||I.Definition==0x47002deb||I.Definition==0x47002dec){
+        if(I.Equipped){Mode->Notice=TEXT("Move the gathering tool to your backpack before using it.");return;}
+        if(TargetId.IsEmpty()||TargetId==TEXT("0")){Mode->Notice=TEXT("Select a deposit or your defeated creature, then use the gathering tool.");return;}
+        auto J=Command(TEXT("use"));J->SetStringField(TEXT("item"),I.NetworkId);J->SetStringField(TEXT("target"),TargetId);Send(J);return;
+    }
     if (I.Equipped)
     {
         auto J = Command(TEXT("unequip"));
@@ -898,6 +910,80 @@ void FAC2Network::CloseShop()
 {
     if(ShopVendor.IsEmpty())return;
     auto J=Command(TEXT("shop_close"));J->SetStringField(TEXT("vendor"),ShopVendor);Send(J);ShopVendor.Reset();ShopOffers.Reset();
+}
+namespace {
+int64 CraftCurve(const TSharedPtr<FJsonObject>& J,const TCHAR* Key,uint32 Level){
+    const TArray<TSharedPtr<FJsonValue>>* A=nullptr;if(!J||!J->TryGetArrayField(Key,A)||A->IsEmpty())return 0;
+    const int32 Index=A->Num()==1?0:int32(Level);return A->IsValidIndex(Index)?int64((*A)[Index]->AsNumber()):0;
+}
+}
+TArray<FAC2Network::FCraftInput> FAC2Network::CraftInputs() const
+{
+    TArray<FCraftInput> Result;const auto* R=CraftCatalog.Find(OpenCraftRecipe);if(!R)return Result;
+    for(const auto& V:(*R)->GetArrayField(TEXT("ingredients"))){auto I=V->AsObject();if(!I||CraftSpinner<uint32(N(I,TEXT("minimum"))))continue;
+        FCraftInput F;F.Ordinal=N(I,TEXT("ordinal"));F.Quantity=CraftCurve(I,TEXT("quantities"),CraftSpinner);F.Name=S(I,TEXT("name"));
+        for(const auto& D:I->GetArrayField(TEXT("choices")))F.Choices.Add(uint32(D->AsNumber()));
+        if(F.Ordinal>=1&&F.Ordinal<=16&&F.Quantity>0)Result.Add(F);
+    }return Result;
+}
+void FAC2Network::CloseCraft()
+{
+    OpenCraftRecipe=0;CraftPending=false;CraftNotice.Reset();
+    for(int32 I=0;I<16;++I){CraftIngredients[I].Reset();CraftAccepted[I]=false;}
+}
+void FAC2Network::OpenCraft(uint32 Recipe)
+{
+    const auto* R=CraftCatalog.Find(Recipe);if(!CraftRecipes.Contains(Recipe)||!R)return;
+    CloseCraft();OpenCraftRecipe=Recipe;CraftSpinner=N(*R,TEXT("minimum"));PopulateCraft();
+}
+void FAC2Network::CraftLevel(int32 Delta)
+{
+    const auto* R=CraftCatalog.Find(OpenCraftRecipe);if(!R||CraftPending)return;
+    CraftSpinner=FMath::Clamp(int32(CraftSpinner)+Delta,int32(N(*R,TEXT("minimum"))),int32(N(*R,TEXT("maximum"))));PopulateCraft();
+}
+void FAC2Network::RaiseCraft(uint32 Skill)
+{
+    if(!IsWorld()||Dead||Combat||!CraftProgress.Contains(Skill))return;
+    auto J=Command(TEXT("craft_raise"));J->SetNumberField(TEXT("skill"),Skill);Send(J);
+}
+void FAC2Network::CycleCraftIngredient(int32 Ordinal)
+{
+    const auto* P=Mode->Characters.Active();if(!P||!IsWorld()||Dead||Combat||CraftPending||Ordinal<1||Ordinal>16)return;
+    for(const auto& F:CraftInputs())if(int32(F.Ordinal)==Ordinal){
+        TArray<FString> Choices;for(const auto& I:P->Items)if(!I.Equipped&&F.Choices.Contains(I.Definition))Choices.Add(I.NetworkId);
+        if(Choices.IsEmpty())return;const int32 Index=Ordinal-1,Next=(Choices.IndexOfByKey(CraftIngredients[Index])+1)%Choices.Num();
+        CraftIngredients[Index]=Choices[Next];CraftAccepted[Index]=false;
+        auto J=Command(TEXT("craft_validate"));J->SetNumberField(TEXT("recipe"),OpenCraftRecipe);J->SetNumberField(TEXT("spinner"),CraftSpinner);J->SetNumberField(TEXT("ordinal"),Ordinal);J->SetStringField(TEXT("item"),CraftIngredients[Index]);Send(J);return;
+    }
+}
+void FAC2Network::PopulateCraft()
+{
+    const auto* P=Mode->Characters.Active();if(!P||!IsWorld()||Dead||Combat||!OpenCraftRecipe||CraftPending)return;
+    CraftNotice.Reset();for(int32 I=0;I<16;++I){CraftIngredients[I].Reset();CraftAccepted[I]=false;}
+    TSet<FString> Used;
+    for(const auto& F:CraftInputs()){
+        const int32 I=F.Ordinal-1;
+        const auto* Item=P->Items.FindByPredicate([&](const auto& E){if(E.Equipped||!F.Choices.Contains(E.Definition)||Used.Contains(E.NetworkId))return false;int64 Total=0;for(const auto& Stack:P->Items)if(!Stack.Equipped&&Stack.Definition==E.Definition)Total+=Stack.Quantity;return Total>=F.Quantity;});
+        if(!Item){CraftNotice=TEXT("Missing ingredients.");continue;}
+        CraftIngredients[I]=Item->NetworkId;Used.Add(Item->NetworkId);
+        auto J=Command(TEXT("craft_validate"));J->SetNumberField(TEXT("recipe"),OpenCraftRecipe);J->SetNumberField(TEXT("spinner"),CraftSpinner);
+        J->SetNumberField(TEXT("ordinal"),F.Ordinal);J->SetStringField(TEXT("item"),Item->NetworkId);Send(J);
+    }
+}
+bool FAC2Network::CanCraft() const
+{
+    const auto* P=Mode->Characters.Active();
+    if(!P||!IsWorld()||Dead||Combat||CraftPending||!CraftRecipes.Contains(OpenCraftRecipe))return false;
+    const auto Inputs=CraftInputs();if(Inputs.IsEmpty()){const auto R=CraftCatalog.FindRef(OpenCraftRecipe);return R&&R->GetStringField(TEXT("kind"))==TEXT("survey");}
+    for(const auto& F:Inputs){const int32 I=F.Ordinal-1;if(!CraftAccepted[I]||!P->Items.ContainsByPredicate([&](const auto& E){if(E.NetworkId!=CraftIngredients[I]||E.Equipped||!F.Choices.Contains(E.Definition))return false;int64 Total=0;for(const auto& Stack:P->Items)if(!Stack.Equipped&&Stack.Definition==E.Definition)Total+=Stack.Quantity;return Total>=F.Quantity;}))return false;}
+    return true;
+}
+void FAC2Network::ExecuteCraft()
+{
+    if(!CanCraft())return;
+    auto J=Command(TEXT("craft_execute"));J->SetNumberField(TEXT("recipe"),OpenCraftRecipe);J->SetNumberField(TEXT("spinner"),CraftSpinner);
+    TArray<TSharedPtr<FJsonValue>> Items;for(const auto& F:CraftInputs()){auto I=MakeShared<FJsonObject>();I->SetNumberField(TEXT("ordinal"),F.Ordinal);I->SetStringField(TEXT("item"),CraftIngredients[F.Ordinal-1]);Items.Add(MakeShared<FJsonValueObject>(I));}
+    J->SetArrayField(TEXT("ingredients"),Items);J->SetStringField(TEXT("helper"),PlayerId);Send(J);CraftPending=true;CraftNotice=TEXT("Crafting...");
 }
 void FAC2Network::DropItem(int32 Index)
 {
@@ -1029,6 +1115,38 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
             Played|=Entry.Value->Model->PlayEffect(Fx,N(J,TEXT("strength"),1),Target);
         if(Smoke)UE_LOG(LogTemp,Display,TEXT("AC2 server FX %08X played=%d player=%d"),Fx,Played,Player!=nullptr);
         if(Played)++PlayedEffects;return;
+    }
+    if(Event==TEXT("craft_registry")||Event==TEXT("craft_skills"))
+    {
+        if(Event==TEXT("craft_registry")){
+            if(J->GetBoolField(TEXT("replace"))){CraftRecipes.Reset();CraftCatalog.Reset();CraftSkills.Reset();CraftProgress.Reset();}
+            const TArray<TSharedPtr<FJsonValue>>* List=nullptr;
+            if(J->TryGetArrayField(TEXT("recipes"),List))for(const auto& V:*List){const uint32 Recipe=V->AsNumber();if(Recipe>>24==0x6f)CraftRecipes.AddUnique(Recipe);}
+            if(J->TryGetArrayField(TEXT("catalog"),List))for(const auto& V:*List)if(auto R=V->AsObject())CraftCatalog.Add(N(R,TEXT("id")),R);
+            if(J->TryGetArrayField(TEXT("professions"),List))for(const auto& V:*List)if(auto R=V->AsObject())CraftSkills.Add(N(R,TEXT("id")),R);
+            if(J->TryGetArrayField(TEXT("success"),List)){CraftSuccess.Reset();for(const auto& V:*List)CraftSuccess.Add(V->AsNumber());}
+            if(OpenCraftRecipe&&!CraftRecipes.Contains(OpenCraftRecipe))CloseCraft();
+        }
+        const TArray<TSharedPtr<FJsonValue>>* Progress=nullptr;
+        if(J->TryGetArrayField(TEXT("progress"),Progress))for(const auto& V:*Progress)if(auto R=V->AsObject())CraftProgress.Add(N(R,TEXT("id")),R);
+        return;
+    }
+    if(Event==TEXT("craft_ingredient"))
+    {
+        const int32 Index=int32(N(J,TEXT("ordinal")))-1;
+        if(uint32(N(J,TEXT("recipe")))==OpenCraftRecipe && uint32(N(J,TEXT("spinner")))==CraftSpinner && Index>=0&&Index<16&&CraftIngredients[Index]==S(J,TEXT("item"))){
+            CraftAccepted[Index]=N(J,TEXT("error"))==0;
+            if(!CraftAccepted[Index])CraftNotice=TEXT("Ingredient rejected; see chat.");}
+        return;
+    }
+    if(Event==TEXT("craft_complete"))
+    {
+        if(uint32(N(J,TEXT("recipe")))==OpenCraftRecipe && N(J,TEXT("notify"))!=0){
+            CraftPending=false;const bool Success=N(J,TEXT("error"))==0;
+            for(int32 I=0;I<16;++I){CraftIngredients[I].Reset();CraftAccepted[I]=false;}
+            CraftNotice=Success?TEXT("Crafted! Item in backpack."):TEXT("Craft failed; see chat.");
+        }
+        return;
     }
     if(Event==TEXT("shop"))
     {
@@ -1809,6 +1927,20 @@ void FAC2Network::Tick(float Delta)
                 Finish(true,TEXT("Captured outdoor creature remains selected after a ranged hit, pursues with native animated poses, retaliates and supplies a native loot window with item pickup"));return;
             }
             Finish(true,TEXT("Captured outdoor actor has native model, server health, selection and visible projected bounds"));return;
+        }
+        if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_CRAFT_SMOKE"))==TEXT("1"))
+        {
+            auto Finish=[&](bool OK,const FString& Error){
+                UE_LOG(LogTemp,Display,TEXT("AC2 crafting render smoke %s: %s"),OK?TEXT("PASS"):TEXT("FAIL"),*Error);
+                FFileHelper::SaveStringToFile(OK?TEXT("PASS"):TEXT("FAIL: ")+Error,*(FPaths::ProjectSavedDir()/TEXT("Diagnostics/AC2Network-smoke.txt")));
+                Smoke=false;FPlatformMisc::RequestExitWithStatus(false,OK?0:1);};
+            if(Started>95){Finish(false,TEXT("Timed out waiting for crafting UI"));return;}
+            if(!IsWorld() || NeedsPlacement || Started<10 || Time<ShopSmokeNext)return;
+            auto H=HUD(Mode);if(!H || !H->GameUI)return;
+            if(ShopSmokeStep==9){Finish(true,TEXT("Native recipe tab, ingredient approval, pointer craft, inventory update, profession browser and recipe level controls"));return;}
+            FString Error;if(!H->GameUI->SmokeCraftInput(ShopSmokeStep,Error)){Finish(false,Error);return;}
+            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/FString::Printf(TEXT("Screenshots/AC2Craft-%d.png"),ShopSmokeStep),true,false);
+            ++ShopSmokeStep;ShopSmokeNext=Time+1.5;return;
         }
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_JOURNAL_SMOKE"))==TEXT("1"))
         {

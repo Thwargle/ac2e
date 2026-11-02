@@ -1,11 +1,11 @@
-//! Bounded native crafting requests and a two-recipe runtime profile.
+//! Bounded native crafting requests, profession registry and starter potion recipes.
 //!
 //! Captures: crafting.item.2.elog and crafting/ac2_craft_assembling_multiple_
 //! items_into_one.elog. Native ingredient hashing is corroborated by 00460040
 //! and PHashTable<unsigned_long,InstanceID>::StreamPack 004431d0. Completion
 //! reaches the 7148 ingredient UI (004696a0 / 00418780). Capture build identity
-//! is unknown; full crafting entitlement, cost, XP and chance rules are not
-//! inferred. The caller supplies explicit server-owned development authorization.
+//! is unknown. General DAT recipes and documented reconstruction policies live
+//! in professions.rs; the caller supplies server-owned recipe authorization.
 use crate::{
     dat::Dat,
     inventory::{BAG_SLOTS, Inventory, Item, Location},
@@ -94,18 +94,8 @@ fn panel_graph(objects: &[PanelObject]) -> Vec<u8> {
     }
     bytes
 }
-fn panel_skill() -> PanelObject {
-    PanelObject::interpreted(
-        0x345f,
-        &[
-            (0, 0x82),
-            (0, 0xcd),
-            (CRAFT_SKILL_DID, 2),
-            (0, 0x82),
-            (0, 0xcd),
-            (1, 2),
-        ],
-    )
+fn panel_skill(id:u32, p:&crate::professions::Progress) -> PanelObject {
+    PanelObject::interpreted(0x345f,&[(p.earned as u32,0x82),((p.earned>>32)as u32,0xcd),(id,2),(p.available as u32,0x82),((p.available>>32)as u32,0xcd),(p.level,2)])
 }
 fn panel_recipe(did: u32) -> PanelObject {
     // Observed default recipe-state values: no charge/level/time overrides.
@@ -129,52 +119,25 @@ fn panel_recipe(did: u32) -> PanelObject {
     )
 }
 
-/// Native crafting-panel initialization, sent after UI_Load. Call this again
-/// after granting training-kit authorization, using its authoritative value.
-///
-/// Retained ac2_login_from_charoverview.elog corroborates both message graphs,
-/// their package layouts and the level-one 6f0028d7 entry. Capture build identity
-/// is unknown. This fresh graph grants only the two development potion recipes;
-/// it does not replay the captured hundreds of recipes, XP or last-craft time.
-/// The root's XP modifier, count and time are zero: crafting XP is not awarded
-/// by this development profile. Original entitlement, cost and XP rules remain
-/// absent; the recovered one-Mucor/100-Tallow quantities are enforced separately.
-pub fn initialization(authorized: bool) -> Result<Vec<Vec<u8>>, WorldError> {
-    let default_objects = if authorized {
-        vec![PanelObject::native(0x65, &[1, 2]), panel_skill()]
-    } else {
-        vec![PanelObject::native(0x65, &[0])]
-    };
-    let mut objects = vec![PanelObject::interpreted(
-        0x1d2,
-        &[
-            (u32::MAX, 1),
-            (0, 3),
-            (0, 4),
-            (0, 0x83),
-            (0, 0xcd),
-            (2, 1),
-            (if authorized { 4 } else { 3 }, 1),
-        ],
-    )];
-    if authorized {
-        objects.extend([
-            PanelObject::native(0x11, &[1, CRAFT_SKILL_DID, 3]),
-            panel_skill(),
-            PanelObject::native(0x11, &[2, HEALTH_RECIPE, 5, VIGOR_RECIPE, 6]),
-            panel_recipe(HEALTH_RECIPE),
-            panel_recipe(VIGOR_RECIPE),
-        ]);
-    } else {
-        objects.extend([
-            PanelObject::native(0x11, &[0]),
-            PanelObject::native(0x11, &[0]),
-        ]);
-    }
-    Ok(vec![
-        crate::script::private_call(DEFAULT_SKILLS, &panel_graph(&default_objects))?,
-        crate::script::private_call(INITIALIZE, &panel_graph(&objects))?,
-    ])
+/// Native registry records retain per-profession level, available XP and daily XP.
+pub fn initialization(authorized:bool)->Result<Vec<Vec<u8>>,WorldError>{initialization_book(authorized,&crate::professions::Book::default())}
+pub fn skill_update(id:u32,book:&crate::professions::Book)->Result<Vec<u8>,WorldError>{
+    crate::script::private_call(0x82060027,&panel_graph(&[panel_skill(id,&book.get(id))]))
+}
+pub fn learned_recipe(id:u32)->Result<Vec<u8>,WorldError>{crate::script::private_call(0x8206001b,&crate::script::integer(id))}
+pub fn initialization_book(authorized:bool,book:&crate::professions::Book)->Result<Vec<Vec<u8>>,WorldError>{
+    initialization_with_quests(authorized,book,&crate::arwic_mines::State::default())
+}
+pub fn initialization_with_quests(authorized:bool,book:&crate::professions::Book,quest:&crate::arwic_mines::State)->Result<Vec<Vec<u8>>,WorldError>{
+    let skills:Vec<_>=crate::professions::catalog().skills.iter().filter(|_|authorized).collect();
+    let recipes:Vec<_>=crate::professions::catalog().recipes.iter().filter(|r|authorized&&quest.allowed(r.id)).collect();
+    let mut objects=vec![PanelObject::interpreted(0x1d2,&[(u32::MAX,1),(0,3),(0,4),(0,0x83),(0,0xcd),(2,1),(3,1)])];
+    let mut sh=vec![skills.len()as u32];for(i,s)in skills.iter().enumerate(){sh.extend([s.id,4+i as u32]);}
+    let mut rh=vec![recipes.len()as u32];for(i,r)in recipes.iter().enumerate(){rh.extend([r.id,4+skills.len()as u32+i as u32]);}
+    objects.push(PanelObject::native(0x11,&sh));objects.push(PanelObject::native(0x11,&rh));
+    objects.extend(skills.iter().map(|s|panel_skill(s.id,&book.get(s.id))));
+    objects.extend(recipes.iter().map(|r|panel_recipe(r.id)));
+    Ok(vec![crate::script::private_call(INITIALIZE,&panel_graph(&objects))?])
 }
 
 /// Asset identity and ingredient quantities come from original DAT data.
@@ -388,6 +351,7 @@ impl Reader<'_> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidateRequest {
+    pub spinner: u32,
     pub item: u64,
     pub ordinal: u32,
     pub recipe: u32,
@@ -401,10 +365,12 @@ impl ValidateRequest {
             data: arguments,
             position: 0,
         };
-        if r.integer()? != 0 {
+        let spinner = r.integer()?;
+        if spinner > 1000 {
             return Err(WorldError::InvalidValue);
         }
         let value = Self {
+            spinner,
             item: r.iid()?,
             ordinal: r.integer()?,
             recipe: r.integer()?,
@@ -461,7 +427,7 @@ impl ExecuteRequest {
         r.expect(0xffff0008)?;
         let header = r.word()?;
         let count = (header & 0xffffff) as usize;
-        if header >> 24 > 22 || count == 0 || count > MAX_INGREDIENTS {
+        if header >> 24 > 22 || count > MAX_INGREDIENTS {
             return Err(WorldError::LimitExceeded);
         }
         let mut ingredients = BTreeMap::new();
@@ -480,7 +446,7 @@ impl ExecuteRequest {
         let spinner = r.integer()?;
         let recipe = r.integer()?;
         r.finish()?;
-        if spinner > 1000 || recipe >> 24 != 0x6f || !identities.contains(&primary) {
+        if spinner > 1000 || recipe >> 24 != 0x6f || count>0&&!identities.contains(&primary) {
             return Err(WorldError::InvalidValue);
         }
         Ok(Self {
@@ -552,7 +518,7 @@ pub fn select_inventory(
 
 pub fn validation_reply(request: &ValidateRequest, accepted: bool) -> Result<Vec<u8>, WorldError> {
     let mut args = crate::script::integer(if accepted { 0 } else { 40001 });
-    args.extend(crate::script::integer(0));
+    args.extend(crate::script::integer(request.spinner));
     args.extend(crate::script::identity(request.item));
     args.extend(crate::script::integer(request.ordinal));
     args.extend(crate::script::integer(request.recipe));
@@ -577,12 +543,15 @@ pub fn validate_assets(portal: &mut Dat) -> io::Result<()> {
     let invalid = || io::Error::other("unsupported native potion recipe graph");
     for (id, output) in [(HEALTH_RECIPE, HEALTH_OUTPUT), (VIGOR_RECIPE, VIGOR_OUTPUT)] {
         let data = portal.read(id)?;
-        let hash = if id == HEALTH_RECIPE {
-            0xfe785ca8fcbe9b88
+        // Installed Legions differs from the retained recipe only in package
+        // 01d7 field 36 (word 0x12c: 0 instead of 1). Pin both complete records;
+        // inputs, quantities, output and craft skill are otherwise identical.
+        let hashes = if id == HEALTH_RECIPE {
+            [0xfe785ca8fcbe9b88, 0x4bf38afdcbdee5dd]
         } else {
-            0x93c3bd24e230ac1a
+            [0x93c3bd24e230ac1a, 0x2737e155650100af]
         };
-        if data.len() != 1448 || fingerprint(&data) != hash {
+        if data.len() != 1448 || !hashes.contains(&fingerprint(&data)) {
             return Err(invalid());
         }
         let w = |o| u32::from_le_bytes(data[o..o + 4].try_into().unwrap());
@@ -593,6 +562,9 @@ pub fn validate_assets(portal: &mut Dat) -> io::Result<()> {
             || w(0x98) != 37
             || w(0x238) != 5
             || w(0x244) != output
+            || w(0xc8) != CRAFT_SKILL_DID
+            || w(0x398) != 1
+            || w(0x48c) != u32::from(TALLOW_QUANTITY)
         {
             return Err(invalid());
         }

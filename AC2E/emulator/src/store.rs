@@ -32,6 +32,7 @@ pub struct Character {
     pub inventory: crate::inventory::Inventory,
     pub progression: crate::progression::Progression,
     pub skills: crate::skills::Book,
+    pub professions: crate::professions::Book,
     pub quests: crate::quests::Book,
     pub training_kit: bool,
     pub training_supplies: bool,
@@ -559,6 +560,28 @@ impl Store {
         character.progression = progression;
         Ok(true)
     }
+    /// Version-one NPC/obelisk progression and its XP are one durable event.
+    pub fn exploration_conversation(&mut self,account:&str,id:u64,entity:u32,time:u64)->io::Result<()> {
+        let c=self.characters.get(&id).filter(|c|c.account==account&&!c.deleted&&c.progression.alive())
+            .ok_or_else(||invalid("Quest owner unavailable"))?;
+        let result=c.quests.exploration.converse(entity,c.progression.level().number,time)?;
+        if result.book==c.quests.exploration {return Ok(());}
+        let state=if result.xp>0 {c.progression.apply(&crate::progression::Command::AwardXp(result.xp)).map_err(io::Error::other)?}
+            else {c.progression.clone()};
+        self.append_record(&format!("q9\t{id}\t{entity}\t{time}"))?;
+        let c=self.characters.get_mut(&id).unwrap();c.quests.exploration=result.book;c.progression=state;Ok(())
+    }
+    /// Version-two NPC hunt progression and its XP are one durable event.
+    pub fn hunting_conversation(&mut self,account:&str,id:u64,entity:u32,time:u64)->io::Result<()> {
+        let c=self.characters.get(&id).filter(|c|c.account==account&&!c.deleted&&c.progression.alive())
+            .ok_or_else(||invalid("Quest owner unavailable"))?;
+        let result=c.quests.hunting.converse(entity,&c.progression,time)?;
+        if result.book==c.quests.hunting {return Ok(());}
+        let state=if result.xp>0 {c.progression.apply(&crate::progression::Command::AwardXp(result.xp)).map_err(io::Error::other)?}
+            else {c.progression.clone()};
+        self.append_record(&format!("qh2\t{id}\t{entity}\t{time}"))?;
+        let c=self.characters.get_mut(&id).unwrap();c.quests.hunting=result.book;c.progression=state;Ok(())
+    }
     /// Commit the canonical inferred delivery exchange and journal together.
     pub fn recovered_delivery(&mut self,account:&str,id:u64,npc:u32,time:u64)->io::Result<()> {
         let first=self.next_item_id()?;
@@ -614,10 +637,11 @@ impl Store {
         let mut quests=character.quests.record_kill(entity);
         let (recovered,xp)=quests.recovered.kill(entity,character.progression.level().number,time);
         quests.recovered=recovered;
+        quests.hunting=quests.hunting.kill(entity,time);
         let mut progression=character.progression.clone();
         for command in commands {progression=progression.apply(command).map_err(io::Error::other)?;}
         if xp>0 {progression=progression.apply(&crate::progression::Command::AwardXp(xp)).map_err(io::Error::other)?;}
-        self.append_record(&format!("q6\t{id}\t{entity:08x}\t{time}\t{}",crate::player_transaction::encode_changes(commands)))?;
+        self.append_record(&format!("qk2\t{id}\t{entity:08x}\t{time}\t{}",crate::player_transaction::encode_changes(commands)))?;
         let character = self.characters.get_mut(&id).unwrap();
         character.quests = quests;
         character.progression = progression;
@@ -717,6 +741,25 @@ impl Store {
         character.progression = progression;
         character.quests = quests;
         Ok(())
+    }
+    /// Inventory, lesson entitlement, journal and XP are committed together.
+    pub fn arwic_transaction(&mut self,account:&str,id:u64,action:crate::arwic_mines::Action,time:u64)->io::Result<()> {
+        let first=self.next_item_id()?;
+        let c=self.characters.get(&id).filter(|c|c.account==account&&!c.deleted&&c.progression.alive()).ok_or_else(||invalid("Lesson owner unavailable"))?;
+        let plan=crate::arwic_mines::plan(&c.quests,&c.inventory,action,first,time)?;
+        if plan.quests==c.quests && plan.items.is_empty() && plan.rewards.is_empty() {return Ok(());}
+        let (bag,state)=if plan.items.is_empty()&&plan.rewards.is_empty(){(c.inventory.clone(),c.progression.clone())}else{crate::player_transaction::candidate(&c.inventory,&c.progression,&plan.items,&plan.rewards,Some(first))?};
+        self.append_record(&format!("m1\t{id}\t{}\t{time}\t{first}",action.encode()))?;
+        let c=self.characters.get_mut(&id).unwrap();c.inventory=bag;c.progression=state;c.quests=plan.quests;Ok(())
+    }
+    /// Inventory/cost and profession XP share one fsynced journal record.
+    pub fn profession_transaction(&mut self,account:&str,id:u64,items:&[crate::inventory::Command],changes:&[crate::progression::Command],change:&crate::professions::Change)->io::Result<()> {
+        let c=self.characters.get(&id).filter(|c|c.account==account&&!c.deleted&&c.progression.alive()).ok_or_else(||invalid("Crafting owner unavailable"))?;
+        let book=c.professions.apply(change)?;
+        let first=items.iter().any(|i|i.allocated_id().is_some()).then(||self.next_item_id()).transpose()?;
+        let (bag,state)=if items.is_empty()&&changes.is_empty(){(c.inventory.clone(),c.progression.clone())}else{crate::player_transaction::candidate(&c.inventory,&c.progression,items,changes,first)?};
+        self.append_record(&format!("c1\t{id}\t{}\t{}\t{}",crate::player_transaction::encode_items(items),crate::player_transaction::encode_changes(changes),serde_json::to_string(change).map_err(io::Error::other)?))?;
+        let c=self.characters.get_mut(&id).unwrap();c.inventory=bag;c.progression=state;c.professions=book;Ok(())
     }
     pub fn inventory_command(
         &mut self,
@@ -935,6 +978,7 @@ impl Store {
             inventory: crate::inventory::Inventory::default(),
             progression: crate::progression::Progression::default(),
             skills: crate::skills::Book::default(),
+            professions: crate::professions::Book::default(),
             quests: crate::quests::Book::default(),
             training_kit: false,
             training_supplies: false,
@@ -1313,6 +1357,26 @@ fn decode_journal_collect(
             }
             continue;
         }
+        if fields.len()==4 && fields[0]=="q9" {
+            let id=fields[1].parse::<u64>().map_err(|_|invalid("exploration owner"))?;
+            let entity=fields[2].parse::<u32>().map_err(|_|invalid("exploration NPC"))?;
+            let time=fields[3].parse::<u64>().map_err(|_|invalid("exploration time"))?;
+            let c=records.get_mut(&id).filter(|c|!c.deleted&&c.progression.alive()).ok_or_else(||invalid("exploration owner unavailable"))?;
+            let result=c.quests.exploration.converse(entity,c.progression.level().number,time)?;
+            if result.book==c.quests.exploration {return Err(invalid("exploration event did not advance"));}
+            if result.xp>0 {c.progression=c.progression.apply(&crate::progression::Command::AwardXp(result.xp)).map_err(io::Error::other)?;}
+            c.quests.exploration=result.book;continue;
+        }
+        if fields.len()==4 && matches!(fields[0],"qh1"|"qh2") {
+            let id=fields[1].parse::<u64>().map_err(|_|invalid("hunting owner"))?;
+            let entity=fields[2].parse::<u32>().map_err(|_|invalid("hunting NPC"))?;
+            let time=fields[3].parse::<u64>().map_err(|_|invalid("hunting time"))?;
+            let c=records.get_mut(&id).filter(|c|!c.deleted&&c.progression.alive()).ok_or_else(||invalid("hunting owner unavailable"))?;
+            let result=c.quests.hunting.converse_version(entity,&c.progression,time,if fields[0]=="qh1" {1}else{2})?;
+            if result.book==c.quests.hunting {return Err(invalid("hunting event did not advance"));}
+            if result.xp>0 {c.progression=c.progression.apply(&crate::progression::Command::AwardXp(result.xp)).map_err(io::Error::other)?;}
+            c.quests.hunting=result.book;continue;
+        }
         if fields.len()==5 && fields[0]=="q8" {
             let id=fields[1].parse::<u64>().map_err(|_|invalid("delivery owner"))?;
             let npc=fields[2].parse::<u32>().map_err(|_|invalid("delivery NPC"))?;
@@ -1325,7 +1389,7 @@ fn decode_journal_collect(
             if !items.is_empty()||!changes.is_empty(){(c.inventory,c.progression)=crate::player_transaction::candidate(&c.inventory,&c.progression,&items,&changes,Some(first))?;}
             c.quests.recovered=book;continue;
         }
-        if fields.len()==5 && fields[0]=="q6" {
+        if fields.len()==5 && matches!(fields[0],"q6"|"qk1"|"qk2") {
             let id=fields[1].parse::<u64>().map_err(|_|invalid("recovered quest owner"))?;
             let entity=u32::from_str_radix(fields[2],16).map_err(|_|invalid("recovered quest entity"))?;
             let time=fields[3].parse::<u64>().map_err(|_|invalid("recovered quest time"))?;
@@ -1337,7 +1401,9 @@ fn decode_journal_collect(
             let mut state=c.progression.clone();
             for change in changes {state=state.apply(&change).map_err(io::Error::other)?;}
             if xp>0 {state=state.apply(&crate::progression::Command::AwardXp(xp)).map_err(io::Error::other)?;}
-            c.quests=c.quests.record_kill(entity);c.quests.recovered=book;c.progression=state;continue;
+            c.quests=c.quests.record_kill(entity);c.quests.recovered=book;
+            if fields[0]!="q6" {c.quests.hunting=c.quests.hunting.kill_version(entity,time,if fields[0]=="qk1" {1}else{2});}
+            c.progression=state;continue;
         }
         if fields.len()==5 && fields[0]=="q7" {
             let id=fields[1].parse::<u64>().map_err(|_|invalid("quest use owner"))?;
@@ -1772,6 +1838,29 @@ fn decode_journal_collect(
             character.progression = progression;
             continue;
         }
+        if fields.len()==5 && fields[0]=="m1" {
+            let id=fields[1].parse::<u64>().map_err(|_|invalid("Invalid lesson owner"))?;
+            let action=crate::arwic_mines::Action::decode(fields[2])?;
+            let time=fields[3].parse::<u64>().map_err(|_|invalid("Invalid lesson time"))?;
+            let first=fields[4].parse::<u64>().map_err(|_|invalid("Invalid lesson identity"))?;
+            let expected=records.values().map(|c|c.inventory.high_water()).max().unwrap_or(crate::inventory::ITEM_NAMESPACE).checked_add(1).ok_or_else(||invalid("Lesson identity overflow"))?;
+            if first!=expected {return Err(invalid("Lesson item identity mismatch"));}
+            let c=records.get_mut(&id).filter(|c|!c.deleted&&c.progression.alive()).ok_or_else(||invalid("Lesson owner unavailable"))?;
+            let plan=crate::arwic_mines::plan(&c.quests,&c.inventory,action,first,time)?;
+            let (bag,state)=if plan.items.is_empty()&&plan.rewards.is_empty(){(c.inventory.clone(),c.progression.clone())}else{crate::player_transaction::candidate(&c.inventory,&c.progression,&plan.items,&plan.rewards,Some(first))?};
+            c.inventory=bag;c.progression=state;c.quests=plan.quests;continue;
+        }
+        if fields.len()==5&&fields[0]=="c1" {
+            let id=fields[1].parse::<u64>().map_err(|_|invalid("Invalid crafting owner"))?;
+            let items=crate::player_transaction::decode_items(fields[2])?;
+            let changes=crate::player_transaction::decode_changes(fields[3])?;
+            let change:crate::professions::Change=serde_json::from_str(fields[4]).map_err(io::Error::other)?;
+            let first=if items.iter().any(|i|i.allocated_id().is_some()){Some(records.values().map(|c|c.inventory.high_water()).max().unwrap_or(crate::inventory::ITEM_NAMESPACE).checked_add(1).ok_or_else(||invalid("Craft identity overflow"))?)}else{None};
+            let c=records.get_mut(&id).filter(|c|!c.deleted&&c.progression.alive()).ok_or_else(||invalid("Crafting owner unavailable"))?;
+            let book=c.professions.apply(&change)?;
+            let (bag,state)=if items.is_empty()&&changes.is_empty(){(c.inventory.clone(),c.progression.clone())}else{crate::player_transaction::candidate(&c.inventory,&c.progression,&items,&changes,first)?};
+            c.inventory=bag;c.progression=state;c.professions=book;continue;
+        }
         if fields.len() == 4 && matches!(fields[0], "a1" | "a2" | "a3") {
             let id = fields[1]
                 .parse::<u64>()
@@ -1972,6 +2061,7 @@ fn decode_journal_collect(
                 inventory: crate::inventory::Inventory::default(),
                 progression: crate::progression::Progression::default(),
                 skills: crate::skills::Book::default(),
+                professions: crate::professions::Book::default(),
                 quests: crate::quests::Book::default(),
                 training_kit: false,
                 training_supplies: false,
@@ -2248,7 +2338,7 @@ mod tests {
         use crate::{inventory::{Item,Roll,Location,Command as I,ITEM_NAMESPACE},progression::Command as P};
         let dir=std::env::temp_dir().join(format!("ac2-recovered-gameplay-{}",std::process::id()));
         let q=crate::recovered_quests::profiles().iter().find(|q|q.id==0x40000097).unwrap();
-        let armor=Item{roll:Some(Roll{armor:17,tint:731,level:7}),id:ITEM_NAMESPACE+1,
+        let armor=Item{roll:Some(Roll{armor:17,tint:731,level:7,..Default::default()}),id:ITEM_NAMESPACE+1,
             definition:0x47000fdc,visual:0x1f00058c,quantity:1,stack_limit:1,equipment_mask:16,location:Location::Bag(0)};
         let before;let finished;let bag;
         {
@@ -2319,8 +2409,143 @@ mod tests {
         }
         std::fs::remove_file(dir.join("characters.journal")).unwrap();std::fs::remove_dir(dir).unwrap();
     }
+    #[test]
+    fn exploration_conversations_replay_partial_and_completed_quests_exactly_once() {
+        let dir=std::env::temp_dir().join(format!("ac2-exploration-{}-{}",std::process::id(),crate::recovered_quests::now()));
+        let q=&crate::exploration_quests::catalog().quests[0];
+        let referral=&crate::exploration_quests::catalog().referral;
+        {
+            let mut s=Store::open(&dir).unwrap();s.create("local","Ringway Hero").unwrap();
+            assert!(s.exploration_conversation("other",1,q.npc,100).is_err());
+            assert!(s.exploration_conversation("local",1,q.objectives[0],100).is_err());
+            s.exploration_conversation("local",1,q.npc,100).unwrap();
+            s.exploration_conversation("local",1,q.objectives[0],101).unwrap();
+            let length=s.file.metadata().unwrap().len();
+            s.exploration_conversation("local",1,q.objectives[0],102).unwrap();
+            assert_eq!(s.file.metadata().unwrap().len(),length,"duplicate touch must not append");
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();
+            assert_eq!(s.characters[&1].quests.exploration.0[&q.id].phase,2);
+            for (i,entity) in q.objectives[1..].iter().enumerate() {
+                s.exploration_conversation("local",1,*entity,103+i as u64).unwrap();
+            }
+            s.exploration_conversation("local",1,q.npc,105).unwrap();
+            assert_eq!(s.characters[&1].progression.xp,80);
+            s.exploration_conversation("local",1,q.npc,106).unwrap();
+            s.exploration_conversation("local",1,referral.npc,107).unwrap();
+            let book=&s.characters[&1].quests;
+            assert!(book.list_graph().unwrap().len()<48000);
+            assert_eq!(book.updates().unwrap().len(),2);
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();
+            assert_eq!(s.characters[&1].progression.xp,80);
+            assert_eq!(s.characters[&1].quests.exploration.0[&referral.id].completed,107);
+            s.exploration_conversation("local",1,q.npc,108).unwrap();
+            assert_eq!(s.characters[&1].progression.xp,80);
+        }
+        std::fs::remove_file(dir.join("characters.journal")).unwrap();std::fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn hunting_quests_replay_acceptance_kills_return_and_exactly_one_reward() {
+        use crate::progression::Command::AwardXp;
+        let dir=std::env::temp_dir().join(format!("ac2-hunting-{}-{}",std::process::id(),crate::recovered_quests::now()));
+        let q=crate::hunting_quests::profile(0x4000fc07).unwrap();
+        let time=crate::recovered_quests::now();let initial=447949214;
+        {
+            let mut s=Store::open(&dir).unwrap();s.create("local","Foundry Hunter").unwrap();
+            s.progression_command("local",1,AwardXp(initial)).unwrap();
+            assert!(s.hunting_conversation("other",1,q.npc,time).is_err());
+            s.hunting_conversation("local",1,q.npc,time).unwrap();
+            for _ in 0..4 {s.encounter_reward("local",1,q.targets[0],&[AwardXp(1)]).unwrap();}
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();assert_eq!(s.characters[&1].quests.hunting.0[&q.id].count,4);
+            for _ in 4..10 {s.encounter_reward("local",1,q.targets[0],&[AwardXp(1)]).unwrap();}
+            assert_eq!(s.characters[&1].progression.xp,initial+10,"kill must not pay quest XP");
+            s.hunting_conversation("local",1,q.npc,time+1).unwrap();
+            assert_eq!(s.characters[&1].progression.xp,initial+10+q.xp_cap);
+            let length=s.file.metadata().unwrap().len();
+            s.hunting_conversation("local",1,q.npc,time+2).unwrap();
+            assert_eq!(s.file.metadata().unwrap().len(),length);
+        }
+        {
+            let s=Store::open(&dir).unwrap();assert_eq!(s.characters[&1].progression.xp,initial+10+q.xp_cap);
+            assert_eq!(s.characters[&1].quests.hunting.0[&q.id].completed,time+1);
+        }
+        std::fs::remove_file(dir.join("characters.journal")).unwrap();std::fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn hunting_v1_journal_replays_before_new_gregor_chain_and_fixed_rewards() {
+        use crate::progression::Command::AwardXp;
+        let dir=std::env::temp_dir().join(format!("ac2-hunting-versions-{}-{}",std::process::id(),crate::recovered_quests::now()));
+        let q=crate::hunting_quests::profile(0x4000fc04).unwrap();
+        let initial=113726634933;let repeat=120+q.repeat_seconds;
+        {
+            let mut s=Store::open(&dir).unwrap();s.create("local","Version Hunter").unwrap();
+            s.progression_command("local",1,AwardXp(initial)).unwrap();
+            s.append_record(&format!("qh1\t1\t{}\t100",q.npc)).unwrap();
+            for n in 0..10 {s.append_record(&format!("qk1\t1\t{:08x}\t{}\tx,1",q.targets[0],101+n)).unwrap();}
+            s.append_record(&format!("qh1\t1\t{}\t120",q.npc)).unwrap();
+            s.append_record(&format!("qh1\t1\t{}\t{repeat}",q.npc)).unwrap();
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();let c=&s.characters[&1];
+            assert_eq!(c.quests.hunting.0.len(),1);
+            assert_eq!(c.quests.hunting.0[&q.id].started,repeat);
+            assert_eq!(c.progression.xp,initial+10+q.xp_cap);
+            let fixed=crate::hunting_quests::profile(0x4000fc23).unwrap();
+            let now=crate::recovered_quests::now();
+            s.hunting_conversation("local",1,fixed.npc,now).unwrap();
+            for _ in 0..10 {s.encounter_reward("local",1,fixed.targets[0],&[AwardXp(1)]).unwrap();}
+            s.hunting_conversation("local",1,fixed.npc,now+1).unwrap();
+            s.compact_journal().unwrap();
+        }
+        {
+            let s=Store::open(&dir).unwrap();
+            assert_eq!(s.characters[&1].progression.xp,initial+20+q.xp_cap+55000);
+            assert_eq!(s.characters[&1].quests.hunting.0[&0x4000fc23].rewarded_xp,55000);
+        }
+        std::fs::remove_file(dir.join("characters.journal")).unwrap();std::fs::remove_dir(dir).unwrap();
+    }
     fn record(data: &str) -> Vec<u8> {
         format!("{data}\t{:08x}\n", hash(data.as_bytes())).into_bytes()
+    }
+    #[test]
+    fn arwic_lesson_replays_inventory_entitlement_and_reward_atomically() {
+        use crate::arwic_mines::{Action,IRON,SWORD,GLYPH,GUIDE};
+        let dir=std::env::temp_dir().join(format!("ac2-arwic-{}-{}",std::process::id(),crate::recovered_quests::now()));
+        {
+            let mut s=Store::open(&dir).unwrap();s.create("local","Mine Apprentice").unwrap();
+            assert!(s.arwic_transaction("other",1,Action::Talk,100).is_err());
+            s.arwic_transaction("local",1,Action::Talk,100).unwrap();
+            s.arwic_transaction("local",1,Action::Hammer,101).unwrap();
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();assert_eq!(s.characters[&1].quests.arwic.phase,2);
+            s.arwic_transaction("local",1,Action::Talk,102).unwrap();
+            let iron=crate::arwic_mines::owned(&s.characters[&1].inventory,IRON).unwrap();
+            s.arwic_transaction("local",1,Action::Craft(iron),103).unwrap();
+            assert!(s.characters[&1].inventory.items().any(|i|i.definition==SWORD));
+            s.compact_journal().unwrap();
+        }
+        {
+            let mut s=Store::open(&dir).unwrap();assert_eq!(s.characters[&1].quests.arwic.phase,4);
+            assert!(s.characters[&1].quests.arwic.learned);
+            s.arwic_transaction("local",1,Action::Talk,104).unwrap();
+            let length=s.file.metadata().unwrap().len();
+            s.arwic_transaction("local",1,Action::Talk,105).unwrap();
+            assert_eq!(s.file.metadata().unwrap().len(),length);s.compact_journal().unwrap();
+        }
+        {
+            let s=Store::open(&dir).unwrap();let c=&s.characters[&1];
+            assert_eq!(c.progression.xp,150);assert_eq!(c.quests.arwic.completed,104);
+            assert!(c.quests.arwic.learned);
+            for definition in [GLYPH,GUIDE] {assert_eq!(c.inventory.items().filter(|i|i.definition==definition).count(),1);}
+            assert!(!c.inventory.items().any(|i|i.definition==SWORD));
+        }
+        std::fs::remove_file(dir.join("characters.journal")).unwrap();std::fs::remove_dir(dir).unwrap();
     }
     #[test]
     fn avatar_lifetimes_survive_restart_and_reject_invalid_journal_transitions() {

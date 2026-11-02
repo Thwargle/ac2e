@@ -62,6 +62,33 @@ mod locomotion_tests {
 mod spawner_tests {
     use super::*;
     #[test]
+    fn arwic_room_rosters_use_native_stats_and_refill_only_after_corpse_removal() {
+        let Ok(path)=std::env::var("AC2_TEST_GAME_DATA") else{return};
+        let content=Content::parse_text(include_str!("../content/arwic-mines-world-v1.tsv"),Path::new(&path)).unwrap();
+        let mut runtime=Encounters::parse(include_str!("../content/development-encounters.tsv"),&content).unwrap();
+        assert_eq!(runtime.actors.len(),6);assert_eq!(runtime.spawners.group_count(),2);
+        assert_eq!(runtime.actors.values().filter(|a|a.entity==crate::arwic_mines::OUTCAST).count(),4);
+        for actor in runtime.actors.values() {
+            assert_eq!((actor.rule.level,actor.health),if actor.entity==crate::arwic_mines::OUTCAST {(Some(6),164)}else{(Some(3),59)});
+            assert!(actor.ai.aggressive());
+            if actor.entity==crate::arwic_mines::OUTCAST {
+                assert_eq!((actor.rule.damage,actor.rule.armor,actor.rule.xp),(28,4,19));
+                assert_eq!((actor.ai.perception,actor.ai.homesick,actor.ai.loot_profile),(30.,Some(60.),948));
+                assert!(!actor.ai.wanders(),"No wandering radius was recovered for this template");
+            }
+        }
+        let mut scene=Scene::with_content(content);runtime.initialize_spawners(&mut scene,0).unwrap();
+        let actions=runtime.spawners.poll(0);assert_eq!(actions.len(),6);
+        for action in actions {let crate::spawners::Action::Spawn(id)=action else{panic!()};scene.respawn_content(id).unwrap();runtime.spawned(id).unwrap();}
+        let id=*runtime.actors.keys().next().unwrap();
+        assert!(runtime.spawners.died(id,10,60000));
+        assert!(runtime.spawners.poll(30010).is_empty(),"A corpse still occupies its child slot");
+        assert_eq!(runtime.spawners.poll(60010),vec![crate::spawners::Action::Remove(id)]);
+        runtime.spawners.removed(id,60010);
+        assert_eq!(runtime.spawners.poll(60010),vec![crate::spawners::Action::Spawn(id)]);
+        runtime.spawners.spawned(id);assert!(runtime.spawners.poll(999999).is_empty());
+    }
+    #[test]
     fn policy_overrides_initial_delay_without_moving_the_observed_anchor() {
         let id=crate::content::NAMESPACE+7;let home=Placement::HUMAN_START;
         let content=Content::fixture(id,home,None);
@@ -143,6 +170,7 @@ struct Actor {
     route: Vec<Placement>,
     rule: Rule,
     health: u32,
+    vigor: Option<u32>,
     target: Option<u64>,
     next_attack: u64,
     ai: crate::creature_ai::Profile,
@@ -177,6 +205,7 @@ pub struct Strike {
     pub ratings: Option<(crate::combat::Ratings,u64)>,
     pub skill: u32,
     pub bonus: u32,
+    pub vigor_damage: u32,
     pub weapon_damage: bool,
     pub cost: u32,
     pub range: f32,
@@ -205,6 +234,7 @@ struct Burn {
     source: u64,
     target: u64,
     per_tick: u32,
+    vigor_per_tick: u32,
     period: u64,
     next: u64,
     until: u64,
@@ -246,16 +276,19 @@ pub enum Event {
     },
     Quest {
         player: u64,
+        previous: crate::quests::Book,
         book: crate::quests::Book,
     },
     Health {
         actor: u64,
         health: u32,
     },
+    Vigor { actor: u64, vigor: u32 },
     Despawn(u64),
     Respawn {
         actor: u64,
         health: u32,
+        vigor: Option<u32>,
     },
     Owner {
         player: u64,
@@ -368,7 +401,7 @@ impl Bestiary {
     fn ruled(&self, entity: u32, id: u64) -> Option<(Rule, crate::creature_ai::Profile, Option<crate::world_rules::Patrol>)> {
         let custom = self.world.stats_for(entity, id);
         // Operator stats can make any placed non-service object a creature.
-        let regional=id&0xffffffffff000000==0x8140c00000000000;
+        let regional=matches!(id & 0xffffffffff000000, 0x8140c00000000000 | 0x8140c10000000000 | 0x8140d30000000000);
         let selected=if self.regional_native && regional {&self.native_rules}else{&self.rules};
         let mut rule = selected.get(&entity).copied().or_else(|| custom.and_then(|s| Some(Rule {
             health: s.health?, damage: s.damage?, level: None, vigor: None, armor: 0, interval: 1500,
@@ -402,6 +435,7 @@ impl Bestiary {
             route: Vec::new(),
             rule,
             health: rule.health,
+            vigor: rule.vigor,
             target: None,
             next_attack: 0,
             ai, next_idle: object.id % 1000, wander_goal: None, evading: false, random: object.id,
@@ -415,7 +449,7 @@ impl Bestiary {
         let group = self.world.groups.iter().find(|g| g.members.contains(&id)).and_then(|g| g.regeneration_ms);
         let mut policy = self.spawn_policies.get(&actor.entity).copied().unwrap_or(crate::spawners::Policy {
             initial_delay_ms: 0,
-            regeneration_ms: if id & 0xffffffffff000000 == 0x8140c00000000000 { 180000 } else if id & 0xffffff0000000000 == 0x8140a00000000000 { 120000 } else { actor.rule.respawn } });
+            regeneration_ms: if matches!(id & 0xffffffffff000000, 0x8140c00000000000 | 0x8140c10000000000) { 180000 } else if id & 0xffffff0000000000 == 0x8140a00000000000 || id & 0xffffffffff000000 == 0x8140d30000000000 { 120000 } else { actor.rule.respawn } });
         if let Some(ms) = group.or(custom) { policy.regeneration_ms = ms; }
         policy
     }
@@ -597,7 +631,9 @@ impl Encounters {
         let mut native_rules=BTreeMap::new();
         for line in include_str!("../content/creature-combat.tsv").lines()
             .chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines())
-            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines()) {
+            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/wilderness-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/arwic-mines-creature-combat-v1.tsv").lines()) {
             if line.is_empty() || line.starts_with('#') || line.starts_with("pyrealium-") {
                 continue;
             }
@@ -679,7 +715,10 @@ impl Encounters {
         let mut spawners=crate::spawners::Spawners::new(actors.iter().map(|(&id,actor)|(id,bestiary.policy(id,actor))))?;
         for (id,capacity,members) in spawn_groups {spawners.group(id,capacity,members)?;}
         for source in [include_str!("../content/inferred-world-v1.report.json"),
-            include_str!("../content/regional-world-v1.report.json")] {
+            include_str!("../content/regional-world-v1.report.json"),
+            include_str!("../content/wilderness-world-v1.report.json"),
+            include_str!("../content/hunting-world-v2.report.json"),
+            include_str!("../content/arwic-mines-world-v1.report.json")] {
         let inferred:serde_json::Value=serde_json::from_str(source).map_err(io::Error::other)?;
         for group in inferred["groups"].as_array().ok_or_else(||invalid("inferred spawn groups"))? {
             let members=group["members"].as_array().ok_or_else(||invalid("inferred roster"))?.iter().filter_map(|v|v.as_u64()).collect::<Vec<_>>();
@@ -797,7 +836,7 @@ impl Encounters {
     }
     pub fn inspection_stats(&self) -> impl Iterator<Item = (u64, u32, u32)> + '_ {
         self.actors.iter().flat_map(|(&id, actor)| {
-            [(0x12e,actor.rule.level),(0x108,actor.rule.vigor),(0x103,actor.rule.vigor)]
+            [(0x12e,actor.rule.level),(0x108,actor.rule.vigor),(0x103,actor.vigor)]
                 .into_iter().filter_map(move |(stat,value)|value.map(|v|(id,stat,v)))
         })
     }
@@ -819,7 +858,7 @@ impl Encounters {
     pub fn spawned(&mut self,id:u64)->io::Result<()> {
         if !self.spawners.spawned(id){return Err(invalid("unexpected spawner child"));}
         let actor=self.actors.get_mut(&id).ok_or_else(||invalid("unknown spawner child"))?;
-        actor.health=actor.rule.health;actor.target=None;actor.route.clear();actor.next_attack=0;
+        actor.health=actor.rule.health;actor.vigor=actor.rule.vigor;actor.target=None;actor.route.clear();actor.next_attack=0;
         actor.velocity=0.;
         actor.evading=false;actor.wander_goal=None;
         self.burns.retain(|b|b.target!=id);
@@ -983,7 +1022,7 @@ impl Encounters {
             if burn.next<=now {
                 burn.next=now.saturating_add(burn.period);
                 due.push((burn.source,Attack{target:burn.target,next:now,repeat:false,category:0,stage:2,started:now,skill:false,periodic:true,
-                    strike:Some(Strike{ratings:None,skill:burn.skill,bonus:burn.per_tick,weapon_damage:false,cost:0,range:0.,behavior:0,fx:0,burn:None})}));
+                    strike:Some(Strike{ratings:None,skill:burn.skill,bonus:burn.per_tick,vigor_damage:burn.vigor_per_tick,weapon_damage:false,cost:0,range:0.,behavior:0,fx:0,burn:None})}));
             }
         }
         for (player, attack) in due {
@@ -1054,7 +1093,8 @@ impl Encounters {
             }
             let actor = &self.actors[&attack.target];
             // Authored starter balance; the client sends only a learned skill/target.
-            let base = if attack.category == 2 { self.damage.saturating_add(4) } else { self.damage };
+            let weapon=crate::professions::weapon_damage(&store.characters[&player].inventory).unwrap_or(self.damage);
+            let base = if attack.category == 2 { weapon.saturating_add(4) } else { weapon };
             let damage = attack.strike.map_or(base, |s|s.bonus.saturating_add(if s.weapon_damage {base} else {0}));
             let armor=if attack.periodic {0} else {crate::combat::adjusted(actor.rule.armor,self.ratings_for(attack.target).armor)};
             let cost = attack.strike.map_or(if attack.category == 2 { self.cost.max(6) } else { self.cost }, |s|s.cost.min(store.characters[&player].progression.vigor));
@@ -1067,6 +1107,7 @@ impl Encounters {
                 .saturating_sub(armor)
                 .max(1)
                 .min(actor.health)};
+            let drained = if hit { attack.strike.map_or(0, |s| s.vigor_damage).min(actor.vigor.unwrap_or(0)) } else { 0 };
             let killed = dealt == actor.health;
             let mut commands = if cost > 0 { vec![Command::SpendVigor(cost)] } else { Vec::new() };
             if killed && actor.rule.xp > 0 {
@@ -1139,6 +1180,7 @@ impl Encounters {
             if store.characters[&player].quests != previous_quests {
                 events.push(Event::Quest {
                     player,
+                    previous: previous_quests,
                     book: store.characters[&player].quests.clone(),
                 });
             }
@@ -1155,15 +1197,20 @@ impl Encounters {
                 if !attack.periodic {
                     if strike.fx!=0 {events.push(Event::Fx{target:attack.target,fx:strike.fx});}
                     if hit { if let Some((ratings,ms))=strike.ratings {self.add_ratings(attack.target,strike.skill,ratings,ms,now)?;} }
-                    if let Some(burn)=strike.burn.filter(|b|hit && b.health>0 && b.duration_ms>0) {
+                    if let Some(burn)=strike.burn.filter(|b|hit && (b.health>0 || b.vigor>0) && b.duration_ms>0) {
                         self.burns.retain(|b|!(b.source==player && b.target==attack.target && b.skill==strike.skill));
-                        self.burns.push(Burn{source:player,target:attack.target,skill:strike.skill,per_tick:burn.health,
+                        self.burns.push(Burn{source:player,target:attack.target,skill:strike.skill,per_tick:burn.health,vigor_per_tick:burn.vigor,
                             period:burn.period_ms.max(250),next:now.saturating_add(burn.period_ms.max(250)),until:now.saturating_add(burn.duration_ms)});
                     }
                 }
             }
             let actor = self.actors.get_mut(&attack.target).unwrap();
             actor.health -= dealt;
+            if drained > 0 {
+                let vigor = actor.vigor.as_mut().unwrap();
+                *vigor -= drained;
+                events.push(Event::Vigor { actor: attack.target, vigor: *vigor });
+            }
             if !attack.periodic && attack.category == 0 { if let Some(strike)=attack.strike {events.push(Event::SkillSwing{player,behavior:strike.behavior});} else {events.push(Event::Swing(player));} }
             if let Some(dealt) = i32::try_from(dealt).ok().filter(|value| *value > 0) {
                 events.push(Event::Hit {
@@ -1183,7 +1230,7 @@ impl Encounters {
             });
             events.push(Event::Note {
                 player,
-                text: if !hit {"Your attack missed.".into()} else if dealt == 0 {"Your skill takes effect.".into()} else {format!("You hit for {dealt} damage.")},
+                text: if !hit {"Your attack missed.".into()} else if drained > 0 {format!("You hit for {dealt} damage and drain {drained} vigor.")} else if dealt == 0 {"Your skill takes effect.".into()} else {format!("You hit for {dealt} damage.")},
             });
             if killed {
                 actor.target = None;
@@ -1344,6 +1391,10 @@ impl Encounters {
                         id,
                         crate::combat_visual::IdolAction::Peace,
                     ));
+                    if actor.vigor != actor.rule.vigor {
+                        actor.vigor = actor.rule.vigor;
+                        if let Some(vigor) = actor.vigor { events.push(Event::Vigor { actor: id, vigor }); }
+                    }
                     if actor.health != actor.rule.health {
                         actor.health = actor.rule.health;
                         events.push(Event::Health {
@@ -1476,7 +1527,7 @@ impl Encounters {
         for action in self.spawners.poll(now) {
             match action {
                 crate::spawners::Action::Remove(id)=>events.push(Event::Despawn(id)),
-                crate::spawners::Action::Spawn(id)=>events.push(Event::Respawn{actor:id,health:self.actors[&id].rule.health}),
+                crate::spawners::Action::Spawn(id)=>events.push(Event::Respawn{actor:id,health:self.actors[&id].rule.health,vigor:self.actors[&id].rule.vigor}),
             }
         }
         Ok(events)

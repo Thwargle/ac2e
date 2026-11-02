@@ -28,6 +28,7 @@ pub enum Request {
     ExamineClear,
     CraftValidate(crate::crafting::ValidateRequest),
     CraftExecute(crate::crafting::ExecuteRequest),
+    CraftRaise(u32),
     Resurrect,
     Emote(u32),
     InventoryMove(crate::inventory_request::MoveRequest),
@@ -194,6 +195,7 @@ pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
             r.pos = bytes.len();
             Request::CraftExecute(request)
         }
+        crate::professions::RAISE => Request::CraftRaise(r.int()?),
         crate::emotes::REQUEST => {
             let token = crate::emotes::decode(bytes)?;
             r.pos = bytes.len();

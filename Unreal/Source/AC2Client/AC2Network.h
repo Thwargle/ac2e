@@ -69,6 +69,26 @@ class FAC2Network
     void BuyOffer(int32 Index);
     void SellItem(int32 Index);
     void CloseShop();
+    // Recipe entitlement comes from WM_Craft; the client never grants recipes.
+    TArray<uint32> CraftRecipes;
+    uint32 OpenCraftRecipe=0;
+    struct FCraftInput {int32 Ordinal=0,Quantity=0; FString Name; TArray<uint32> Choices;};
+    TMap<uint32,TSharedPtr<FJsonObject>> CraftCatalog,CraftSkills,CraftProgress;
+    TArray<float> CraftSuccess;
+    uint32 CraftSpinner=0;
+    FString CraftIngredients[16];
+    bool CraftAccepted[16]={};
+    TArray<FCraftInput> CraftInputs() const;
+    void CraftLevel(int32 Delta);
+    void CycleCraftIngredient(int32 Ordinal);
+    void RaiseCraft(uint32 Skill);
+    bool CraftPending=false;
+    FString CraftNotice;
+    void OpenCraft(uint32 Recipe);
+    void PopulateCraft();
+    void ExecuteCraft();
+    void CloseCraft();
+    bool CanCraft() const;
     struct FSkill {uint32 Id=0;bool Trained=false;FString Xp;};
     struct FQuest {uint32 Id=0,Icon=0,Status=0,Phase=0;FString Name,Description,Journal;};
     TArray<FSkill> Skills;

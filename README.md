@@ -112,15 +112,75 @@ retail server database. Source DATs, captures and reference SQL remain unchanged
   bound inferred placement areas. This reaches 1,842 previously empty outdoor
   landblocks while keeping clear of towns and existing content. Group sizes,
   exact locations and three-minute regeneration are reconstruction policy.
+  A second wilderness pack adds **2,553 creatures in 1,555 managed groups**,
+  including all five Knorr regions and Arramora, plus gaps in those original
+  21 regions. It reaches 1,167 more outdoor landblocks and introduces 180
+  previously unplaced native types. All 563 eligible types matched from the
+  wiki regional rosters now have at least one placement in the combined world.
+  This does not cover every dungeon, rare encounter or template variant; the
+  [coverage audit](AC2E/emulator/content/wilderness-coverage-v1.json) accounts
+  for the remaining native records and withheld sources.
 - **Quests and services:** readable signs send native descriptions. Supported
   doors, containers, merchants, lifestones, portals and tutorial actions have
   server handlers. The inferred pack adds 88 quest profiles, 143 camp groups and
   702 accepted placements, including 26 noncombat NPCs. These include counted
   hunts, boss hunts, three hunt elixirs and Gambling Debt; placing an NPC alone
   does not implement its dialogue, vendor stock or other quests.
+  The wiki NPC pass adds **217 native conversation profiles** with **326 pages**
+  covering quest requirements, starting areas, timers and listed rewards, plus
+  **27 missing NPC placements** checked against native ground/collision. Double-click
+  an otherwise unsupported NPC to speak; select an NPC and type `@talk` to browse
+  information without invoking its working quest or shop action. These are authored
+  replies, not recovered retail dialogue or 229 newly playable quests. The
+  [NPC coverage audit](AC2E/emulator/content/npc-dialogue-v1.audit.json) accounts for
+  all 89 wiki category entries and additional town/quest NPCs, including 15 names
+  without matching native identities and unresolved locations or actor variants.
+  Arwic, Lost Wish and Esper Explorers now offer their **Obelisk Search** quests:
+  visit each region's ruby, sapphire and emerald obelisks in order, then return
+  for 80 XP and the **Find the Arwic Mines Overseer** referral. Nine obelisks
+  are reconstructed near the documented ringway stops on verified native ground.
+  Progress, deadlines, repeat cooldowns and rewards persist across restarts.
+  The Overseer's **Arwic Mines and Crafting Quest** now continues that referral:
+  recover a flat hammer from a mine Outcast, receive Iron and a learned sword
+  recipe, then return the crafted sword for 150 XP, a glyph and a readable guide.
+  Four Outcasts and two Edge Beetles use validated mine-room spawners and native
+  combat/AI fields. Their room assignments and guaranteed eligible hammer drop
+  are reconstructed. Temporary obelisk buffs remain unfinished.
+  Thirty-five NPC hunting quests now support acceptance, counted kills,
+  return-to-NPC rewards, prerequisites, deadlines and repeat timers. These
+  include thirteen Ikeras hunts, fifteen Arramora hunts offered in Linvak Tukal,
+  and seven Foundry hunts near Jethric's Outpost. Twenty-three native NPCs
+  provide conversations; four missing speakers have inferred, ground-verified
+  town placements. Three guide-listed Arramora camps add six creatures in
+  managed two-child groups. Wiki rewards
+  and native identities are retained; missing retail quest IDs and dialogue
+  scripts are explicitly reconstructed. Quest changes send only modified entries,
+  preventing large completed journals from filling the reliable network queue.
+  See [hunting quest expansion](Docs/ADMIN_CONTENT_RECOVERY.md#hunting-quest-expansion-v2-2026-11-01).
+- **Profession crafting:** Skills → Craft → All professions exposes 26 disciplines
+  and 357 supported DAT-backed recipes: armor, weapons, tools, refining, dyeing, surveying,
+  practice and the two starter potions. Recipe levels, ingredient choices and
+  quantities come from the installed DAT; materials can span backpack stacks.
+  Crafting XP, rank increases, costs, finished item stats and gathering progress
+  are saved atomically. Survey maps locate dry native terrain; tools harvest
+  deposits and eligible owned corpses. Equipped creation tools boost matching
+  professions; item-bound tool durability persists through transfers and restarts.
+  Supplier purchases and refinery outputs merge compatible material stacks.
+  Eight reconstructed workshop placements
+  supplement the observed refinery; their native ground checks are audited.
+  This is **not complete retail crafting**: enchantment extraction/application,
+  general recipe discovery, exact critical/stat formulas and equipment wear
+  remain open. Most recipe grants, some yields
+  and output stat scaling are explicitly reconstructed. See
+  [crafting coverage and controls](AC2E/emulator/content/README.md#profession-crafting-and-gathering).
 - **Loot and equipment:** native trophy probabilities supplement observed corpse
-  loot. The inferred treasure policy adds variable supported equipment/restorative
-  drops and persistent armor ratings/tints. Pickup, equipment and rewards are
+  loot; 312 recovered template rules now bound generic treasure quantities.
+  The inferred treasure policy adds variable supported equipment/restorative
+  drops and persistent armor ratings/tints. Sixty-nine observed weapon profiles
+  now participate with durable damage rolls, native minimum-level checks and
+  damage used by basic attacks and supported weapon-based skills. Weapon roll
+  scaling is reconstructed; exact retail mutations remain unrecovered.
+  Pickup, equipment and rewards are
   journaled. Recovered apparel, including gloves and headwear, supports equipping,
   removing and replacing items while preserving native models and race restrictions;
   unknown potion effects and full retail affixes remain unsupported.
@@ -165,12 +225,18 @@ are validated against the archived 7230 portal records, including Flame Bolt;
 Legions keeps its separate tables. A matching native 7230 client's full gameplay
 acceptance is still unverified. See the [7230 profile notes](AC2E/emulator/content/7230/README.md).
 
-A GUN social-service endpoint now starts alongside the game server (port 2310;
-disable with `--gun-bind off`). It supports persisted friends/ignores, presence
-and tells over a custom transport, with bounded queues and account-ticket
-authentication. Client transport adapters are not included in this checkout:
-stock retail `GunDll.dll` and the Unreal client do not automatically gain these
-features. See the [GUN protocol and limitations](AC2E/emulator/docs/gun-protocol.md).
+The optional GUN adapter service supports persisted friends/ignores, presence
+and tells over custom TCP/XML. Enable it explicitly with `--gun-adapter-bind
+127.0.0.1:12310` (`--gun-bind` remains an alias); it is disabled by default.
+Archived retail captures instead use UDP port 2310, a sequenced handshake, and
+different XML fields. Neither a stock `GunDll.dll` transport nor an Unreal client
+adapter is implemented here. A native DirectPlay 8 codec now handles unsigned
+framing, ordered fragment recovery, duplicate suppression and native XML envelopes.
+Offline replay of 501 local retail captures recovers 303 XML messages; two
+disconnect frames without captured version negotiation remain unresolved.
+Live native sessions, retransmission timers and ticket authentication remain
+unfinished. Adapter tests do not establish retail compatibility.
+See the [GUN protocol and limitations](AC2E/emulator/docs/gun-protocol.md).
 
 ## Missing content records
 
@@ -277,8 +343,9 @@ Drag panel headers to move the main windows; positions persist. Skills and quest
 open from the toolbar. The skill book supports training, raising and untraining;
 learned active skills can be dragged onto any of ten shortcut pages, selected with
 the page arrows. Bindings persist per character. The server executes recovered
-core effects for 224 racial skill profiles, including Flame Bolt damage and burns,
-healing, vigor restoration, regeneration and supported combat-rating buffs.
+core effects for 235 racial skill profiles, including Flame Bolt damage and burns,
+Lightning Bolt vigor drain, healing, vigor restoration, regeneration and supported
+combat-rating buffs. Live creature vigor updates reach observers and examination.
 Train Flame Bolt and equip a stave before casting it on an enemy. Nine shared
 mastery skills can also be trained and raised, and their ranks affect combat.
 This is not full spell parity: specialized statuses, summons, area/multi-hit

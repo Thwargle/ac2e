@@ -21,6 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if a.len()!=5 {return Err("regional_population DAT JSON OUTPUT_TSV REPORT_JSON EXISTING_WORLD_TSV".into());}
     let bytes=std::fs::read(&a[1])?;
     let data: Value=serde_json::from_slice(&bytes)?;
+    let namespace=data["namespace"].as_u64().unwrap_or(0x8140c00000000000);
+    if namespace & 0xffffff != 0 {return Err("regional namespace must reserve 24 identity bits".into());}
     let mut land=Landscape::load(Path::new(&a[0]))?;
     let mut geometry=Geometry::open(Path::new(&a[0]))?;
     let towns=data["town_exclusions"].as_array().ok_or("towns")?.iter()
@@ -35,7 +37,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let existing=std::fs::read_to_string(&a[4])?;
     for line in existing.lines() {
         let f=line.split('\t').collect::<Vec<_>>();
-        if f.len()!=13 || f[0].starts_with("8140c00000") {continue;}
+        if f.len()!=13 {continue;}
+        let existing_id=u64::from_str_radix(f[0],16)?;
+        if existing_id & 0xffffffffff000000 == namespace {continue;}
         let cell=u32::from_str_radix(f[3],16)?;
         if (1..=64).contains(&(cell&65535)) {
             let p=Placement{cell,coordinates:[f[4].parse()?,f[5].parse()?,f[6].parse()?],heading:0};
@@ -50,6 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut included=0;
     for entry in data["camps"].as_array().ok_or("camps")? {
         let id=entry["id"].as_u64().ok_or("id")?;
+        if id & 0xffffffffff000000 != namespace {return Err("camp outside its reserved namespace".into());}
         let center=point(&entry["land"])?;
         let polygon=entry["polygon"].as_array().ok_or("polygon")?.iter().map(point).collect::<Result<Vec<_>,_>>()?;
         let region=entry["region"].as_str().ok_or("region")?;

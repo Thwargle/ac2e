@@ -137,6 +137,11 @@ pub struct Object {
     stats: BTreeMap<u32, (u32, Arc<[u8]>)>,
 }
 impl Object {
+    pub fn resource(id:u64,entity:u32,visual:u32,p:Placement)->io::Result<Self>{
+        let spawn=world::create_stationary_object(&StationaryObject{character_id:id,parent_visual_did:visual,entity_did:entity,cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,visual_ordering_stamp:0,timestamps:[0;4]}).map_err(io::Error::other)?;
+        Ok(Self{id,entity,visual,scale:1.,name:None,corpse_name:None,service:None,door_open:false,door_mode:None,placement:p,home:p,home_orientation:p.orientation(),spawn:spawn.into(),destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:0,position_stamp:0,stats:BTreeMap::new()})
+    }
+    pub fn instance_stamp(&self)->u16{self.instance}
     /// Packet capability, not an AI classification. A mode/scale slider is
     /// optional in captured PhysicsDesc records and must not gate pursuit.
     pub fn supports_pose_updates(&self) -> bool {

@@ -436,11 +436,13 @@ impl Metadata {
             }
         }
         let physical = physical.ok_or_else(invalid)?;
-        let icon = icon.ok_or_else(invalid)?;
-        if icon >> 24 != 0x20 || physical >> 24 != 0x47 {
+        // Materials have a texture icon in their descriptor but no inventory
+        // appearance animation. Preserve that absent optional DID as zero.
+        let icon = icon.unwrap_or(0);
+        if (icon != 0 && icon >> 24 != 0x20) || physical >> 24 != 0x47 {
             return Err(invalid());
         }
-        portal.read(icon)?;
+        if icon != 0 { portal.read(icon)?; }
         portal.read(physical)?;
         if starter && !crate::starter_gear::physical_matches(definition, &portal.read(physical)?) {
             return Err(invalid());

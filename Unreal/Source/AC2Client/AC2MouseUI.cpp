@@ -91,7 +91,7 @@ FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
 
 bool SAC2GameUI::OwnsPointer(FVector2D Point) const
 {
-    if(Frontend || MapUI.OwnsPointer(Point))return true;
+    if(Frontend || MapUI.OwnsPointer(Point) || CraftOwnsPointer(Point))return true;
     for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
         TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("Shop"),TEXT("ExternalContainerField")})
         if(Native.Bounds(Panel).Contains(FIntPoint(Point.X,Point.Y)))return true;

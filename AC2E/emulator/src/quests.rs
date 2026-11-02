@@ -47,6 +47,9 @@ pub struct Progress {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Book {
     pub recovered: crate::recovered_quests::Book,
+    pub exploration: crate::exploration_quests::Book,
+    pub hunting: crate::hunting_quests::Book,
+    pub arwic: crate::arwic_mines::State,
     training: Option<Progress>,
     supplies: Option<bool>,
     potion: u8, // 0 absent, 1 accepted, 2 crafted, 3 rewarded
@@ -285,7 +288,7 @@ impl Book {
     /// The gmQuestInfoList argument used by UI_Load for saved journal restoration.
     pub fn list_graph(&self) -> Result<Vec<u8>, WorldError> {
         let mut payload = Vec::new();
-        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0) + self.recovered.0.len() as u32);
+        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0) + self.recovered.0.len() as u32 + self.exploration.0.len() as u32 + self.hunting.0.len() as u32 + u32::from(self.arwic.phase>0));
         if let Some(state) = self.training {
             payload.extend(info_payload(state, false)?);
         }
@@ -294,6 +297,9 @@ impl Book {
         if self.journey != 0 { payload.extend(self.lesson_payload(true, false)?); }
         if self.shelter != 0 { payload.extend(self.shelter_payload(false)?); }
         for (id,state) in &self.recovered.0 { payload.extend(recovered_payload(*id,state,false)?); }
+        for (id,state) in &self.exploration.0 { payload.extend(exploration_payload(*id,state,false)?); }
+        for (id,state) in &self.hunting.0 { payload.extend(hunting_payload(*id,state,false)?); }
+        if self.arwic.phase>0 {payload.extend(arwic_payload(&self.arwic,false)?);}
         Ok(native_graph(0xa1, &payload))
     }
 }
@@ -358,26 +364,51 @@ impl Book {
         }
     }
     pub fn updates(&self) -> Result<Vec<Vec<u8>>, WorldError> {
+        self.updates_since(&Self::default())
+    }
+    /// Native UpdateQuestInfo replaces one entry. Resending completed entries
+    /// on every kill grows traffic with journal history and can fill the GUN
+    /// reliable queue. Login still sends the complete list_graph snapshot.
+    pub fn updates_since(&self, previous:&Self) -> Result<Vec<Vec<u8>>, WorldError> {
         let mut events = Vec::new();
+        if self.arwic.phase>0 && self.arwic!=previous.arwic {
+            let mut args=script::integer(0);args.extend(native_graph(0xa0,&arwic_payload(&self.arwic,true)?));
+            args.extend(script::integer(if self.arwic.phase==5{COMPLETED}else{UNDERWAY}));
+            events.push(script::private_call(UPDATE,&args)?);
+        }
+        for (id,state) in &self.exploration.0 {
+            if previous.exploration.0.get(id)==Some(state) {continue;}
+            let mut args=script::integer(0);args.extend(native_graph(0xa0,&exploration_payload(*id,state,true)?));
+            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
+            events.push(script::private_call(UPDATE,&args)?);
+        }
+        for (id,state) in &self.hunting.0 {
+            if previous.hunting.0.get(id)==Some(state) {continue;}
+            let mut args=script::integer(0);args.extend(native_graph(0xa0,&hunting_payload(*id,state,true)?));
+            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
+            events.push(script::private_call(UPDATE,&args)?);
+        }
         for (id,state) in &self.recovered.0 {
+            if previous.recovered.0.get(id)==Some(state) {continue;}
             let mut args=script::integer(0);args.extend(native_graph(0xa0,&recovered_payload(*id,state,true)?));
             args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
             events.push(script::private_call(UPDATE,&args)?);
         }
-        if self.shelter != 0 {
+        if self.shelter != 0 && self.shelter!=previous.shelter {
             let mut args=script::integer(0);
             args.extend(native_graph(0xa0,&self.shelter_payload(true)?));
             args.extend(script::integer(UNDERWAY));
             events.push(script::private_call(UPDATE,&args)?);
         }
-        if self.training.is_some() { events.push(self.update()?); }
-        if let Some(claimed) = self.supplies {
+        if self.training.is_some() && self.training!=previous.training { events.push(self.update()?); }
+        if let Some(claimed) = self.supplies.filter(|_|self.supplies!=previous.supplies) {
             let mut args = script::integer(0);
             args.extend(native_graph(0xa0, &supplies_payload(claimed, true)?));
             args.extend(script::integer(if claimed { COMPLETED } else { UNDERWAY }));
             events.push(script::private_call(UPDATE, &args)?);
         }
         for journey in [false, true] {
+            if if journey {self.journey==previous.journey} else {self.potion==previous.potion} {continue;}
             if if journey { self.journey != 0 } else { self.potion != 0 } {
                 let mut args = script::integer(0);
                 args.extend(native_graph(0xa0, &self.lesson_payload(journey, true)?));
@@ -488,6 +519,36 @@ pub fn validate_practice_craft(book: &Book, bag: &crate::inventory::Inventory, i
     let expected = crate::crafting::output(recipe, first, candidate.free_slot().ok_or_else(bad)?).ok_or_else(bad)?;
     if output != &expected { return Err(bad()); }
     book.apply(&Command::CraftedPotion).map_err(io::Error::other)
+}
+
+fn arwic_payload(s:&crate::arwic_mines::State,fx:bool)->Result<Vec<u8>,WorldError> {
+    let c=crate::arwic_mines::content();let mut b=Vec::new();word(&mut b,crate::arwic_mines::QUEST);
+    b.extend(world::literal_name(&c.title)?);b.extend(world::literal_name(&c.summary)?);word(&mut b,ICON);
+    word(&mut b,if s.phase==5{COMPLETED}else{UNDERWAY});word(&mut b,if s.phase==5{0}else{s.phase});
+    b.extend(world::literal_name(&s.guidance())?);word(&mut b,1);b.extend((s.started as f64).to_le_bytes());
+    b.extend((if s.phase==5{s.completed as f64}else{-1.}).to_le_bytes());
+    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
+}
+fn exploration_payload(id:u32,state:&crate::exploration_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
+    let q=crate::exploration_quests::profile(id).ok_or(WorldError::InvalidValue)?;
+    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
+    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
+    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});
+    word(&mut b,if state.completed>0 {0}else{state.phase as u32});
+    b.extend(world::literal_name(&crate::exploration_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
+    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
+    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
+}
+
+fn hunting_payload(id:u32,state:&crate::hunting_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
+    let q=crate::hunting_quests::profile(id).ok_or(WorldError::InvalidValue)?;
+    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
+    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
+    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});
+    word(&mut b,if state.completed>0 {0}else{u32::from(state.count)+1});
+    b.extend(world::literal_name(&crate::hunting_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
+    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
+    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
 }
 
 fn recovered_payload(id:u32,state:&crate::recovered_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {

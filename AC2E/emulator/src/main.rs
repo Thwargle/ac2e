@@ -15,7 +15,7 @@ fn usage() {
         pyrealium::licensing::notice()
     );
     println!(
-        "  serve --gun-bind ADDR|off\n    The GUN service (friends, ignore list, presence and tells; docs/gun-protocol.md) starts with every server, by default on the game address's IP at the retail port 2310; clients reach it with -gunserver/-gunport. Developer tickets (the account name) need a loopback bind; with --auth-data or --local-accounts a ticket is account:token. A default service that cannot start is skipped with a warning; an explicit --gun-bind must start."
+        "  serve --gun-adapter-bind ADDR|off\n    Opt-in custom TCP/XML social service; disabled by default. Requires a compatible adapter (not included). Stock GunDll.dll uses a different UDP protocol: -gunserver/-gunport alone cannot connect to this service. --gun-bind remains an alias. Developer tickets require loopback; account:token tickets require a separate single-use account ticket. See docs/gun-protocol.md."
     );
     println!(
         "  serve --initialize-ui true --portals true --game-data PATH\n    Explicit development instant portal routes; enabled by serve-training."
@@ -96,10 +96,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut lifestones = None;
     let mut portals = None;
     let mut map_travel = false;
-    // The GUN service runs with every server (friends, ignore list, presence, tells for the
-    // players on it): `None` is the default address, beside the game server on the retail
-    // port; `--gun-bind off` turns it off.
-    let mut gun_bind: Option<Option<SocketAddr>> = None;
+    // This is an adapter transport, not the retail UDP service. Never implicitly
+    // expose it on the game server's interface or advertise retail compatibility.
+    let mut gun_bind: Option<SocketAddr> = None;
     let mut item_id = None;
     let mut slot = None;
     let mut source_slot = None;
@@ -141,8 +140,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "--lifestones" => lifestones = Some(value.parse::<bool>()?),
             "--portals" => portals = Some(value.parse::<bool>()?),
             "--test-map-travel" => map_travel = value.parse::<bool>()?,
-            "--gun-bind" if value == "off" => gun_bind = Some(None),
-            "--gun-bind" => gun_bind = Some(Some(value.parse()?)),
+            "--gun-adapter-bind" | "--gun-bind" if value == "off" => gun_bind = None,
+            "--gun-adapter-bind" | "--gun-bind" => gun_bind = Some(value.parse()?),
             "--item-id" => {
                 item_id = Some(if let Some(hex) = value.strip_prefix("0x") {
                     u64::from_str_radix(hex, 16)?
@@ -411,40 +410,21 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             if auth_data.is_some() && local_accounts.is_some() {
                 return Err("--auth-data and --local-accounts are mutually exclusive".into());
             }
-            // The GUN service (friends, ignore list, presence, tells) for -gunserver clients.
-            // Tickets are `account:token` with --auth-data / --local-accounts, else the account.
-            let (gun_addr, explicit) = match gun_bind {
-                Some(addr) => (addr, true),
-                None => (
-                    Some(SocketAddr::new(bind.ip(), pyrealium::gun::DEFAULT_PORT)),
-                    false,
-                ),
-            };
-            let gun_service = match gun_addr {
+            // Explicit custom transport only. No native GunDll adapter is bundled.
+            let gun_service = match gun_bind {
                 Some(gun_addr) => {
                     let gun_auth = match auth_data.as_ref().or(local_accounts.as_ref()) {
                         Some(root) => pyrealium::gun::GunAuth::Tickets(root.clone()),
                         None => pyrealium::gun::GunAuth::Developer,
                     };
                     std::fs::create_dir_all(&data)?;
-                    match pyrealium::gun::start(pyrealium::gun::GunConfig {
+                    let service = pyrealium::gun::start(pyrealium::gun::GunConfig {
                         bind: gun_addr,
                         data: data.clone(),
                         auth: gun_auth,
-                    }) {
-                        Ok(service) => {
-                            println!("GUN service listening on {}.", service.addr);
-                            Some(service)
-                        }
-                        Err(e) if !explicit => {
-                            eprintln!(
-                                "GUN service not started on {gun_addr} ({e}); friends are \
-                                 unavailable. --gun-bind chooses another address."
-                            );
-                            None
-                        }
-                        Err(e) => return Err(e.into()),
-                    }
+                    })?;
+                    println!("GUN adapter listening on TCP {} (custom XML; incompatible with stock GunDll.dll).", service.addr);
+                    Some(service)
                 }
                 None => None,
             };

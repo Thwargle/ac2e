@@ -13,7 +13,7 @@ pub fn candidate(
     changes: &[progression::Command],
     first_item: Option<u64>,
 ) -> io::Result<(inventory::Inventory, progression::Progression)> {
-    if items.len() > 8 || changes.len() > 8 || items.is_empty() && changes.is_empty() {
+    if items.len() > 96 || changes.len() > 8 || items.is_empty() && changes.is_empty() {
         return Err(invalid("player transaction command count"));
     }
     let mut next_item = first_item;
@@ -60,7 +60,7 @@ pub fn decode_items(text: &str) -> io::Result<Vec<inventory::Command>> {
     if text == "-" {
         return Ok(Vec::new());
     }
-    if text.len() > 2048 || text.split(';').count() > 8 {
+    if text.len() > 16384 || text.split(';').count() > 96 {
         return Err(invalid("transaction inventory encoding limit"));
     }
     text.split(';')

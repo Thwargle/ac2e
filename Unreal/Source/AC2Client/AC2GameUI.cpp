@@ -14,6 +14,7 @@
 #include "Rendering/DrawElements.h"
 #include "Widgets/SCanvas.h"
 #include "Misc/ConfigCacheIni.h"
+#include "Brushes/SlateColorBrush.h"
 
 namespace
 {
@@ -185,8 +186,8 @@ void SAC2GameUI::Rebuild()
     Show(TEXT("SkillField"),ShowSkills);Show(TEXT("QuestField"),ShowQuests);
     // Native panel_page tabs propagate open/closed to their DAT border pieces.
     const uint32 QuestTabs[]={0x715bdff7,0x70859237,0x92e39d2f};
-    const TCHAR* SkillTabs[]={TEXT("MeleeButton"),TEXT("MissileButton"),TEXT("MagicButton"),TEXT("NoncombatButton")};
-    for(int32 I=0;I<4;++I)Native.States.Add(Token(SkillTabs[I]),Token(I==SkillTab?TEXT("highlight"):TEXT("normal")));
+    const TCHAR* SkillTabs[]={TEXT("MeleeButton"),TEXT("MissileButton"),TEXT("MagicButton"),TEXT("NoncombatButton"),TEXT("CraftTab")};
+    for(int32 I=0;I<UE_ARRAY_COUNT(SkillTabs);++I)Native.States.Add(Token(SkillTabs[I]),Token(I==SkillTab?TEXT("highlight"):TEXT("normal")));
     for(int32 I=0;I<UE_ARRAY_COUNT(QuestTabs);++I)
         Native.States.Add(QuestTabs[I],Token(I==QuestTab?TEXT("open"):TEXT("closed")));
     Show(TEXT("ExaminationField"), ShowStats);
@@ -440,6 +441,7 @@ void SAC2GameUI::Rebuild()
     BuildJournal();
     ShopNodesStart=Native.Nodes.Num();ShopIconsStart=Icons.Num();
     BuildShop();
+    BuildIngredients();
     BuildLoot();
     for (auto &Icon : Icons)
         Native.LoadImage(Icon.Image, *Assets);
@@ -522,6 +524,10 @@ int32 SAC2GameUI::OnPaint(const FPaintArgs &Args, const FGeometry &G, const FSla
             &PortraitBrush);
     }
     Layer=SCompoundWidget::OnPaint(Args, G, Cull, Out, Layer + 1, Style, Enabled);
+    if(const auto* Craft=Native.Find(0x0e036a6c)){
+        static const FSlateColorBrush Backdrop(FLinearColor(.012f,.016f,.01f,.96f));
+        FSlateDrawElement::MakeBox(Out,++Layer,P.ToPaintGeometry(FVector2D(Craft->Rect.Size()),FSlateLayoutTransform(FVector2D(Craft->Rect.Min))),&Backdrop);
+    }
     // The shop owns its whole rectangle, including where it overlaps chat.
     Layer=Native.Paint(Out,Layer+1,P,Fonts,{},ShopNodesStart,PointerNodesStart);
     PaintIcons(ShopIconsStart,Icons.Num());
@@ -883,7 +889,7 @@ void SAC2GameUI::Action(FName Name)
         ShortcutSet=(ShortcutSet+(Name==TEXT("ShortcutUp")?9:1))%10;SaveShortcuts();Rebuild();return;
     }
     if(Name.ToString().StartsWith(TEXT("ShortcutSlot"))){ActivateShortcut(FCString::Atoi(*Name.ToString().Mid(12)));return;}
-    if(OptionAction(Name) || ShopAction(Name) || JournalAction(Name))return;
+    if(OptionAction(Name) || CraftAction(Name) || ShopAction(Name) || JournalAction(Name))return;
     if (Name == TEXT("ChatEntry"))
     {
         BeginChat();
@@ -996,6 +1002,7 @@ void SAC2GameUI::ToggleStats()
 }
 bool SAC2GameUI::ClosePanels()
 {
+    if(Mode.IsValid() && Mode->Network && Mode->Network->OpenCraftRecipe){Mode->Network->CloseCraft();return true;}
     if(Mode.IsValid() && Mode->Network && !Mode->Network->LootContainer.IsEmpty()){Mode->Network->CloseLoot();return true;}
     if(Mode.IsValid() && Mode->Network && !Mode->Network->ShopVendor.IsEmpty()){Mode->Network->CloseShop();return true;}
     if (!ShowInventory && !ShowSkills && !ShowQuests && !ShowStats && !ShowOptions && (!Mode.IsValid() || !Mode->bMap))

@@ -113,8 +113,22 @@ def prepare(directory, output, compare_directory=None):
     if audited.exists(): sources.append(audited.name)
     inferred = content / 'inferred-world-v1.tsv'
     regional = content / 'regional-world-v1.tsv'
+    wilderness = content / 'wilderness-world-v1.tsv'
+    exploration = content / 'exploration-world-v1.tsv'
+    hunting = content / 'hunting-world-v1.tsv'
+    hunting_expansion = content / 'hunting-world-v2.tsv'
+    workshops = content / 'workshops-world-v1.tsv'
+    mines = content / 'arwic-mines-world-v1.tsv'
+    npcs = content / 'npc-world-v1.tsv'
     for inferred_pack, catalog in [(inferred, 'inferred-content-v1.json'),
-                                   (regional, 'regional-content-v1.json')]:
+                                   (regional, 'regional-content-v1.json'),
+                                   (wilderness, 'wilderness-content-v1.json'),
+                                   (exploration, 'exploration-content-v1.json'),
+                                   (hunting, 'hunting-content-v1.json'),
+                                   (hunting_expansion, 'hunting-content-v2.json'),
+                                   (workshops, 'workshops-content-v1.json'),
+                                   (mines, 'arwic-mines-world-v1.json'),
+                                   (npcs, 'npc-dialogue-v1.json')]:
         if not inferred_pack.exists():
             continue
         evidence = json.loads(inferred_pack.with_suffix('.report.json').read_text(encoding='utf8'))
@@ -176,7 +190,7 @@ def prepare(directory, output, compare_directory=None):
                 skipped.append(entry)
                 continue
             if iid not in seen:
-                if name.startswith('capture-spawns') or name in (recovered.name, inferred.name, regional.name):
+                if name.startswith('capture-spawns') or name in (recovered.name, inferred.name, regional.name, wilderness.name, exploration.name, hunting.name, hunting_expansion.name, workshops.name, npcs.name):
                     expected = profile.visual(entity)
                     if (entity, visual) not in curated_pairs and expected != visual:
                         incompatible.append({'source': name, 'id': fields[0], 'entity': fields[1],

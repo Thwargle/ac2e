@@ -318,6 +318,7 @@ impl Definition {
         self.weapon
             || !self.damage.is_empty()
             || self.health.0.iter().any(|&(_, value)| value < 0.0)
+            || self.vigor_effect.0.iter().any(|&(_, value)| value < 0.0)
             || self
                 .timed
                 .iter()
@@ -408,6 +409,7 @@ pub enum Outcome {
     Strike {
         target: u64,
         bonus: u32,
+        vigor_damage: u32,
         weapon_damage: bool,
         cost: u32,
         range: f32,
@@ -560,16 +562,14 @@ impl Runtime {
                         });
                     let known_vital = match kind {
                         HEALTH | VIGOR => {
-                            side == Side::Target
-                                && !values.is_empty()
-                                && (kind == HEALTH || values.0.iter().all(|(_, v)| *v >= 0.0))
+                            side == Side::Target && !values.is_empty()
                         }
                         HEALTH_OVER_TIME | VIGOR_OVER_TIME => {
                             !values.is_empty()
                                 && !duration.is_empty()
                                 && period.is_finite()
                                 && period > 0.0
-                                && (kind == HEALTH_OVER_TIME && side == Side::Target
+                                && (side == Side::Target
                                     || values.0.iter().all(|(_, v)| *v >= 0.0))
                         }
                         _ => false,
@@ -880,9 +880,9 @@ impl Runtime {
                     }
                 })
         };
-        let mend_for = |side: Side| -> Option<Over> {
-            let health = over(side, false, 1.0);
-            let vigor = over(side, true, 1.0);
+        let combined_over = |side: Side, sign: f32| -> Option<Over> {
+            let health = over(side, false, sign);
+            let vigor = over(side, true, sign);
             match (health, vigor) {
                 (Some(h), Some(v)) => Some(Over {
                     vigor: v.vigor,
@@ -958,10 +958,11 @@ impl Runtime {
                     Outcome::Strike {
                         target,
                         bonus,
+                        vigor_damage: definition.vigor_effect.at(rank).min(0.0).abs().round() as u32,
                         weapon_damage: definition.weapon || !definition.damage.is_empty(),
                         cost,
                         range: definition.range,
-                        burn: over(Side::Target, false, -1.0),
+                        burn: combined_over(Side::Target, -1.0),
                     }
                 }
                 _ if definition.harmful() => return Err(AbilityError::TargetCreature),
@@ -973,7 +974,7 @@ impl Runtime {
                     Outcome::Restore {
                         health,
                         vigor,
-                        mend: mend_for(Side::Target).or_else(|| mend_for(Side::Own)),
+                        mend: combined_over(Side::Target, 1.0).or_else(|| combined_over(Side::Own, 1.0)),
                         regen: regen_for(Side::Target).or_else(|| regen_for(Side::Own)),
                     }
                 }
@@ -989,7 +990,7 @@ impl Runtime {
                         target,
                         health,
                         vigor,
-                        mend: mend_for(Side::Target),
+                        mend: combined_over(Side::Target, 1.0),
                         regen: regen_for(Side::Target),
                     }
                 }
@@ -1203,6 +1204,7 @@ mod tests {
             Outcome::Strike {
                 target: 2,
                 bonus: 3,
+                vigor_damage: 0,
                 weapon_damage: true,
                 cost: 32,
                 range: 60.0,
@@ -1275,6 +1277,41 @@ mod tests {
             }
         ));
         assert_eq!(cast.next().health, state.health);
+    }
+
+    #[test]
+    fn trained_native_vigor_attacks_keep_cost_target_and_rank_tables() {
+        let state = Progression::default().apply(&Command::AwardXp(1000)).unwrap();
+        let mut lugian = Book::default().with_starter_skills(&state, 2, 0x1000).unwrap();
+        for skill in [0x11e, 0x110, 0x10f] {
+            lugian = lugian.apply(crate::skills::Command::Train(skill), &state, 2).unwrap();
+        }
+        let mut runtime = Runtime::load().unwrap();
+        let hands = (Hand::Implement(0x40000), Hand::Empty);
+        let cast = runtime.prepare(1, 0x10f, Aim::Creature(2), hands, &lugian, &state, 0).unwrap();
+        assert!(matches!(cast.outcome(), Outcome::Strike {
+            bonus: 7, vigor_damage: 40, weapon_damage: true, cost: 80, burn: None, ..
+        }));
+        assert!(cast.commands().is_empty(), "cost is paid once at impact");
+        drop(cast);
+        assert!(matches!(runtime.prepare(1, 0x10f, Aim::Player(2, 1.), hands, &lugian, &state, 0), Err(AbilityError::TargetCreature)));
+        assert!(matches!(runtime.prepare(1, 0x10f, Aim::Own, hands, &lugian, &state, 0), Err(AbilityError::TargetCreature)));
+        assert!(matches!(runtime.prepare(1, 0x10f, Aim::Creature(2), (Hand::Empty, Hand::Empty), &lugian, &state, 0), Err(AbilityError::Hand {..})));
+        assert_eq!(runtime.definitions[&0x10f].vigor_effect.at(50), -400.);
+
+        let mut tumerok = Book::default().with_starter_skills(&state, 4, 0x1000).unwrap();
+        for skill in [0x2a1, 0x2a6] {
+            tumerok = tumerok.apply(crate::skills::Command::Train(skill), &state, 4).unwrap();
+        }
+        let cast = runtime.prepare(1, 0x2a6, Aim::Creature(2), (Hand::Implement(8), Hand::Empty), &tumerok, &state, 0).unwrap();
+        assert!(matches!(cast.outcome(), Outcome::Strike { vigor_damage: 0, cost: 50,
+            burn: Some(Over {health: 0, vigor: 2, period_ms: 1000, duration_ms: 15000}), .. }));
+        drop(cast);
+        for skill in [0xb8, 0xd0, 0x10f, 0x116, 0x127, 0x16d, 0x29d, 0x2a6, 0x2d0, 0x317, 0x31a] {
+            assert!(runtime.supports(skill), "native vigor skill {skill:x}");
+        }
+        // Enabling vigor alone must not admit a partially decoded compound spell.
+        assert!(!runtime.supports(0x52));
     }
 
     #[test]

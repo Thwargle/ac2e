@@ -63,6 +63,7 @@ fn bolt() -> Strike {
         ratings: None,
         skill: 0x59,
         bonus: 3,
+        vigor_damage: 0,
         weapon_damage: true,
         cost: 32,
         range: 60.0,
@@ -75,6 +76,28 @@ fn bolt() -> Strike {
             duration_ms: 30000,
         }),
     }
+}
+
+#[test]
+fn treasure_weapon_damage_drives_skill_hits_but_not_periodic_ticks() {
+    let (mut runtime, mut scene, mut store, path, target) = fixture("treasure-weapon");
+    let item = crate::inventory::Item {
+        id: crate::inventory::ITEM_NAMESPACE + 1, definition: 0x47000f0b, visual: 0x1f0002a5,
+        equipment_mask: 0x40, quantity: 1, stack_limit: 1, location: crate::inventory::Location::Bag(0),
+        roll: Some(crate::inventory::Roll {damage:28,level:10,..Default::default()})
+    };
+    store.inventory_command("local",1,crate::inventory::Command::Grant(item.clone())).unwrap();
+    store.inventory_command("local",1,crate::inventory::Command::Wear {item:item.id,slot:0x40}).unwrap();
+    runtime.strike(1,target,0,&scene,&store,bolt()).unwrap();
+    runtime.tick(0,&mut scene,&mut store,[1].into_iter(),None).unwrap();
+    assert_eq!(runtime.actors[&target].health,29,"28 weapon + 3 Flame Bolt bonus");
+    runtime.tick(1000,&mut scene,&mut store,[1].into_iter(),None).unwrap();
+    assert_eq!(runtime.actors[&target].health,28,"burn cannot add the weapon a second time");
+    drop(store);
+    let reopened=Store::open(&path).unwrap();
+    assert_eq!(crate::professions::weapon_damage(&reopened.characters[&1].inventory),Some(28));
+    drop(reopened);
+    std::fs::remove_dir_all(path).unwrap();
 }
 
 #[test]
@@ -162,6 +185,60 @@ fn cancelled_or_invalid_spell_cannot_charge_or_leave_a_burn() {
     assert!(runtime.burns.is_empty());
     drop(store);
     std::fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn vigor_drains_clamp_expire_and_restore_on_a_new_spawn_lifetime() {
+    let (mut runtime, mut scene, mut store, path, target) = fixture("vigor");
+    let actor = runtime.actors.get_mut(&target).unwrap();
+    actor.rule.vigor = Some(100);
+    actor.vigor = Some(100);
+    let before = store.characters[&1].progression.clone();
+    let effect = Strike { bonus: 0, vigor_damage: 40, weapon_damage: false,
+        burn: Some(Over {health: 0, vigor: 35, period_ms: 1000, duration_ms: 2000}), ..bolt() };
+    runtime.strike(1, target, 0, &scene, &store, effect).unwrap();
+    for (now, expected) in [(0,60),(900,60),(1000,25),(2000,0),(3000,0)] {
+        let events = runtime.tick(now, &mut scene, &mut store, [1].into_iter(), None).unwrap();
+        assert_eq!(runtime.actors[&target].vigor, Some(expected));
+        assert_eq!(runtime.actors[&target].health, 60);
+        assert_eq!(store.characters[&1].progression.xp, before.xp);
+        assert_eq!(store.characters[&1].progression.vigor, before.vigor-32);
+        assert!(!events.iter().any(|e| matches!(e, Event::Loot{..}|Event::Hit{..})));
+        if [0,1000,2000].contains(&now) {
+            assert!(events.iter().any(|e| matches!(e,Event::Vigor{actor,vigor} if *actor==target && *vigor==expected)));
+        }
+    }
+    assert!(runtime.burns.is_empty());
+    assert!(runtime.inspection_stats().any(|(id,key,value)|id==target && key==0x103 && value==0));
+    // Removing and publishing a new incarnation restores both authoritative vitals.
+    assert!(runtime.spawners.died(target, 3000, 0));
+    runtime.spawners.poll(3000);
+    scene.despawn_content(target).unwrap(); runtime.removed(target,3000);
+    assert_eq!(runtime.spawners.poll(33000),vec![crate::spawners::Action::Spawn(target)]);
+    scene.respawn_content(target).unwrap(); runtime.spawned(target).unwrap();
+    assert_eq!(runtime.actors[&target].vigor,Some(100));
+    drop(store);
+    let reopened=Store::open(&path).unwrap();
+    assert_eq!(reopened.characters[&1].progression.vigor,before.vigor-32);
+    drop(reopened); std::fs::remove_dir_all(path).unwrap();
+}
+
+#[test]
+fn missed_vigor_spell_charges_once_but_never_applies_or_ticks() {
+    let (mut runtime, mut scene, mut store, path, target) = fixture("vigor-miss");
+    // Choose a deterministic first roll above even the highest permitted hit chance.
+    let seed=(1..1000).find(|seed|crate::combat::Dice::for_test(*seed).unit()>0.95).unwrap();
+    runtime.dice=crate::combat::Dice::for_test(seed);
+    let actor=runtime.actors.get_mut(&target).unwrap();actor.rule.vigor=Some(100);actor.vigor=Some(100);
+    let before=store.characters[&1].progression.clone();
+    runtime.strike(1,target,0,&scene,&store,Strike {vigor_damage:40,
+        burn:Some(Over{health:1,vigor:10,period_ms:1000,duration_ms:2000}),..bolt()}).unwrap();
+    let events=runtime.tick(0,&mut scene,&mut store,[1].into_iter(),None).unwrap();
+    assert!(!events.iter().any(|e|matches!(e,Event::Vigor{..}|Event::Hit{..})));
+    assert_eq!(runtime.actors[&target].vigor,Some(100));assert_eq!(runtime.actors[&target].health,60);
+    assert_eq!(store.characters[&1].progression.vigor,before.vigor-32);
+    assert!(runtime.burns.is_empty());
+    drop(store);std::fs::remove_dir_all(path).unwrap();
 }
 
 #[test]

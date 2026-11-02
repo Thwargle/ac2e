@@ -20,7 +20,7 @@ def main():
         '--encounters',str(rules),'--seconds','120']
     peers=[]
     def start():
-        s=subprocess.Popen(args,env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='3'),stdout=log,stderr=log,creationflags=0x08000000)
+        s=subprocess.Popen(args,env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='5'),stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(1);assert s.poll() is None;return s
     def login(name=None,identity=None):
         p=Peer();peers.append(p);p.send('connect',host='127.0.0.1',port=19394,account='local');p.wait('characters')

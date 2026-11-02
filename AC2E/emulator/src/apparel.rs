@@ -26,7 +26,10 @@ fn profile(item:&Item,race:u32)->Option<&'static Profile> {
 pub fn required_race(definition:u32)->Option<u32>{profiles().find(|p|p.definition==definition).map(|p|p.race)}
 pub fn recovered_slot(definition:u32,visual:u32)->Option<u16>{profiles().find(|p|p.definition==definition && p.visual==visual).map(|p|p.slot)}
 pub fn slot(item:&Item,race:u32)->Option<u16> {profile(item,race).map(|p|p.slot)}
-pub fn tradable(item:&Item)->bool { [1,2,4,8,16].iter().any(|race|profile(item,*race).is_some()) }
+pub fn tradable(item:&Item)->bool {
+    (PROFILES.iter().any(|p|p.definition==item.definition)||RECOVERED_TRADABLE.contains(&item.definition))
+        && [1,2,4,8,16].iter().any(|race|profile(item,*race).is_some())
+}
 pub fn aspects(inventory:&Inventory,race:u32,sex:u32)->Vec<(u32,u32,f32)> {
     inventory.items().filter_map(|i|profile(i,race).filter(|p|i.location==Location::Equipped(p.slot)).map(|p|(i,p)))
         .flat_map(|(i,p)|[(if sex==0x1000 {p.male}else{p.female},0x10,1.0),(if sex==0x1000 {p.male}else{p.female},2,i.roll.map_or(0.,|r|f32::from(r.tint)/1000.))]).collect()
@@ -42,6 +45,13 @@ pub fn drop(inventory:&Inventory,race:u32,id:u64,slot:u16)->Option<Item> {
 
 #[cfg(test)] mod tests {
     use super::*;
+    #[test] fn dye_eligibility_does_not_make_quest_armor_saleable() {
+        let p=RECOVERED_PROFILES.iter().find(|p|!RECOVERED_TRADABLE.contains(&p.definition)&&!PROFILES.iter().any(|o|o.definition==p.definition)).unwrap();
+        let item=Item{roll:None,id:crate::inventory::ITEM_NAMESPACE+1,definition:p.definition,visual:p.visual,quantity:1,stack_limit:1,equipment_mask:p.slot,location:Location::Bag(0)};
+        assert!(slot(&item,p.race).is_some());
+        assert!(!tradable(&item));
+        assert!(crate::merchants::sale_value(&item).is_none());
+    }
     #[test] fn recovered_profiles_match_installed_dat() {
         let Ok(path)=std::env::var("AC2_TEST_GAME_DATA") else{return};
         let mut dat=crate::dat::Dat::open(std::path::Path::new(&path).join("portal.dat")).unwrap();

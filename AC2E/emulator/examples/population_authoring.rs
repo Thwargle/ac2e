@@ -7,6 +7,17 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
     let a=std::env::args().skip(1).collect::<Vec<_>>();
     if a.len()!=5{return Err("population_authoring DAT JSON OUTPUT_TSV REPORT_JSON EXISTING_WORLD_TSV".into());}
     let bytes=std::fs::read(&a[1])?;let data:Value=serde_json::from_slice(&bytes)?;
+    let mut own_ids: BTreeSet<u64> = data["npcs"].as_array().ok_or("npcs")?.iter()
+        .filter_map(|row|row["id"].as_u64()).collect();
+    for camp in data["camps"].as_array().ok_or("camps")? {
+        let id=camp["id"].as_u64().ok_or("camp id")?;
+        for slot in 0..camp["roster"].as_array().ok_or("roster")?.len() {
+            own_ids.insert(id.checked_add(slot as u64).ok_or("camp identity overflow")?);
+        }
+    }
+    if let Some(interiors)=data["interiors"].as_array() {
+        own_ids.extend(interiors.iter().filter_map(|row|row["id"].as_u64()));
+    }
     let mut land=Landscape::load(Path::new(&a[0]))?;let mut geometry=Geometry::open(Path::new(&a[0]))?;
     let mut lines=vec!["pyrealium-world-v4".to_owned(),"# Inferred guide placements. Ground/collision validated; not exact retail coordinates.".into()];
     let mut groups=vec![];let mut failures=vec![];let mut occupied:Vec<Placement>=vec![];let mut ids=BTreeSet::new();
@@ -16,11 +27,12 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
     let mut base_lines=Vec::new();
     for line in existing.lines() {
         let f=line.split('\t').collect::<Vec<_>>();
-        if f.len()<7 || !f[0].starts_with("8140") || f[0].starts_with("8140a0") || f[0].starts_with("8140b0") {continue;}
+        if f.len()<7 || !f[0].starts_with("8140") {continue;}
+        if own_ids.contains(&u64::from_str_radix(f[0],16)?) {continue;}
         let cell=u32::from_str_radix(f[3],16)?;
-        if (1..=64).contains(&(cell&65535)) {
+        if (1..=64).contains(&(cell&65535)) || cell&65535>=256 {
             occupied.push(Placement{cell,coordinates:[f[4].parse()?,f[5].parse()?,f[6].parse()?],heading:0});
-            base_lines.push(line);
+            if cell&65535<256 {base_lines.push(line);}
         }
     }
     let mut append=|id:u64,entity:u32,p:Placement|->Result<(),Box<dyn std::error::Error>> {
@@ -63,6 +75,30 @@ fn main()->Result<(),Box<dyn std::error::Error>> {
             if kind=="camp" && !accepted.is_empty() {
                 groups.push(json!({"id":id,"capacity":entry["capacity"].as_u64().unwrap().min(accepted.len() as u64),"members":accepted,"regeneration_ms":120000}));
             }
+        }
+    }
+    // A captured interior frame is a candidate, never an excuse to place a
+    // monster through a wall. Do not silently relocate rejected room anchors.
+    if let Some(interiors)=data["interiors"].as_array() {
+        for entry in interiors {
+            let id=entry["id"].as_u64().ok_or("interior id")?;
+            let entity=entry["entity"].as_u64().ok_or("interior entity")? as u32;
+            let candidate=Placement{cell:entry["cell"].as_u64().ok_or("interior cell")? as u32,
+                coordinates:[0,1,2].map(|i|entry["position"][i].as_f64().unwrap_or(f64::NAN) as f32),heading:0};
+            let point=geometry.ground(candidate,0.5,1.0).filter(|p|p.cell&65535>=256 &&
+                p.distance(candidate).is_some_and(|d|d<=1.) && geometry.contact(*p) &&
+                !occupied.iter().any(|old|old.distance(*p).is_some_and(|d|d<6.)) &&
+                [[0.6,0.,0.],[-0.6,0.,0.],[0.,0.6,0.],[0.,-0.6,0.]].into_iter().all(|offset|
+                    p.translated(offset).and_then(|to|geometry.walk_step(*p,to,0.35)).is_some()));
+            if let Some(p)=point {append(id,entity,p)?;occupied.push(p);}
+            else {failures.push(json!({"id":id,"entity":entity,"reason":"captured interior anchor has no clear native walking patch"}));}
+        }
+    }
+    if let Some(interior_groups)=data["interior_groups"].as_array() {
+        for group in interior_groups {
+            let members=group["members"].as_array().ok_or("interior group members")?.iter()
+                .filter_map(Value::as_u64).filter(|id|ids.contains(id)).collect::<Vec<_>>();
+            if !members.is_empty() {groups.push(json!({"id":group["id"],"capacity":members.len(),"members":members}));}
         }
     }
     let text=lines.join("\n")+"\n";std::fs::write(&a[2],&text)?;

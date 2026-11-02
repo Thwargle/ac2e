@@ -59,6 +59,8 @@ struct Peer {
     last_examine_ms: Option<u64>,
     last_world_use_ms: Option<u64>,
     last_npc_dialogue_ms: Option<u64>,
+    guide_page: usize,
+    npc_dialogue: crate::npc_dialogue::Cursor,
     merchant_open_ms: Option<u64>,
     last_shop_refresh_ms: Option<u64>,
     native_shop: Option<crate::merchants::Shop>,
@@ -86,7 +88,7 @@ fn other(e: impl std::fmt::Debug) -> io::Error {
 impl Peer {
     fn admit_npc_dialogue(&mut self, now: u64) -> io::Result<()> {
         if self.last_npc_dialogue_ms.is_some_and(|last| now.saturating_sub(last) < 1000) {
-            return Err(invalid("Wait briefly before speaking to the mentor again."));
+            return Err(invalid("Wait briefly before speaking again."));
         }
         self.last_npc_dialogue_ms = Some(now);
         Ok(())
@@ -352,7 +354,7 @@ fn use_portal(
         script::private_call(script::COMBAT_STATE, &script::integer(0)).map_err(other)?,
     ];
     if saved.quests.journey_phase() == 2 && crate::quests::is_training_portal(target) {
-        events.extend(saved.quests.apply(&crate::quests::Command::Travelled).map_err(other)?.updates().map_err(other)?);
+        events.extend(saved.quests.apply(&crate::quests::Command::Travelled).map_err(other)?.updates_since(&saved.quests).map_err(other)?);
     }
     peer.validate_scene_batch(&events)?;
     store.relocate_training_portal(&peer.session.account, character, route.destination, target)?;
@@ -586,10 +588,19 @@ fn examine_target(
             Location::Equipped(_) => "Equipped.",
             Location::Bag(_) => "In your inventory.",
         };
+        let mut lines=names.item_lines(item,location);
+        let profession=&store.characters[&character].professions;
+        if let Some(job)=profession.1.jobs.get(&item.id){lines.push(job.guidance());}
+        if let Some(tool)=crate::harvesting::tool(item.definition){lines.push(format!("Tool durability: {} / {}. Select a resource or corpse and double-click the tool.",tool.durability.saturating_sub(crate::harvesting::wear(profession,item)),tool.durability));}
+        if let Some(skills)=crate::professions::creation_tool(item.definition){
+            let level=item.roll.map_or(1,|r|r.level);let used=item.roll.map_or(0,|r|r.wear);
+            lines.push(format!("Creation tool: +{level} effective rank while equipped. Requires matching crafting rank {}. Durability: {} / 20.",u32::from(level)*10,20u16.saturating_sub(used)));
+            lines.push(skills.iter().filter_map(|s|crate::professions::skill(*s).map(|s|s.name.as_str())).collect::<Vec<_>>().join(", "));
+        }
         return examination::response(
             target,
             names.get(item.definition, "Item"),
-            &names.item_lines(item,location),
+            &lines,
         )
         .map_err(other);
     }
@@ -789,11 +800,71 @@ fn use_recovered_elixir(peer:&mut Peer,character:u64,item:u64,store:&mut Store,s
     let mut quests=c.quests.clone();
     quests.recovered=quests.recovered.accept(q.id,c.progression.level().number,crate::recovered_quests::now())?;
     let mut events=vec![crate::item_services::removed(item).map_err(other)?,world::destroy_inventory_item(item,instance)];
-    events.extend(quests.updates().map_err(other)?);
+    events.extend(quests.updates_since(&c.quests).map_err(other)?);
     events.push(script::chat(&format!("{} accepted. Defeat {} targets before the time limit.",q.title,q.goal),1).map_err(other)?);
     peer.validate_scene_batch(&events)?;
     store.recovered_elixir(&account,character,item)?;
     scene.inventory_removed(character,item).map_err(other)?;peer.queue_ordered_batch(events)?;Ok(())
+}
+
+fn arwic_exchange(peer:&mut Peer,character:u64,action:crate::arwic_mines::Action,events:Vec<Vec<u8>>,store:&mut Store,scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>)->io::Result<Vec<crate::scene::Delivery>> {
+    let saved=&store.characters[&character];let time=crate::recovered_quests::now();
+    let plan=crate::arwic_mines::plan(&saved.quests,&saved.inventory,action,store.next_item_id()?,time)?;
+    item_service_transaction_profile(peer,character,&plan.items,&plan.rewards,events,store,scene,metadata,false,false,None,None,Some((action,time)))
+}
+
+fn use_exploration_npc(peer:&mut Peer,character:u64,target:u64,store:&mut Store,scene:&mut crate::scene::Scene,now:u64)
+    ->io::Result<Vec<crate::scene::Delivery>> {
+    if peer.combat || !store.characters[&character].progression.alive() {
+        return Err(invalid("Speak to the quest NPC while alive and out of combat."));
+    }
+    let completion=npc_use_completion(character,target,scene)?;
+    let entity=scene.examination_content(character,target).ok_or_else(||invalid("Quest object is not visible."))?.entity;
+    peer.admit_npc_dialogue(now)?;
+    let saved=&store.characters[&character];let account=saved.account.clone();
+    let time=crate::recovered_quests::now();
+    let conversation=saved.quests.exploration.converse(entity,saved.progression.level().number,time)?;
+    let mut quests=saved.quests.clone();quests.exploration=conversation.book;
+    let state=if conversation.xp>0 {saved.progression.apply(&crate::progression::Command::AwardXp(conversation.xp)).map_err(other)?}
+        else {saved.progression.clone()};
+    let speaker=crate::exploration_quests::speaker(entity);
+    let mut events=vec![completion,crate::interaction::speech(target,speaker,&conversation.text).map_err(other)?,
+        crate::interaction::dialogue(speaker,&conversation.text).map_err(other)?];
+    events.extend(quests.updates_since(&saved.quests).map_err(other)?);
+    events.extend(state.private_changes(&saved.progression));
+    if saved.skills.available_credits(&state)!=saved.skills.available_credits(&saved.progression) {
+        events.push(crate::ui::skills_state(&saved.skills,&state).map_err(other)?);
+    }
+    peer.validate_scene_batch(&events)?;
+    store.exploration_conversation(&account,character,entity,time)?;
+    let updates=scene.player_stats(character,&state);peer.queue_ordered_batch(events)?;Ok(updates)
+}
+
+fn use_hunting_npc(peer:&mut Peer,character:u64,target:u64,store:&mut Store,scene:&mut crate::scene::Scene,now:u64)
+    ->io::Result<Vec<crate::scene::Delivery>> {
+    if peer.combat || !store.characters[&character].progression.alive() {
+        return Err(invalid("Speak to the quest NPC while alive and out of combat."));
+    }
+    let completion=npc_use_completion(character,target,scene)?;
+    let entity=scene.examination_content(character,target).ok_or_else(||invalid("Quest object is not visible."))?.entity;
+    peer.admit_npc_dialogue(now)?;
+    let saved=&store.characters[&character];let account=saved.account.clone();
+    let time=crate::recovered_quests::now();
+    let conversation=saved.quests.hunting.converse(entity,&saved.progression,time)?;
+    let mut quests=saved.quests.clone();quests.hunting=conversation.book;
+    let state=if conversation.xp>0 {saved.progression.apply(&crate::progression::Command::AwardXp(conversation.xp)).map_err(other)?}
+        else {saved.progression.clone()};
+    let speaker=crate::hunting_quests::speaker(entity);
+    let mut events=vec![completion,crate::interaction::speech(target,speaker,&conversation.text).map_err(other)?,
+        crate::interaction::dialogue(speaker,&conversation.text).map_err(other)?];
+    events.extend(quests.updates_since(&saved.quests).map_err(other)?);
+    events.extend(state.private_changes(&saved.progression));
+    if saved.skills.available_credits(&state)!=saved.skills.available_credits(&saved.progression) {
+        events.push(crate::ui::skills_state(&saved.skills,&state).map_err(other)?);
+    }
+    peer.validate_scene_batch(&events)?;
+    store.hunting_conversation(&account,character,entity,time)?;
+    let updates=scene.player_stats(character,&state);peer.queue_ordered_batch(events)?;Ok(updates)
 }
 
 fn use_recovered_delivery(peer:&mut Peer,character:u64,target:u64,store:&mut Store,scene:&mut crate::scene::Scene,
@@ -821,7 +892,7 @@ fn use_recovered_delivery(peer:&mut Peer,character:u64,target:u64,store:&mut Sto
         },_=>return Err(invalid("Unsupported delivery inventory transition"))
     }}
     events.extend(state.private_changes(&saved.progression));
-    events.extend(quests.updates().map_err(other)?);
+    events.extend(quests.updates_since(&saved.quests).map_err(other)?);
     events.push(script::chat(if npc==crate::recovered_quests::KANTEN {"Gambling Debt: deliver Kanten's Bag to Orven in Arwic (44.9N, 7.1W) within two hours."}
         else {"Gambling Debt complete. You receive 1,000 experience."},1).map_err(other)?);
     if saved.skills.available_credits(&state)!=saved.skills.available_credits(&saved.progression){events.push(crate::ui::skills_state(&saved.skills,&state).map_err(other)?);}
@@ -1051,7 +1122,7 @@ fn quest_action(
     }
     let starter_complete = std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1")
         && quests.get().is_some_and(|q|q.claimed) && quests.supplies().is_none();
-    let text = if starter_complete { "Training combat complete. Your reward is saved. Bind the nearby lifestone and use the training gateway to leave the dungeon. Retail tutorial and crafting quests remain unfinished.".into() } else { quests.guidance() };
+    let text = if starter_complete { "Training combat complete. Your reward is saved. Speak to the mentor again for Field Supplies and Potion Practice, or bind the lifestone and use the gateway to leave the dungeon.".into() } else { quests.guidance() };
     let mut events = match speaker {
         Some(speaker) => {
             let race = saved.creation.as_ref().map_or(1, |request| request.race);
@@ -1060,7 +1131,7 @@ fn quest_action(
         None => vec![script::chat(&text, 1).map_err(other)?],
     };
     if quests.get().is_some() {
-        events.extend(quests.updates().map_err(other)?);
+        events.extend(quests.updates_since(&saved.quests).map_err(other)?);
     }
     events.extend(state.private_changes(&saved.progression));
     if saved.skills.available_credits(&state) != saved.skills.available_credits(&saved.progression)
@@ -1151,6 +1222,10 @@ fn change_hand_item(
         }
     }
     if equipped {
+        crate::treasure_weapons::check_level(item,saved.progression.level().number)?;
+        if crate::professions::creation_tool(item.definition).is_some()&&!crate::professions::creation_tool_usable(&saved.professions,item) {
+            return Err(invalid("This tool is exhausted or requires crafting rank at least ten times its level in a matching profession."));
+        }
         let previous=saved.inventory.items().find(|other|other.id!=item.id && other.location==crate::inventory::Location::Equipped(slot)).map(|i|i.id);
         if let Some(previous)=previous {
             return replace_equipment(peer,character,item.id,previous,slot,store,scene,metadata,now);
@@ -1339,7 +1414,7 @@ fn selection_status(
         })
         .or_else(|| {
             let object = scene.examination_content(observer, target)?;
-            Some([object.stat(0x102)?, object.stat(0x107)?, 0, 0])
+            Some([object.stat(0x102)?, object.stat(0x107)?, object.stat(0x103).unwrap_or(0), object.stat(0x108).unwrap_or(0)])
         });
     crate::ui::selection(target, vitals).map_err(other)
 }
@@ -1360,13 +1435,13 @@ fn item_service_transaction(
     item_service_transaction_quest(peer, character, items, changes, completion, store, scene, metadata, false, false)
 }
 fn item_service_transaction_quest(peer:&mut Peer,character:u64,items:&[crate::inventory::Command],changes:&[crate::progression::Command],completion:Vec<Vec<u8>>,store:&mut Store,scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,supplies:bool,practice:bool)->io::Result<Vec<crate::scene::Delivery>> {
-    item_service_transaction_profile(peer,character,items,changes,completion,store,scene,metadata,supplies,practice,None)
+    item_service_transaction_profile(peer,character,items,changes,completion,store,scene,metadata,supplies,practice,None,None,None)
 }
 fn item_service_transaction_profile(
     peer: &mut Peer, character: u64,
     items: &[crate::inventory::Command], changes: &[crate::progression::Command],
     mut completion: Vec<Vec<u8>>, store: &mut Store, scene: &mut crate::scene::Scene,
-    metadata: &BTreeMap<u32, Option<crate::inventory_request::Metadata>>, supplies: bool, practice: bool, shelter:Option<crate::quests::Command>,
+    metadata: &BTreeMap<u32, Option<crate::inventory_request::Metadata>>, supplies: bool, practice: bool, shelter:Option<crate::quests::Command>, profession:Option<&crate::professions::Change>, arwic:Option<(crate::arwic_mines::Action,u64)>,
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     let saved = &store.characters[&character];
     if !scene.can_observe(character, character) || !saved.progression.alive() || peer.combat {
@@ -1378,7 +1453,7 @@ fn item_service_transaction_profile(
         .iter()
         .filter(|item| matches!(item, crate::inventory::Command::Grant(_)))
         .count()
-        > if shelter.is_some() {3} else {1}
+        > if profession.is_some() {17} else if shelter.is_some() || arwic.is_some() {3} else {1}
     {
         return Err(invalid("Item service output limit exceeded."));
     }
@@ -1399,6 +1474,7 @@ fn item_service_transaction_profile(
     let mut granted = Vec::new();
     for command in items {
         match command {
+            crate::inventory::Command::ToolWear {..} if profession.is_some() => {},
             crate::inventory::Command::ConsumeDense { item }
             | crate::inventory::Command::ConsumeStackDense { item, .. } => {
                 let owned = saved
@@ -1441,21 +1517,31 @@ fn item_service_transaction_profile(
     events.append(&mut completion);
     if supplies {
         let next = crate::quests::validate_supplies_exchange(&saved.quests, &saved.inventory, items, changes, first.ok_or_else(|| invalid("Missing supply reward identity"))?)?;
-        events.extend(next.updates().map_err(other)?);
+        events.extend(next.updates_since(&saved.quests).map_err(other)?);
     }
     if practice {
         let next = crate::quests::validate_practice_craft(&saved.quests, &saved.inventory, items, changes, first.ok_or_else(|| invalid("Missing practice craft output identity"))?)?;
-        events.extend(next.updates().map_err(other)?);
+        events.extend(next.updates_since(&saved.quests).map_err(other)?);
         events.push(script::chat(&next.potion_guidance(), 1).map_err(other)?);
     }
     if let Some(command)=shelter {
         let (expected_items,expected_changes,next)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
         if crate::player_transaction::encode_items(items)!=crate::player_transaction::encode_items(&expected_items) || crate::player_transaction::encode_changes(changes)!=crate::player_transaction::encode_changes(&expected_changes) {return Err(invalid("Shelter exchange differs from canonical plan"));}
-        events.extend(next.updates().map_err(other)?);
+        events.extend(next.updates_since(&saved.quests).map_err(other)?);
         events.push(script::chat(crate::shelter::guidance(next.shelter_phase()),1).map_err(other)?);
     }
+    if let Some((action,time))=arwic {
+        let plan=crate::arwic_mines::plan(&saved.quests,&saved.inventory,action,store.next_item_id()?,time)?;
+        if crate::player_transaction::encode_items(items)!=crate::player_transaction::encode_items(&plan.items) || crate::player_transaction::encode_changes(changes)!=crate::player_transaction::encode_changes(&plan.rewards) {return Err(invalid("Lesson exchange differs from canonical plan"));}
+        events.extend(plan.quests.updates_since(&saved.quests).map_err(other)?);
+        if plan.quests.arwic.learned && !saved.quests.arwic.learned {events.push(crate::crafting::learned_recipe(crate::arwic_mines::RECIPE).map_err(other)?);}
+        let guidance=plan.quests.arwic.guidance().split_whitespace().collect::<Vec<_>>().join(" ");
+        events.push(crate::interaction::dialogue("Arwic Mines and Crafting Quest",&guidance).map_err(other)?);
+    }
     peer.validate_scene_batch(&events)?;
-    if let Some(command)=shelter {store.shelter_exchange(&peer.session.account,character,command)?;}
+    if let Some((action,time))=arwic {store.arwic_transaction(&peer.session.account,character,action,time)?;}
+    else if let Some(command)=shelter {store.shelter_exchange(&peer.session.account,character,command)?;}
+    else if let Some(change)=profession {store.profession_transaction(&peer.session.account,character,items,changes,change)?;}
     else {store.player_transaction_quest(&peer.session.account, character, items, changes, supplies, practice)?;}
     for item in removed {
         scene.inventory_removed(character, item).map_err(other)?;
@@ -1552,11 +1638,11 @@ fn use_shelter_guide(peer:&mut Peer,character:u64,target:u64,store:&mut Store,
     peer.admit_npc_dialogue(now)?;
     if let Some(command)=command.filter(|c|crate::shelter::exchange(*c)) {
         let (items,rewards,_)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
-        return item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command));
+        return item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command),None,None);
     }
     if let Some(c)=command {
         let next=saved.quests.apply(&c).map_err(other)?;
-        events.extend(next.updates().map_err(other)?);
+        events.extend(next.updates_since(&saved.quests).map_err(other)?);
         events.push(script::chat(crate::shelter::guidance(next.shelter_phase()),1).map_err(other)?);
     }
     peer.validate_scene_batch(&events)?;
@@ -1575,7 +1661,7 @@ fn use_shelter_glyph(peer:&mut Peer,character:u64,item:u64,target:u64,store:&mut
     let saved=&store.characters[&character];
     let (items,rewards,_)=crate::shelter::plan(&saved.quests,&saved.inventory,command,store.next_item_id()?)?;
     let events=vec![completion,prepared.wire,script::private_call(script::COMBAT_STATE,&script::integer(0)).map_err(other)?];
-    let mut updates=item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command))?;
+    let mut updates=item_service_transaction_profile(peer,character,&items,&rewards,events,store,scene,metadata,false,false,Some(command),None,None)?;
     if let Some(runtime)=encounters {runtime.stop(character);}
     updates.extend(scene.update(character,prepared.motion.position_stamp,&prepared.update).map_err(other)?);
     peer.motion=Some(prepared.motion);peer.target=None;peer.last_world_use_ms=Some(now);Ok(updates)
@@ -1592,22 +1678,33 @@ fn npc_use_completion(
     let npc = scene
         .examination_content(owner, target)
         .ok_or_else(|| invalid("NPC is not visible."))?;
-    let distance = player
-        .coordinates
-        .iter()
-        .zip(npc.placement.coordinates)
-        .map(|(a, b)| (a - b).powi(2))
-        .sum::<f32>()
-        .sqrt();
-    if player.cell != npc.placement.cell || distance > 4.0 {
+    let distance = player.distance(npc.placement).filter(|d| *d <= 4.0);
+    let Some(distance) = distance else {
         return Err(invalid("Move within four metres of the NPC."));
-    }
+    };
     crate::interaction::success(owner, target, player, distance).map_err(other)
 }
 fn npc_interaction_events(owner: u64, target: u64, scene: &crate::scene::Scene,
     name: &str, text: &str) -> io::Result<Vec<Vec<u8>>> {
     Ok(vec![npc_use_completion(owner,target,scene)?,
         crate::interaction::speech(target,name,text).map_err(other)?])
+}
+
+fn use_npc_dialogue(peer:&mut Peer, owner:u64,target:u64,store:&Store,scene:&crate::scene::Scene,now:u64)
+    ->io::Result<()> {
+    if peer.combat || !store.characters[&owner].progression.alive() {
+        return Err(invalid("Speak to the NPC while alive and out of combat."));
+    }
+    let object=scene.examination_content(owner,target).ok_or_else(||invalid("NPC is not visible."))?;
+    let profile=crate::npc_dialogue::profiles().get(&object.entity).ok_or_else(||invalid("Unknown NPC."))?;
+    let completion=npc_use_completion(owner,target,scene)?;
+    peer.admit_npc_dialogue(now)?;
+    let text=profile.reply(peer.npc_dialogue.page(owner,target));
+    peer.queue_ordered_batch(vec![completion,
+        crate::interaction::speech(target,&profile.name,&text).map_err(other)?,
+        crate::interaction::dialogue(&profile.name,&text).map_err(other)?])?;
+    peer.npc_dialogue.advance(owner,target,profile.topics.len());
+    Ok(())
 }
 
 fn mentor_interaction_events(owner: u64, target: u64, scene: &crate::scene::Scene, text: &str) -> io::Result<Vec<Vec<u8>>> {
@@ -1632,15 +1729,7 @@ fn use_training_mentor(
         .examination_content(character, target)
         .filter(|object| object.entity == TRAINING_MENTOR_ENTITY)
         .ok_or_else(|| invalid("That training mentor is not visible."))?;
-    if player.cell != mentor.placement.cell
-        || player
-            .coordinates
-            .iter()
-            .zip(mentor.placement.coordinates)
-            .map(|(a, b)| (a - b).powi(2))
-            .sum::<f32>()
-            > 16.0
-    {
+    if !player.distance(mentor.placement).is_some_and(|distance| distance <= 4.0) {
         return Err(invalid("Move within four metres of the training mentor."));
     }
     if peer.combat || !store.characters[&character].progression.alive() {
@@ -1650,14 +1739,6 @@ fn use_training_mentor(
     }
     peer.admit_npc_dialogue(now)?;
     let book = &store.characters[&character].quests;
-    if std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1") {
-        let action = if book.get().is_none() { "start" } else if book.ready() { "claim" } else { "status" };
-        let updates = quest_action(peer, character, action, store, scene, Some(target))?;
-        if store.characters[&character].quests.get().is_some_and(|q| q.claimed) {
-            peer.queue_ordered_batch(vec![script::chat("Training combat complete. Bind the nearby lifestone, then use the training gateway to leave the dungeon. This is the AC2E starter circuit; retail quest scripting is still being reconstructed.", 1).map_err(other)?])?;
-        }
-        return Ok(updates);
-    }
     if book.journey_phase() != 0 {
         return quest_action(peer, character, if book.journey_phase() == 3 { "journey claim" } else { "status" }, store, scene, Some(target));
     }
@@ -1727,10 +1808,10 @@ fn merchant_action(
     }
     if action == crate::merchants::Action::List {
         let last_offer = next_offer
-            .checked_add(4)
+            .checked_add(if catalog.entries().count()>4 {crate::merchants::STOCK.len()as u64}else{4})
             .filter(|id| id >> 48 == 0x8160)
             .ok_or_else(|| invalid("Shop offer identities exhausted; restart required."))?;
-        let offers = std::array::from_fn(|index| *next_offer + 1 + index as u64);
+        let offers:Vec<_>=(*next_offer+1..=last_offer).collect();
         let shop = crate::merchants::Shop::new(merchant, offers).map_err(other)?;
         let mut events = if npc_target.is_some() {
             npc_interaction_events(
@@ -1781,6 +1862,58 @@ fn merchant_action(
     Ok(updates)
 }
 
+fn use_gathering(peer:&mut Peer,character:u64,item:u64,target:u64,store:&mut Store,scene:&mut crate::scene::Scene,metadata:&BTreeMap<u32,Option<crate::inventory_request::Metadata>>,loot:&crate::loot::Loot,geometry:Option<&mut crate::geometry::Geometry>,now_ms:u64)->io::Result<Vec<crate::scene::Delivery>>{
+    use crate::{harvesting as h,professions as p,inventory::{Command,Location}};
+    if peer.last_inventory_ms.is_some_and(|last|now_ms.saturating_sub(last)<1500){return Err(invalid("Wait for your gathering action to finish."))}
+    let saved=&store.characters[&character];let time=crate::recovered_quests::now();
+    if !scene.can_observe(character,character)||!saved.progression.alive()||peer.combat{return Err(invalid("Gathering requires a ready living player in peace mode."))}
+    let owned=saved.inventory.items().find(|i|i.id==item&&matches!(i.location,Location::Bag(_)));
+    if let Some(map_item)=owned.filter(|i|h::map(i.definition).is_some()){
+        let j=saved.professions.1.jobs.get(&item).ok_or_else(||invalid("This map has no active survey. Create a new map from the Surveying profession."))?;
+        let mut point=scene.player_placement(character).ok_or_else(||invalid("Enter the world before surveying."))?;
+        if !j.distance(point).is_some_and(|d|d<=40.){return Err(invalid(&j.guidance()))}
+        let geometry=geometry.ok_or_else(||invalid("Surveying requires native world geometry."))?;
+        if !geometry.contact(point)||!geometry.dry_ground(point){return Err(invalid("Stand on dry, solid ground at the survey site."))}
+        // Place beside the finder on reachable ground, never through the player.
+        point=[[0.8,0.,0.],[-0.8,0.,0.],[0.,0.8,0.],[0.,-0.8,0.]].into_iter().find_map(|step|{
+            let mut p=point;for _ in 0..3{p=geometry.walk_step(p,p.translated(step)?,0.3)?;}
+            (geometry.dry_ground(p)&&j.distance(p).is_some_and(|d|d<=40.)).then_some(p)
+        }).ok_or_else(||invalid("Move into a clear area near the survey site before using this map."))?;
+        let m=h::mine(h::map(map_item.definition).unwrap().mine).ok_or_else(||invalid("Mine profile missing"))?;
+        let object=crate::content::Object::resource(h::node_id(item),m.id,m.visual,point)?;
+        scene.prepare_cell(point.cell)?;scene.check_content_live(&[],std::slice::from_ref(&object))?;
+        let change=p::Change{skill:h::SURVEY,xp:0,time,raise:false,activity:Some(h::Activity::Locate{item,point:[point.cell,point.coordinates[0].to_bits(),point.coordinates[1].to_bits(),point.coordinates[2].to_bits()]})};
+        let events=vec![script::chat("Deposit found. Select it and use the appropriate gathering tool. It can be harvested three times.",1).map_err(other)?];
+        let mut updates=item_service_transaction_profile(peer,character,&[Command::ConsumeDense{item}],&[],events,store,scene,metadata,false,false,None,Some(&change),None)?;
+        updates.extend(scene.insert_content_live(object,true)?);peer.last_inventory_ms=Some(now_ms);return Ok(updates);
+    }
+    let node=if item>>48==0x8190{item}else{target};
+    let mut entropy=[0;4];getrandom::getrandom(&mut entropy).map_err(other)?;
+    let (tid,activity,material,base,variance)=if node>>48==0x8190{
+        let mid=h::map_id(node);let j=saved.professions.1.jobs.get(&mid).filter(|j|j.expires>time&&j.remaining>0).ok_or_else(||invalid("That deposit has expired or belongs to another player."))?;
+        let mine=h::mine(h::map(j.definition).unwrap().mine).unwrap();
+        let skill=match mine.material{0x470010f2=>0x6f0025a8,0x470010f3=>0x6f002579,0x470010fe=>0x6f0025a6,0x470010f4=>0x6f0025a7,0x470010f5=>0x6f0025a9,_=>return Err(invalid("Unsupported mineral"))};
+        let t=if item==node{saved.inventory.items().filter(|i|matches!(i.location,Location::Bag(_))&&h::tool(i.definition).is_some_and(|t|t.skill==skill)&&i.roll.is_none_or(|r|r.level<=1||saved.professions.get(skill).level>=u32::from(r.level)*3)).max_by_key(|i|i.roll.map_or(1,|r|r.level))}else{owned};
+        let t=t.filter(|i|h::tool(i.definition).is_some_and(|t|t.skill==skill)).ok_or_else(||invalid("Carry the correct tool in your backpack: pickaxe for iron, mattock for silver, chisel for crystal, rock hammer for stone, or hatchet for wood."))?;
+        (t.id,h::Activity::Mine{item:mid,tool:t.id,definition:t.definition,wear:None},mine.material,mine.quantity,mine.variance)
+    }else{
+        let t=owned.filter(|i|h::tool(i.definition).is_some_and(|t|t.skill==h::BUTCHERY)).ok_or_else(||invalid("Select your defeated creature and use a hunting knife from your backpack."))?;
+        if loot.get(target,character,now_ms).is_none(){return Err(invalid("Butchery requires a recent corpse from your kill."))}
+        let corpse=scene.examination_content(character,target).filter(|o|o.stat(0x102)==Some(0)&&o.stat(0x107).is_some()).ok_or_else(||invalid("Select a defeated creature."))?;
+        let profile=p::catalog().butcher.iter().find(|b|b.id==corpse.entity).ok_or_else(||invalid("This creature cannot be butchered."))?;
+        (t.id,h::Activity::Butcher{corpse:target,instance:corpse.instance_stamp(),tool:t.id,definition:t.definition,wear:None},profile.material,5,0.15)
+    };
+    if !scene.combat_distance(character,node).is_some_and(|d|d<=4.){return Err(invalid("Move within four meters to gather."))}
+    let plan=h::gather(&saved.professions,&saved.inventory,tid,activity,material,base,variance,store.next_item_id()?,u32::from_le_bytes(entropy),time)?;
+    let next=saved.professions.apply(&plan.change)?;
+    let tool_def=saved.inventory.items().find(|i|i.id==tid).unwrap().definition;
+    let remaining=h::tool(tool_def).unwrap().durability-next.1.tool_uses.get(&tid).copied().unwrap_or(h::tool(tool_def).unwrap().durability);
+    let events=vec![crate::crafting::skill_update(plan.change.skill,&next).map_err(other)?,script::chat(&format!("Gathered {}. Tool durability remaining: {remaining}.",plan.name),1).map_err(other)?];
+    let depleted=node>>48==0x8190&&!next.1.jobs.contains_key(&h::map_id(node));
+    let mut updates=item_service_transaction_profile(peer,character,&plan.items,&[],events,store,scene,metadata,false,false,None,Some(&plan.change),None)?;
+    if depleted{updates.extend(scene.remove_content_live(node)?);}peer.last_inventory_ms=Some(now_ms);Ok(updates)
+}
+
 fn craft_item(
     peer: &mut Peer,
     character: u64,
@@ -1789,6 +1922,7 @@ fn craft_item(
     scene: &mut crate::scene::Scene,
     metadata: &BTreeMap<u32, Option<crate::inventory_request::Metadata>>,
     now: u64,
+    geometry: Option<&mut crate::geometry::Geometry>,
 ) -> io::Result<Vec<crate::scene::Delivery>> {
     if peer
         .last_inventory_ms
@@ -1797,6 +1931,29 @@ fn craft_item(
         return Err(invalid("Wait one second before crafting again."));
     }
     let saved = &store.characters[&character];
+    if !scene.can_observe(character,character)||!saved.progression.alive()||peer.combat{return Err(invalid("Crafting requires a ready living player in peace mode."))}
+    if request.recipe==crate::arwic_mines::RECIPE {
+        if request.spinner!=0 || request.ingredients.len()!=1 || request.ingredients.get(&1)!=Some(&request.primary) {return Err(invalid("The Arwic Mines recipe needs one Iron ingredient slot and no quality override."));}
+        let events=vec![crate::crafting::completed(request.recipe,true).map_err(other)?];
+        let updates=arwic_exchange(peer,character,crate::arwic_mines::Action::Craft(request.primary),events,store,scene,metadata)?;
+        peer.last_inventory_ms=Some(now);return Ok(updates);
+    }
+    if crate::crafting::recipe(request.recipe).is_none() {
+        if request.ingredients.is_empty()&&request.primary!=character{return Err(invalid("Survey helper must be your character."))}
+        crate::professions::require_workshop(scene,character,request.recipe)?;
+        let mut entropy=[0u8;4];getrandom::getrandom(&mut entropy).map_err(|e|invalid(&format!("Craft randomness unavailable: {e}")))?;
+        let mut plan=crate::professions::plan(&saved.professions,&saved.inventory,request,store.next_item_id()?,u32::from_le_bytes(entropy),crate::recovered_quests::now(),metadata)?;
+        if matches!(plan.change.activity,Some(crate::harvesting::Activity::Survey{..})) {
+            crate::harvesting::ground_survey(&saved.professions,&mut plan.change,geometry.ok_or_else(||invalid("Surveying requires native world geometry."))?)?;
+        }
+        let next=saved.professions.apply(&plan.change)?;
+        let gained=next.get(plan.change.skill).available.saturating_sub(saved.professions.get(plan.change.skill).available);
+        let mut events=vec![crate::crafting::completed(request.recipe,plan.success).map_err(other)?,crate::crafting::skill_update(plan.change.skill,&next).map_err(other)?,script::chat(&format!("{} {}. Gained {gained} crafting XP.",if plan.success{"Crafted"}else{"Failed to craft"},plan.name),1).map_err(other)?];
+        if let Some(crate::harvesting::Activity::Survey{item,..})=&plan.change.activity {events.push(script::chat(&next.1.jobs[item].guidance(),1).map_err(other)?);}
+        let costs=if plan.gold==0{vec![]}else{vec![crate::progression::Command::SpendGold(plan.gold)]};
+        let updates=item_service_transaction_profile(peer,character,&plan.items,&costs,events,store,scene,metadata,false,false,None,Some(&plan.change),None)?;
+        peer.last_inventory_ms=Some(now);return Ok(updates);
+    }
     let ingredients = request.require_inputs(&saved.inventory, true)
         .map_err(|_| invalid("Crafting needs one Mucor Mushroom and a full 100-unit Tallow bundle in your bag. Use @shop near the training quartermaster."))?;
     let mut items: Vec<_> = ingredients
@@ -1828,19 +1985,9 @@ fn craft_item(
         "vigor"
     };
     items.push(crate::inventory::Command::Grant(output));
-    let curve = crate::crafting::rank(crate::crafting::CRAFT_SKILL_DID, 0).ok_or_else(|| {
-        invalid("The imported quest-recipe crafting curve is missing.")
-    })?;
     let events = vec![
         crate::crafting::completed(request.recipe, true).map_err(other)?,
-        script::chat(
-            &format!(
-                "Crafted one {name} potion. Imported quest-recipe curve: rank {} grants {} crafting XP.",
-                curve.level, curve.cxp
-            ),
-            1,
-        )
-        .map_err(other)?,
+        script::chat(&format!("Crafted one {name} potion."), 1).map_err(other)?,
     ];
     let practice = saved.quests.potion_phase() == 1;
     let updates = item_service_transaction_quest(peer, character, &items, &[], events, store, scene, metadata, false, practice)?;
@@ -1907,7 +2054,9 @@ fn corpse_action(peer:&mut Peer,character:u64,request:crate::loot::Request,loot:
         let completion=vec![world::destroy_inventory_item(pending.id,1),state,script::chat("Loot collected.",1).map_err(other)?];
         // Each item is journaled before it leaves the corpse. A full bag or a
         // failed transaction retains every item that was not granted.
-        updates.extend(item_service_transaction(peer,character,&[crate::inventory::Command::Grant(owned)],&[],completion,store,scene,metadata)?);
+        if pending.definition==crate::arwic_mines::HAMMER {
+            updates.extend(arwic_exchange(peer,character,crate::arwic_mines::Action::Hammer,completion,store,scene,metadata)?);
+        } else {updates.extend(item_service_transaction(peer,character,&[crate::inventory::Command::Grant(owned)],&[],completion,store,scene,metadata)?);}
         loot.claimed(container,pending.id);collected+=1;
     }
     if collected==0 && store.characters[&character].inventory.free_slot().is_some(){return Err(invalid("No loot was collected."));}
@@ -1921,6 +2070,9 @@ fn drop_ground_item(peer:&mut Peer, character:u64, request:&crate::inventory_req
     if request.landblock != position.cell & 0xffff0000 {return Err(invalid("Your destination has changed. Try dropping the item again."));}
     let saved=&store.characters[&character];
     request.moved.checked_command(character,&saved.inventory).map_err(other)?;
+    if saved.professions.1.jobs.get(&request.moved.item).is_some_and(|j|j.point.is_none()){
+        return Err(invalid("Active survey maps belong to their surveyor and cannot be dropped or traded."));
+    }
     let dropped=store.drop_candidate(&peer.session.account,character,request.moved.item,position)?;
     scene.validate_drop(&dropped)?;
     let info=metadata.get(&dropped.item.definition).and_then(|m|*m).ok_or_else(||invalid("This item's ground profile is unavailable."))?;
@@ -2065,7 +2217,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 locale.read(0x25000014)?;
             }
             if unreal_gameplay {
-                for (definition,metadata) in crate::shelter::validate(&mut portal)?.into_iter().chain(crate::apparel::validate(&mut portal)?) {inventory_metadata.insert(definition,Some(metadata));}
+                for (definition,metadata) in crate::shelter::validate(&mut portal)?.into_iter().chain(crate::apparel::validate(&mut portal)?).chain(crate::arwic_mines::validate(&mut portal)?) {inventory_metadata.insert(definition,Some(metadata));}
                 inventory_metadata.insert(crate::recovered_quests::BAG,Some(crate::recovered_quests::delivery_metadata(&mut portal)?));
             }
             if starter_equipment {
@@ -2079,7 +2231,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                     inventory_metadata.insert(definition, Some(metadata));
                 }
                 merchant_catalog = Some(catalog);
-                if config.training_kit {crate::crafting::validate_assets(&mut portal)?;}
+                crate::crafting::validate_assets(&mut portal)?;
+                crate::professions::validate_assets(&mut portal,&mut inventory_metadata)?;
                 let vigor = crate::crafting::validate_vigor(&mut portal)?;
                 inventory_metadata.insert(crate::crafting::VIGOR_OUTPUT, Some(vigor));
             }
@@ -2278,6 +2431,11 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
         scene = scene.with_visibility(crate::visibility::Visibility::open(directory)?);
     }
     for dropped in store.drops.values() {scene.add_drop(dropped)?;}
+    for saved in store.characters.values().filter(|s|!s.deleted){for (item,j) in &saved.professions.1.jobs{
+        if j.expires<=crate::recovered_quests::now(){continue}let Some(p)=j.placement()else{continue};
+        let m=crate::harvesting::mine(crate::harvesting::map(j.definition).ok_or_else(||invalid("Saved survey definition missing"))?.mine).unwrap();
+        scene.prepare_cell(p.cell)?;scene.insert_content_live(crate::content::Object::resource(crate::harvesting::node_id(*item),m.id,m.visual,p)?,true)?;
+    }}
     if let Some(runtime) = &mut encounters {
         let mut total=0;let mut outdoor=0;let mut blocks=std::collections::BTreeSet::new();
         for (id, health) in runtime.initial_health() {
@@ -2330,6 +2488,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
             crate::admin::Paths { world, rules })?),
         _ => None,
     };
+    let mut next_resource_cleanup=0;
     loop {
         let now = Instant::now();
         let now_ms = start.elapsed().as_millis() as u64;
@@ -2537,6 +2696,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                 last_examine_ms: None,
                                 last_world_use_ms: None,
                                 last_npc_dialogue_ms: None,
+                                guide_page: 0,
+                                npc_dialogue: Default::default(),
                                 merchant_open_ms: None,
                                 last_shop_refresh_ms: None,
                                 native_shop: None,
@@ -2974,14 +3135,27 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             return Ok(replies);
                                         }
                                         script::Request::ExamineClear => return Ok(replies),
+                                        script::Request::CraftRaise(skill) => {
+                                            let result=(||->io::Result<()>{
+                                                if !(config.training_kit||unreal_gameplay)||!config.initialize_ui||peer.combat||!scene.can_observe(character,character){return Err(invalid("Crafting training requires a ready player in peace stance."))}
+                                                let change=crate::professions::Change{skill,xp:0,time:crate::recovered_quests::now(),raise:true,activity:None};
+                                                let next=store.characters[&character].professions.apply(&change)?;
+                                                let event=crate::crafting::skill_update(skill,&next).map_err(other)?;peer.validate_scene_batch(&[event.clone()])?;
+                                                store.profession_transaction(&peer.session.account,character,&[],&[],&change)?;
+                                                peer.queue_ordered_batch(vec![event])?;Ok(())
+                                            })();
+                                            if let Err(e)=result{peer.queue_ordered_batch(vec![script::chat(&e.to_string(),1).map_err(other)?])?;}
+                                            return Ok(replies);
+                                        }
                                         script::Request::CraftValidate(request) => {
                                             let saved = &store.characters[&character];
-                                            let allowed = config.training_kit
+                                            let allowed = (config.training_kit || unreal_gameplay)
                                                 && config.initialize_ui
                                                 && scene.can_observe(character, character)
                                                 && saved.progression.alive()
                                                 && !peer.combat
-                                                && request.allowed(&saved.inventory, true);
+                                                && saved.quests.arwic.allowed(request.recipe)
+                                                && crate::professions::allowed(&request,&saved.inventory);
                                             peer.queue_ordered_batch(vec![
                                                 crate::crafting::validation_reply(
                                                     &request, allowed,
@@ -2991,7 +3165,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             return Ok(replies);
                                         }
                                         script::Request::CraftExecute(request) => {
-                                            let result = if config.training_kit
+                                            let result = if (config.training_kit || unreal_gameplay)
                                                 && config.initialize_ui
                                             {
                                                 craft_item(
@@ -3002,9 +3176,10 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     &mut scene,
                                                     &inventory_metadata,
                                                     now_ms,
+                                                    bootstrap.as_mut().and_then(|b|b.geometry.as_mut()),
                                                 )
                                             } else {
-                                                Err(invalid("Training crafting is not enabled."))
+                                                Err(invalid("Crafting is not enabled in this server profile."))
                                             };
                                             match result {
                                                 Ok(updates) => deliveries.extend(updates),
@@ -3220,6 +3395,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     if let crate::abilities::Outcome::Strike {
                                                         target,
                                                         bonus,
+                                                        vigor_damage,
                                                         weapon_damage,
                                                         cost,
                                                         range,
@@ -3256,6 +3432,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                                     ratings: cast.other_ratings().map(|(_,r,ms)|(r,ms)),
                                                                     skill,
                                                                     bonus,
+                                                                    vigor_damage,
                                                                     weapon_damage,
                                                                     cost,
                                                                     range,
@@ -3504,6 +3681,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                             }
                                         }
                                         script::Request::UseObject(request) => {
+                                            if request.item>>48==0x8190 || store.characters[&character].inventory.items().any(|i|i.id==request.item&&(crate::harvesting::map(i.definition).is_some()||crate::harvesting::tool(i.definition).is_some())){
+                                                if request.owner!=character{return Err(invalid("Gathering owner mismatch"))}
+                                                match use_gathering(peer,character,request.item,request.target,&mut store,&mut scene,&inventory_metadata,&corpse_loot,bootstrap.as_mut().and_then(|b|b.geometry.as_mut()),now_ms){
+                                                    Ok(updates)=>deliveries.extend(updates),Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,
+                                                }return Ok(replies);
+                                            }
                                             if corpse_loot.contains(request.item,now_ms) || scene.examination_content(character,request.item)
                                                 .is_some_and(|o|matches!(o.service,Some(crate::services::Service::Chest{..}))){
                                                 if request.owner!=character{return Err(invalid("Container owner mismatch"));}
@@ -3530,11 +3713,47 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 }
                                                 return Ok(replies);
                                             }
+                                            let arwic_target=if request.target!=0 && store.characters[&character].inventory.items().any(|i|
+                                                i.id==request.item && matches!(i.definition,crate::arwic_mines::HAMMER|crate::arwic_mines::SWORD) && matches!(i.location,crate::inventory::Location::Bag(_))) {request.target}else{request.item};
+                                            if unreal_gameplay && scene.examination_content(character,arwic_target).is_some_and(|o|o.entity==crate::arwic_mines::NPC) {
+                                                if request.owner!=character || (request.target!=0 && arwic_target!=request.target) {return Err(invalid("Quest use owner or target mismatch."));}
+                                                let result=(|| {
+                                                    let event=npc_use_completion(character,arwic_target,&scene)?;
+                                                    peer.admit_npc_dialogue(now_ms)?;
+                                                    arwic_exchange(peer,character,crate::arwic_mines::Action::Talk,vec![event],&mut store,&mut scene,&inventory_metadata)
+                                                })();
+                                                match result {Ok(updates)=>deliveries.extend(updates),Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,}
+                                                return Ok(replies);
+                                            }
                                             if request.target!=0 && !(unreal_gameplay && store.characters[&character].inventory.items().any(|i|i.id==request.item && i.definition==crate::shelter::GLYPH)) {
                                                 return Err(invalid("Targeted use is only supported for your Menhir Glyph."));
                                             }
                                             let service_entity = scene.examination_content(character, request.item)
                                                 .map(|object| object.entity);
+                                            if unreal_gameplay && store.characters[&character].inventory.items().any(|i|
+                                                i.id==request.item && i.definition==crate::arwic_mines::GUIDE && matches!(i.location,crate::inventory::Location::Bag(_))) {
+                                                if request.owner!=character || !store.characters[&character].progression.alive() {return Err(invalid("Read a book from your living character's backpack."));}
+                                                peer.admit_npc_dialogue(now_ms)?;
+                                                peer.queue_ordered_batch(vec![crate::arwic_mines::read_page(peer.guide_page).map_err(other)?])?;
+                                                peer.guide_page=(peer.guide_page+1)%crate::arwic_mines::content().guide_pages.len();
+                                                return Ok(replies);
+                                            }
+                                            if unreal_gameplay && service_entity.is_some_and(crate::exploration_quests::supported) {
+                                                if request.owner!=character || request.target!=0 {return Err(invalid("Quest use owner or target mismatch."));}
+                                                match use_exploration_npc(peer,character,request.item,&mut store,&mut scene,now_ms) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,
+                                                }
+                                                return Ok(replies);
+                                            }
+                                            if unreal_gameplay && service_entity.is_some_and(crate::hunting_quests::supported) {
+                                                if request.owner!=character || request.target!=0 {return Err(invalid("Quest use owner or target mismatch."));}
+                                                match use_hunting_npc(peer,character,request.item,&mut store,&mut scene,now_ms) {
+                                                    Ok(updates)=>deliveries.extend(updates),
+                                                    Err(error)=>peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?,
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if scene.examination_content(character,request.item).is_some_and(|o|o.service==Some(crate::services::Service::Sign)) {
                                                 if request.owner!=character || !store.characters[&character].progression.alive(){return Err(invalid("Use the sign with your living character."));}
                                                 if !scene.combat_distance(character,request.item).is_some_and(|d|d<=4.) {
@@ -3786,7 +4005,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                         .map_err(other)?;
                                                     let mut events = vec![crate::ui::skill_update(crate::skills::LIFESTONE_RECALL,skills.get(crate::skills::LIFESTONE_RECALL).unwrap()).map_err(other)?,crate::ui::lifestone_bound(character,request.item,player).map_err(other)?,script::chat("You are bound to this lifestone. Recall is available in your skill list; @recall also returns under development travel rules.",1).map_err(other)?];
                                                     if saved.quests.journey_phase() == 1 {
-                                                        events.extend(saved.quests.apply(&crate::quests::Command::BoundLifestone).map_err(other)?.updates().map_err(other)?);
+                                                        events.extend(saved.quests.apply(&crate::quests::Command::BoundLifestone).map_err(other)?.updates_since(&saved.quests).map_err(other)?);
                                                     }
                                                     peer.validate_scene_batch(&events)?;
                                                     store.bind_lifestone(
@@ -3812,13 +4031,25 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                 }
                                                 return Ok(replies);
                                             }
+                                            if unreal_gameplay && service_entity.is_some_and(|d|crate::npc_dialogue::profiles().contains_key(&d))
+                                                && encounters.as_ref().is_none_or(|e|!e.is_creature(request.item)) {
+                                                if request.owner!=character {return Err(invalid("NPC use owner mismatch."));}
+                                                if let Err(error)=use_npc_dialogue(peer,character,request.item,&store,&scene,now_ms) {
+                                                    peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?;
+                                                }
+                                                return Ok(replies);
+                                            }
                                             if service_entity.is_some() {
                                                 if request.owner!=character || !store.characters[&character].progression.alive(){return Err(invalid("Use the object with your living character."));}
                                                 if !scene.combat_distance(character,request.item).is_some_and(|d|d<=4.) {
                                                     peer.queue_ordered_batch(vec![script::chat("Move within four metres to use this object.",1).map_err(other)?])?;
                                                 }else{
-                                                    peer.queue_ordered_batch(vec![examine_target(character,request.item,&store,&scene,&examination_names,&corpse_loot,now_ms)?,
-                                                        script::chat("Examining this object. Additional scripted actions are not available yet.",1).map_err(other)?])?;
+                                                    let guidance=crate::professions::catalog().workshops.iter().find(|w|Some(w.id)==service_entity).map(|w|match w.effect{
+                                                        0x6f002ee6=>"Refining workshop: open Skills > Craft, select Refining, then choose a recipe and quantity. Stay within eight meters while crafting.",
+                                                        0x6f002ee7=>"Spellbinding workshop: enchantment extraction and totem application are not implemented yet. Materials will not be consumed.",
+                                                        _=>"Crafting workshop: open Skills > Craft and choose a profession. Select a recipe and level, fill its ingredients, then craft while within eight meters. Earn crafting XP and use Raise to advance.",
+                                                    }).unwrap_or("Examining this object. Additional scripted actions are not available yet.");
+                                                    peer.queue_ordered_batch(vec![examine_target(character,request.item,&store,&scene,&examination_names,&corpse_loot,now_ms)?,script::chat(guidance,1).map_err(other)?])?;
                                                 }
                                                 return Ok(replies);
                                             }
@@ -4386,6 +4617,20 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     }
                                                     let words =
                                                         text.split_whitespace().collect::<Vec<_>>();
+                                                    if text.trim().eq_ignore_ascii_case("@talk") && unreal_gameplay {
+                                                        peer.last_chat_ms=Some(now_ms);
+                                                        let result=(|| -> io::Result<()> {
+                                                            let target=peer.target.ok_or_else(||invalid("Select an NPC to speak with."))?;
+                                                            if encounters.as_ref().is_some_and(|e|e.is_creature(target)) {
+                                                                return Err(invalid("That creature cannot hold a conversation."));
+                                                            }
+                                                            use_npc_dialogue(peer,character,target,&store,&scene,now_ms)
+                                                        })();
+                                                        if let Err(error)=result {
+                                                            peer.queue_ordered_batch(vec![script::chat(&error.to_string(),1).map_err(other)?])?;
+                                                        }
+                                                        return Ok(replies);
+                                                    }
                                                     if text.trim().eq_ignore_ascii_case("@spawns") {
                                                         peer.last_chat_ms = Some(now_ms);
                                                         let lines=if !config.map_travel {
@@ -4420,8 +4665,8 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                     }) {
                                                         peer.last_chat_ms = Some(now_ms);
                                                         let result = (|| -> io::Result<Vec<crate::scene::Delivery>> {
-                                                            if !config.initialize_ui || !config.training_kit {
-                                                                return Err(invalid("Training crafting is not enabled."));
+                                                            if !config.initialize_ui || !(config.training_kit || unreal_gameplay) {
+                                                                return Err(invalid("Crafting is not enabled."));
                                                             }
                                                             let recipe = match words.as_slice() {
                                                                 [_, name] if name.eq_ignore_ascii_case("health") => crate::crafting::HEALTH_RECIPE,
@@ -4430,7 +4675,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                                             };
                                                             let request = crate::crafting::select_inventory(recipe, &store.characters[&character].inventory, true)
                                                                 .map_err(|_| invalid("You need one Mucor Mushroom and a full 100-unit Tallow bundle in your bag."))?;
-                                                            craft_item(peer, character, &request, &mut store, &mut scene, &inventory_metadata, now_ms)
+                                                            craft_item(peer, character, &request, &mut store, &mut scene, &inventory_metadata, now_ms, bootstrap.as_mut().and_then(|b|b.geometry.as_mut()))
                                                         })();
                                                         match result {
                                                             Ok(updates) => {
@@ -5234,7 +5479,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         }
                                         if first && config.initialize_ui {
                                             for packet in
-                                                crate::crafting::initialization(config.training_kit)
+                                                crate::crafting::initialization_with_quests(config.training_kit || unreal_gameplay, &store.characters[&character].professions, &store.characters[&character].quests.arwic)
                                                     .map_err(other)?
                                             {
                                                 deliveries.push(crate::scene::Delivery {
@@ -5249,7 +5494,7 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                                         }
                                         if first && unreal_gameplay {
                                             deliveries.push(crate::scene::Delivery {recipient:character,data:script::chat(
-                                                "Starter circuit: I opens inventory; double-click a weapon to equip. Z changes combat/peace; 1 attacks; 2 uses your magic skill; 3 uses your missile skill. Match the skill to your weapon. T selects a target; E uses it. Defeat three Idol Spawn and speak to the mentor, bind the lifestone, then leave through the gateway. Home recalls. Double-click nearby vendors to trade; crafting lessons remain unfinished.",1).map_err(other)?.into()});
+                                                "Starter circuit: I opens inventory; double-click a weapon to equip. Z changes combat/peace; 1 attacks; 2 uses your magic skill; 3 uses your missile skill. Match the skill to your weapon. T selects a target; E uses it. Defeat three Idol Spawn and speak to the mentor, bind the lifestone, then leave through the gateway. Home recalls. Double-click nearby vendors to trade. Speak to the mentor again for Field Supplies and Potion Practice; open Skills > Craft to make potions.",1).map_err(other)?.into()});
                                         }
                                         eprintln!(
                                             "Scene ready for character {character}: cell={:08x}, visible content={}",
@@ -5377,6 +5622,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                 let _ = job.reply.send(reply);
             }
         }
+        if now_ms>=next_resource_cleanup{
+            next_resource_cleanup=now_ms+10_000;let time=crate::recovered_quests::now();
+            let live:std::collections::BTreeSet<_>=store.characters.values().filter(|c|!c.deleted).flat_map(|c|c.professions.1.jobs.iter()).filter(|(_,j)|j.point.is_some()&&j.expires>time&&j.remaining>0).map(|(id,_)|crate::harvesting::node_id(*id)).collect();
+            let expired:Vec<_>=scene.content_objects().filter(|o|o.id>>48==0x8190&&!live.contains(&o.id)).map(|o|o.id).collect();
+            for id in expired{let updates=scene.remove_content_live(id)?;deliver_scene(updates,&active_characters,&mut peers,&primary,now,&mut failed_peers)?;}
+        }
         let chest_updates=scene.expire_chest_views(now_ms,|id|store.characters.get(&id).is_some_and(|c|!c.deleted && c.progression.alive()))?;
         deliver_scene(chest_updates,&active_characters,&mut peers,&primary,now,&mut failed_peers)?;
         if let Some(runtime) = &mut encounters {
@@ -5499,7 +5750,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         }
                     }
                     crate::encounters::Event::Loot {actor,player,entity,ai}=>{
-                        let count=corpse_loot.add(actor,player,now_ms,entity,ai);
+                        let saved=&store.characters[&player];
+                        let hammer=entity==crate::arwic_mines::OUTCAST && !ai.loot_proof
+                            && scene.examination_content(player,actor).is_some_and(|o|o.placement.cell>>16==0x7cb9 && o.placement.cell&65535>=256)
+                            && saved.quests.arwic.can_loot(&saved.inventory);
+                        let quest_item=if hammer {Some(crate::arwic_mines::item(crate::arwic_mines::HAMMER,1,0,1)?)}else{None};
+                        let count=corpse_loot.add_with_quest(actor,player,now_ms,entity,ai,quest_item);
                         if count>0 {updates.push(crate::scene::Delivery{recipient:player,data:script::chat("Loot remains on the defeated creature. Double-click its body to open it.",1).map_err(other)?.into()});}
                     }
                     crate::encounters::Event::Item {
@@ -5538,13 +5794,16 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                             .into(),
                         });
                     }
-                    crate::encounters::Event::Quest { player, book } => {
-                        for event in book.updates().map_err(other)? {
+                    crate::encounters::Event::Quest { player, previous, book } => {
+                        for event in book.updates_since(&previous).map_err(other)? {
                             updates.push(crate::scene::Delivery {recipient:player,data:event.into()});
                         }
                         if book.ready() {
                             updates.push(crate::scene::Delivery {recipient:player,data:script::chat(&book.guidance(),1).map_err(other)?.into()});
                         }
+                    }
+                    crate::encounters::Event::Vigor { actor, vigor } => {
+                        updates.extend(scene.content_stat(actor, 0x103, vigor)?);
                     }
                     crate::encounters::Event::Health { actor, health } => {
                         updates.extend(scene.content_stat(actor, 0x102, health)?);
@@ -5572,9 +5831,12 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
                         if scene.content_placement(actor).is_some(){updates.extend(scene.despawn_content(actor)?);}
                         runtime.removed(actor,now_ms);
                     }
-                    crate::encounters::Event::Respawn { actor, health } => {
+                    crate::encounters::Event::Respawn { actor, health, vigor } => {
                         corpse_loot.remove(actor);
                         scene.content_stat(actor, 0x102, health)?;
+                        if let Some(max_vigor) = vigor {
+                            scene.content_stat(actor, 0x103, max_vigor)?;
+                        }
                         updates.extend(scene.respawn_content(actor)?);
                         runtime.spawned(actor)?;
                     }
@@ -5867,6 +6129,46 @@ fn run_auth_mode(config: Config, auth_data: Option<PathBuf>, local_accounts: boo
 mod tests {
     use super::*;
 
+    #[test]
+    fn dead_player_cannot_advance_dialogue_or_queue_speech() {
+        let path=std::env::temp_dir().join(format!("ac2-dead-npc-{}",std::process::id()));
+        let mut store=Store::open(&path).unwrap();
+        let character=store.create("local","Fallen Reader").unwrap().id;
+        store.progression_command("local",character,crate::progression::Command::Damage(100000)).unwrap();
+        let mut peer=peer();
+        let scene=crate::scene::Scene::with_content(crate::content::Content::default());
+        let error=use_npc_dialogue(&mut peer,character,10,&store,&scene,1000).unwrap_err();
+        assert!(error.to_string().contains("alive"));
+        assert_eq!(peer.npc_dialogue.page(character,10),0);
+        assert!(peer.scene_outbox.is_empty() && peer.last_npc_dialogue_ms.is_none());
+        drop(store);
+        std::fs::remove_file(path.join("characters.journal")).unwrap();
+        std::fs::remove_dir(path).unwrap();
+    }
+
+    #[test]
+    fn selected_creature_vitals_use_current_scene_values() {
+        let path=std::env::temp_dir().join(format!("ac2-selection-vitals-{}-{}",std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let store=Store::open(&path).unwrap();
+        let target=crate::content::NAMESPACE+7;
+        let point=Placement::HUMAN_START;
+        let mut scene=crate::scene::Scene::with_content(crate::content::Content::fixture(target,point,None));
+        let bytes=world::create_stationary_object(&world::StationaryObject {
+            character_id:1,parent_visual_did:1,entity_did:2,cell_id:point.cell,
+            position:point.coordinates,orientation:point.orientation(),instance_stamp:1,
+            visual_ordering_stamp:0,timestamps:[0;4]
+        }).unwrap();
+        scene.enter(crate::scene::Body::new(1,point,bytes).unwrap()).unwrap();
+        for (key,value) in [(0x102,100),(0x107,100),(0x103,30),(0x108,164)] {
+            scene.content_stat(target,key,value).unwrap();
+        }
+        assert_eq!(selection_status(1,target,&scene,&store).unwrap(),crate::ui::selection(target,Some([100,100,30,164])).unwrap());
+        scene.content_stat(target,0x103,28).unwrap();
+        assert_eq!(selection_status(1,target,&scene,&store).unwrap(),crate::ui::selection(target,Some([100,100,28,164])).unwrap());
+        drop(store);std::fs::remove_dir_all(path).unwrap();
+    }
+
     fn peer() -> Peer {
         Peer {
             client_version: "7148".into(),
@@ -5889,6 +6191,8 @@ mod tests {
             last_examine_ms: None,
             last_world_use_ms: None,
                                 last_npc_dialogue_ms: None,
+                                guide_page: 0,
+                                npc_dialogue: Default::default(),
             merchant_open_ms: None,
             last_shop_refresh_ms: None,
             native_shop: None,

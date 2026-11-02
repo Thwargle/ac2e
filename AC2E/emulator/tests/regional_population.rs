@@ -76,7 +76,13 @@ fn regional_wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
             count+=reward.items.len();
             variants.insert(reward.items.iter().map(|i|i.definition).collect::<Vec<_>>());
             for item in &reward.items {
-                if let Some(roll)=item.roll {assert_eq!(roll.level,native[&entity].1);assert!(roll.armor>0);}
+                if let Some(roll)=item.roll {
+                    assert_eq!(roll.level,native[&entity].1);
+                    if pyrealium::treasure_weapons::profile(item).is_some() {
+                        assert!(pyrealium::treasure_weapons::valid_finish(item));
+                        assert!(roll.damage>0);
+                    } else {assert!(roll.armor>0);}
+                }
             }
             loot.remove(21);
         }

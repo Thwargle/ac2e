@@ -60,6 +60,7 @@ class SAC2GameUI : public SCompoundWidget
     bool SmokeRadarHeading(float Yaw,FString& Error) const { return MapUI.SmokeHeading(Yaw,Error); }
     bool SmokeInventoryInput(int32 Step, FString &Error);
     bool SmokeShopInput(int32 Step,FString& Error);
+    bool SmokeCraftInput(int32 Step,FString& Error);
     bool SmokeJournalInput(int32 Step,FString& Error);
     bool SmokeDamageText(FString& Error);
     bool SmokeLootInput(bool Take,FString& Error);
@@ -147,6 +148,14 @@ class SAC2GameUI : public SCompoundWidget
     FLinearColor SkillLineColor=FLinearColor::White;
     FAC2SkillData SkillData;
     void BuildJournal();
+    void BuildCrafting();
+    void BuildIngredients();
+    bool CraftAction(FName Name);
+    uint32 CraftSkill=0x6f0028d7;
+    int32 CraftPage=0;
+    bool CraftProfessions=false;
+    bool CraftOwnsPointer(FVector2D Point) const;
+    FString CraftItemName(uint32 Definition);
     void BuildSkills();
     TArray<TPair<FVector2D,FVector2D>> SkillLinks;
     FIntRect SkillClip;

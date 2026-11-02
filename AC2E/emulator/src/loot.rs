@@ -75,7 +75,7 @@ pub fn closed(container:u64)->Result<Vec<u8>,WorldError>{
 }
 pub struct Reward {pub owner:u64,pub items:Vec<Item>,pub expires:u64}
 #[derive(Default)]
-pub struct Catalog {supported:BTreeMap<u32,Item>,custom:BTreeMap<crate::world_rules::Target,Vec<(u32,Vec<Item>)>>,tables:BTreeMap<u32,Vec<(u32,Vec<Item>)>>,profiles:BTreeMap<u32,Vec<(u32,Vec<Item>)>>,trophies:crate::native_trophies::Trophies,treasure:Vec<Item>,levels:BTreeMap<u32,u16>}
+pub struct Catalog {supported:BTreeMap<u32,Item>,custom:BTreeMap<crate::world_rules::Target,Vec<(u32,Vec<Item>)>>,tables:BTreeMap<u32,Vec<(u32,Vec<Item>)>>,profiles:BTreeMap<u32,Vec<(u32,Vec<Item>)>>,trophies:crate::native_trophies::Trophies,limits:crate::loot_limits::Limits,weapons:std::collections::BTreeSet<u32>,treasure:Vec<Item>,levels:BTreeMap<u32,u16>}
 impl Catalog {
     pub fn load(dat:&mut crate::dat::Dat,metadata:&mut BTreeMap<u32,Option<crate::inventory_request::Metadata>>)->io::Result<Self> {
         Self::load_with_rules(dat,metadata,&crate::world_rules::Rules::default())
@@ -108,15 +108,19 @@ impl Catalog {
         println!("Observed loot: {} creature tables, {} native profiles, {} compatible items; {rejected} unsupported items and {missing} incomplete bundles withheld. Random affixes and retail weights remain unrecovered.",catalog.tables.len(),catalog.profiles.len(),items.len());
         // Only supported usable profiles enter the generic inferred treasure pool.
         // Captured quest/special items remain tied to their observed creature.
-        catalog.treasure=items.values().filter(|i|crate::apparel::recovered_slot(i.definition,i.visual).is_some()
+        catalog.weapons=crate::treasure_weapons::compatible(dat,metadata);
+        catalog.treasure=items.values().filter(|i|catalog.weapons.contains(&i.definition) || crate::apparel::recovered_slot(i.definition,i.visual).is_some()
             ||matches!(i.definition,crate::item_services::POTION_DEFINITION|crate::crafting::VIGOR_OUTPUT|crate::crafting::MUCOR)).cloned().collect();
         for line in include_str!("../content/creature-combat.tsv").lines()
             .chain(include_str!("../content/inferred-creature-combat-v1.tsv").lines())
-            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines()) {
+            .chain(include_str!("../content/regional-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/wilderness-creature-combat-v1.tsv").lines())
+            .chain(include_str!("../content/arwic-mines-creature-combat-v1.tsv").lines()) {
             let f=line.split('\t').collect::<Vec<_>>();if f.len()<7||!f[0].starts_with("47"){continue;}
             catalog.levels.insert(u32::from_str_radix(f[0],16).map_err(io::Error::other)?,f[6].parse::<u16>().map_err(io::Error::other)?.clamp(1,150));
         }
         catalog.trophies=crate::native_trophies::Trophies::load(dat,metadata)?;
+        catalog.limits=crate::loot_limits::Limits::load(dat)?;
         catalog.supported=items;
         catalog.set_world_rules(rules)?;
         if !catalog.custom.is_empty() {println!("World rules: {} custom loot tables.",catalog.custom.len());}
@@ -150,12 +154,23 @@ impl Catalog {
             for (weight,items) in table {if roll<u64::from(*weight){return items.clone()}roll-=u64::from(*weight);}
             return vec![];
         }
-        let mut items=if let Some(&level)=self.levels.get(&entity) {self.inferred_roll(entity,ai,level,random)}else{self.observed_roll(entity,ai,random)};
+        let level=self.levels.get(&entity).copied().or_else(||self.limits.0.get(&entity).map(|q|q.level)).unwrap_or(1);
+        let mut items=if let Some(quantity)=self.limits.0.get(&entity) {
+            // Native bounds apply to generic treasure, separately from trophy and
+            // quest slots. The original quantity distribution remains unavailable.
+            let pool=self.treasure.iter().filter(|i|!self.trophies.contains(entity,i.definition) && self.eligible(i,level)).collect::<Vec<_>>();
+            if pool.is_empty() {Vec::new()} else {(0..quantity.roll(random)).map(|_| {
+                pool[(crate::creature_ai::random(random)*pool.len() as f32) as usize].clone()
+            }).collect()}
+        } else if self.levels.contains_key(&entity) {self.inferred_roll(entity,ai,random)}else{self.observed_roll(entity,ai,random)};
+        self.roll_stats(&mut items,level,random);
         self.trophies.apply(entity,&mut items,random);items
     }
-    fn inferred_roll(&self,entity:u32,ai:crate::creature_ai::Profile,level:u16,random:&mut u64)->Vec<Item> {
+    fn inferred_roll(&self,entity:u32,ai:crate::creature_ai::Profile,random:&mut u64)->Vec<Item> {
         use crate::creature_ai::random as draw;
         let mut output=Vec::new();
+        let level=self.levels.get(&entity).copied().unwrap_or(1);
+        let pool=self.treasure.iter().filter(|i|self.eligible(i,level)).collect::<Vec<_>>();
         // A sampled bundle is evidence for eligibility, not a fixed retail drop.
         // Inferred policy: one observed slot at 35%, plus 0..2 usable rolls.
         let observed=self.observed_roll(entity,ai,random);
@@ -163,18 +178,26 @@ impl Catalog {
             output.push(observed[(draw(random)*observed.len() as f32) as usize].clone());
         }
         for probability in [0.70,0.25] {
-            if self.treasure.is_empty()||draw(random)>=probability{continue;}
-            let item=self.treasure[(draw(random)*self.treasure.len() as f32) as usize].clone();
+            if pool.is_empty()||draw(random)>=probability{continue;}
+            let item=pool[(draw(random)*pool.len() as f32) as usize].clone();
             if !output.iter().any(|i|i.definition==item.definition){output.push(item);}
         }
-        for item in &mut output {
-            if crate::apparel::recovered_slot(item.definition,item.visual).is_some() {
+        output
+    }
+    fn eligible(&self,item:&Item,level:u16)->bool {
+        !self.weapons.contains(&item.definition) || crate::treasure_weapons::profile(item).is_some_and(|p|p.minimum_level<=level)
+    }
+    fn roll_stats(&self,items:&mut [Item],level:u16,random:&mut u64) {
+        use crate::creature_ai::random as draw;
+        for item in items {
+            if self.weapons.contains(&item.definition) {
+                crate::treasure_weapons::roll(item,level,random);
+            } else if crate::apparel::recovered_slot(item.definition,item.visual).is_some() {
                 let base=crate::apparel::item_armor(item.definition).unwrap_or(u32::from(level)*2+2);
                 let armor=((base as f32)*(0.75+draw(random)*0.5)).round().clamp(1.,1000.) as u16;
-                item.roll=Some(crate::inventory::Roll{armor,tint:(draw(random)*1001.) as u16,level});
+                item.roll=Some(crate::inventory::Roll{armor,tint:(draw(random)*1001.) as u16,level,..Default::default()});
             }
         }
-        output
     }
     fn observed_roll(&self,entity:u32,ai:crate::creature_ai::Profile,random:&mut u64)->Vec<Item> {
         let Some(table)=self.tables.get(&entity).or_else(||self.profiles.get(&ai.loot_profile)) else{return vec![]};
@@ -193,9 +216,13 @@ impl Loot {
         self.random=seed;Ok(())
     }
     pub fn add(&mut self,container:u64,owner:u64,now:u64,entity:u32,ai:crate::creature_ai::Profile)->usize {
+        self.add_with_quest(container,owner,now,entity,ai,None)
+    }
+    pub fn add_with_quest(&mut self,container:u64,owner:u64,now:u64,entity:u32,ai:crate::creature_ai::Profile,quest:Option<Item>)->usize {
         if let Some(reward)=self.rewards.get(&container).filter(|r|r.expires>now){return reward.items.len()}
         if self.random==0 {self.random=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos() as u64 ^ container;}
-        let items=self.catalog.roll(container,entity,ai,&mut self.random);
+        let mut items=self.catalog.roll(container,entity,ai,&mut self.random);
+        if let Some(item)=quest.filter(|_|!ai.loot_proof) {items.retain(|i|i.definition!=item.definition);items.truncate(31);items.push(item);}
         self.insert(container,owner,now,items)
     }
     fn insert(&mut self,container:u64,owner:u64,now:u64,mut items:Vec<Item>)->usize {
@@ -220,6 +247,74 @@ impl Loot {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_quantity_overrides_fallback_but_not_lootproof_or_operator_tables() {
+        let mut catalog=Catalog::default();let mut random=37;
+        let ai=crate::creature_ai::Profile::default();
+        catalog.treasure=vec![crate::item_services::potion(1,0)];
+        catalog.tables.insert(17,vec![(1,vec![crate::item_services::potion(1,0)])]);
+        catalog.limits.0.insert(17,crate::loot_limits::Quantity{minimum:3,maximum:6,level:1});
+        let counts=(0..500).map(|_|catalog.roll(21,17,ai,&mut random).len()).collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(counts,(3..=6).collect());
+        catalog.limits.0.insert(17,crate::loot_limits::Quantity{minimum:0,maximum:0,level:1});
+        assert!(catalog.roll(21,17,ai,&mut random).is_empty(),"zero overrides a captured bundle");
+        catalog.custom.insert(crate::world_rules::Target::Actor(21),vec![(1,vec![crate::item_services::potion(1,0)])]);
+        assert_eq!(catalog.roll(21,17,ai,&mut random).len(),1,"operator table wins");
+        let mut protected=ai;protected.loot_proof=true;
+        assert!(catalog.roll(21,17,protected,&mut random).is_empty());
+        catalog.custom.clear();catalog.treasure.clear();
+        catalog.limits.0.insert(17,crate::loot_limits::Quantity{minimum:3,maximum:6,level:1});
+        assert!(catalog.roll(21,17,ai,&mut random).is_empty(),"no fabricated fallback item");
+    }
+    #[test]
+    fn installed_native_boss_quantity_is_used_and_rolled_stats_survive_claim_transport() {
+        let Ok(directory)=std::env::var("AC2_TEST_GAME_DATA") else{return};
+        let mut dat=crate::dat::Dat::open(std::path::Path::new(&directory).join("portal.dat")).unwrap();
+        let catalog=Catalog::load(&mut dat,&mut BTreeMap::new()).unwrap();
+        assert_eq!(catalog.limits.0.len(),312);
+        assert_eq!(catalog.weapons.len(),69);
+        let boss=0x4700390b; // Baron Colier: native 3..6 generic treasure slots.
+        let quantity=catalog.limits.0.get(&boss).unwrap();assert_eq!((quantity.minimum,quantity.maximum),(3,6));
+        let mut loot=Loot{catalog,random:42,..Default::default()};let mut seen=std::collections::BTreeSet::new();
+        for corpse in 100..200 {
+            loot.add(corpse,7,0,boss,crate::creature_ai::Profile::default());
+            let reward=loot.get(corpse,7,0).unwrap();
+            let normal=reward.items.iter().filter(|i|!loot.catalog.trophies.contains(boss,i.definition)).count();
+            assert!((3..=6).contains(&normal));
+            let original=reward.items.clone();let random=loot.random;
+            assert_eq!(loot.add(corpse,8,1,boss,crate::creature_ai::Profile::default()),original.len());
+            assert_eq!(loot.random,random);assert!(loot.get(corpse,8,1).is_none());
+            for item in original {
+                if let Some(roll)=item.roll {assert_eq!(roll.level,56);seen.insert((item.definition,roll.armor,roll.tint));
+                    // Claiming replaces the temporary corpse IID with a journal-owned IID.
+                    let mut owned=item.clone();owned.id=crate::inventory::ITEM_NAMESPACE+1;
+                    let command=crate::inventory::Command::Grant(owned.clone());
+                    let decoded=crate::inventory::Command::decode(&command.encode()).unwrap();
+                    let inventory=crate::inventory::Inventory::default().apply(&decoded).unwrap();
+                    assert_eq!(inventory.items().next(),Some(&owned));
+                }
+                loot.claimed(corpse,item.id);
+            }
+            assert_eq!(loot.add(corpse,7,2,boss,crate::creature_ai::Profile::default()),0);
+        }
+        assert!(seen.len()>50,"gear must carry varied durable stats");
+    }
+    #[test]
+    fn quest_bonus_is_owned_once_and_never_replaces_normal_loot() {
+        let mut loot=Loot::default();let ai=crate::creature_ai::Profile::default();
+        loot.catalog.tables.insert(17,vec![(1,vec![crate::item_services::potion(1,0)])]);
+        let hammer=crate::arwic_mines::item(crate::arwic_mines::HAMMER,1,0,1).unwrap();
+        assert!(crate::merchants::sale_value(&hammer).is_none());
+        assert_eq!(loot.add_with_quest(21,7,100,17,ai,Some(hammer.clone())),2);
+        let reward=loot.get(21,7,100).unwrap();
+        let iid=reward.items.iter().find(|i|i.definition==hammer.definition).unwrap().id;
+        assert!(loot.get(21,8,100).is_none());loot.claimed(21,iid);
+        assert_eq!(loot.add_with_quest(21,8,101,17,ai,Some(hammer.clone())),1);
+        assert!(!loot.get(21,7,101).unwrap().items.iter().any(|i|i.definition==hammer.definition));
+        let mut protected=ai;protected.loot_proof=true;
+        loot.add_with_quest(22,7,101,17,protected,Some(hammer));
+        assert!(loot.get(22,7,101).unwrap().items.is_empty());
+    }
     #[test]
     fn rewards_are_owned_temporary_and_one_time(){
         let mut loot=Loot::default();loot.insert(21,7,100,vec![crate::item_services::potion(1,0)]);
@@ -317,10 +412,14 @@ mod tests {
         let Ok(directory)=std::env::var("AC2_TEST_GAME_DATA") else{return};
         let mut dat=crate::dat::Dat::open(std::path::Path::new(&directory).join("portal.dat")).unwrap();
         let catalog=Catalog::load(&mut dat,&mut BTreeMap::new()).unwrap();let ai=crate::creature_ai::catalog().unwrap();
-        let mut state=3;
+        let mut state=5;
         let a=catalog.roll(0,0x470008bf,ai[&0x470008bf],&mut state);
         let b=catalog.roll(0,0x470008bf,ai[&0x470008bf],&mut state);
-        state=3;let c=catalog.roll(0,0x47000fa2,ai[&0x47000fa2],&mut state);
-        assert!(!a.is_empty()&&!b.is_empty()&&c.len()>=2,"UDP claim fixtures need claimable rolls with seed 3");
+        state=5;let c=catalog.roll(0,0x47000fa2,ai[&0x47000fa2],&mut state);
+        assert!(!a.is_empty()&&!b.is_empty()&&c.len()>=2,"UDP claim fixtures need claimable rolls with seed 5");
+        state=5;let boss=catalog.roll(0,0x4700390b,crate::creature_ai::Profile::default(),&mut state);
+        assert_eq!(boss.len(),4);
+        assert!(boss.iter().any(|i|i.definition==0x47000f0b && i.roll.unwrap().damage==115));
+        assert!(boss.iter().any(|i|crate::treasure_weapons::profile(i).is_some_and(|p|p.minimum_level==15)));
     }
 }

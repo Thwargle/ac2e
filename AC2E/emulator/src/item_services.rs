@@ -88,10 +88,8 @@ pub fn acquired(owner: u64, item: &Item, metadata: Metadata) -> Result<Vec<u8>, 
     if [0, u64::MAX].contains(&owner)
         || [0, u64::MAX].contains(&item.id)
         || owner == item.id
-        || ((item.quantity != 1 || item.stack_limit != 1)
-            && !(item.definition == crate::crafting::TALLOW
-                && item.visual == 0x1f000234 && item.equipment_mask == 0
-                && item.quantity == crate::crafting::TALLOW_QUANTITY && item.stack_limit == crate::crafting::TALLOW_QUANTITY))
+        || item.quantity == 0 || item.quantity > item.stack_limit
+        || (item.equipment_mask != 0 && (item.quantity != 1 || item.stack_limit != 1))
         || slot >= BAG_SLOTS
         || item.definition >> 24 != 0x47
         || item.visual >> 24 != 0x1f
@@ -100,7 +98,7 @@ pub fn acquired(owner: u64, item: &Item, metadata: Metadata) -> Result<Vec<u8>, 
         // animation; preserve its null DID rather than inventing an animation.
         // The nested inventory/picking.up.item.elog retains this exact full
         // acquisition shape with field 6 zero and DID tag 4 (item 470017f3).
-        || (metadata.icon >> 24 != 0x20
+        || (metadata.icon != 0 && metadata.icon >> 24 != 0x20
             && !(item.definition == crate::shelter::GLYPH && item.visual == 0x1f0001cf && metadata.physical == 0x4700026a && metadata.icon == 0)
             && !(item.definition == crate::crafting::CATALYST
                 && item.visual == 0x1f000234
@@ -129,7 +127,7 @@ pub fn acquired(owner: u64, item: &Item, metadata: Metadata) -> Result<Vec<u8>, 
     fields[30] = u32::MAX;
     fields[38] = metadata.physical;
     fields[50] = u32::from(slot);
-    if item.definition == crate::crafting::TALLOW && item.quantity > 1 {
+    if item.quantity > 1 {
         // Captured stacked Tallow pickups retain both moved and final counts.
         fields[26] = u32::from(item.quantity);
         fields[48] = u32::from(item.quantity);

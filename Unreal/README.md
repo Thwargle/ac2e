@@ -13,6 +13,22 @@ are ready; the world, sky and default avatar are not created behind the initial 
 The server stores network characters separately from offline profiles. The controls
 below describe offline mode; network targeting, attacks, item use and chat route to the server.
 
+For crafting, open Skills → Craft and use **All professions** to choose a discipline.
+Select a recipe, adjust its level with **−/+**, and fill its ingredients from your
+backpack. Clicking an ingredient cycles matching items; quantities can span stacks.
+Craft becomes available after server approval while alive and in peace mode.
+The panel displays base success chance, cost, rank and XP; **Raise** spends profession
+XP. Manufacturing/refining recipes require the matching nearby workshop.
+Creation tools equipped in the main hand add a matching profession bonus; the
+displayed base chance excludes that bonus. Inspect a tool for its rank requirement
+and remaining durability. Gathered resources and tool wear persist atomically.
+For gathering, create a Surveying map, examine its coordinates, use it near the
+site, then double-click the deposit with the appropriate tool in your backpack.
+For butchery, select a recent corpse from your kill and use a hunting knife.
+Progress and tool/deposit charges survive restarts. Spellbinding extraction and
+totem application, recipe discovery and the Arwic Mines sword remain unfinished;
+see [coverage and reconstruction policies](../AC2E/emulator/content/README.md#profession-crafting-and-gathering).
+
 Character previews retain the DAT scene lights and material colors, captured to an
 explicit sRGB LDR target without tone mapping or exposure adaptation. The character
 list keeps DAT font `42000024` and native row geometry; selected text uses a gold

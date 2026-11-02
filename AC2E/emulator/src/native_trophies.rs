@@ -45,6 +45,9 @@ impl Trophies {
         println!("Native trophy loot: {} compatible creature rules; {rejected} incompatible rules/items withheld.",result.0.len());
         Ok(result)
     }
+    pub fn contains(&self,entity:u32,definition:u32)->bool {
+        self.0.get(&entity).is_some_and(|drops|drops.iter().any(|(_,item)|item.definition==definition))
+    }
     pub fn apply(&self,entity:u32,items:&mut Vec<Item>,random:&mut u64) {
         let Some(drops)=self.0.get(&entity) else{return};
         // A previously captured trophy must not turn a 5% native slot into 100%.

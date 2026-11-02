@@ -9,7 +9,8 @@ void SAC2GameUI::BuildSkills()
     if(const auto* N=Native.Find(0x96a07fb7)){
         Buttons.Add(TEXT("Native96A07FB7"),FSlateRect(N->Clip.Min.X,N->Clip.Min.Y,N->Clip.Max.X,N->Clip.Max.Y));
         ButtonActions.Add(TEXT("Native96A07FB7"),TEXT("Skills"));}
-    for(const TCHAR* Tab:{TEXT("MeleeButton"),TEXT("MissileButton"),TEXT("MagicButton"),TEXT("NoncombatButton")})Bind(Tab,FName(Tab));
+    for(const TCHAR* Tab:{TEXT("MeleeButton"),TEXT("MissileButton"),TEXT("MagicButton"),TEXT("NoncombatButton"),TEXT("CraftTab")})Bind(Tab,FName(Tab));
+    if(SkillTab==4){BuildCrafting();return;}
     if(!SkillPanel)SkillPanel=FAC2SkillData::RootPanel(Player->Race,SkillTab);
     const auto& Data=SkillData.Panel(SkillPanel);if(!Data.Valid)return;
     TMap<uint32,uint64> Known;

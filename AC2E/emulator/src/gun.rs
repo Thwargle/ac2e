@@ -1,10 +1,10 @@
-//! The GUN service: the friends, ignore, presence and tell side of the MSN Gaming Zone "GUN"
-//! service that AC2 clients reach through `GunDll.dll` (`-gunserver HOST -gunport PORT`).
+//! Custom adapter service for GUN-like friends, ignore, presence and tells.
 //!
-//! The wire is `docs/gun-protocol.md`: TCP, a big-endian length and one XML element per frame,
-//! named as the retail `GunDll.dll` names its messages (`GetFriendsList`, `FriendAddRes`,
-//! `FStart`, ...). It is not Microsoft's session layer (that is an RSA key exchange nobody has
-//! decoded). A client needs a compatible transport adapter. The PR author's
+//! The wire is `docs/gun-protocol.md`: TCP, a big-endian length and one XML element per frame.
+//! Retail captures use UDP sequencing/acknowledgements and different XML fields
+//! (`Cx`, `HR`, `User`, `FriendStatus`), plus Connect/ConInfo/ticket negotiation.
+//! This endpoint is NOT compatible with stock GunDll.dll, even on port 2310.
+//! A client needs a compatible transport adapter. The PR author's
 //! external `gun-stub` and AC2_Rusted adapter are not included in this checkout.
 //!
 //! Identity is the ticket the client presents (`PresentTicketCmd`): in developer mode (loopback
@@ -18,10 +18,12 @@ use std::io::{self, Read, Write};
 use std::net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::sync::{mpsc, Arc, Mutex, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+
+pub mod native;
 
 #[cfg(test)]
 mod regression_tests;
@@ -300,7 +302,7 @@ pub enum GunAuth {
     Tickets(PathBuf),
 }
 
-/// The retail GUN port (`ac2l.ini`'s `GunPort`, `gmClient`'s `gunport` default 0x906).
+/// Retail UDP port; retained for API compatibility, not an adapter bind default.
 pub const DEFAULT_PORT: u16 = 2310;
 
 #[derive(Debug, Clone)]
@@ -343,7 +345,8 @@ pub struct Hub {
     auth: GunAuth,
 }
 
-static HUB: OnceLock<Arc<Hub>> = OnceLock::new();
+// Do not retain a stopped service forever: a later service must receive presence.
+static HUB: OnceLock<Mutex<Weak<Hub>>> = OnceLock::new();
 
 /// The part of `Name@World` before the `@`, lower case: what presence is keyed by.
 pub fn base(name: &str) -> String {
@@ -447,9 +450,10 @@ impl State {
 /// The game server's characters in the world, as `(character name, account)`: friends who are
 /// in the world show as logged in and in game. Cheap when GUN is off.
 pub fn publish_online(online: impl IntoIterator<Item = (String, String)>) {
-    let Some(hub) = HUB.get() else {
-        return;
-    };
+    let Some(registry) = HUB.get() else { return };
+    let Ok(active) = registry.try_lock() else { return };
+    let Some(hub) = active.upgrade() else { return };
+    drop(active);
     let now: BTreeMap<String, String> = online
         .into_iter()
         .map(|(name, account)| (name.to_ascii_lowercase(), account))
@@ -953,8 +957,13 @@ pub fn start(config: GunConfig) -> io::Result<GunHandle> {
         file,
         auth: config.auth,
     });
-    // Only the first service of a process receives the game server's online list.
-    let _ = HUB.set(Arc::clone(&hub));
+    // Preserve the active service, but allow a stopped one to be replaced.
+    let registry = HUB.get_or_init(|| Mutex::new(Weak::new()));
+    let mut active = registry.lock().unwrap_or_else(|poison| poison.into_inner());
+    if active.upgrade().is_none() {
+        *active = Arc::downgrade(&hub);
+    }
+    drop(active);
     let stop = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&stop);
     let join = std::thread::spawn(move || {
@@ -1167,6 +1176,11 @@ mod tests {
         let start = alice.next();
         assert_eq!(start.name, "FStart");
         assert_eq!(start.children.len(), 2);
+        // Presence must reach the restarted service, not the old hub.
+        publish_online([("Zed".to_owned(), "zed_account".to_owned())]);
+        let online = alice.next();
+        assert_eq!((online.name.as_str(), online.get("Name"), online.get("Mode")),
+            ("FriendStat", Some("Zed@AC2e"), Some("9")));
         again.stop();
         let _ = std::fs::remove_dir_all(&dir);
     }

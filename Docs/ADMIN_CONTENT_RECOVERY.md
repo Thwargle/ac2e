@@ -21,11 +21,37 @@ AC2_Rusted binary readers. The DATs and source captures remain unchanged.
   in observed bundles. Each slot rolls independently once per corpse; loot-proof
   creatures still drop nothing. Thirty-six of these templates appear in the
   current imported combat catalog.
+- `native-loot-limits.json` recovers inherited generic death-loot quantity bounds
+  for 312 templates. `NPC_DeathLootMinQuantityOverride` (`410002f5`) and
+  `NPC_DeathLootMaxQuantityOverride` (`410002f6`) constrain the generic item count;
+  Baron Colier has 3–6 slots. Complete inheritance/type-registry hashes must match
+  the installed DAT before a rule is used. `GameplayStatistics_Level`
+  (`41000173`) supplies a native level fallback for reconstructed item rolls.
+  Quality/variance overrides (`41000275` / `41000276`) are retained as evidence;
+  their retail mutation formula is not recovered. Uniform quantity sampling and
+  generic item selection remain reconstruction. Native trophy slots are separate,
+  loot-proof actors yield nothing, and explicit operator loot tables take precedence.
+- `treasure-weapons.json` recovers 69 observed weapon identities, native hand slots,
+  implement types and minimum use levels. Runtime fingerprints the entity,
+  qualities, physics and visual records. The generic pool now includes these
+  weapons, limited by creature level. Overcharged Hive remains excluded because
+  its additional `0x2d8` use restriction is not implemented. The archived Pyreal
+  `IntStats.cs` identifies `Usage_MinLevel` as `0x2bc` and `Weapon_Damage` as
+  `0x258`; its inventory manager confirms the level gate before equipping.
+  All 69 weapon defaults omit damage. AC2E reconstructs it as
+  `(6 + 2 * treasure level)` with ±15% per-item variance. Damage, treasure level
+  and native use level appear in inspection; equipped damage feeds attacks and
+  supported weapon-based skills, without being added to periodic ticks.
+  Distinct `W` journal grants preserve these rolls through pickup/equipment and
+  restart. Existing unrolled values remain unchanged. The importer is
+  `AC2E/emulator/tools/import_treasure_weapons.py`; the real UDP acceptance test
+  is `Network/test_weapon_loot.py`. Neither the formula nor the existing
+  three-gold equipment sale policy claims retail economy parity.
 
 The recovery pass did not recover random item affixes, every item stat,
 special-trophy eligibility, or the full retail treasure generator. Capture
 frequency is not a retail probability. The separately authorized inferred
-implementation below now supplies variable generic treasure and armor rolls.
+implementation below now supplies variable generic treasure, armor and weapon rolls.
 
 ## Inferred gameplay pack v1 (2026-10-30)
 
@@ -86,7 +112,7 @@ which ID is Gambling Debt, it uses reconstruction ID `4000fe01`.
 Creatures with a supported native combat level now use an explicitly inferred
 variable treasure policy instead of repeating an entire observed bundle:
 one sampled observed item at 35%, plus independent 70% and 25% rolls from the
-supported apparel/restorative pool. Duplicate item definitions are suppressed.
+supported apparel/weapon/restorative pool. Duplicate item definitions are suppressed.
 Unsupported quest/special items are not inserted into the generic pool. Native
 trophy slots are then applied at their recovered rates, and loot-proof creatures
 remain empty. These percentages are AC2E tuning, not extracted retail weights.
@@ -100,7 +126,7 @@ weapon/jewelry affix system. Existing unrolled items keep their historical value
 
 `q6` journal events bind hunt credit, timestamps and rewards; `q7` binds elixir
 consumption and acceptance; `q8` binds delivery inventory/reward/state exchanges.
-Rolled item grants use `G`, distinct from historical `g` grants. Old journal
+Rolled armor grants use `G` and weapon grants use `W`, distinct from historical `g` grants. Old journal
 events retain their old meaning. Corpse loot rolls once, reopening never rerolls,
 and claimed rolls survive pickup, equipment changes and restart. Keep v1 rules
 immutable after release; changed rewards/quest semantics need a new journal
@@ -126,6 +152,105 @@ varied Vermin treasure, native ground and noncombat roles, group capacities and
 starter availability. `Network/test_inferred_content.py` exercises real UDP
 delivery/targeted hand-in, elixir use, a five-kill incursion across two camps,
 native journals and a full server restart using a disposable test account store.
+
+## Ringway exploration pack v1 (2026-11-01)
+
+The existing Arwic, Lost Wish and Esper Explorers now accept and advance their
+regional Obelisk Search quests (`40000016`–`40000018`). Use the ruby, sapphire
+and emerald obelisks in order, then return to the same region's Explorer for
+80 XP and the Find the Arwic Mines Overseer referral (`400000c0`). Speaking to
+the Overseer completes that referral without an additional XP reward. These
+interactions send native NPC speech, MessageDialog and quest-journal updates.
+
+`exploration-content-v1.json` keeps the recovered native entity/quest IDs and
+all four journal phases, including the ringway directions. The cached wiki
+articles supply the 24-hour search deadline and 20-hour repeat cooldown, and
+the referral's 48-hour deadline and 24-hour repeat. Cooldowns start at completion;
+expired searches restart through their Explorer. This is an explicit server
+reconstruction, not recovered executable NPC-table bytecode. Completion dialogue
+is authored; source URLs, article hashes and native text-record hashes remain in
+the policy. Native obelisk visuals are used.
+
+Nine stationary obelisks are placed near the outgoing ringways named by the
+next journal step. Their coarse anchors are Arwic: 46.9N 0E, 42.1N 8.5E,
+34.3N 2W; Lost Wish: 53.1N 9.9E, 53.5N 19E, 47.3N 21.4E; Esper:
+41.2N 25.9W, 29.8N 24.8W, 37.8N 19.8W. The authoring pass offsets the anchor
+eight metres east and searches up to 32 metres for dry, walkable native ground
+with separation from existing objects. **These are inferred placements, not
+exact retail coordinates.** All nine were accepted; no new Explorer or Overseer
+placements are added. Stationary quest objects do not use creature spawners.
+
+`q9` durably records each canonical conversation transition and its XP together.
+Wrong-order or repeated touches do not advance a quest, and repeated turn-ins
+cannot grant another reward during the cooldown. An existing active Overseer
+referral is preserved when another region's search is completed. Ownership,
+life, peace stance, visibility and four-metre distance are checked before use;
+the distance check now permits nearby interaction across outdoor cell and
+landblock boundaries. Preserve this policy version after release so historical
+journal replay retains its original meaning.
+
+**Remaining gaps:** the Aunmauri/Obelisk Ward temporary buff rewards are not
+implemented. The subsequent Arwic Mines chain is described below.
+The journal describes the deadline; a live native countdown/expiry notification
+is not yet provided. This pass does not activate other unsupported NPC scripts.
+
+## Arwic Mines lesson v1 (2026-11-01)
+
+The Overseer now starts native quest `400000c1` after completing an active
+referral, or directly when approached without one. Its four native journal
+phases cover retrieving the Crude Flat Hammer (`470015a9`), returning it,
+crafting the Arwic Mines Short Sword (`470015aa`) and returning that sword.
+Recipe `6f001f0e` requires 20 Iron (`470010f3`), no forge/rank/cost, and always
+produces the sword. Its entitlement is learned at the hammer exchange, saved
+separately from general profession grants and checked on every craft request.
+
+The [recovered quest guide](https://www.20oz.net/index.php/Arwic_Mines_and_Crafting_Quest.html)
+supplies the 150 XP reward, 20-hour repeat, retained hammer and two reward items:
+Arwic Outlands Glyph (`4700109f`) and The Shaper's Guide (`47002917`). Native
+recipe bytes, quest text and item quality fingerprints are pinned in
+`arwic-mines-v1.json`. All 15 book pages come from installed localization table
+`25007a50`; each double-click sends the next page through native MessageDialog,
+now decoded into readable bridge chat. Completing this lesson does not implement
+the separate Arwic Vault unlocking and shard quests.
+
+Four Outcasts (`470015ac`) and two Edge Beetles (`4700088c`) are added to native
+mine rooms in block `7cb9`, with bounded spawner groups. Existing Overseer and
+Taskmaster placements are reused. Older captured Outcast DIDs now resolve to
+unrelated items, so the new pack explicitly maps recorded room anchors to the
+installed creature templates. Native collision validation accepts six anchors
+and rejects two; no rejected position is silently relocated. These assignments
+and respawn timing are reconstruction policy, not an exact recovered retail
+generator table. Outcast combat/AI properties are read from native inherited
+templates: level 6, 164 health/vigor, 28 natural damage, armor 4, 19 death XP,
+30m perception, 60m home radius and loot profile 948. Absent wandering fields
+remain absent. The native-fields authoring tool records every source hash.
+
+Eligible accepted-quest kills in this mine receive one guaranteed hammer in
+addition to ordinary inferred treasure; the original drop probability is unknown.
+Corpse ownership/range, alive/peace interaction, backpack capacity, learned
+recipe and exact ingredient IDs are validated before changes. Durable `m1`
+transactions commit the full exchange and replay the frozen v1 policy. The UDP
+acceptance test covers combat-to-loot, both targeted item hand-ins, readable book
+pages, rejected requests and three server restarts; unit tests cover split stacks,
+full bags, duplicate rewards, compaction and the unmodified production spawners.
+
+`author_exploration_quests.py` rebuilds the initial policy from the locally
+recovered text, native templates and archived wiki cache; it refuses to overwrite
+an existing version. Grounding uses:
+
+```powershell
+cargo run --release --manifest-path AC2E/emulator/Cargo.toml --example population_authoring -- "Asheron's Call 2 - Legions" AC2E/emulator/content/exploration-content-v1.json AC2E/emulator/content/exploration-world-v1.tsv AC2E/emulator/content/exploration-world-v1.report.json AC2E/data/world/legions-world.tsv
+python Network/prepare_content.py "Asheron's Call 2 - Legions" AC2E/data/world/legions-world.tsv
+python Network/test_exploration_quests.py
+```
+
+Preparation checks policy/manifest hashes, grounding evidence and installed
+entity/visual/cell compatibility. Unit tests cover ordering, expiry, cooldowns,
+cross-region rejection and exactly-once XP replay. The real UDP acceptance test
+uses the nine prepared placements and existing NPCs with a disposable store;
+it completes all four journals, tests range/combat rejection and use across a
+landblock boundary, and verifies partial and completed progress after restarts.
+It does not establish visual parity in the retail client.
 
 ## Regional wilderness pack v1 (2026-10-31)
 
@@ -219,6 +344,215 @@ Esper (Drudge Outcast, 38.6N 22.6W), Kydi (Akeha Mimbu, 10.3N 40.6E) and Oriad
 Only those three test templates had reduced health/damage for the bounded UDP
 test; separate native acceptance verifies the normal stats. These are protocol
 tests, not a rendered-client visual inspection of all new locations.
+
+## Wilderness and NPC hunting expansion (2026-11-01)
+
+This follow-up uses the archived [Knorr](https://www.20oz.net/index.php/Knorr.html)
+portal map, [Arramora](https://www.20oz.net/index.php/Arramora.html) map and habitat
+notes, and the original 21 regional wiki lists. The Foundry's split-name/level
+tables needed a different roster parser. The old Pyreal Arramora spawn class
+was also checked: it supplies a few named services/landmarks, not the missing
+general monster generator database. Archive paths and SHA-256 values are retained
+in `wilderness-content-v1.json`; source SQL, captures and DATs are unchanged.
+
+The new pack contributes **2,553 creatures, 1,555 managed groups and 1,167 newly
+populated outdoor blocks**. It uses 443 native template identities, 180 absent
+from the prior world. There are 266 new creatures in Knorr Wilds, 217 in Foundry,
+308 in Gardens, 433 in Ramparts, 349 in Desolation and 296 in Arramora; the
+remaining 684 fill original-continent gaps. The prepared world totals 12,379
+objects, including the two new hunt speakers. Every one of the 563 eligible
+native types matched from these 27 wiki rosters has a placement somewhere in
+the combined world. Existing captured and authored encounters retain priority.
+
+The `wilderness-coverage-v1.json` audit checks all **2,024** native records with
+positive health and damage: 800 eligible hostile templates have placements,
+172 are alternative templates of a placed name, 192 are protected/non-hostile,
+11 need special encounter lifecycles, and 849 still need habitat or encounter
+evidence. These are template counts, not distinct species counts. The audit also
+retains withheld regional rows and a wiki quest-starter inventory for subsequent
+implementation; a placed NPC does not imply that all its quests work.
+
+### Placement and loot policy
+
+Knorr envelopes are calibrated against four labelled portal coordinates in the
+archived map. Arramora uses its documented mainland camps, excluding the kingdom
+islands. Family-specific habitat constraints follow guide prose; specific hunt
+descriptions override broader family guidance. Exact region polygons, density,
+group counts and three-minute regeneration remain reconstruction choices.
+The grounder enforces native dry ground, contact, walkability, a clear path
+between group members, town exclusion and 80-metre separation from existing
+content/new camp centres. Burun Keeriks required additional candidate attempts;
+their eventual placements passed the same checks without lowering tolerances.
+
+A quest death effect alone no longer excludes an ordinary monster: Drudge
+Robbers and other common hunt targets can inhabit the wilderness. Named/rare
+encounters, service NPCs, loot-proof actors and special structures remain
+withheld. The Olthoi Soldier Grub's static mound AI has a native wandering value
+outside the supported probability range; its missing lifecycle is documented,
+not silently converted into ordinary roaming AI.
+
+New actors use native health, vigor, damage, level, armor, motion and AI catalogs.
+Loot uses the existing observed pools, recovered generic quantity limits, native
+trophy probabilities and variable supported equipment rolls. Equipment stats
+use the creature level and survive pickup. This does **not** recover exact
+retail loot weights, rare affixes, spell AI or all dungeon populations. Every
+admitted template is tested for supported, variable loot across multiple rolls,
+including level-zero native records whose generated item level is clamped to one.
+
+### Ten NPC hunting quests
+
+- Vreema: Fracture the Bone Golems → Fracture the Rime Golems → Fracture the
+  Uncharneled Golems. Level 55, ten targets per stage, 4% level XP capped at
+  59,676,035 / 84,627,779 / 119,705,147 respectively.
+- Gregor Adulen: Exterminate the Olthoi Harvesters, level 50, 3% capped at
+  10,787,851. Nola Vontag: Rout the Deranged Lashers, level 50, 3% capped at
+  22,085,504. Tankaru: Vaporize the Frost Wisps, level 55, 2.5% capped at 88,254,343.
+- Brelar Marlage: Crush the Cursed Bones, level 48, 4% capped at 5,829,950.
+  Illiana Bain: Crush the Skeleton Lieutenants, level 50, 4% capped at 10,014,692.
+  Shurakhe: Destroy the Ravenous Lashers, level 50, 3% capped at 15,455,108.
+  Endaren Brightstar (native spelling **Endaraen**): Smash the Coral Golems,
+  level 55, 3% capped at 44,757,025.
+
+All require ten qualifying kills within seven days and returning to the correct
+NPC. Arramora repeats after six days eighteen hours; the four Foundry hunts
+repeat after seven days. Percentage rewards use Pyreal's inclusive level XP
+bands, capped by the wiki reward. Level 150's two-XP terminal sentinel is not a
+real advancement band: these already-capped hunts retain their capped payout.
+Kills before acceptance grant no hunt progress; duplicate conversations cannot
+pay twice. Expired objectives must restart. Prerequisites, partial progress,
+completion and awarded XP persist atomically across restarts.
+
+Six speakers already have placements. Shurakhe and Endaraen are inferred near
+Jethric's Outpost (32.0S, 52.0E), on validated native ground. Their original NPC
+tables and target death-effect names corroborate the quest bindings. The later
+NPC quest IDs are missing from the recovered admin export; similarly named
+auto-bestowed raids are separate quests. Authored IDs `4000fc01`–`4000fc0a` and
+summarized dialogue make that distinction explicit. The versioned `qh1` and
+`qk1` store events preserve old `q6` replay behavior. Released hunt policy must
+not be edited in place without a new version and migration.
+
+### Regeneration and verification
+
+From the repository root, after recovering the wiki archive and native cache:
+
+```powershell
+python AC2E/emulator/tools/author_wilderness_expansion.py
+python AC2E/emulator/tools/import_creature_combat.py "Asheron's Call 2 - Legions/portal.dat" AC2E/emulator/content/wilderness-creature-entities.txt AC2E/emulator/content/wilderness-creature-combat-v1.tsv
+cargo run --release --manifest-path AC2E/emulator/Cargo.toml --example regional_population -- "Asheron's Call 2 - Legions" AC2E/emulator/content/wilderness-content-v1.json AC2E/emulator/content/wilderness-world-v1.tsv AC2E/emulator/content/wilderness-world-v1.report.json AC2E/data/world/legions-world.tsv
+python AC2E/emulator/tools/author_hunting_quests.py
+cargo run --release --manifest-path AC2E/emulator/Cargo.toml --example population_authoring -- "Asheron's Call 2 - Legions" AC2E/emulator/content/hunting-content-v1.json AC2E/emulator/content/hunting-world-v1.tsv AC2E/emulator/content/hunting-world-v1.report.json AC2E/data/world/legions-world.tsv
+python Network/prepare_content.py "Asheron's Call 2 - Legions" AC2E/data/world/legions-world.tsv
+python AC2E/emulator/tools/audit_wilderness_coverage.py
+$env:AC2_TEST_GAME_DATA = "${PWD}/Asheron's Call 2 - Legions"
+./Build-AC2Network.ps1 -Test
+python AC2E/emulator/tools/test_wilderness_authoring.py
+python Network/test_wilderness_population.py
+python Network/test_hunting_quests.py
+```
+
+The native-DAT tests check every accepted position, actual combat/AI/loot data,
+all hunt speakers and targets, capacity-controlled creation and delayed refill.
+Two real UDP clients verify visibility, death replication and loot collection
+in seven sample regions, including all five Knorr areas and Arramora. The hunt
+UDP test uses production NPC positions and ten weakened copies of each target
+at native ground positions, completing all ten quests and restarting during a
+partial hunt and after completion. It checks level refusal, capped return XP
+and duplicate-turn-in protection. Test stores are disposable. These checks
+verify gameplay/protocol behavior, not rendered retail visual parity.
+
+## Hunting quest expansion v2 (2026-11-01)
+
+The second immutable hunt catalog adds 25 executable quest flows, bringing the
+combined catalogs to 35 hunts at 23 native NPC identities. Existing capture
+placements are retained. This fills NPC interaction gaps rather than replacing
+ordinary monsters with quest-only fixtures.
+
+- **Ikeras (13):** Karin's Stray Darkenfowl hunt; Sumalar's Servitor, Puppet and
+  Surrogate Spawn chain; Pim's Kachem Mimbu hunt; Baliga's Parfal Nefane and
+  Listris Niffis chain; Sister Nell's Ulu and Faisi Sclavus chain; Baltor's Marsh
+  Armoredillos; Laurikhe's Opor Niffis and Nefane chain; Ingara's Blighted Mucor.
+  Minimum levels range from 17 to 29; fixed rewards range from 3,000 to 82,000 XP.
+  Repeat time is 20 hours. The last eight quests have no deadline, as documented;
+  the first five retain seven-day deadlines. A completed prerequisite is still
+  required even when the next quest's listed level is lower.
+- **Linvak Tukal / Arramora (9):** Groli's Anguish Crone, Thornling Plunderer and
+  Shock Reaper chain; Gregor's Worker Nymph and Drone follow-ups; Audalon's
+  Vigilant Spawn; Eliza's Lumna and Veinu Niffis; Red Bellows' Dark Dread Mu-miyah.
+  These retain seven-day deadlines, six-day/eighteen-hour repeat timers and
+  guide-listed percentage XP/caps. Gregor's new stages require completing his
+  existing Harvester hunt.
+- **Jethric's Outpost (3):** Moira's Skeleton Lancers (level 55, 2.5%, cap
+  52,892,362); Urlin's Ruthless Waraths (level 50, 3%, cap 31,480,235); Furakhe's
+  Mu-miyah Warriors (level 50, 3%, cap 10,787,851). Deadline and repeat are seven
+  days, with ten kills and an NPC return required.
+
+Every profile preserves the archived wiki article hash, facts and source URL,
+the native speaker's NPC-table name, and the **specific** counter death effect
+used to select qualifying templates. This includes Seeker Faisi Sclavus and
+other native qualifying variants while excluding unrelated Gauntlet clones.
+Native `Dread Dark Mu-miyah` corresponds to the guide's reversed-wording title;
+Lauriche in one guide page is the native Laurikhe NPC. Full reward/identity
+details are in `hunting-content-v2.json`; dialogue is an authored summary.
+
+Examples of the guide rules used: [Servitor Spawn](https://www.20oz.net/index.php/Perforate_the_Servitor_Spawn.html),
+[Skeleton Lancers](https://www.20oz.net/index.php/Crush_the_Skeleton_Lancers.html),
+and [Faisi Sclavus](https://www.20oz.net/index.php/Eliminate_the_Faisi_Sclavus.html).
+
+Two absent speakers are now placed on validated ground: Furakhe near
+32.08S 52.10E and Ingara near 10.20N 62.40E. Their offsets within the documented
+towns are inferred. Three Arramora camp anchors come from the quest guides:
+Vigilant Spawn at 17.2N 52.2W, Olthoi Worker Nymphs at 24.6N 51.9W, and Dread
+Dark Mu-miyahs at 16.7N 47.7W. Ground search is bounded to 32m and rejects
+water, collision, steep terrain and positions within 6m of existing actors.
+Each camp owns two creatures with 120-second regeneration. These sizes/timers
+are conservative reconstruction policy, not recovered retail generator values.
+NPCs are excluded from combat; the six creatures use native stats, AI and the
+existing varied equipment/trophy loot pipeline. No global loot weights were
+invented in this pass. Prepared world size is now **12,387 objects**.
+
+IDs `4000fc0b`–`4000fc23` are authored and stable. New durable events `qh2` and
+`qk2` make the expanded catalog available. `qh1` and `qk1` replay against only
+the original ten quests; otherwise an old Gregor repeat turn-in could silently
+start Worker Nymphs and change saved progress. Fixed XP uses zero basis points;
+zero time limit means unlimited, never immediately expired. Catalogs must not
+be changed after deployment without a new replay policy.
+
+The expanded UDP run also exposed reliable-queue exhaustion: every kill and
+NPC interaction resent unchanged completed quests. Journal updates now contain
+only entries whose state changed, across hunting, exploration, recovered and
+starter quests. Login still sends the full snapshot. A 35-entry regression test
+checks that a single kill emits one quest update rather than 35; the extended
+network run exercises the completed-history case.
+
+Verification completed with 271 Rust tests passing (four optional tests ignored),
+15 content-preparation tests, and all three population tests explicitly run
+against the installed DATs. The real UDP run completed all 35 hunts and retained
+them after restart; separate exploration, Arwic Mines and starter-gameplay runs
+also passed. Exploration verifies that its existing referral stays in the
+journal without being retransmitted on subsequent quest returns.
+
+Regenerate and verify:
+
+```powershell
+python AC2E/emulator/tools/author_hunting_expansion.py
+cargo run --release --manifest-path AC2E/emulator/Cargo.toml --example population_authoring -- "Asheron's Call 2 - Legions" AC2E/emulator/content/hunting-content-v2.json AC2E/emulator/content/hunting-world-v2.tsv AC2E/emulator/content/hunting-world-v2.report.json AC2E/data/world/legions-world.tsv
+python Network/prepare_content.py "Asheron's Call 2 - Legions" AC2E/data/world/legions-world.tsv
+python AC2E/emulator/tools/audit_wilderness_coverage.py
+.\Build-AC2Network.ps1 -Test
+$env:AC2_TEST_GAME_DATA = (Resolve-Path "Asheron's Call 2 - Legions").Path
+cargo test --release --manifest-path AC2E/emulator/Cargo.toml --test wilderness_population
+python -m unittest discover -s Network -p test_prepare_content.py
+python Network/test_hunting_quests.py
+```
+
+The native acceptance test checks dry reachable ground, existing-actor
+separation, NPC protection, loot generation, two-child group capacity and
+delayed refill. Quest tests cover exact reward/timer boundaries, no-deadline
+quests, qualifying variants, prerequisites and mixed old/new journal replay
+through compaction. UDP acceptance completes all 35 quests using production
+NPC positions and disposable weakened target copies, with restart checks for
+partial and completed progress. Rendered UI parity and fellowship-shared kill
+credit remain outside this verification.
 
 ## Quests and flow evidence
 
@@ -421,6 +755,31 @@ dungeon rosters and loot comparisons than the admin client alone. Activation
 still needs source/build reconciliation, exact entity/cell bindings, durable
 quest progress, authenticated item hand-ins and replay-safe rewards.
 
+### Native potion crafting connection
+
+The existing health/vigor recipes `6f001f17` and `6f001f18` now reach the Unreal
+Craft tab through native registry, ingredient-validation and execution messages.
+The ordinary Unreal server profile grants this bounded pair; it no longer
+requires the development training kit. The training mentor also continues into
+the existing authored Field Supplies and Potion Practice lessons, including
+atomic ingredient consumption, quest credit and replay-safe rewards.
+
+The installed Legions recipe records are both 1,448 bytes. Their FNV-1a values
+are `4bf38afdcbdee5dd` and `2737e155650100af`; the retained older records are
+`fe785ca8fcbe9b88` and `93c3bd24e230ac1a`. Each differs only at word `0x12c`
+(interpreted package `01d7`, field 36: zero rather than one). Both complete
+records are pinned. The skill DID, output DID, ingredient identities and
+quantities are independently checked: one Mucor Mushroom and 100 Tallow.
+The meaning of field 36 is not inferred from this byte difference.
+
+Recipe grants, stock prices and cooldowns remain AC2E policy. The subsequent
+profession implementation adds 26 saved skill records, 357 supported DAT-backed recipes,
+advancement, refining, dyeing, surveying and gathering. Its native sources,
+reconstructed formulas, workshop evidence and remaining spellbinding/discovery
+gaps are documented in [profession coverage](../AC2E/emulator/content/README.md#profession-crafting-and-gathering).
+The Arwic Mines sword recipe `6f001f0e` now has a separate learned entitlement
+and durable quest exchange; it is not part of the default recipe grant.
+
 ### Reproducing this pass
 
 Run from the repository root; the HTML tool requires `lxml`. Extract only the
@@ -438,3 +797,49 @@ quest-title ambiguity, exact-parent text recovery, missing keys, variable text,
 cycles and preservation of existing translations. Installed-DAT quest vectors
 also pass. This pass changes recovery tooling and authoring catalogs only; it
 does not change live NPC behavior, spawn placement or loot probabilities.
+
+### Wiki NPC implementation pass — 2026-11-01
+
+The subsequent implementation cross-checks the [live NPC category](https://20oz.net/index.php/Category%253ANPC.html)
+with the retained 2,075-article wiki cache, town NPC sections, quest starters and
+native actor identities. The category has 89 entries; 74 resolve to installed
+native actors. Including town/quest listings yields 225 names, 210 resolved
+names and 217 native variants. Fifteen unresolved names remain explicit:
+Cedar; Darvain, Karu, Kiraly and Tyke Geddon; Jellio; Jorwea; Jrent; Keranua;
+Orulaan; Polauri; Shi Lezawa; Subchieftain Gruu; Trader Stix; and Wiggles.
+They are not given unrelated substitute models.
+
+The server now provides 326 authored pages covering 229 quest topics through
+native named speech and MessageDialog. Replies explain sourced requirements,
+starting areas, timers and listed rewards, with selected paraphrased walkthrough
+summaries. Actual retail quotations have not been recovered for this catalog.
+Information is explicitly labeled as such and cannot accept or advance a quest,
+consume an item, teleport a player or pay a reward. Working quest/shop handlers
+keep priority on ordinary use; `@talk` provides informational browsing on those
+same actors. This fills the generic no-action response for supported NPCs, not
+every missing retail quest flow.
+
+Twenty-seven missing actors now have inferred outdoor placements, including
+Old Herrigar, Sachem Mimbu, Dark Agent, Brisin, Maronak and Greenstone quest NPCs.
+Each passes native dry-ground, collision, walking-patch and six-metre separation
+checks within 32 metres of its coarse wiki coordinate. Existing native identities
+are retained globally when proposing new positions. The hostile variants of
+Zroth and Rashan are excluded from friendly dialogue. The wiki supports direct
+visits to Feral Pet Lasher, Rashan's friendly spectre and both Gurog Civil War
+contacts; these are not assumed to require an event spawn. The High Shaman's
+coordinate fails native ground validation, so only the other three are added.
+Ambiguous native variants remain unplaced. Both Civil War contacts receive the
+quest topic, and the Lasher receives its documented Nature's Ally information.
+
+Another source conflict was found: Lataua's page lists the same Cavendo coordinate
+as Kanten, despite both the Zu town list and [The Path into Light](https://20oz.net/index.php/The_Path_into_Light.html)
+placing her in Zu. Her proposed coordinate is withheld rather than silently
+moving her to Cavendo. Discontinued S.H.R.E.T.H. information is labeled separately
+from its Base Ultra replacement, and identical mirror aliases are deduplicated.
+
+Evidence and remaining gaps are in
+[`npc-dialogue-v1.audit.json`](../AC2E/emulator/content/npc-dialogue-v1.audit.json).
+The [content documentation](../AC2E/emulator/content/README.md#wiki-npc-conversations-and-placements)
+describes regeneration and validation. Full quest flows, service-specific effects,
+missing native identities and unresolved interior/event placements remain work
+to be implemented; conversation coverage alone does not establish retail parity.

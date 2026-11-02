@@ -101,7 +101,11 @@ def main():
             time.sleep(.8);ma=len(a.events);a.send('use',item=LOCKED,target='0')
             until(a,ma,'chat',lambda e:'locked' in str(e))
             ma=len(a.events);a.send('use',item=VENDOR,target='0')
-            shop=until(a,ma,'shop');assert len(shop['offers'])==4
+            shop=until(a,ma,'shop')
+            # Profession materials extend the original four-item stock. Check
+            # usable, distinct offer identities instead of the obsolete size.
+            assert len(shop['offers'])>=4
+            assert len({o['id'] for o in shop['offers']})==len(shop['offers'])
             offer=next(o for o in shop['offers'] if o['entity']==0x47001744)
             time.sleep(.3);ma=len(a.events);a.send('shop_buy',vendor=VENDOR,offer=offer['id'])
             until(a,ma,'chat',lambda e:'enough gold' in str(e))

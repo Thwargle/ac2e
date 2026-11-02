@@ -51,6 +51,70 @@ Author with `tools/author_regional_population.py`, ground with the Rust
 Exact commands, source links, caveats and acceptance checks are in
 [content recovery](../../../Docs/ADMIN_CONTENT_RECOVERY.md#regional-wilderness-pack-v1-2026-10-31).
 
+## Knorr, Arramora and wilderness expansion (2026-11-01)
+
+`wilderness-content-v1.json` supplements the regional pack with the archived
+Knorr portal map, Arramora camp map and all 27 regional creature rosters.
+`wilderness-world-v1.tsv` contains **2,553 additional creatures in 1,555 groups**,
+using 443 native templates, including 180 with no prior world placement.
+All 563 eligible roster types now occur somewhere in the combined world;
+this does not establish coverage of every habitat or native variant. The
+prepared production world contains 12,379 total objects.
+
+Habitat restrictions distinguish Arramora's southern Thornlings, central golems,
+northeastern Niffis and northern Olthoi. The specific Harvester quest places its
+targets southwest. Foundry and Wilds solo/group areas and southern Gardens
+families have separate constraints. Map envelopes, camp positions, one/two-child
+capacities and 180-second refill are inferred. Native terrain checks and
+town/content separation apply. The reserved identity prefix is `8140c10000`.
+
+The combat and AI catalogs feed normal encounters and level-aware variable
+loot, native trophy probabilities and recovered quantity limits. No generic
+potion-only fallback is added. `wilderness-coverage-v1.json` accounts for all
+2,024 native records with health/damage fields, including protected NPCs,
+alternate templates, special encounters and unresolved habitats. The Olthoi
+Soldier Grub's mound-dependent script is withheld. Ordinary single-kill quest
+targets such as Drudge Robbers are not categorically excluded from this pack.
+
+`hunting-content-v1.json` implements ten NPC hunts at eight speakers. Vreema's
+Bone/Rime/Uncharneled Golem chain requires completing each previous hunt;
+Gregor Adulen, Nola Vontag and Tankaru provide other Arramora hunts. Brelar
+Marlage, Illiana Bain, Shurakhe and Endaraen Brightstar provide Foundry hunts.
+Two missing Jethric speakers use `hunting-world-v1.tsv`, prefix `8140d2`.
+All eight speakers remain noncombat NPCs. Level gates, ten-kill objectives,
+seven-day deadlines, return rewards and documented repeat timers persist.
+Kills before acceptance do not count; kills alone do not award the hunt XP.
+
+The later retail quest IDs were absent from the recovered admin quest export.
+These quests use authored IDs `4000fc01`–`4000fc0a`, summarized dialogue and
+immutable `qh1`/`qk1` journal rules. Never rewrite released policy in place.
+Old `q6` kill records retain their replay semantics. See
+[sources, limits and regeneration commands](../../../Docs/ADMIN_CONTENT_RECOVERY.md#wilderness-and-npc-hunting-expansion-2026-11-01).
+
+### Hunting expansion v2
+
+`hunting-content-v2.json` adds 25 hunts (35 total, at 23 distinct native NPCs):
+thirteen Ikeras quests, nine more Arramora quests offered in Linvak Tukal, and
+three Foundry quests. It extends Gregor's Harvester quest into Worker Nymphs
+and Drones, adds Groli's Crone/Thornling/Reaper chain and Eliza's Niffis chain,
+and implements the Ikeras Spawn, Niffis/Nefane and Sclavus chains. Qualifying
+variants come from the exact native quest-counter death effects; similarly
+named Gauntlet actors do not count. Fixed XP and unlimited deadlines are
+supported where the guide specifies them.
+
+`hunting-world-v2.tsv` adds Furakhe at Jethric's Outpost, Ingara at Ikeras,
+and guide-anchored Vigilant Spawn, Olthoi Worker Nymph and Dread Dark Mu-miyah
+camps on Arramora. All eight placements passed native terrain/collision checks.
+The camps use two simultaneous children and 120-second regeneration; those
+capacities/timers are inferred, not recovered retail generators. NPCs remain
+noncombat; creatures use native combat/AI and the existing loot pipeline.
+
+New IDs are `4000fc0b`–`4000fc23`; new journal records are `qh2`/`qk2`.
+Replay of `qh1`/`qk1` retains the original ten-quest catalog, so Gregor's old
+repeat turn-ins cannot silently start a newly added chain. Neither released
+catalog may be edited in place. The coverage audit includes all 35 hunts.
+See [evidence and verification](../../../Docs/ADMIN_CONTENT_RECOVERY.md#hunting-quest-expansion-v2-2026-11-01).
+
 ## Retail capture population
 
 `capture-spawns.tsv` holds 14,340 stationary objects read from retail packet
@@ -471,9 +535,8 @@ quantity overrides for these placements have not been recovered.
 `observed-loot.tsv` contains 698 observed corpse bundles mapped to 146 installed
 monster templates; `loot-items.tsv` contains 222 native item definitions. The
 source/mapping evidence and DAT hashes are in `observed-loot.report.json`.
-The runtime admits 144 creature tables, 123 native death-loot profiles and 218
-items with the current DATs; four unsupported items cause 21 bundles to be
-withheld. Exact creature tables take precedence over a shared native
+The runtime admits 146 creature tables, 125 native death-loot profiles and 222
+items with the current DATs. Exact creature tables take precedence over a shared native
 `NPC_DeathLootProfile`. `NPC_LootProof` suppresses drops. Unknown profiles return
 an empty corpse, never the old universal potion. Existing authored tutorial
 quest-item/gear rewards remain separate from generic corpse loot.
@@ -487,6 +550,43 @@ with their native slot rates. Generic treasure weights remain unrecovered.
 Each corpse rolls once, supports up to 32 items, and retains unclaimed items on
 close/reopen or a full backpack. Single pickup and Loot All use journaled grants;
 claimed inventory survives restart. Unclaimed corpses remain temporary.
+
+`native-loot-limits.json` contains 312 inherited native quantity overrides, guarded
+by hashes of the entity inheritance chain and property type registry. These
+minimum/maximum controls replace the inferred/observed generic item count where
+present (for example, Baron Colier: 3–6). Zero is honored. Native trophy slots
+remain separate and explicit operator loot tables take precedence. The creature's
+native level is a fallback for reconstructed item stat rolls; quality/variance
+overrides are retained as evidence without inventing their retail formula.
+Uniform quantity sampling, the supported equipment/restorative pool and equipment
+rolls remain AC2E reconstruction. Observed supported equipment also receives durable
+rolls. Reopening a corpse never rerolls its items, and pickup preserves their stats.
+Regenerate with `tools/import_loot_limits.py <DAT-dir> content/native-loot-limits.json`
+from `AC2E/emulator`; the report lists five undecoded entity layouts withheld.
+
+`treasure-weapons.json` adds 69 observed weapon identities to generic treasure,
+with entity/qualities/physical/visual hashes checked against the mounted DAT.
+Native `ImplementType`, valid/preferred hand slots and `Usage_MinLevel` are
+preserved. Generic rolls exclude weapons above the creature's level; explicit
+observed bundles retain their historical eligibility. Overcharged Hive is withheld
+from this pool because its additional `0x2d8` usage restriction is not implemented.
+All 69 defaults omit generated damage. The documented AC2E fallback is
+`(6 + 2 * treasure level)` with ±15% per-item variance; it is not the recovered
+retail treasure formula, affix system or per-hit weapon variance. A roll's treasure
+level is at least its native use level, but does not become a new equip requirement.
+Inspection reports both levels and damage. Equip/replacement validates the native
+minimum, and basic attacks/weapon-based skills consume the equipped damage rating;
+periodic damage does not add that rating again. Weapon grants use the distinct
+`W` journal record, preserving their stats through pickup, equip and restart
+without relabeling them as crafted armor. Existing unrolled damage values
+are not migrated. Rolled weapons use the existing authored three-gold equipment
+sale policy; native economy and mutation tables remain open.
+Regenerate from `AC2E/emulator` with
+`tools/import_treasure_weapons.py <DAT-dir> content/treasure-weapons.json`.
+`Network/test_weapon_loot.py` exercises a four-weapon corpse, native level refusal,
+pickup/inspection, Flame Bolt damage and burns, remote FX and equipped restart
+persistence over UDP. The regional population test validates both armor and weapon
+rolls for every placed creature template.
 
 `creature-ai.tsv` preserves inherited native perception, homesickness, wandering
 enable/radius/probability, free-attack/idle-only flags and loot-profile bindings.
@@ -549,6 +649,27 @@ has persistent ratings/tints. These are inferred rules, not recovered retail
 weights. See `Docs/ADMIN_CONTENT_RECOVERY.md` for exact assumptions, provenance,
 limits, regeneration commands and immutable journal-version requirements.
 
+## Ringway exploration quests
+
+`exploration-content-v1.json` implements the three regional Obelisk Search
+conversations and the Find the Arwic Mines Overseer referral using native
+quest/entity IDs and recovered journal text. Guide XP, deadlines and cooldowns
+are recorded as reconstruction policy. Versioned `q9` journal events preserve
+ordered visits, return-to-Explorer rewards and referral completion across restart.
+
+`exploration-world-v1.tsv` adds nine stationary obelisks near the recovered
+ringway directions; it adds no NPC copies. These placements are inferred and
+native-ground checked, with hashes and zero rejected locations in the matching
+report. `prepare_content.py` requires that evidence and installed visual/cell
+compatibility before including them. The authoring script refuses to overwrite
+an existing policy version; changed reward/state semantics require a new version.
+
+Temporary obelisk buffs and a live journal countdown remain unfinished. The
+subsequent mining/crafting lesson is implemented below. See the
+[recovery notes](../../../Docs/ADMIN_CONTENT_RECOVERY.md#ringway-exploration-pack-v1-2026-11-01)
+for exact assumptions and `Network/test_exploration_quests.py` for the real UDP
+conversation/restart test.
+
 ## Native skill effects
 
 `skill-effects.tsv` imports 1,602 use records from the installed Legions DATs.
@@ -559,15 +680,15 @@ health/vigor values use field 36, and periodic values use field 38 in this build
 Scalar values must not be interpreted as references to graph object zero.
 The server verifies the source hashes before admitting this profile.
 
-`skill-runtime.report.json` inventories all 1,927 catalog entries. Currently 482
-have executable core effects, including **224 racial profiles** (some already
+`skill-runtime.report.json` inventories all 1,927 catalog entries. Currently 538
+have executable core effects, including **235 racial profiles** (some already
 used by starter attacks), and nine shared passive masteries are implemented.
 These counts do not waive training, race, level, prerequisites or equipment
-requirements. The remaining entries include passives, 528 profiles needing
+requirements. The remaining entries include passives, 472 profiles needing
 specialized handlers and 29 recalls needing destination/entitlement handling.
 The existing bound-lifestone recall retains its separate implementation.
 
-The supported core includes direct damage, health/vigor restoration, periodic
+The supported core includes direct damage, instant/periodic vigor drains, health/vigor restoration, periodic
 healing and burns, regeneration multipliers, armor and melee/missile/magic
 attack/defense ratings. Flame Bolt (`59`, native record `7000172d`) requires a
 stave and uses its DAT cost, range, cooldown, rank-scaled damage, burn and story/FX.
@@ -576,6 +697,16 @@ learned skill, implement, target, visibility, range and cooldown before admissio
 Failed admission does not spend vigor or cooldown. Burns use the existing kill,
 quest-credit, loot and respawn paths; they cannot follow a corpse into its new life.
 Damage casts still cannot attack protected NPCs or other players.
+
+Vigor drain handling adds core execution for Dizzying Fumes, Disease Arrow,
+Aggravated Energy, Energy Vortex, Convulsions, Neurotoxin, Embolism, Lightning Bolt,
+Lightning Strike, Infect and Spiritual Malady. Native rank tables, training and
+implement requirements still apply. Drains clamp to the target's remaining vigor;
+misses apply neither instant drain nor periodic effects. Health and vigor ticks
+can share a compatible timer, and caster cost is paid once. Creature vigor is
+replicated to observers, selection vitals and examination, restored on evade/respawn, and does not
+cause death or loot when it reaches zero. Creature spell AI and native ability
+costs remain unfinished; ordinary creature melee attacks still cost no vigor.
 
 This is **core single-target execution**, not complete retail spell behavior.
 Area selection, multi-hit timing, combos, summons, status handlers, retail effect
@@ -604,3 +735,234 @@ cooldowns, mastery progression, periodic effects, expiry and durable burn kills.
 `Network/test_active_skills.py` checks trained Flame Bolt over UDP with the actual
 DATs, including stave requirements, protected targets, observer animation/FX and
 burn ticks, using disposable characters and an isolated server.
+`Network/test_vigor_loot.py` checks trained Lightning Bolt, observer vigor updates,
+live examination, native boss loot bounds, ownership, stable corpse rolls and
+preservation of rolled armor/level through inventory pickup over real UDP.
+
+## Profession crafting and gathering
+
+### Arwic Mines lesson
+
+Speak to the existing **Arwic Mines Overseer at 44.0N, 6.1W**. Enter the
+**New Arwic Mines at 45.6N, 2.6W**, defeat a Drudge Outcast and loot its Crude
+Flat Hammer. Return in peace stance with the hammer in your backpack; double-click
+the Overseer or use the hammer on him. You keep the hammer and receive 20 Iron
+plus the special **Arwic Mines Short Sword** recipe under Skills → Craft → Quest
+Recipes. Craft it from 20 Iron without a forge, skill rank or gold cost, then
+return it the same way for 150 XP, an Arwic Outlands Glyph and The Shaper's Guide.
+Double-click the book to read each of its 15 recovered pages in chat.
+
+`arwic-mines-v1.json` pins the native four-phase journal text, recipe/item
+identities, quality fingerprints, book pages and guide evidence. The learned
+recipe persists and is rejected by validation/execution before the lesson.
+Versioned `m1` transactions save progression, ingredients, output and rewards
+together, including journal replay and compaction. Split Iron stacks are
+accepted; insufficient space, stale ingredient IDs and duplicate turn-ins cannot
+consume materials or duplicate rewards. The lesson repeats after 20 hours; a
+retained hammer can be reused. Existing `q9` referral journal semantics stay frozen.
+
+`arwic-mines-world-v1.tsv` adds four Outcasts and two Edge Beetles in six
+collision-checked interior rooms in `7cb9`. Two additional capture anchors
+failed the walking-patch checks and remain withheld. The existing Taskmaster
+and Overseer are retained. Two bounded spawner groups own the six children;
+the existing 30-second respawn delay never replaces a still-present corpse.
+Native Outcast combat and AI properties are recovered reproducibly by
+`tools/author_arwic_creatures.py <DAT-directory> <content-directory>`, with input
+and output hashes in `arwic-mines-creatures-v1.audit.json`.
+
+Room-to-template assignments are inferred from older capture positions and the
+guide because those capture DIDs identify different items in the installed DAT.
+The guaranteed hammer for an eligible quest holder supplements ordinary loot;
+its original drop probability and spawn schedules are unrecovered. No wandering
+radius is invented where the native template has none. The glyph reward is
+implemented; the separate Arwic Vault unlocking/quest chain is not completed by
+this lesson. `Network/test_arwic_mines.py` verifies the full exchange over UDP,
+including three server restarts. Native-DAT tests separately check production
+monster stats, aggression and corpse-aware spawner refill.
+
+### Recovered profession catalog
+
+`professions-v1.json` is generated by `tools/author_professions.py` using the
+bounded native WState decoder in `tools/craft_catalog.py`. It contains 26 skills,
+357 recipes (317 production/practice/potion, 20 refining, 15 surveying, four
+dyeing and one learned Arwic quest recipe), 847 item definitions, 14 workshop definitions, 56 mine definitions,
+90 survey maps, six gathering tools and 1,396 eligible butchery entity profiles.
+`professions-v1.audit.json` records the source WState SHA-256 fingerprints and
+each excluded recipe with its reason. Raw DATs and reference sources are untouched.
+
+Recovered inputs include skill names/icons/caps, cumulative advancement curves,
+per-use XP where present, 22-hour learning-limit curves, recipe levels, ingredient
+ordinals/types/quantities, success output weights, gold costs, workshop effects,
+map regions, mine materials/yields/variance/uses and the 1,001-sample native
+success table (`6f002fb9`). Production skills reach 500; gathering/refining reach
+150. The legacy recipe index is supplemented by the installed Legions ordering
+table and Empyrean dye recipe. Unsupported quest entitlements and special
+mutation handlers are excluded rather than silently spending their materials.
+
+### Playing the implemented loop
+
+- **Skills → Craft → All professions:** choose a profession and recipe. The
+  ingredient window shows level, cost and success chance. Use −/+ to change the
+  output level, fill from the backpack, or click a row to cycle matching items.
+  Requirements can span multiple stacks. Failed manufacture consumes its inputs;
+  rejected requests consume nothing. Leftover quantities return atomically.
+- **Raise:** spends that profession's saved XP at the native cumulative-curve
+  difference. The 22-hour learning cap and reset persist through reconnects,
+  server restarts and journal compaction. Combat XP remains separate.
+- **Workshops:** manufacture/refine requires the matching native effect within
+  eight meters and the same visible scene. `workshops-content-v1.json` adds
+  ground-checked yards near Arwic, Cragstone and the observed Omishan refinery.
+  Eight new placements are in `workshops-world-v1.tsv`; their coordinates are
+  reconstructed, not recovered retail positions. The ordinary world preparation
+  pipeline requires a fresh source hash and collision report before admitting them.
+- **Supply:** authored quartermasters offer 100-unit bundles of the basic and
+  advanced raw materials. Purchases and refinery outputs merge into compatible
+  stacks, including when the backpack is full. This deliberately permits crafting while broader
+  gathering/loot coverage is unfinished; stock and prices are not retail economy.
+- **Surveying:** create a continent/material map, examine its coordinates and
+  use it within 40 meters on dry ground. Map generation checks native terrain;
+  the selected location is journaled. A 15-minute per-continent cooldown resets
+  when the map is found. The deposit appears beside the finder on reachable
+  ground and retains its native three charges across restarts. Located deposits
+  expire after one hour. At most 12 unfinished maps/deposits can be active.
+- **Gathering:** carry a pickaxe (iron), mattock (silver), chisel (crystal), rock
+  hammer (stone) or hatchet (wood). Double-click the deposit or target it and use
+  the tool. Higher-level tools require gathering rank at least three times their
+  level; level-one tools are always usable. Direct deposit use selects the best
+  usable tool. Materials merge into compatible backpack stacks. Tool wear, XP,
+  gathered materials and deposit depletion commit together.
+- **Butchery:** select a defeated creature from your own recent kill and use a
+  hunting knife within four meters. Native `ButcheryProfile` eligibility is
+  required. Looting the corpse first does not remove the harvesting entitlement;
+  it expires with the recent-kill reward window (60 seconds). Each corpse instance
+  can be butchered only once. Friendly actors cannot supply butchery materials.
+- **Creation tools:** equip a flat hammer (weapons), shaping hammer (armor),
+  magnifying glass (tools), crucible (refining) or athame (implemented spellbinding
+  component/practice recipes). A matching profession must be at least ten times
+  the tool's level. Each tool level adds one effective rank as a provisional
+  bonus; base rank, advancement costs and learning limits do not change. The
+  recipe window labels its unmodified probability **Base chance**. Tool wear is
+  charged on successful and failed attempts. Exhausted creation tools remain
+  inspectable/discardable but give no bonus and cannot be re-equipped.
+- **Dyeing:** native plants and race-specific armor predicates choose the finish.
+  Dyeing retains the selected item's saved armor/damage/level, costs native gold,
+  always succeeds and grants no XP. Other matching garments remain unchanged.
+
+### Reconstruction boundaries
+
+This is not a complete retail crafting implementation. The following policies
+are intentionally explicit so later recovery can replace them:
+
+- Most enabled recipes are default grants; the Arwic sword requires its saved
+  quest entitlement. General discovery, account restrictions and most
+  quest-specific recipes are not implemented. The existing
+  Field Supplies/Potion Practice lessons still use their separate authored flow.
+- Manufacture XP is twice `(difficulty + 1)` when no native per-use curve survives;
+  trivial recipes more than 30 difficulty below rank grant none. Failure gives no
+  XP. Refining interpolates 33% at rank one to 83% at 150 and always succeeds.
+- Armor/weapon output statistics retain recovered base values plus two per output
+  level after level one, bounded to 1,000; armor receives a saved tint. These are
+  provisional playable values, not recovered retail mutation or critical formulas.
+  Crafted stats participate in equipment/combat and inspection. Apparel recovery
+  uses unambiguous native worn/pile appearance families, never guessed meshes.
+- Mining starts from native continent yields (25/30/35) and ±15% variance. Survey
+  and tool bonuses scale to +40 and +50 respectively. Tool durability defaults to
+  20 durability where the template lacks a maximum; each use has a 50% wear roll.
+  Durability is saved on the item, so transfer/pickup cannot repair a tool.
+  Old character-based wear records migrate on use. Mining critical results,
+  timed gathering animations and crafted armor/weapon wear remain unfinished.
+- Butchery's original material tables are missing. Eligible arthropod families
+  yield chitin; other eligible families yield hide, at a reconstructed base of
+  five with ±15% variance. Bone and sinew currently come from supply stock/loot,
+  not a claimed retail butchery distribution.
+- Spellbinding practice and concrete component recipes work. Enchantment
+  extraction, totem application, harmonic stones and item binding require saved
+  enchantment/slot/durability state and compatible effect handlers. They are not
+  enabled. Major/minor extraction must destroy the source and transfer its actual
+  eligible enchantments; substituting an armor upgrade would be incorrect.
+- Active survey maps cannot be dropped or traded; survey jobs are owner-bound.
+  Abandoning maps and specialist summoned mines
+  need separate implementations.
+
+The native data is the authority for recovered values. Historical descriptions
+helped bound reconstruction: [crafting overview](https://asheron.fandom.com/wiki/AC2%3ACrafting_2.0_-_The_Ultimate_Newbie_Guide),
+[mining](https://www.20oz.net/index.php/Mining.html),
+[refining](https://www.20oz.net/index.php/Refining.html),
+[toolmaking](https://20oz.net/index.php/Toolmaking.html) and
+[spellbinding](https://20oz.net/index.php/Special%253ASearch/Spellbinding.html).
+These span different retail eras and do not establish exact Legions server formulas.
+
+### Verification and regeneration
+
+Set `PYTHONPATH` to the absolute path of the repository's `Tools/AC2`, then run `tools/author_professions.py <DAT-directory>`
+and `tools/recover_apparel.py --dat <DAT-directory>` from the emulator directory.
+Workshop source is authored by `tools/author_workshops.py`; validate its placements
+with the `population_authoring` example before running `Network/prepare_content.py`.
+Do not treat source files alone as proof that the production manifest includes them.
+
+Unit tests cover native recipe assets, XP caps/rank costs, partial stacks,
+manufacture failure, insufficient gold, ownership/replay, dye preservation,
+refining quantities, full-backpack gathering, transferred tool wear, creation-tool
+rank/type restrictions, exhausted tools, quest armor sale restrictions, duplicate butchery,
+full-backpack supply/refinery merging, survey cooldowns and durable deposit charges. `Network/test_professions.py` exercises
+the crafting-to-mining loop over UDP and restarts an isolated server mid-deposit.
+`Network/test_crafting.py --render` clicks the actual Unreal recipe, ingredient,
+profession-browser and level controls, checks Raise visibility and recipe-title
+clipping, and verifies saved potion/quest results.
+Production account/character stores are not used by these tests.
+
+## Wiki NPC conversations and placements
+
+`npc-dialogue-v1.json` binds 217 exact native entity variants to 326 authored
+conversation pages covering 229 quest topics. These summarize wiki facts and
+selected walkthroughs; they are not recovered retail speech. Empty lore sections
+are not replaced with invented quotations. Mirror aliases with identical quest
+bodies share a topic, and discontinued quests are labeled rather than activated.
+
+Ordinary double-click/use reaches this catalog after working quest, merchant,
+tutorial and service handlers. `@talk` browses the selected NPC's information
+without accepting a quest, spending items or opening its shop. Success returns
+native use completion, named speech, and a readable MessageDialog. Repeat use
+cycles pages; switching speakers resets browsing. Both paths require a living
+player out of combat, a visible noncombat NPC and a distance of at most four
+metres. The one-second limit applies across both paths. No rewards or journal
+state are changed by informational conversation.
+
+The [audit](npc-dialogue-v1.audit.json) covers 225 wiki names: all 89 NPC-category
+entries, town NPC lists and exact quest-starter matches. Seventy-four category
+entries match native data; 15 do not. Aliases and multiple actor variants explain
+the different name/profile counts. `npc-world-v1.tsv` adds 27 previously missing
+actors, including Brisin, Old Herrigar, Sachem Mimbu, Dark Agent, Justiciar Maronak,
+Dell, Otonku, Feral Pet Lasher, Rashan's friendly spectre, the Gurog Supreme
+Warlord and several Greenstone NPCs. Their coarse wiki positions are adjusted
+by at most 32 metres to dry, reachable native terrain, at least six metres from
+existing actors. This is inferred placement, not a recovered retail transform.
+Existing identities are retained to avoid duplicate Orven/Adaro-style placements.
+
+Lataua's coordinate is withheld: her article repeats a Cavendo position while
+her town and quest walkthrough specify Zu. Ambiguous native variants are also
+withheld. The Gurog High Shaman's proposed location failed native walkable-ground
+validation and remains unplaced. Hostile Zroth/Rashan variants and
+non-NPC quest-starter objects cannot receive friendly conversation through this
+catalog. All catalog variants pass native combat classification checks.
+
+This adds conversations and population, **not complete quest state machines**.
+Most listed quests still need eligibility, item exchanges, stage transitions,
+dungeon access and replay-safe rewards. Consignment, kingdom services and
+unsupported vendor inventories are not synthesized from an NPC's name.
+
+Regenerate with `tools/author_npc_dialogue.py` from the repository root. It reads
+the retained wiki cache and `Saved/current-native-templates.json`; their hashes
+are recorded in the manifest. Run the `population_authoring` example with the
+DAT directory, `content/npc-dialogue-v1.json`, output `content/npc-world-v1.tsv`,
+report `content/npc-world-v1.report.json`, and the prepared production world.
+Run the authoring script again to annotate the audit with verified placements,
+then `Network/prepare_content.py` to install the pack. The preparation step
+rejects stale proof or mismatched native visuals. Source DATs remain unchanged.
+
+`tests/npc_population.rs` validates placement, duplicate prevention and all 217
+native noncombat identities. `Network/test_npc_dialogue.py` exercises every
+profile over UDP, actual new placements, topic cycling, admission restrictions,
+and preservation of the existing explorer quest action in an isolated store.
+`Network/test_npc_authoring.py` verifies shared quest starters and avoids binding
+a person named in an NPC's location as a second quest starter.

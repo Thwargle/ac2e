@@ -54,7 +54,7 @@ void SAC2GameUI::BuildShop()
         for(int32 I=First;I<Native.Nodes.Num();++I)
         {
             const auto& N=Native.Nodes[I];
-            if(N.Id==T(TEXT("ProductIcon")))Icons.Add({N.Rect,N.Clip,Offer.Icon});
+            if(N.Id==T(TEXT("ProductIcon"))){uint32 Icon=Offer.Icon;if(!Icon){Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory,Offer.Entity);if(auto* Item=Mode->CharacterCatalog.Items.Find(Offer.Entity))Icon=Item->Icon;}Icons.Add({N.Rect,N.Clip,Icon});}
             if(N.Id==T(TEXT("CostIcon")) && Currency)Icons.Add({N.Rect,N.Clip,Currency->Icon});
         }
         const FName Key(*FString::Printf(TEXT("Offer%d"),Index));

@@ -182,6 +182,22 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
         } => {
             if let Some(event)=crate::shop::decode(function,&arguments) {return vec![event];}
             if let Some(event)=crate::journal::decode(function,&arguments) {return vec![event];}
+            if let Some(event)=crate::crafting::decode(function,&arguments) {return vec![event];}
+            // Native MessageDialog has a priority followed by StringInfo. The
+            // Unreal HUD keeps its readable text in chat instead of discarding
+            // the notice as an unhandled script. Retain the diagnostic event.
+            if function==0x82120024 {
+                if let Ok(values)=unpack_values(&arguments) {
+                    if let [PackValue::Int(_),PackValue::Reference(r)]=values.as_slice() {
+                        if let [PackedEntry::Heap{object,..}]=r.entries.as_slice() {
+                            if let Some(NativeObject::StringInfo(s))=&object.native {
+                                return vec![json!({"event":"chat","kind":1,"text":string(s)}),
+                                    json!({"event":"script","function":function,"object":null})];
+                            }
+                        }
+                    }
+                }
+            }
             if function==0x820e0058 {
                 if let Ok(values)=unpack_values(&arguments) {
                     if let [PackValue::LongInt(item)]=values.as_slice() {
@@ -301,6 +317,18 @@ pub fn convert(event: ServerEvent) -> Vec<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_notices_are_readable_and_malformed_arguments_are_not_reinterpreted() {
+        let text=StringInfo{literal:Some("Overseer: Bring the hammer.".into()),..Default::default()};
+        let message=|arguments|ServerEvent::Interp{function:0x82120024,arguments,object:None};
+        let args=pack_values(&[PackValue::Int(0),PackValue::Reference(PackedReference::native(NativeObject::StringInfo(text)))]);
+        let out=convert(message(args));assert_eq!(out[0]["event"],"chat");
+        assert_eq!(out[0]["text"]["literal"],"Overseer: Bring the hammer.");
+        assert_eq!(out[1]["event"],"script");
+        for args in [vec![],vec![0],pack_values(&[PackValue::Int(0),PackValue::Int(1)])] {
+            assert!(!convert(message(args)).iter().any(|e|e["event"]=="chat"));
+        }
+    }
     #[test]
     fn native_container_open_close_and_failure_keep_identity_and_contents() {
         for error in [0, 17] {

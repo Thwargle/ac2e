@@ -13,6 +13,9 @@ pub mod clock;
 pub mod projectiles;
 pub mod content;
 pub mod crafting;
+pub mod arwic_mines;
+pub mod professions;
+pub mod harvesting;
 pub mod crypto;
 pub mod dat;
 pub mod emotes;
@@ -56,6 +59,8 @@ pub mod wire;
 pub mod world;
 pub mod services;
 pub mod loot;
+mod loot_limits;
+pub mod treasure_weapons;
 pub mod creature_ai;
 pub mod creature_motion;
 pub mod world_rules;
@@ -64,3 +69,7 @@ pub mod admin;
 mod native_trophies;
 
 pub mod recovered_quests;
+pub mod exploration_quests;
+
+pub mod hunting_quests;
+pub mod npc_dialogue;

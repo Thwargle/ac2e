@@ -158,14 +158,20 @@ def main():
         a.send('combat',enabled=False)
         until(a,start,'combat',lambda e:not e['enabled'])
         result['melee_damage_retaliation_death']=True
-        # These authored Idols have no recovered loot profile. They must not
-        # manufacture the old universal potion. Native loot has a separate test.
+        # The inferred treasure policy can now give these Idols variable loot.
+        # Reopening must preserve that lifetime's roll; exact native trophies
+        # and inferred item eligibility have their own acceptance tests.
         def claim(corpse):
             mark=len(a.events);a.send('open_container',id=corpse)
             opened=until(a,mark,'container_state',lambda e:e['open'] and e['id']==corpse)
-            assert not opened['items'],opened
+            assert len(opened['items'])==len(set(opened['items'])),opened
             a.send('close_container',id=corpse)
-            until(a,mark,'container_state',lambda e:not e['open'])
+            until(a,mark,'container_state',lambda e:not e['open'] and e['id']==corpse)
+            mark=len(a.events);a.send('open_container',id=corpse)
+            reopened=until(a,mark,'container_state',lambda e:e['open'] and e['id']==corpse)
+            assert reopened['items']==opened['items'],(opened,reopened)
+            a.send('close_container',id=corpse)
+            until(a,mark,'container_state',lambda e:not e['open'] and e['id']==corpse)
         claim(ids[0])
         unequip(sword);equip(staff,0x41000011)
         start=len(a.events);obs=len(b.events)

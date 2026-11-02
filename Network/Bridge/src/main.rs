@@ -5,6 +5,7 @@ mod events;
 mod examination;
 mod shop;
 mod journal;
+mod crafting;
 use ac2_net::{protocol::*, Credential, Logon, NetClient, NetClientConfig, NetEvent};
 use serde_json::{json, Value};
 use std::{
@@ -464,6 +465,7 @@ impl Session {
                     ),false),
                 )?;
             }
+            "craft_validate" | "craft_execute" | "craft_raise" if self.ready => send(&mut self.client,crafting::command(v)?)?,
             "shop_buy" if self.ready => send(&mut self.client,shop::buy(self.player,id(v,"vendor")?,id(v,"offer")?))?,
             "shop_sell" if self.ready => send(&mut self.client,shop::sell(self.player,id(v,"item")?,word(v,"slot")?,word(v,"quantity")?))?,
             "shop_close" if self.ready => send(&mut self.client,shop::close(id(v,"vendor")?))?,

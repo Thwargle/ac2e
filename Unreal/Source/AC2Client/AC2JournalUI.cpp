@@ -5,6 +5,7 @@
 
 bool SAC2GameUI::AllowsPanelButton(FName Name,FVector2D Point) const
 {
+    if(CraftOwnsPointer(Point))return Name==TEXT("CraftClose") || Name==TEXT("CraftButton") || Name==TEXT("AutoPopulateButton") || Name==TEXT("CraftLevelDown") || Name==TEXT("CraftLevelUp") || Name.ToString().StartsWith(TEXT("CraftIngredient"));
     if(Native.Bounds(TEXT("ExternalContainerField")).Contains(FIntPoint(Point.X,Point.Y)))
         return Name.ToString().StartsWith(TEXT("Loot")) || ButtonActions.FindRef(Name).ToString().StartsWith(TEXT("Loot"));
     return !ShopOwnsPointer(Point) || ShopButton(Name);
@@ -56,8 +57,8 @@ bool SAC2GameUI::JournalAction(FName Name)
     if(Key.StartsWith(TEXT("SkillPanel"))){const uint32 Id=FCString::Strtoui64(*Key.Mid(10),nullptr,10);
         if(SkillData.Panel(Id).Valid){SkillPanel=Id;SelectedSkill=0;JournalScroll=-1;}return true;}
     if(Key.StartsWith(TEXT("LearnedSkill"))){SelectedSkill=FCString::Atoi(*Key.Mid(12));return true;}
-    if(Name==TEXT("MeleeButton")||Name==TEXT("MissileButton")||Name==TEXT("MagicButton")||Name==TEXT("NoncombatButton")){
-        SkillTab=Name==TEXT("MeleeButton")?0:Name==TEXT("MissileButton")?1:Name==TEXT("MagicButton")?2:3;SkillPanel=0;SelectedSkill=0;JournalScroll=-1;return true;}
+    if(Name==TEXT("MeleeButton")||Name==TEXT("MissileButton")||Name==TEXT("MagicButton")||Name==TEXT("NoncombatButton")||Name==TEXT("CraftTab")){
+        SkillTab=Name==TEXT("MeleeButton")?0:Name==TEXT("MissileButton")?1:Name==TEXT("MagicButton")?2:Name==TEXT("NoncombatButton")?3:4;SkillPanel=0;SelectedSkill=0;JournalScroll=-1;return true;}
     if(Name==TEXT("QuestActive")||Name==TEXT("QuestDone")||Name==TEXT("QuestStory")){
         QuestTab=Name==TEXT("QuestActive")?0:Name==TEXT("QuestDone")?1:2;JournalScroll=0;return true;}
     if(!Mode->Network)return false;
