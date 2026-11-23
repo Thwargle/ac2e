@@ -1262,14 +1262,11 @@ void AAC2GameMode::FinishSmoke(bool Success, const FString &Message)
 {
     bSmoke = false;
     UE_LOG(LogTemp, Display, TEXT("AC2 world smoke %s: %s"), Success ? TEXT("PASS") : TEXT("FAIL"), *Message);
-    if (Success)
+    FString Report;
+    if (FParse::Value(FCommandLine::Get(), TEXT("AC2SmokeReport="), Report))
     {
-        FString Report;
-        if (FParse::Value(FCommandLine::Get(), TEXT("AC2SmokeReport="), Report))
-        {
-            IFileManager::Get().MakeDirectory(*FPaths::GetPath(Report), true);
-            FFileHelper::SaveStringToFile(TEXT("PASS"), *Report);
-        }
+        IFileManager::Get().MakeDirectory(*FPaths::GetPath(Report), true);
+        FFileHelper::SaveStringToFile(Success ? TEXT("PASS") : FString::Printf(TEXT("FAIL: %s (%s)"), *Message, *Status), *Report);
     }
     FPlatformMisc::RequestExitWithStatus(false, Success ? 0 : 1);
 }

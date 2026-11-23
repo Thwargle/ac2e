@@ -45,7 +45,7 @@ void FAC2LoginProfiles::Defaults(const FString& DefaultDat)
     if(!Servers.IsEmpty())return;
     Servers.Add({Id(),TEXT("AC2E local"),TEXT("127.0.0.1"),TEXT("http://127.0.0.1:19400"),TEXT("7148"),DefaultDat,9000,false});
     FString IceDat=FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()/TEXT("../Saved/IcefireClient"));
-    if(!IFileManager::Get().FileExists(*(IceDat/TEXT("portal.dat"))))IceDat.Reset();
+    if(!IFileManager::Get().FileExists(*(IceDat/TEXT("portal.dat"))))IceDat=DefaultDat;
     Servers.Add({Id(),TEXT("Icefire"),TEXT("icefire.portalspace.net"),TEXT(""),TEXT("7160"),IceDat,8610,true});
     SelectedServer=Servers[0].Id;
 }
