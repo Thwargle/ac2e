@@ -8,5 +8,5 @@ Publish the exact installer and checksum under the GitHub release tag `v<version
 
 The launcher validates the feed product, version, exact GitHub asset URL, transferred byte count and SHA-256. It follows HTTPS redirects only to GitHub release asset hosts. A cancelled or failed transfer is discarded. The user can always start the installed game when the update service is offline. Player-supplied DATs and accounts are separate from client updates.
 
-`UpdateTests.cs` covers malformed metadata, unexpected destinations, byte counts, altered content and cancellation. After building, install to an empty directory and launch with real DATs. For an upgrade smoke test install an older build in an isolated Windows profile, opt in, and verify the new version opens with the saved preferences.
+`UpdateTests.cs` covers malformed metadata, unexpected destinations, byte counts, altered content and cancellation. For an isolated install without changing shortcuts or uninstall registration, pass `/AC2PORTABLE /DIR="C:\path\to\empty-folder"` to Setup. The launcher preserves portable mode when it updates. After building, install to an empty directory and launch with real DATs. For an upgrade smoke test install an older build in an isolated Windows profile, opt in, and verify the new version opens with the saved preferences.
 

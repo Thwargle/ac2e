@@ -36,9 +36,9 @@ internal sealed class Launcher : Form
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         var heading = new Label { Text = "AC2:Unreal   " + Installed, Font = new Font(Font.FontFamily, 16), AutoSize = true };
         grid.Controls.Add(heading, 0, 0); grid.SetColumnSpan(heading, 2);
-        grid.Controls.Add(new Label { Text = "Asheron’s Call 2 DAT folder", AutoSize = true }, 0, 1);
+        grid.Controls.Add(new Label { Text = "Asheronâ€™s Call 2 DAT folder", AutoSize = true }, 0, 1);
         grid.Controls.Add(dat, 0, 2);
-        var browse = new Button { Text = "Browse…", AutoSize = true };
+        var browse = new Button { Text = "Browseâ€¦", AutoSize = true };
         browse.Click += delegate { ChooseData(); };
         grid.Controls.Add(browse, 1, 2); grid.Controls.Add(automatic, 0, 3); grid.SetColumnSpan(automatic, 2);
         grid.Controls.Add(status, 0, 4); grid.SetColumnSpan(status, 2);
@@ -71,7 +71,7 @@ internal sealed class Launcher : Form
     }
     private bool ChooseData()
     {
-        using (var dialog = new FolderBrowserDialog { Description = "Choose your Asheron’s Call 2 installation", SelectedPath = dat.Text, ShowNewFolderButton = false })
+        using (var dialog = new FolderBrowserDialog { Description = "Choose your Asheronâ€™s Call 2 installation", SelectedPath = dat.Text, ShowNewFolderButton = false })
         {
             if (dialog.ShowDialog(this) != DialogResult.OK) return false;
             if (!ValidDat(dialog.SelectedPath)) { status.Text = "The folder needs portal.dat, cell_1.dat, and local_English.dat."; return false; }
@@ -92,10 +92,8 @@ internal sealed class Launcher : Form
         if (dir.EndsWith(":")) dir += @"\.";
         try
         {
-            var info = new ProcessStartInfo(Path.Combine(home, "AC2Unreal.exe"), "-SaveToUserDir -AC2DatDir=\"" + dir + "\"") { WorkingDirectory = home, UseShellExecute = false };
+            var info = new ProcessStartInfo(Path.Combine(home, "AC2Unreal", "Binaries", "Win64", "AC2Unreal-Win64-Shipping.exe"), "-SaveToUserDir -AC2DatDir=\"" + dir + "\"") { WorkingDirectory = home, UseShellExecute = false };
             // Launch the game binary directly so the tracked process owns the full play session.
-            string shipping = Path.Combine(home, "AC2Unreal", "Binaries", "Win64", "AC2Unreal-Win64-Shipping.exe");
-            info.FileName = shipping;
             game = new Process { StartInfo = info, EnableRaisingEvents = true };
             game.Exited += delegate { if (IsHandleCreated) BeginInvoke((Action)delegate { if (game != null) game.Dispose(); game = null; Show(); Activate(); status.Text = "Ready to play."; }); };
             game.Start(); Hide();
@@ -119,14 +117,14 @@ internal sealed class Launcher : Form
         string file = null;
         try
         {
-            status.Text = "Checking for updates…";
+            status.Text = "Checking for updatesâ€¦";
             var release = await UpdateFeed.Check(source.Token);
             source.Token.ThrowIfCancellationRequested();
             if (release.Version <= Installed) { status.Text = "You have the latest version."; return; }
             if (!auto && MessageBox.Show(this, "Download and install AC2:Unreal " + release.Version + "?", Text, MessageBoxButtons.YesNo) != DialogResult.Yes) { paused = true; status.Text = "Update available."; return; }
             Directory.CreateDirectory(cache);
             file = Path.Combine(cache, "AC2-update-" + Guid.NewGuid().ToString("N") + ".exe");
-            await UpdateFeed.Download(release, file, p => { status.Text = "Downloading " + release.Version + " · " + p + "%"; }, source.Token);
+            await UpdateFeed.Download(release, file, p => { status.Text = "Downloading " + release.Version + " Â· " + p + "%"; }, source.Token);
             for (int seconds = 8; seconds > 0; --seconds)
             {
                 status.Text = "Verified. The launcher will close and reopen for installation in " + seconds + "s.";
@@ -134,7 +132,7 @@ internal sealed class Launcher : Form
             }
             source.Token.ThrowIfCancellationRequested();
             if (Running()) { status.Text = "Update deferred while the game is running."; return; }
-            Process.Start(new ProcessStartInfo(file, "/SILENT /NORESTART /AC2RESTART /DIR=\"" + home.TrimEnd('\\') + "\"") { UseShellExecute = false });
+            Process.Start(new ProcessStartInfo(file, (File.Exists(Path.Combine(home, "portable.txt")) ? "/AC2PORTABLE " : "") + "/SILENT /NORESTART /AC2RESTART /DIR=\"" + home.TrimEnd('\\') + "\"") { UseShellExecute = false });
             handedOff = true; file = null; Close();
         }
         catch (OperationCanceledException) { if (!IsDisposed) status.Text = "Update cancelled."; }

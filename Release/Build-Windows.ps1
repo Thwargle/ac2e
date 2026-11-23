@@ -20,6 +20,8 @@ function Run([string]$Program, [string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$Program failed ($LASTEXITCODE)." }
 }
 if (!$UseArchivedGame) {
+    # Build.bat uses a machine-shared lock under TMP. Keep this release independent of running editors.
+    $env:TMP = (New-Item -ItemType Directory -Path (Join-Path $out 'cook-temp') -Force).FullName
     & (Join-Path $root 'Build-AC2Network.ps1') -BridgeOnly
     & (Join-Path $root 'Build-AC2Audio.ps1')
     Run (Join-Path $EngineRoot 'Engine/Build/BatchFiles/Build.bat') @('AC2UnrealEditor','Win64','Development',"-Project=$project",'-WaitMutex','-NoHotReloadFromIDE')
