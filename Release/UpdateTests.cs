@@ -9,9 +9,11 @@ internal static class UpdateTests
     private static void Main()
     {
         const string hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        const string json = "{\"product\":\"ac2-unreal-windows-x64\",\"version\":\"0.11.0\",\"bytes\":3,\"sha256\":\"" + hash + "\",\"installer\":\"https://github.com/Thwargle/ac2e/releases/download/v0.11.0/AC2-Unreal-Setup-0.11.0.exe\"}";
+        const string json = "{\"product\":\"ac2-unreal-windows-x64\",\"version\":\"0.11.0\",\"bytes\":3,\"sha256\":\"" + hash + "\",\"installer\":\"https://thwargle.com/downloads/ac2/v0.11.0/AC2-Unreal-Setup-0.11.0.exe\"}";
         var r = ClientRelease.Parse(json);
-        MustFail(() => ClientRelease.Parse(json.Replace("Thwargle/ac2e", "example/ac2e")));
+        MustFail(() => ClientRelease.Parse(json.Replace("thwargle.com", "example.com")));
+        MustFail(() => ClientRelease.Parse(json.Replace("thwargle.com/downloads/ac2", "github.com/Thwargle/ac2e/releases/download")));
+        MustFail(() => ClientRelease.Parse(json.Replace("/v0.11.0/", "/v0.10.0/")));
         MustFail(() => ClientRelease.Parse(json.Replace(hash, "bad")));
         MustFail(() => ClientRelease.Parse(json.Replace(":3,", ":0,")));
         var data = new byte[] {97, 98, 99};

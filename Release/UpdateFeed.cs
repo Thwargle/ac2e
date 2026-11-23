@@ -21,7 +21,7 @@ internal sealed class ClientRelease
         var values = new JavaScriptSerializer { MaxJsonLength = 8192 }.Deserialize<Dictionary<string, object>>(json);
         string number = Convert.ToString(values["version"], CultureInfo.InvariantCulture);
         if (!Regex.IsMatch(number, @"^\d{1,4}\.\d{1,4}\.\d{1,4}$")) throw new InvalidDataException("Invalid version in update feed.");
-        string url = "https://github.com/Thwargle/ac2e/releases/download/v" + number + "/AC2-Unreal-Setup-" + number + ".exe";
+        string url = "https://thwargle.com/downloads/ac2/v" + number + "/AC2-Unreal-Setup-" + number + ".exe";
         long bytes = Convert.ToInt64(values["bytes"], CultureInfo.InvariantCulture);
         string digest = Convert.ToString(values["sha256"]);
         if (Convert.ToString(values["product"]) != "ac2-unreal-windows-x64" || Convert.ToString(values["installer"]) != url ||
@@ -33,7 +33,7 @@ internal sealed class ClientRelease
 
 internal static class UpdateFeed
 {
-    private static readonly Uri Feed = new Uri("https://thwargle.github.io/ac2e/release.json");
+    private static readonly Uri Feed = new Uri("https://thwargle.com/ac2-unreal/release.json");
     private static readonly HttpClient Http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
     internal static async Task<ClientRelease> Check(CancellationToken cancel)
     {
@@ -62,7 +62,7 @@ internal static class UpdateFeed
         for (int i = 0; i < 5; i++)
         {
             if (url.Scheme != "https" || !url.IsDefaultPort || url.UserInfo.Length != 0 ||
-                !(url.Host == "github.com" || url.Host == "release-assets.githubusercontent.com" || url.Host == "objects.githubusercontent.com"))
+                url.Host != "thwargle.com")
                 throw new InvalidDataException("Unexpected installer host.");
             var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancel);
             if (response.StatusCode == HttpStatusCode.OK) return response;

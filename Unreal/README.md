@@ -1,6 +1,6 @@
-# AC2:Unreal — DAT client, controller and account frontend (0.11.0)
+# AC2:Unreal — DAT client, controller and account frontend (0.11.1)
 
-[Download the Windows installer and see the update guide](https://thwargle.github.io/ac2e/).
+[Download the Windows installer and see the update guide](https://thwargle.com/ac2-unreal/).
 
 Native Unreal Engine 5.8 client foundation for Asheron's Call 2. The active project
 is `AC2Unreal.uproject`; it has no ACEClient dependency. It supports offline exploration

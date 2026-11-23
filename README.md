@@ -2,7 +2,7 @@
 
 AC2:Unreal is a Windows client for Asheron’s Call 2 built with Unreal Engine 5.8. It renders the world from the DAT archives on your computer. AC2E is the Rust multiplayer server in this repository, derived from Pyrealium. The client also has a separate profile for the community-operated Icefire server.
 
-**[Download the Windows client](https://thwargle.github.io/ac2e/)** · [Versioned installers and checksums](https://github.com/Thwargle/ac2e/releases) · [Host AC2E](AC2E/AC2E-README.md)
+**[Download the Windows client](https://thwargle.com/ac2-unreal/)** · [Installer checksum](https://thwargle.com/downloads/ac2/v0.11.1/SHA256SUMS.txt) · [Host AC2E](AC2E/AC2E-README.md)
 
 ## Play
 
@@ -13,7 +13,7 @@ AC2:Unreal is a Windows client for Asheron’s Call 2 built with Unreal Engine 5
 
 ## What works today
 
-AC2E supports accounts, persistent characters, combat and skills, inventory and corpse loot, crafting, travel, chat, social groups, and playable quest routes. Coverage varies by creature, skill and quest. The atlas distinguishes guide evidence from implemented routes. AC2E and Icefire run different server implementations, so support on one can differ from the other. This is a community preview. The 0.11.0 installed build passed launcher and update testing. Two extended offline gameplay checks remain open: rain emission at block 5667 and a scripted attack at C654. [Release notes and installer checksum](https://github.com/Thwargle/ac2e/releases/tag/v0.11.0)
+AC2E supports accounts, persistent characters, combat and skills, inventory and corpse loot, crafting, travel, chat, social groups, and playable quest routes. Coverage varies by creature, skill and quest. The atlas distinguishes guide evidence from implemented routes. AC2E and Icefire run different server implementations, so support on one can differ from the other. This is a community preview. The 0.11.0 installed build passed launcher and update testing. Two extended offline gameplay checks remain open: rain emission at block 5667 and a scripted attack at C654. Players upgrading from 0.11.0 should run the 0.11.1 installer once to switch the launcher to Thwargle’s update service. [Release notes](https://thwargle.com/downloads/ac2/v0.11.1/RELEASE-NOTES.txt)
 
 - [Client behavior, renderer and controls](Unreal/README.md)
 - [Server setup, gameplay coverage and hosting](AC2E/AC2E-README.md)

@@ -1,0 +1,6 @@
+AC2:Unreal 0.11.1 for Windows x64
+
+The installer and launcher updates are now available at https://thwargle.com/ac2-unreal/.
+Players using 0.11.0 should close the game, run this installer once, and open AC2 Unreal again. The launcher keeps its existing DAT folder and update preference. Use Check for updates or turn on automatic updates for future versions.
+
+This release updates the launcher and installer and uses the 0.11.0 Shipping game. Known offline gameplay issues include rain emission at block 5667 and the scripted attack at C654.

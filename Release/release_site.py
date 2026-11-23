@@ -14,8 +14,8 @@ def generate(output, version):
     size = installer.stat().st_size
     with installer.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-    release = f'https://github.com/Thwargle/ac2e/releases/download/v{version}/'
-    notes = f'https://github.com/Thwargle/ac2e/releases/tag/v{version}'
+    release = f'https://thwargle.com/downloads/ac2/v{version}/'
+    notes = release + 'RELEASE-NOTES.txt'
     feed = dict(product='ac2-unreal-windows-x64', version=version, installer=release+filename, bytes=size, sha256=digest)
     site = output / 'site'
     site.mkdir(exist_ok=True)
@@ -25,7 +25,7 @@ def generate(output, version):
         text = text.replace('@'+key+'@',value)
     (site/'index.html').write_text(text,encoding='utf-8')
     (site/'release.json').write_text(json.dumps(feed, indent=2)+'\n',encoding='utf-8')
-    (site/'.nojekyll').touch()
+    shutil.copyfile(Path(__file__).parent / 'notes' / (version + '.txt'), output / 'RELEASE-NOTES.txt')
     for filename in ['site.css','keyart.png']:
         shutil.copyfile(template/filename, site/filename)
     (output/'SHA256SUMS.txt').write_text(digest+'  '+installer.name+'\n',encoding='ascii')
