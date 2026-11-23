@@ -1,6 +1,6 @@
-//! Authored development quartermaster transactions and a bounded native sale.
+//! Native resource traders, reconstructed quartermaster stock and shop transactions.
 //!
-//! Prices/stock are server policy, not recovered original economy. The retained
+//! The fallback quartermaster's prices/stock are server policy. The retained
 //! nested shopping capture establishes the native catalog and purchase graphs.
 //! Fresh bounded graphs use server-owned offer identities and fixed stock.
 //! Evidence: npc.interaction/shopping.elog, ikeras.weapons.vendor.buying.weapon.elog;
@@ -19,6 +19,9 @@ use crate::{
     world::WorldError,
 };
 use std::{collections::BTreeMap, fmt, io};
+#[path = "resource_traders.rs"]
+mod resource_traders;
+pub use resource_traders::Merchandise;
 
 /// A DAT-backed humanoid reused for a separately authored training placement.
 pub const MERCHANT_ENTITY: u32 = 0x47003724;
@@ -61,10 +64,12 @@ pub enum Stock {
     Mucor,
     Tallow,
     Material(u32),
+    Native(Merchandise),
 }
 impl Stock {
     pub fn name(self) -> &'static str {
         match self {
+            Self::Native(offer) => offer.name(),
             Self::Potion => "potion",
             Self::Weapon => "weapon",
             Self::Mucor => "mushroom",
@@ -74,6 +79,7 @@ impl Stock {
     }
     pub fn definition(self) -> u32 {
         match self {
+            Self::Native(offer) => offer.item,
             Self::Potion => crate::item_services::POTION_DEFINITION,
             Self::Weapon => crate::training_kit::DEFINITION,
             Self::Mucor => MUCOR_DEFINITION,
@@ -83,6 +89,7 @@ impl Stock {
     }
     pub fn buy_price(self) -> u32 {
         match self {
+            Self::Native(offer) => offer.price,
             Self::Potion => 5,
             Self::Weapon => 12,
             Self::Mucor => 2,
@@ -92,6 +99,7 @@ impl Stock {
     }
     pub fn sell_price(self) -> u32 {
         match self {
+            Self::Native(_) => 0, // Vendor offers are never sale quotes.
             Self::Potion => 1,
             Self::Weapon => 3,
             Self::Mucor => 1,
@@ -101,6 +109,7 @@ impl Stock {
     }
     pub fn item(self, id: u64, slot: u16) -> Item {
         match self {
+            Self::Native(offer) => offer.item(id, slot),
             Self::Potion => crate::item_services::potion(id, slot),
             Self::Weapon => crate::training_kit::item(id, slot),
             Self::Mucor => mucor(id, slot),
@@ -115,6 +124,12 @@ impl Stock {
         [Self::Potion, Self::Weapon, Self::Mucor, Self::Tallow]
             .into_iter()
             .find(|stock| value.eq_ignore_ascii_case(stock.name()))
+    }
+    fn label(self) -> String {
+        match self {
+            Self::Native(offer) if offer.quantity > 1 => format!("{} ({})", offer.name(), offer.quantity),
+            _ => self.name().to_owned(),
+        }
     }
     fn for_item(item: &Item) -> Option<Self> {
         let Location::Bag(slot) = item.location else {
@@ -137,6 +152,7 @@ impl Stock {
 pub struct Catalog {
     metadata: BTreeMap<u32, Metadata>,
     store_template:u32,
+    resource_traders: resource_traders::Shelves,
 }
 impl Catalog {
     pub fn validate(portal: &mut Dat) -> io::Result<Self> {Self::validate_profile(portal,false)}
@@ -177,7 +193,22 @@ impl Catalog {
                 (Stock::Tallow.definition(), tallow),
             ]);
         if legions {for stock in STOCK.iter().skip(4){let d=stock.definition();metadata.insert(d,Metadata::load(portal,d)?);}}
-        Ok(Self{store_template,metadata})
+        let resource_traders = if legions { resource_traders::load(portal)? } else { BTreeMap::new() };
+        for (_, stock) in resource_traders.values() {
+            for offer in stock {
+                if let std::collections::btree_map::Entry::Vacant(entry) = metadata.entry(offer.definition()) {
+                    entry.insert(Metadata::load(portal, offer.definition())?);
+                }
+            }
+        }
+        Ok(Self{store_template,metadata,resource_traders})
+    }
+    pub fn shelf(&self, entity: u32) -> (u32, &[Stock]) {
+        if let Some((template, stock)) = self.resource_traders.get(&entity) {
+            return (*template, stock);
+        }
+        let stock = if self.store_template == STORE_TEMPLATE { &STOCK[..4] } else { &STOCK[..] };
+        (self.store_template, stock)
     }
     pub fn metadata(&self, definition: u32) -> Option<Metadata> {
         self.metadata.get(&definition).copied()
@@ -347,7 +378,7 @@ pub fn plan_buy(
     let mut bag = inventory.clone();
     // Ordinary supply materials accumulate in a compatible stack, including
     // when every bag slot is occupied. Preserve the exact Tallow lesson bundle.
-    if matches!(stock, Stock::Material(_)) {
+    if matches!(stock, Stock::Material(_) | Stock::Native(_)) && product.stack_limit > 1 {
         if let Some(stack) = inventory.items().find(|i| {
             i.definition == product.definition && i.visual == product.visual
                 && i.roll.is_none() && i.equipment_mask == 0
@@ -371,7 +402,7 @@ pub fn plan_buy(
         items,
         changes,
         events: Vec::new(),
-        message: format!("Bought {} for {} gold.", stock.name(), stock.buy_price()),
+        message: format!("Bought {} for {} gold.", stock.label(), stock.buy_price()),
         next_inventory,
         next_progression,
     })
@@ -491,18 +522,28 @@ pub fn sale_result(owner: u64, ordinal: u16) -> Result<Vec<u8>, WorldError> {
 pub struct Shop {
     merchant: u64,
     offers: Vec<u64>,
+    stock: Vec<Stock>,
+    template: Option<u32>,
 }
 impl Shop {
     pub fn new(merchant: u64, offers: impl Into<Vec<u64>>) -> Result<Self, WorldError> {
         let offers=offers.into();
-        if [0, u64::MAX].contains(&merchant) || offers.is_empty() || offers.len()>STOCK.len()
+        let stock = STOCK.get(..offers.len()).ok_or(WorldError::InvalidValue)?;
+        Self::with_stock(merchant, offers, None, stock)
+    }
+    pub fn for_vendor(merchant: u64, offers: Vec<u64>, catalog: &Catalog, entity: u32) -> Result<Self, WorldError> {
+        let (template, stock) = catalog.shelf(entity);
+        Self::with_stock(merchant, offers, Some(template), stock)
+    }
+    fn with_stock(merchant:u64, offers:Vec<u64>, template:Option<u32>, stock:&[Stock]) -> Result<Self, WorldError> {
+        if [0, u64::MAX].contains(&merchant) || offers.is_empty() || offers.len()!=stock.len()
             || offers.iter().enumerate().any(|(index, id)| {
                 [0, u64::MAX, merchant].contains(id) || offers[..index].contains(id)
             })
         {
             return Err(WorldError::InvalidValue);
         }
-        Ok(Self { merchant, offers })
+        Ok(Self { merchant, offers, stock:stock.to_vec(), template })
     }
 
     pub fn merchant(&self) -> u64 {
@@ -516,14 +557,14 @@ impl Shop {
     pub fn open(&self, _validated_catalog: &Catalog) -> Result<Vec<u8>, WorldError> {
         let mut objects = vec![ShopObject::interpreted(
             0x385d,
-            vec![(2, 1), (_validated_catalog.store_template, 4), (self.offers.len()as u32, 4), (0, 2)],
+            vec![(2, 1), (self.template.unwrap_or(_validated_catalog.store_template), 4), (self.offers.len()as u32, 4), (0, 2)],
         )];
         let mut list = (self.offers.len()as u32).to_le_bytes().to_vec();
         for index in 0..self.offers.len()as u32 {
             list.extend((3 + index * 2u32).to_le_bytes());
         }
         objects.push(ShopObject::native(0x65, list));
-        for (index, stock) in STOCK.into_iter().take(self.offers.len()).enumerate() {
+        for (index, stock) in self.stock.iter().copied().enumerate() {
             let identity = self.offers[index];
             let texture = match stock {
                 Stock::Potion => 0x41006f81,
@@ -532,6 +573,7 @@ impl Shop {
                 Stock::Mucor => 0x41006fb0,
                 Stock::Tallow => 0x410082d6,
                 Stock::Material(_)=>0,
+                Stock::Native(offer) => offer.texture,
             };
             objects.push(ShopObject::interpreted(
                 0x382e,
@@ -551,6 +593,7 @@ impl Shop {
                     (0, 2),
                 ],
             ));
+            let label = stock.label();
             objects.push(ShopObject::native(
                 0x6a,
                 crate::world::literal_name(match stock {
@@ -558,7 +601,7 @@ impl Shop {
                     Stock::Weapon => "Training Weapon",
                     Stock::Mucor => "Mucor Mushroom",
                     Stock::Tallow => "Tallow Bundle (100)",
-                    Stock::Material(_)=>stock.name(),
+                    Stock::Material(_) | Stock::Native(_) => &label,
                 })?,
             ));
         }
@@ -597,7 +640,7 @@ impl Shop {
             .iter()
             .position(|&id| id == request.offer)
             .ok_or(MerchantError::NotForSale)?;
-        plan_buy(STOCK[index], inventory, state, item_id)
+        plan_buy(self.stock[index], inventory, state, item_id)
     }
 }
 
@@ -709,6 +752,83 @@ fn shop_graph(objects: &[ShopObject]) -> Vec<u8> {
 #[cfg(test)]
 mod supply_tests {
     use super::*;
+    #[test]
+    fn six_native_resource_stores_bind_stock_prices_and_repeat_purchases_to_the_vendor() {
+        let Ok(directory) = std::env::var("AC2_TEST_GAME_DATA") else { return };
+        let mut dat = Dat::open(std::path::Path::new(&directory).join("portal.dat")).unwrap();
+        let catalog = Catalog::validate_legions(&mut dat).unwrap();
+        let mut services = crate::services::Profiles::open(&mut dat).unwrap();
+        let stock_materials = [0x470010fa, 0x47002ad4, 0x470027a2, 0x47002ad4, 0x47002ad4, 0x470010ff];
+        let owner = 1;
+        for (index, material) in stock_materials.into_iter().enumerate() {
+            let entity = 0x47002f8e + index as u32;
+            assert_eq!(services.get(&mut dat, entity), Some(crate::services::Service::Vendor));
+            let merchant = u64::from(entity) + 100;
+            let (template, shelf) = catalog.shelf(entity);
+            assert_eq!(template, 0x6f003570 + index as u32);
+            assert_eq!(shelf.len(), 9);
+            let offers = (merchant + 100..merchant + 109).collect::<Vec<_>>();
+            let shop = Shop::for_vendor(merchant, offers.clone(), &catalog, entity).unwrap();
+            let open = shop.open(&catalog).unwrap();
+            let refresh = shop.refresh(&catalog).unwrap();
+            assert_eq!(&open[8..], &refresh[8..]);
+            use ac2_net::protocol::StoreMessage;
+            let StoreMessage::ViewStore { view, vendor } =
+                StoreMessage::decode(VIEW_STORE, &open[12..]).unwrap().unwrap()
+            else { panic!("the client bridge must recognize the native store") };
+            assert_eq!((vendor, view.store, view.sales.len()), (merchant, template, shelf.len()));
+            for ((row, stock), offer_id) in view.sales.iter().zip(shelf).zip(&offers) {
+                assert_eq!((row.item, row.item_did), (*offer_id, stock.definition()));
+                assert_eq!((row.cost_did, row.cost), (GOLD_DEFINITION, stock.buy_price() as f32));
+                assert_eq!(row.item_desc.literal.as_deref(), Some(stock.label().as_str()));
+                assert_eq!(row.icon_did >> 24, 0x41);
+            }
+            let wallet = Progression { gold: 10_000, ..Default::default() };
+            let empty = Inventory::default();
+            let id = inventory::ITEM_NAMESPACE + 1;
+            let quantities = if material == 0x47002ad4 { [200, 1000, 5000] } else { [2, 10, 50] };
+            let mut bag = empty.clone();
+            let mut wallet = wallet;
+            for (n, &amount) in quantities.iter().enumerate() {
+                let req = BuyRequest { owner, merchant, offer: offers[n] };
+                let plan = shop.plan_buy(owner, &req, &bag, &wallet, id+n as u64).unwrap();
+                assert_eq!(plan.next_progression.gold, wallet.gold - [100, 500, 2500][n]);
+                let bought = plan.next_inventory.items().next().unwrap();
+                assert_eq!(bought.definition, material);
+                assert_eq!(bought.quantity, quantities[..=n].iter().sum::<u16>());
+                assert!(shop.plan_buy(owner, &req, &bag, &Progression::default(), id).is_err());
+                assert!(shop.plan_buy(owner, &BuyRequest { merchant: merchant+1, ..req.clone() }, &bag, &wallet, id).is_err());
+                assert!(shop.plan_buy(owner, &BuyRequest { offer: offers[0]-1, ..req }, &bag, &wallet, id).is_err());
+                assert!(shelf[n].label().ends_with(&format!("({amount})")));
+                bag = plan.next_inventory;
+                wallet = plan.next_progression;
+            }
+            for (n, (offer, expected_definition)) in offers[3..].iter().zip([
+                0x47002f72, 0x47002f76, 0x47002f71, 0x47002f74, 0x47002f75, 0x47002f73,
+            ]).enumerate() {
+                let req = BuyRequest { owner, merchant, offer: *offer };
+                let new_id = id + 3 + n as u64;
+                let plan = shop.plan_buy(owner, &req, &bag, &wallet, new_id).unwrap();
+                let item = plan.next_inventory.items().find(|i| i.id == new_id).unwrap();
+                assert_eq!(item.definition, expected_definition);
+                assert!(catalog.metadata(item.definition).is_some());
+                assert_eq!(crate::harvesting::tool(item.definition).unwrap().durability, 50);
+                assert_eq!(plan.next_progression.gold, wallet.gold - 50);
+                assert!(plan.next_inventory.apply(&inventory::Command::ToolWear { item: new_id, previous: 0, used: 1 }).is_ok());
+                bag = plan.next_inventory;
+                wallet = plan.next_progression;
+            }
+            while let Some(slot) = bag.free_slot() {
+                bag = bag.apply(&inventory::Command::Grant(mucor(bag.high_water()+1, slot))).unwrap();
+            }
+            let req = BuyRequest { owner, merchant, offer: offers[3] };
+            assert!(matches!(shop.plan_buy(owner, &req, &bag, &wallet, bag.high_water()+1), Err(MerchantError::FullBag)));
+            let merge = shop.plan_buy(owner, &BuyRequest {offer:offers[0], ..req}, &bag, &wallet, bag.high_water()+1).unwrap();
+            assert_eq!(merge.next_inventory.items().count(), BAG_SLOTS as usize);
+            assert_eq!(merge.next_progression.gold, wallet.gold - 100);
+        }
+        assert_eq!(catalog.shelf(MERCHANT_ENTITY).1, &STOCK);
+    }
     #[test]
     fn material_purchase_merges_in_full_bag_and_rejects_overflow_without_payment() {
         let stock = Stock::Material(0x470010fe);

@@ -81,7 +81,7 @@ def recover(directory):
                                   stack=min(65535,props.get('Item_MaxStackSize',1)),
                                   dye=struct.unpack('<f',struct.pack('<I',props['Craft_DyePlant_Mod']))[0] if 'Craft_DyePlant_Mod' in props else None)
             return did
-        for did in sorted(set(ids) | {0x6f001f17, 0x6f001f18,0x6f005249,0x6f001f0e}):
+        for did in sorted(set(ids) | {0x6f001f17, 0x6f001f18,0x6f005249,0x6f001f0e,0x6f001fe4}):
             name = f'{did:08x}'
             try:
                 g = get(did); f = g[0]['slots']; name = text(g,f[8])
@@ -93,7 +93,7 @@ def recover(directory):
                 if f[11] == 0x6f00264a:
                     if not 0x6f002aef <= did <= 0x6f002afd: raise ValueError('historical or specialized survey')
                     kind = 'survey'
-                if f[11] == 0x6f0028d7 and did not in (0x6f001f17,0x6f001f18,0x6f001f0e):
+                if f[11] == 0x6f0028d7 and did not in (0x6f001f17,0x6f001f18,0x6f001f0e,0x6f001fe4) and not 0x6f001f0f <= did <= 0x6f001f14:
                     raise ValueError('quest entitlement required')
                 if f[11] not in {s['id'] for s in skills}: raise ValueError('unknown profession')
                 ingredients = []
@@ -130,7 +130,7 @@ def recover(directory):
                 recipes.append(dict(id=did, skill=f[11], name=name, description=text(g,f[9]), kind=kind,workshop=workshop,
                                     minimum=f[13], maximum=f[21], difficulty=values(g,f[3],f[29]),
                                     cost=values(g,f[1],f[34]), ingredients=ingredients, outputs=outputs,
-                                    icon=f[32]))
+                                    icon=f[4]))  # Recipe's WSL GetIconDID accessor
             except (ValueError, KeyError, IndexError, AssertionError) as e:
                 excluded.append(dict(id=did, name=name, reason=str(e)))
         workshops = [dict(id=d,effect=p['ForgeEffect'],radius=struct.unpack('<f',struct.pack('<I',p['ForgeEffectRadius']))[0])
@@ -159,12 +159,15 @@ def recover(directory):
                 mine=next(m for m in mines if m['material']==material and m['quantity']==25+5*region and m['id']<0x47003000)
                 maps.append(dict(id=d,region=region,mine=mine['id'],bounds=[min(lo[0],hi[0]),min(lo[1],hi[1]),max(lo[0],hi[0]),max(lo[1],hi[1])],radius=40))
         tools=[]
-        for d,skill in [(0x47002de7,0x6f0025a9),(0x47002de8,0x6f002560),(0x47002de4,0x6f0025a8),(0x47002dea,0x6f0025a6),(0x47002deb,0x6f002579),(0x47002dec,0x6f0025a7)]:
+        for d,skill in [(0x47002de7,0x6f0025a9),(0x47002de8,0x6f002560),(0x47002de4,0x6f0025a8),(0x47002dea,0x6f0025a6),(0x47002deb,0x6f002579),(0x47002dec,0x6f0025a7),
+                        # Resource trader tools have distinct DIDs and native durability.
+                        (0x47002f71,0x6f0025a8),(0x47002f72,0x6f0025a9),(0x47002f73,0x6f002560),
+                        (0x47002f74,0x6f0025a6),(0x47002f75,0x6f002579),(0x47002f76,0x6f0025a7)]:
             p=properties(d);item(d)
             tools.append(dict(id=d,skill=skill,durability=p.get('Item_Durability_MaxLevel',20),animation=p.get('Usage_UserAnimation',0)))
         # Butchery profile identities survive, but the server yield tables do not.
         # Keep the set of eligible monsters, never treat NPCs as carcasses.
-        butcher=[dict(id=d,profile=p['ButcheryProfile'],material=0x470027a0 if any(s in p['AI_NPCTable'] for s in ('Beetle','Wasp','Grut','Rachis')) else 0x470027a3)
+        butcher=[dict(id=d,profile=p['ButcheryProfile'],material=0x47001400 if 'Vermin' in p['AI_NPCTable'] else 0x470027a0 if any(s in p['AI_NPCTable'] for s in ('Beetle','Wasp','Grut','Rachis')) else 0x470027a3)
                  for d in templates if (p:=properties(d)).get('ButcheryProfile') and p.get('AI_NPCTable')]
         for d in [0x470027a0,0x470027a3,0x4700141f,0x47001400,0x47002ad4,0x470010fa,0x470027a2]:item(d)
         catalog = dict(version=1, skills=skills, recipes=recipes, items=list(items.values()),workshops=workshops,success=success,mines=mines,maps=maps,tools=tools,butcher=butcher)

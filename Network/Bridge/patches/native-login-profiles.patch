@@ -1,0 +1,549 @@
+diff --git a/crates/ac2-client/tests/view_7160.rs b/crates/ac2-client/tests/view_7160.rs
+index 35ebef5..ad3caaf 100644
+--- a/crates/ac2-client/tests/view_7160.rs
++++ b/crates/ac2-client/tests/view_7160.rs
+@@ -426,6 +426,7 @@ fn the_client_walks_with_w_and_draws_its_character() {
+         server.borrow_mut().script_world.profiles.insert(
+             player.id,
+             ExaminationProfile {
++                extra: 0,
+                 request: ExaminationRequest::object(player.id),
+                 nodes: vec![
+                     node(1, ExaminationValue::Text(name)),
+diff --git a/crates/ac2-net/src/protocol/gameplay/craft_records.rs b/crates/ac2-net/src/protocol/gameplay/craft_records.rs
+index c742724..64f0bea 100644
+--- a/crates/ac2-net/src/protocol/gameplay/craft_records.rs
++++ b/crates/ac2-net/src/protocol/gameplay/craft_records.rs
+@@ -169,13 +169,17 @@ impl Record {
+     }
+ 
+     fn did_of(self, object: &HeapObject) -> Result<u32, ProtocolError> {
+-        if object.pkg_id != self.package() {
++        // Icefire's native registry uses the older six-slot CraftSkillRecord
++        // package 0x1B4F; its DID and XP/level fields have the same layout.
++        let legacy_skill=matches!(self,Self::CraftSkill) && object.pkg_id==0x1b4f && object.slots.len()==6;
++        if object.pkg_id != self.package() && !legacy_skill {
+             return Err(ProtocolError::Invalid("craft record package"));
+         }
+         object
+             .slots
+             .get(self.did_slot())
+             .copied()
++            .filter(|did| did>>24==0x6f)
+             .ok_or(ProtocolError::Invalid("craft record"))
+     }
+ }
+@@ -245,7 +249,9 @@ pub(super) fn read_registry(args: &mut Args) -> Result<(Vec<u32>, Vec<u32>), Pro
+             _ => None,
+         }
+     };
+-    let root = entry(ROOT_ID).ok_or_else(invalid)?;
++    // ReferenceTable::UnPackReferenceArray maps the sender's IDs; the first
++    // packed entry is the root. ROOT_ID is only our encoder's allocation.
++    let root = entry(*reference.ids.first().ok_or_else(invalid)?).ok_or_else(invalid)?;
+     if root.pkg_id != CRAFT_REGISTRY || root.slots.len() != 7 {
+         return Err(invalid());
+     }
+diff --git a/crates/ac2-net/src/protocol/mod.rs b/crates/ac2-net/src/protocol/mod.rs
+index 4a1f342..145cc56 100644
+--- a/crates/ac2-net/src/protocol/mod.rs
++++ b/crates/ac2-net/src/protocol/mod.rs
+@@ -68,7 +68,7 @@ pub use native::{
+ pub use object::CreateObject;
+ pub use opcode::Opcode;
+ pub use pack::{
+-    entry_flags, pack_values, unpack_values, HeapObject, PackValue, PackedEntry, PackedReference,
++    entry_flags, pack_values, unpack_values, unpack_values_with_quest_extension, HeapObject, PackValue, PackedEntry, PackedReference,
+ };
+ pub use physics::{BehaviorParams, PhysicsDesc};
+ pub use physics_event::{ObjectAction, ObjectEvent};
+diff --git a/crates/ac2-net/src/protocol/native/examination.rs b/crates/ac2-net/src/protocol/native/examination.rs
+index cf09daa..c6d9c45 100644
+--- a/crates/ac2-net/src/protocol/native/examination.rs
++++ b/crates/ac2-net/src/protocol/native/examination.rs
+@@ -305,11 +305,14 @@ impl ExaminationDataNode {
+ }
+ 
+ /// `ExaminationProfile::StreamPack`: the request it answers, then `PList<ExaminationDataNode>`
+-/// (a count, then the nodes).
++/// (a count, then the nodes), then Legions' additional word
++/// (Legions 0x005C94A0; absent in admin 7148 0x00608380).
+ #[derive(Debug, Clone, PartialEq, Default)]
+ pub struct ExaminationProfile {
+     pub request: ExaminationRequest,
+     pub nodes: Vec<ExaminationDataNode>,
++    /// Preserved without assigning meaning to the unmatched Legions field.
++    pub extra: u32,
+ }
+ 
+ impl ExaminationProfile {
+@@ -318,7 +321,8 @@ impl ExaminationProfile {
+         let nodes = (0..r.count()?)
+             .map(|_| ExaminationDataNode::read(r))
+             .collect::<Result<_, _>>()?;
+-        Ok(Self { request, nodes })
++        let extra = r.u32()?;
++        Ok(Self { request, nodes, extra })
+     }
+ 
+     pub(super) fn write(&self, w: &mut Writer) {
+@@ -327,6 +331,7 @@ impl ExaminationProfile {
+         for node in &self.nodes {
+             node.write(w);
+         }
++        w.u32(self.extra);
+     }
+ }
+ 
+@@ -423,6 +428,7 @@ mod tests {
+     fn examination_profile_nodes_take_their_type_layouts() {
+         let profile = ExaminationProfile {
+             request: ExaminationRequest::object(5),
++            extra: 0x1234,
+             nodes: vec![
+                 ExaminationDataNode {
+                     order: 1,
+@@ -473,6 +479,7 @@ mod tests {
+         expected.extend(1.5f64.to_le_bytes());
+         expected.extend(words(&[0x4000_0009, 5, 1, 1, 0x4100_0001, 0]));
+         expected.extend(words(&[0x4000_0004, 6, 0x13, 4, 0x2300_0001, 0]));
++        expected.extend(words(&[0x1234]));
+         assert_eq!(bytes, expected);
+     }
+ }
+diff --git a/crates/ac2-net/src/protocol/native/mod.rs b/crates/ac2-net/src/protocol/native/mod.rs
+index f2da518..1b9dc61 100644
+--- a/crates/ac2-net/src/protocol/native/mod.rs
++++ b/crates/ac2-net/src/protocol/native/mod.rs
+@@ -10,6 +10,7 @@
+ //! refused as unsupported.
+ 
+ mod containers;
++mod appearance;
+ mod examination;
+ mod gm;
+ mod options;
+@@ -17,6 +18,7 @@ mod quest;
+ mod structs;
+ 
+ pub use containers::{HashKey, ScriptHash, ScriptList};
++pub use appearance::{AppInfoHash,NativeVisualDesc};
+ pub use examination::{
+     ExaminationDataNode, ExaminationProfile, ExaminationRequest, ExaminationValue, SelectionInfo,
+ };
+@@ -40,6 +42,7 @@ pub mod ntype {
+     pub const AL_HASH: u32 = 0x08;
+     pub const A_LIST: u32 = 0x0A;
+     pub const AR_HASH: u32 = 0x11;
++    pub const APP_INFO_HASH: u32 = 0x0f;
+     pub const BEHAVIOR_PARAMS: u32 = 0x17;
+     pub const LA_HASH: u32 = 0x32;
+     pub const L_ARRAY: u32 = 0x37;
+@@ -56,6 +59,7 @@ pub mod ntype {
+     pub const STRING_INFO: u32 = 0x6A;
+     pub const UI_SAVE_LOCATIONS: u32 = 0x6F;
+     pub const VECTOR: u32 = 0x70;
++    pub const VISUAL_DESC: u32 = 0x71;
+     /// `wpstring` (`PStringBase<unsigned short>`).
+     pub const WPSTRING: u32 = 0x76;
+     pub const LA_HASH_SET: u32 = 0x2E0B;
+@@ -83,6 +87,8 @@ pub enum NativeObject {
+     List(ScriptList),
+     /// The `XYHash` family, `AAMultiHash`, `AHashSet`, `LAHashSet`.
+     Hash(ScriptHash),
++    AppInfoHash(AppInfoHash),
++    VisualDesc(Box<NativeVisualDesc>),
+     StringInfo(StringInfo),
+     /// `wpstring`: `PStringBase<unsigned short>::Pack`.
+     WString(String),
+@@ -117,6 +123,8 @@ impl NativeObject {
+         match self {
+             Self::List(list) => list.native_type,
+             Self::Hash(hash) => hash.native_type,
++            Self::AppInfoHash(_) => ntype::APP_INFO_HASH,
++            Self::VisualDesc(_) => ntype::VISUAL_DESC,
+             Self::StringInfo(_) => ntype::STRING_INFO,
+             Self::WString(_) => ntype::WPSTRING,
+             Self::Vector(_) => ntype::VECTOR,
+@@ -146,6 +154,8 @@ impl NativeObject {
+             return container;
+         }
+         Ok(match native_type {
++            ntype::APP_INFO_HASH => Self::AppInfoHash(AppInfoHash::read(r)?),
++            ntype::VISUAL_DESC => Self::VisualDesc(Box::new(NativeVisualDesc::read(r)?)),
+             ntype::STRING_INFO => Self::StringInfo(StringInfo::read(r)?),
+             ntype::WPSTRING => Self::WString(r.wide_string()?),
+             ntype::VECTOR => Self::Vector(r.vec3()?),
+@@ -182,6 +192,8 @@ impl NativeObject {
+         match self {
+             Self::List(list) => list.write(w),
+             Self::Hash(hash) => hash.write(w),
++            Self::AppInfoHash(hash) => hash.write(w),
++            Self::VisualDesc(visual) => visual.write(w),
+             Self::StringInfo(info) => info.write(w),
+             Self::WString(text) => {
+                 w.wide_string(text);
+diff --git a/crates/ac2-net/src/protocol/native/quest.rs b/crates/ac2-net/src/protocol/native/quest.rs
+index 7e6934d..5998052 100644
+--- a/crates/ac2-net/src/protocol/native/quest.rs
++++ b/crates/ac2-net/src/protocol/native/quest.rs
+@@ -38,6 +38,10 @@ pub struct GmQuestInfo {
+     pub seconds_until_retry: f64,
+     /// `_playFXOnUpdate`.
+     pub play_fx_on_update: bool,
++    /// Optional server extension following the retail fields. Observed in Icefire
++    /// quest lists; its meaning is unknown, so preserve it without interpreting it
++    /// as _bMaxedOut. Only the explicit compatibility reader accepts this layout.
++    pub server_extension: Option<u32>,
+ }
+ 
+ impl Default for GmQuestInfo {
+@@ -59,6 +63,7 @@ impl Default for GmQuestInfo {
+             seconds_remaining: 0.0,
+             seconds_until_retry: 0.0,
+             play_fx_on_update: true,
++            server_extension: None,
+         }
+     }
+ }
+@@ -81,6 +86,7 @@ impl GmQuestInfo {
+             seconds_remaining: r.f64()?,
+             seconds_until_retry: r.f64()?,
+             play_fx_on_update: r.u32()? != 0,
++            server_extension: if r.quest_extension { Some(r.u32()?) } else { None },
+         })
+     }
+ 
+@@ -97,6 +103,9 @@ impl GmQuestInfo {
+             .f64(self.seconds_remaining)
+             .f64(self.seconds_until_retry)
+             .u32(u32::from(self.play_fx_on_update));
++        if let Some(extension) = self.server_extension {
++            w.u32(extension);
++        }
+     }
+ 
+     /// `PList<gmQuestInfo>::UnPack`: the count, then each quest.
+diff --git a/crates/ac2-net/src/protocol/pack.rs b/crates/ac2-net/src/protocol/pack.rs
+index 3281381..44f119c 100644
+--- a/crates/ac2-net/src/protocol/pack.rs
++++ b/crates/ac2-net/src/protocol/pack.rs
+@@ -87,7 +87,19 @@ pub fn pack_values(values: &[PackValue]) -> Vec<u8> {
+ /// `PackBuffer::UnPackBuffer`: the tagged values, which must end exactly at the data's end; an
+ /// unknown tag or a short value fails the whole call.
+ pub fn unpack_values(bytes: &[u8]) -> Result<Vec<PackValue>, ProtocolError> {
++    read_values(Reader::new(bytes))
++}
++
++/// Explicit compatibility with servers that append one word per gmQuestInfo.
++/// This is not the admin/Legions retail layout. Try the retail reader first;
++/// this reader still validates every reference, count and argument boundary.
++pub fn unpack_values_with_quest_extension(bytes: &[u8]) -> Result<Vec<PackValue>, ProtocolError> {
+     let mut r = Reader::new(bytes);
++    r.quest_extension = true;
++    read_values(r)
++}
++
++fn read_values(mut r: Reader<'_>) -> Result<Vec<PackValue>, ProtocolError> {
+     let mut values = Vec::new();
+     while r.remaining() > 0 {
+         let value = match r.u32()? {
+diff --git a/crates/ac2-net/src/protocol/reader.rs b/crates/ac2-net/src/protocol/reader.rs
+index 587506f..6fe3d5a 100644
+--- a/crates/ac2-net/src/protocol/reader.rs
++++ b/crates/ac2-net/src/protocol/reader.rs
+@@ -15,6 +15,8 @@ pub(crate) struct Reader<'a> {
+     pos: usize,
+     /// The `MasterProperty` types property collections need, when the caller has them.
+     pub(crate) property_types: Option<&'a dyn PropertyTypes>,
++    /// Opt-in server extension; retail gmQuestInfo::StreamPack has no tail word.
++    pub(crate) quest_extension: bool,
+ }
+ 
+ impl<'a> Reader<'a> {
+@@ -23,6 +25,7 @@ impl<'a> Reader<'a> {
+             bytes,
+             pos: 0,
+             property_types: None,
++            quest_extension: false,
+         }
+     }
+ 
+@@ -31,6 +34,7 @@ impl<'a> Reader<'a> {
+             bytes,
+             pos: 0,
+             property_types: Some(types),
++            quest_extension: false,
+         }
+     }
+ 
+@@ -38,6 +42,13 @@ impl<'a> Reader<'a> {
+         self.bytes.len() - self.pos
+     }
+ 
++    /// Preserve an exactly validated native payload for lossless re-packing.
++    pub(crate) fn capture<T>(&mut self, read: impl FnOnce(&mut Self) -> Result<T, ProtocolError>) -> Result<(T, Vec<u8>), ProtocolError> {
++        let start=self.pos;
++        let value=read(self)?;
++        Ok((value,self.bytes[start..self.pos].to_vec()))
++    }
++
+     pub(crate) fn rest(&mut self) -> &'a [u8] {
+         let rest = &self.bytes[self.pos..];
+         self.pos = self.bytes.len();
+diff --git a/crates/ac2-weenie/src/player_script.rs b/crates/ac2-weenie/src/player_script.rs
+index 2fd67cf..afd1227 100644
+--- a/crates/ac2-weenie/src/player_script.rs
++++ b/crates/ac2-weenie/src/player_script.rs
+@@ -428,6 +428,7 @@ mod tests {
+         );
+         // The profile is kept for the object and shown again next time.
+         let profile = ExaminationProfile {
++            extra: 0,
+             request: ExaminationRequest::object(8),
+             nodes: vec![],
+         };
+diff --git a/crates/ac2-weenie/tests/selection_7160.rs b/crates/ac2-weenie/tests/selection_7160.rs
+index 9cb7d1a..1c65673 100644
+--- a/crates/ac2-weenie/tests/selection_7160.rs
++++ b/crates/ac2-weenie/tests/selection_7160.rs
+@@ -65,6 +65,7 @@ fn selecting_and_examining_an_object_round_trips_through_the_double() {
+         max_vigor: 25,
+     };
+     let profile = ExaminationProfile {
++        extra: 0,
+         request: ExaminationRequest::default(),
+         nodes: vec![ExaminationDataNode {
+             order: 1,
+diff --git a/docs/retail-catalog/README.md b/docs/retail-catalog/README.md
+index f1594a6..7d0e0c3 100644
+--- a/docs/retail-catalog/README.md
++++ b/docs/retail-catalog/README.md
+@@ -39,7 +39,7 @@ scripts/retail_catalog.py status
+ | [ac2-dat](ac2-dat.md) | 507 | 23 | 4 | 475 | 5 |
+ | [ac2-db](ac2-db.md) | 633 | 123 | 12 | 450 | 48 |
+ | [ac2-net](ac2-net.md) | 556 | 217 | 15 | 324 | 0 |
+-| [ac2-weenie](ac2-weenie.md) | 1904 | 243 | 77 | 1573 | 11 |
++| [ac2-weenie](ac2-weenie.md) | 1904 | 243 | 79 | 1571 | 11 |
+ | [ac2-anim](ac2-anim.md) | 532 | 107 | 16 | 373 | 36 |
+ | [ac2-assets](ac2-assets.md) | 785 | 101 | 13 | 550 | 121 |
+ | [ac2-world](ac2-world.md) | 989 | 149 | 15 | 682 | 143 |
+@@ -50,7 +50,7 @@ scripts/retail_catalog.py status
+ | [ac2-client](ac2-client.md) | 354 | 101 | 29 | 184 | 40 |
+ | [ac2-ui](ac2-ui.md) | 2247 | 798 | 286 | 1110 | 53 |
+ | [ac2-script](ac2-script.md) | 2468 | 1364 | 108 | 916 | 80 |
+-| [ac2-gameplay](ac2-gameplay.md) | 499 | 141 | 15 | 333 | 10 |
++| [ac2-gameplay](ac2-gameplay.md) | 499 | 139 | 17 | 333 | 10 |
+ | [ac2-audio](ac2-audio.md) | 367 | 138 | 35 | 89 | 105 |
+ | [replaced](replaced.md) | 2058 | 34 | 0 | 0 | 2024 |
+ 
+diff --git a/docs/retail-catalog/ac2-gameplay.md b/docs/retail-catalog/ac2-gameplay.md
+index 3ecdc34..8a574bb 100644
+--- a/docs/retail-catalog/ac2-gameplay.md
++++ b/docs/retail-catalog/ac2-gameplay.md
+@@ -1,6 +1,6 @@
+ # ac2-gameplay: Characters, qualities, quests, fellowships, crafting, trade
+ 
+-499 retail functions: 141 done, 15 partial, 333 to do, 10 skipped.
++499 retail functions: 139 done, 17 partial, 333 to do, 10 skipped.
+ Legend and workflow: [README](README.md).
+ 
+ ## `ac2/shared/src/allegiance/allegiancedataadaptor.cpp.c` (3/4)
+@@ -204,7 +204,7 @@ Legend and workflow: [README](README.md).
+ - [ ] `EffectUINode::EffectUINode` · 00607f00 · legions 005c8da0
+ - [x] `EffectUINode::StreamPack` · 00607f50 · legions 005c8df0 — ac2-net EffectUiNode (StreamPack field order, is_pulsed, Default = Clear's -1 times)
+ 
+-## `ac2/shared/src/examination/examinationprofile.cpp.c` (2/35)
++## `ac2/shared/src/examination/examinationprofile.cpp.c` (1/35)
+ 
+ ### ExaminationDataNode
+ - [ ] `ExaminationDataNode::operator==` · 006081f0 · legions 005c9310
+@@ -218,7 +218,7 @@ Legend and workflow: [README](README.md).
+ - [ ] `ExaminationDataNode::GetIconDescValue` · 00608370 · legions 005c9490
+ 
+ ### ExaminationProfile
+-- [x] `ExaminationProfile::StreamPack` · 00608380 · legions 005c94a0 — ac2-net protocol::native (native objects in script-call PackBuffers)
++- [~] `ExaminationProfile::StreamPack` · 00608380 · legions 005c94a0 — Legions 005C94A0 includes a trailing u32 after its node list; preserve it in the native codec. Bridge adapts bounded admin profiles and sends build-specific examination requests. Live Icefire self/object examinations verified; complete examination UI semantics remain partial.
+ 
+ ### ExaminationDataNode
+ - [ ] `ExaminationDataNode::ExaminationDataNode` · 006083d0 · legions 005c9500
+@@ -339,7 +339,7 @@ Legend and workflow: [README](README.md).
+ - [ ] `gmKeyframe::Verify` · 0060a900 · legions 005cb610
+ - [x] `gmKeyframe::StreamPack` · 0060aa40 · legions 005cb750 — ac2-net protocol::native pack+unpack (Legions layouts; WState graphs round-trip byte-exact); ac2-script still decodes its own copy until it switches
+ 
+-## `ac2/shared/src/quest/gmquestinfo.cpp.c` (5/15)
++## `ac2/shared/src/quest/gmquestinfo.cpp.c` (4/15)
+ 
+ ### gmQuestInfo
+ - [ ] `gmQuestInfo::~gmQuestInfo` · 0060aae0 · legions 005cb7f0
+@@ -354,7 +354,7 @@ Legend and workflow: [README](README.md).
+ - [ ] `gmQuestInfo::gmQuestInfo` · 0060ae20 · legions 005cbb30
+ - [ ] `gmQuestInfo::operator=` · 0060ae60 · legions 005cbb70
+ - [x] `gmQuestInfo::Update` · 0060aef0 · legions 005cbc00 — ac2-script glue::quests / ac2-net native::quest
+-- [x] `gmQuestInfo::StreamPack` · 0060af00 · legions 005cbc10 — ac2-script glue::quests / ac2-net native::quest
++- [~] `gmQuestInfo::StreamPack` · 0060af00 · legions 005cbc10 — Retail field order retained. Explicit compatibility reader additionally preserves an unidentified per-quest tail word observed from Icefire, restricted by the bridge to quest/player profiles; this extension is not claimed as recovered retail behavior.
+ - [ ] `gmQuestInfo::gmQuestInfo` · 0060aff0 · legions 005cbd00
+ - [ ] `gmQuestInfo::DumpW` · 0060b030 · legions 005cbd40
+ 
+diff --git a/docs/retail-catalog/ac2-weenie.md b/docs/retail-catalog/ac2-weenie.md
+index c90d681..288cc2a 100644
+--- a/docs/retail-catalog/ac2-weenie.md
++++ b/docs/retail-catalog/ac2-weenie.md
+@@ -1,6 +1,6 @@
+ # ac2-weenie: Weenie objects, client events, actions, the session
+ 
+-1904 retail functions: 243 done, 77 partial, 1573 to do, 11 skipped.
++1904 retail functions: 243 done, 79 partial, 1571 to do, 11 skipped.
+ Legend and workflow: [README](README.md).
+ 
+ ## `ac2/client/src/cfactory/gmcenginefactory.cpp.c` (0/11)
+@@ -1969,7 +1969,7 @@ Legend and workflow: [README](README.md).
+ 
+ ### CNativeFactory
+ - [ ] `CNativeFactory::UpdateReferences` · 004acef0 · legions 004a4040
+-- [ ] `CNativeFactory::PackNativeObject` · 004ad1d0 · legions 004a4320 — ac2-net protocol::NativeObject pack+unpack: every native type the Legions WStates hold (all 39,748 graphs round-trip byte-exact) plus ShortcutInfo, UISaveLocations, SelectionInfo, Examination*, the adaptors; iterators and other engine types not ported
++- [~] `CNativeFactory::PackNativeObject` · 004ad1d0 · legions 004a4320 — ac2-net native codecs include AppInfoHash 0x0f via AppearanceInfo::StreamPack and VisualDesc 0x71 via VisualDesc::StreamUnpack, including initial inventory script profiles; existing WState/UI codecs retained; iterators and remaining engine types not ported
+ 
+ ### PHashTable<unsigned_long,float>
+ - [ ] `PHashTable<unsigned_long,float>::PHashTable<unsigned_long,float>` · 004ad780 · legions 004a48d0
+@@ -2242,7 +2242,7 @@ Legend and workflow: [README](README.md).
+ ### CNativeFactory
+ - [ ] `CNativeFactory::CopyNativeObject` · 004b28f0 · legions 004a9ae0
+ - [ ] `CNativeFactory::NewNativeObject` · 004b3980 · legions 004aab70
+-- [ ] `CNativeFactory::UnPackNativeObject` · 004b4720 · legions 004ab910 — ac2-script native::unpack: the native types Legions WStates hold
++- [~] `CNativeFactory::UnPackNativeObject` · 004b4720 · legions 004ab910 — ac2-net native codecs include AppInfoHash 0x0f via AppearanceInfo::StreamPack and VisualDesc 0x71 via VisualDesc::StreamUnpack, including initial inventory script profiles; existing WState/UI codecs retained; iterators and remaining engine types not ported
+ 
+ ## `portal/client/src/weenie/interp/glue/gcwallocator.cpp.c` (0/1)
+ 
+diff --git a/docs/retail-catalog/marks.tsv b/docs/retail-catalog/marks.tsv
+index 32cd70e..0964845 100644
+--- a/docs/retail-catalog/marks.tsv
++++ b/docs/retail-catalog/marks.tsv
+@@ -1893,9 +1893,9 @@ key	status	note
+ 004a9760	_	ac2-net protocol::native pack+unpack (Legions layouts; WState graphs round-trip byte-exact); ac2-script still decodes its own copy until it switches
+ 004a9b90	_	unpack only, in ac2-net protocol::property / fx (types from a PropertyTypes resolver; Legions BaseProperty::StreamPack 0x0064B4E0 instruction-identical)
+ 004a9c30	_	unpack only, in ac2-net protocol::property / fx (types from a PropertyTypes resolver; Legions BaseProperty::StreamPack 0x0064B4E0 instruction-identical)
+-004ad1d0	_	ac2-net protocol::NativeObject pack+unpack: every native type the Legions WStates hold (all 39,748 graphs round-trip byte-exact) plus ShortcutInfo, UISaveLocations, SelectionInfo, Examination*, the adaptors; iterators and other engine types not ported
++004ad1d0	~	ac2-net native codecs include AppInfoHash 0x0f via AppearanceInfo::StreamPack and VisualDesc 0x71 via VisualDesc::StreamUnpack, including initial inventory script profiles; existing WState/UI codecs retained; iterators and remaining engine types not ported
+ 004b1da0	_	ac2-script reference/native unpack
+-004b4720	_	ac2-script native::unpack: the native types Legions WStates hold
++004b4720	~	ac2-net native codecs include AppInfoHash 0x0f via AppearanceInfo::StreamPack and VisualDesc 0x71 via VisualDesc::StreamUnpack, including initial inventory script profiles; existing WState/UI codecs retained; iterators and remaining engine types not ported
+ 004b4ba0	_	ac2-script host glue (notices, chat requests, gCWRepository, gCWInterface)
+ 004b4c50	_	ac2-script host glue (notices, chat requests, gCWRepository, gCWInterface)
+ 004b4cf0	_	ac2-script host glue (notices, chat requests, gCWRepository, gCWInterface)
+@@ -4532,7 +4532,7 @@ key	status	note
+ 006080b0	x	ac2-script glue::options / examination (Legions layout and efun switch)
+ 00608120	x	ac2-script glue::options / examination (Legions layout and efun switch)
+ 00608150	x	ac2-net protocol::native pack+unpack (Legions layouts; WState graphs round-trip byte-exact); ac2-script still decodes its own copy until it switches
+-00608380	x	ac2-net protocol::native (native objects in script-call PackBuffers)
++00608380	~	Legions 005C94A0 includes a trailing u32 after its node list; preserve it in the native codec. Bridge adapts bounded admin profiles and sends build-specific examination requests. Live Icefire self/object examinations verified; complete examination UI semantics remain partial.
+ 00608490	x	ac2-net protocol::native (native objects in script-call PackBuffers)
+ 00609660	x	ac2-net ExaminationRequest: Legions 0x005C9210 layout (+3 words, type 0x4000000D)
+ 00609700	x	ac2-script glue::options / examination (Legions layout and efun switch)
+@@ -4545,7 +4545,7 @@ key	status	note
+ 0060abd0	x	ac2-script glue::quests / ac2-net native::quest
+ 0060ac50	x	ac2-script glue::quests / ac2-net native::quest
+ 0060aef0	x	ac2-script glue::quests / ac2-net native::quest
+-0060af00	x	ac2-script glue::quests / ac2-net native::quest
++0060af00	~	Retail field order retained. Explicit compatibility reader additionally preserves an unidentified per-quest tail word observed from Icefire, restricted by the bridge to quest/player profiles; this extension is not claimed as recovered retail behavior.
+ 0060b240	x	ac2-script glue::quests / ac2-net native::quest
+ 0060b330	x	ac2-script glue::quests / ac2-net native::quest
+ 0060b3d0	x	ac2-script glue::quests / ac2-net native::quest
+diff --git a/crates/ac2-net/src/protocol/native/appearance.rs b/crates/ac2-net/src/protocol/native/appearance.rs
+new file mode 100644
+index 0000000..386bce7
+--- /dev/null
++++ b/crates/ac2-net/src/protocol/native/appearance.rs
+@@ -0,0 +1,80 @@
++//! CNativeFactory::PackNativeObject (AppInfoHash, 0x0f):
++//! PHashTable<unsigned long,AppearanceInfo>::StreamPack, with each value
++//! packed by AppearanceInfo::StreamPack as a key/scalar hash. This native
++//! object also occurs inside the player's initial script inventory profile.
++use crate::protocol::reader::{Reader, Writer, MAX_ITEMS};
++use crate::protocol::types::float_table;
++use crate::protocol::ProtocolError;
++use crate::protocol::VisualDesc;
++
++/// CNativeFactory's VisualDesc (0x71) uses the same bounded StreamPack decoder
++/// as world object creates. Preserve its original hash headers and FX payload
++/// when a script reference is re-packed; neither view nor bytes can be mutated.
++#[derive(Debug, Clone, PartialEq)]
++pub struct NativeVisualDesc { visual: VisualDesc, packed: Vec<u8> }
++impl NativeVisualDesc {
++    pub fn visual(&self) -> &VisualDesc { &self.visual }
++    pub(crate) fn read(r:&mut Reader<'_>)->Result<Self,ProtocolError> {
++        let (visual,packed)=r.capture(VisualDesc::read)?;
++        Ok(Self{visual,packed})
++    }
++    pub(crate) fn write(&self,w:&mut Writer) {w.bytes.extend_from_slice(&self.packed);}
++}
++
++#[derive(Debug, Clone, PartialEq)]
++pub struct AppInfoHash {
++    pub bucket_index: u8,
++    /// Appearance table DID, nested bucket index, appearance key/scalar pairs.
++    pub tables: Vec<(u32, u8, Vec<(u32, f32)>)>,
++}
++impl AppInfoHash {
++    pub(crate) fn read(r: &mut Reader<'_>) -> Result<Self, ProtocolError> {
++        let header=r.u32()?;
++        let count=(header & 0x00ff_ffff) as usize;
++        if count>MAX_ITEMS || count.saturating_mul(8)>r.remaining() {
++            return Err(ProtocolError::Invalid("appearance hash count"));
++        }
++        let mut tables=Vec::with_capacity(count);
++        for _ in 0..count {
++            let did=r.u32()?;
++            let (buckets,keys)=float_table(r)?;
++            tables.push((did,buckets,keys));
++        }
++        Ok(Self{bucket_index:(header>>24) as u8,tables})
++    }
++    pub(crate) fn write(&self,w:&mut Writer) {
++        w.u32((u32::from(self.bucket_index)<<24)|self.tables.len() as u32);
++        for (did,buckets,keys) in &self.tables {
++            w.u32(*did).u32((u32::from(*buckets)<<24)|keys.len() as u32);
++            for (key,scalar) in keys {w.u32(*key).f32(*scalar);}
++        }
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::protocol::{NativeObject,PackValue,pack_values,unpack_values};
++    #[test]
++    fn nested_appearance_hash_keeps_following_profile_arguments_aligned() {
++        for tables in [vec![],vec![(0x19000001,2,vec![(3,0.25),(4,0.75)])]] {
++            let values=vec![PackValue::Int(7),PackValue::native(NativeObject::AppInfoHash(AppInfoHash{bucket_index:3,tables})),PackValue::LongInt(0x8140000000000001)];
++            let bytes=pack_values(&values);
++            assert_eq!(unpack_values(&bytes).unwrap(),values);
++            assert!(unpack_values(&bytes[..bytes.len()-1]).is_err());
++        }
++        assert!(AppInfoHash::read(&mut Reader::new(&4097u32.to_le_bytes())).is_err());
++    }
++    #[test]
++    fn native_visual_desc_is_bounded_and_repacked_without_losing_headers() {
++        let mut bytes=vec![];
++        for word in [0x102u32,0x1f000001,0x20,0x02000001,0x19000001,0x03000001,7,0.5f32.to_bits()] {bytes.extend(word.to_le_bytes());}
++        let visual=NativeVisualDesc::read(&mut Reader::new(&bytes)).unwrap();
++        assert_eq!(visual.visual().parent,Some(0x1f000001));
++        assert_eq!(visual.visual().global_mods.as_ref().unwrap().appearance[0].1,vec![(7,0.5)]);
++        assert!(NativeVisualDesc::read(&mut Reader::new(&bytes[..bytes.len()-1])).is_err());
++        let values=vec![PackValue::native(NativeObject::VisualDesc(Box::new(visual))),PackValue::Int(29)];
++        let packed=pack_values(&values);
++        assert_eq!(unpack_values(&packed).unwrap(),values);
++        assert_eq!(pack_values(&unpack_values(&packed).unwrap()),packed);
++    }
++}
+diff --git a/crates/ac2-script/src/glue/quests.rs b/crates/ac2-script/src/glue/quests.rs
+index 7c5ca2a..ae1f94a 100644
+--- a/crates/ac2-script/src/glue/quests.rs
++++ b/crates/ac2-script/src/glue/quests.rs
+@@ -125,6 +125,7 @@ fn init(vm: &mut Vm, ctx: &mut Context) -> InterpStatus {
+         done: f(17),
+         seconds_until_retry: f(19),
+         play_fx_on_update: word(ctx, 20) != 0,
++        server_extension: None,
+     };
+     let this = Call::new(ctx).this();
+     match quest_mut(vm, this) {

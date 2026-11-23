@@ -19,6 +19,7 @@ pub const RESURRECT: u32 = 0x8207000e;
 pub enum Request {
     Loot(crate::loot::Request),
     Allegiance(crate::allegiance::Query),
+    AllegianceAction(crate::allegiance::membership::Action),
     Group(crate::groups::Request),
     MerchantSell(crate::merchants::SellRequest),
     MerchantBuy(crate::merchants::BuyRequest),
@@ -26,6 +27,7 @@ pub enum Request {
     MerchantRefresh(u64),
     MerchantConsignment(u64),
     ExamineClear,
+    StoryScenesDone,
     CraftValidate(crate::crafting::ValidateRequest),
     CraftExecute(crate::crafting::ExecuteRequest),
     CraftRaise(u32),
@@ -109,12 +111,22 @@ impl Reader<'_> {
 }
 
 pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
+    if let Some(action)=crate::allegiance::membership::decode(function,bytes){return action.map(Request::AllegianceAction);}
     if crate::loot::handles(function,bytes){return crate::loot::decode(function,bytes).map(Request::Loot);}
     if bytes.len() > MAX_ARGUMENT_BYTES {
         return Err(WorldError::LimitExceeded);
     }
     let mut r = Reader { bytes, pos: 0 };
     let request = match function {
+        0x82130013 => {
+            // PlayScenesDone echoes the issued A4 graph with a client-local reference ID.
+            let expected = crate::ui::menhir_story();
+            if bytes.len() != expected.len() || bytes[..8] != expected[..8] || bytes[12..] != expected[12..] {
+                return Err(WorldError::InvalidValue);
+            }
+            r.pos = bytes.len();
+            Request::StoryScenesDone
+        }
         crate::inventory_request::DROP => {
             let request=crate::inventory_request::DropRequest::arguments(bytes)?;
             r.pos=bytes.len();Request::InventoryDrop(request)
@@ -364,6 +376,20 @@ pub fn skill_finished(request_id: u32) -> Result<Vec<u8>, WorldError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn menhir_story_matches_the_three_native_shard_captures_and_accepts_local_handles() {
+        let mut bytes = crate::ui::menhir_story();
+        assert_eq!(bytes.len(), 980);
+        // FNV-1a of each recorded A4 argument with reference handle normalized to one.
+        bytes[8..12].copy_from_slice(&1u32.to_le_bytes());
+        let hash = bytes.iter().fold(0xcbf29ce484222325u64, |hash, &byte|
+            (hash ^ u64::from(byte)).wrapping_mul(0x100000001b3));
+        assert_eq!(hash, 0x1ab963c7198f9b59);
+        bytes[8..12].copy_from_slice(&0x351du32.to_le_bytes());
+        assert_eq!(decode(0x82130013, &bytes), Ok(Request::StoryScenesDone));
+        bytes[140] ^= 1;
+        assert!(decode(0x82130013, &bytes).is_err());
+    }
     #[test]
     fn requests_have_exact_types_lengths_and_bounded_text() {
         let mut say = integer(0);

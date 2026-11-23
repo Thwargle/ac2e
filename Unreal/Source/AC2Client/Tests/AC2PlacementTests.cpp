@@ -3,6 +3,7 @@
 #include "AC2WorldStream.h"
 #include "AC2WorldGrid.h"
 #include "AC2Assets.h"
+#include "AC2VaultFixture.h"
 #include "Engine/World.h"
 #include "Engine/Engine.h"
 #include "Components/BoxComponent.h"
@@ -186,16 +187,29 @@ public:
         {
             Test->TestEqual(TEXT("Closed Vault does not load adjacent dungeons"),Stream->ResidentCount(),1);
             Test->TestTrue(TEXT("Interior coordinate outside its owner's grid square is ready"),Stream->ReadyAt(Origin+FVector(18173,6294,1512)));
-            for(auto Visual:{0x1f00031eu,0x1f0012beu,0x1f000d76u})
+            const FString Directory = AC2::ResolveDatDirectory(TEXT(""));
+            FAC2CharacterCatalog Catalog;
+            FString Error;
+            if (!Test->TestTrue(TEXT("Open authored Vault catalog"), Catalog.Open(Directory, Error))) return true;
+            const auto Vault = AC2VaultFixture::Resolve(Directory, Catalog);
+            if (!Test->TestTrue(TEXT("Recognize installed Vault shard and scout"), Vault.Shard && Vault.Scout)) return true;
+            struct FProp { uint32 Physical; FVector Position; };
+            const FProp Fixture[] = {
+                {Vault.Portal, FVector(17873.0484,6594.236,1512.1846)},
+                {Vault.Shard, FVector(18173.0484,6294.236,1512.1846)},
+                {Vault.Scout, FVector(17700,6400,1529)}
+            };
+            for(const FProp& Prop : Fixture)
             {
                 auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();
-                auto Model=MakeUnique<FAC2AssetLibrary>();FString Error;
-                if(!Test->TestTrue(TEXT("Open Vault prop DATs"),Model->Open(AC2::ResolveDatDirectory(TEXT("")),Error)))return true;
-                if(!Test->TestTrue(TEXT("Load Vault prop geometry"),Model->DrawModel(Visual,Actor,Root)))return true;
+                auto Model=MakeUnique<FAC2AssetLibrary>();
+                if(!Test->TestTrue(TEXT("Open Vault prop DATs"),Model->Open(Directory,Error)))return true;
+                if(!Test->TestTrue(TEXT("Load Vault prop geometry"),Model->DrawModel(Prop.Physical,Actor,Root)))return true;
                 const int32 Solid=Model->EnableWorldObjectCollision();
-                if(Visual==0x1f0012be)Test->TestTrue(TEXT("Menhir shard has solid collision"),Solid>0);
-                Actor->SetActorLocation(Origin+(Visual==0x1f00031e?FVector(17873.0484,6594.236,1512.1846):Visual==0x1f0012be?FVector(18173.0484,6294.236,1512.1846):FVector(17700,6400,1529)));
-                UE_LOG(LogTemp,Display,TEXT("AC2 Vault prop %08X solid=%d bounds=%s"),Visual,Solid,*Actor->GetComponentsBoundingBox(true).GetSize().ToString());
+                if(Prop.Physical==Vault.Shard)Test->TestTrue(TEXT("Menhir shard has solid collision"),Solid>0);
+                if(Prop.Physical==Vault.Scout)Test->TestTrue(TEXT("Scout has animated body"),Model->HasLocomotion());
+                Actor->SetActorLocation(Origin+Prop.Position);
+                UE_LOG(LogTemp,Display,TEXT("AC2 Vault physical %08X solid=%d bounds=%s"),Prop.Physical,Solid,*Actor->GetComponentsBoundingBox(true).GetSize().ToString());
                 Props.Add(MoveTemp(Model));
             }
             return false;

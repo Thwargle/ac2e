@@ -49,6 +49,9 @@ impl Bootstrap {
         self.client_version
     }
     pub fn load(directory: &Path) -> io::Result<Self> {
+        Self::load_profile(directory, std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1"))
+    }
+    pub(crate) fn load_profile(directory: &Path, allow_unreal_legions: bool) -> io::Result<Self> {
         let mut portal = Dat::open(directory.join("portal.dat"))?;
         let player_state = portal.read(0x7100110f)?;
         let package_state = portal.read(0x7000037f)?;
@@ -62,12 +65,17 @@ impl Bootstrap {
                 crate::data_profile::set_unconverted_7230(true);
                 "7230"
             }
-            (0xc0b0230d626998c2, 0x83c30e31275ab0e3) => "7148",
+            (0xc0b0230d626998c2, 0x83c30e31275ab0e3) => {
+                // make_7148_test_assets converts only the two client WStates.
+                // Its skill, advancement and gameplay tables are still 7230.
+                crate::data_profile::set_unconverted_7230(true);
+                "7148"
+            }
             // AC2:Unreal integration: the installed Legions data is read-only and the
             // Unreal client does not execute these WState scripts. Opt in explicitly;
             // this is NOT a compatibility claim for the original 7148 executable.
             (0xfdebc17c61dc1d32, 0xaae72d1db993701b)
-                if std::env::var("PYREALIUM_UNREAL_LEGIONS_DATA").as_deref() == Ok("1") => "7148",
+                if allow_unreal_legions => "7148",
             _ => return Err(invalid("unrecognized or mixed player script-state layouts")),
         };
         for id in [PLAYER_ENTITY, 0x0f000000] {
@@ -264,13 +272,30 @@ impl Bootstrap {
             player.extend(key.to_le_bytes());
             player.extend(value.to_le_bytes());
         }
-        player.extend_from_slice(&self.qualities[180..200]);
+        let authored_key = u32::from_le_bytes(self.qualities[184..188].try_into().unwrap());
+        let authored_value = u32::from_le_bytes(self.qualities[188..192].try_into().unwrap());
+        let mut floats = vec![(0x11eu32, f32::from(progression.vitae).to_bits())];
+        if authored_key != 0x11e { floats.push((authored_key, authored_value)); }
+        floats.sort_unstable_by_key(|(key, _)| (key % 11, *key));
+        player.extend((floats.len() as u32).to_le_bytes());
+        for (key, value) in floats {
+            player.extend(key.to_le_bytes());
+            player.extend(value.to_le_bytes());
+        }
+        player.extend_from_slice(&self.qualities[192..200]);
         player.extend(body.entity.to_le_bytes());
-        player.extend(2u32.to_le_bytes());
-        for (key, value) in [
+        let (floor, ceiling) = progression.level_xp_bounds();
+        let mut longs = [
+            (crate::progression::LEVEL_XP_FLOOR, floor),
+            (crate::progression::LEVEL_XP_CEILING, ceiling),
             (0x12cu32, progression.xp),
             (0x12d, progression.available_xp),
-        ] {
+            (0x13b, progression.vitae_xp),
+            (0x13c, progression.vitae_remaining()),
+        ];
+        longs.sort_unstable_by_key(|(key, _)| (key % 11, *key));
+        player.extend((longs.len() as u32).to_le_bytes());
+        for (key, value) in longs {
             player.extend(key.to_le_bytes());
             player.extend(value.to_le_bytes());
         }

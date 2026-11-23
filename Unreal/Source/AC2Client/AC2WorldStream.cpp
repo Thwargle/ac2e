@@ -1,5 +1,8 @@
 #include "AC2WorldStream.h"
 #include "AC2Performance.h"
+#include "AC2NativeMaterial.h"
+#include "AC2WaterReflection.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "AC2Placement.h"
 #include "AC2WorldGrid.h"
 #include "Async/Async.h"
@@ -16,10 +19,12 @@ struct FAC2WorldStream::FImpl
         uint32 Id = 0;
         FAC2LandBlock Land;
         FAC2TerrainMesh Mesh;
+        FAC2ShoreWaterMesh WaterSurface;
         TUniquePtr<FAC2AssetLibrary> Assets;
         AActor *Actor = nullptr;
         UProceduralMeshComponent *Terrain = nullptr;
         UProceduralMeshComponent *WaterMesh = nullptr;
+        UProceduralMeshComponent *ShoreMesh = nullptr;
         FAC2BlockWater Water;
         bool Complete = false;
         ~FBlock()
@@ -51,6 +56,7 @@ struct FAC2WorldStream::FImpl
             B.Terrain->SetVisibility(ExteriorVisible);
             B.Terrain->SetCollisionEnabled(ExteriorVisible && TerrainCollision ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
             if (B.WaterMesh) B.WaterMesh->SetVisibility(ExteriorVisible && !DistantWaterActive);
+            if (B.ShoreMesh) B.ShoreMesh->SetVisibility(ExteriorVisible && !DistantWaterActive);
         }
     }
     int32 UnloadedSinceGC = 0;
@@ -80,21 +86,48 @@ struct FAC2WorldStream::FImpl
         B.Terrain->CreateMeshSection(0, B.Mesh.Vertices, B.Mesh.Indices, B.Mesh.Normals, B.Mesh.UVs, TArray<FColor>(),
                                      TArray<FProcMeshTangent>(), true);
         B.Terrain->SetMaterial(0, B.Assets->UploadTerrain());
+        RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(B.Terrain->GetMaterial(0)),B.Terrain,false);
         B.Water = B.Assets->Water();
         if (B.Water.Present)
         {
             auto *W = NewObject<UProceduralMeshComponent>(B.Actor);
             B.WaterMesh = W;
+            ExcludeFromAC2WaterReflection(World,W);
+            RegisterAC2WaterPlane(World,B.Actor,B.Id,B.Water.Height*100.);
             B.Actor->AddInstanceComponent(W);
             W->SetupAttachment(Root);
             W->SetCollisionEnabled(ECollisionEnabled::NoCollision);
             W->SetCastShadow(false);
             W->RegisterComponent();
-            FAC2TerrainMesh Surface;
-            AppendAC2WaterMesh(B.Id,B.Water,FVector::ZeroVector,Surface);
+            const auto& Surface=B.WaterSurface;
             W->CreateMeshSection(0,Surface.Vertices,Surface.Indices,Surface.Normals,Surface.UVs,
+                                 Surface.ShoreUVs,{},{},
                                  TArray<FColor>(),TArray<FProcMeshTangent>(),false);
             W->SetMaterial(0, B.Assets->Material(B.Water.Above, true));
+            RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(W->GetMaterial(0)),W,false);
+            RegisterAC2WaterReflection(World,Cast<UMaterialInstanceDynamic>(W->GetMaterial(0)));
+            if(B.Water.Below){FAC2TerrainMesh Under;AppendAC2WaterMesh(B.Id,B.Water,FVector::ZeroVector,Under);
+                W->CreateMeshSection(1,Under.Vertices,Under.Indices,Under.Normals,Under.UVs,TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                W->SetMaterial(1,B.Assets->Material(B.Water.Below,true,true));
+                RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(W->GetMaterial(1)),W,false);
+                RegisterAC2WaterReflection(World,Cast<UMaterialInstanceDynamic>(W->GetMaterial(1)));
+            }
+            if(!Surface.Strip.Indices.IsEmpty()){
+                auto* Shore=NewObject<UProceduralMeshComponent>(B.Actor);B.ShoreMesh=Shore;ExcludeFromAC2WaterReflection(World,Shore);
+                B.Actor->AddInstanceComponent(Shore);Shore->SetupAttachment(Root);
+                Shore->SetCollisionEnabled(ECollisionEnabled::NoCollision);Shore->SetCastShadow(false);
+                Shore->SetTranslucentSortPriority(1);Shore->RegisterComponent();
+                const auto& Strip=Surface.Strip;
+                Shore->CreateMeshSection(0,Strip.Vertices,Strip.Indices,Strip.Normals,Strip.UVs,
+                    Surface.StripUVs,{},{},TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                Shore->SetMaterial(0,W->GetMaterial(0));
+                const auto& Foam=Surface.Foam;
+                if(!Foam.Indices.IsEmpty()){
+                    Shore->CreateMeshSection(1,Foam.Vertices,Foam.Indices,Foam.Normals,Foam.UVs,
+                        Surface.FoamMaskUVs,Surface.FoamPassUVs,{},TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                    Shore->SetMaterial(1,Shore->GetMaterial(0));
+                }
+            }
         }
         Blocks.Add(B.Id, MoveTemp(Pending));
         ApplyCellContext();
@@ -214,11 +247,11 @@ void FAC2WorldStream::Tick(const FVector &Position)
                     (*B)->Assets->ReleaseCPUData();
                 break;
             }
+    const float Now = Impl->World->GetTimeSeconds();
     for (const auto &B : Impl->Blocks)
     {
-        B.Value->Assets->UpdateMaterials(Impl->World->GetTimeSeconds());
-        FVector LocalViewer = Position - AC2::BlockOrigin(B.Key);
-        B.Value->Assets->Animate(Impl->World->GetTimeSeconds(), 0, &LocalViewer);
+        B.Value->Assets->UpdateMaterials(Now);
+        B.Value->Assets->Animate(Now, 0);
     }
     if (!Impl->Pending)
     {
@@ -244,7 +277,9 @@ void FAC2WorldStream::Tick(const FVector &Position)
                     if(!Cell.Open(FPaths::Combine(Directory,TEXT("cell_1.dat")),2,State->LastError))return false;
                     const auto Neighborhood=LoadAC2TerrainNeighborhood(Cell,Job->Id,1);
                     Job->Mesh=BuildAC2TerrainMesh(Defs,Job->Land,&Neighborhood);
-                    return Job->Assets->PrepareBlock(Directory, Defs, Job->Land, Job->Mesh, State->LastError);
+                    if(!Job->Assets->PrepareBlock(Directory, Defs, Job->Land, Job->Mesh, State->LastError))return false;
+                    AppendAC2ShoreWaterMesh(Job->Id,Job->Assets->Water(),FVector::ZeroVector,Defs,Neighborhood,Job->WaterSurface,&Cell);
+                    return true;
                 });
                 break;
             }
@@ -419,14 +454,19 @@ bool FAC2WorldStream::GroundAt(const FVector &P, double &Height) const
 }
 bool FAC2WorldStream::WaterAt(const FVector &P, double &Height) const
 {
+    const auto* Water=WaterDataAt(P);if(!Water)return false;
+    Height=Water->Height*100;return true;
+}
+const FAC2BlockWater* FAC2WorldStream::WaterDataAt(const FVector& P) const
+{
+    if(Impl->InteriorCell && !Impl->ExteriorVisible)return nullptr;
     uint32 Id;
     if (!AC2::WorldBlock(P, Id))
-        return false;
+        return nullptr;
     const auto *B = Impl->Blocks.Find(Id);
     if (!B || !(*B)->Water.Present)
-        return false;
-    Height = (*B)->Water.Height * 100;
-    return true;
+        return nullptr;
+    return &(*B)->Water;
 }
 bool FAC2WorldStream::CellPosition(uint32 Id, FVector &Position) const
 {
@@ -560,8 +600,10 @@ void FAC2WorldStream::SetDistantWaterActive(bool Active)
     Impl->DistantWaterActive=Active;
     // One continuous surface owns near and far water. Drawing both translucent
     // surfaces would darken overlaps whenever the streaming centre moves.
-    for(const auto& Pair:Impl->Blocks)
+    for(const auto& Pair:Impl->Blocks){
         if(Pair.Value->WaterMesh)Pair.Value->WaterMesh->SetVisibility(Impl->ExteriorVisible && !Active);
+        if(Pair.Value->ShoreMesh)Pair.Value->ShoreMesh->SetVisibility(Impl->ExteriorVisible && !Active);
+    }
 }
 bool FAC2WorldStream::InteriorCellAt(const FVector& Feet,uint32& Cell) const
 {
@@ -598,6 +640,40 @@ TArray<FAC2ParticleSource> FAC2WorldStream::ParticleSources(const FVector &Viewe
     return Out;
 }
 
+
+TArray<FAC2ScenerySound> FAC2WorldStream::SoundSources() const
+{
+    TArray<FAC2ScenerySound> Out;
+    for(const auto& Block:Impl->Blocks)
+    {
+        const auto& Sources=Block.Value->Assets->SoundSources();
+        for(int32 I=0;I<Sources.Num();++I)
+        {
+            auto S=Sources[I];
+            if(!Block.Value->Assets->CellVisible(S.Cell) || !FAC2AssetLibrary::EffectChannelsMatch(S.Channels))continue;
+            S.Position+=AC2::BlockOrigin(Block.Key);
+            // Distinct from component IDs and the native region-music namespace.
+            S.Key=(uint64(1)<<62)|(uint64(Block.Key)<<32)|uint64(I+1);
+            Out.Add(MoveTemp(S));
+        }
+    }
+    // Native SoundInfo owns distance attenuation. Do not use the nearest-N
+    // particle list here: changing that list would repeatedly restart loops.
+    return Out;
+}
+
+bool FAC2WorldStream::InteriorFog(const FVector& Viewer,FAC2SkyKey& Fog) const
+{
+    uint32 Cell=0;
+    for(const auto& Pair:Impl->Blocks)
+    {
+        const FVector Origin=AC2::BlockOrigin(Pair.Key);
+        if(!Pair.Value->Assets->LightingCellAt(Viewer-Origin,Cell))continue;
+        Pair.Value->Assets->InteriorFog(Fog);
+        return true;
+    }
+    return false;
+}
 
 bool FAC2WorldStream::InteriorLighting(const FVector& Viewer,FAC2PreviewLighting& Lighting) const
 {

@@ -12,6 +12,7 @@ param(
     [switch]$Smoke,
     [switch]$UISmoke,
     [switch]$PortraitSmoke,
+    [switch]$AvatarPickingSmoke,
     [switch]$MapSmoke,
     [switch]$EnvironmentSmoke,
     [switch]$ControllerSmoke,
@@ -21,11 +22,16 @@ param(
     [ValidateRange(1,65534)][int]$Port=9000,
     [ValidatePattern('^[a-zA-Z0-9_]{0,32}$')][string]$Account='',
     [string]$AccountUrl='',
+    [string]$LoginProfiles='',
+    [switch]$DirectLogin,
+    [ValidateSet('7148','7160','7230')][string]$Protocol,
     [System.Management.Automation.PSCredential]$Credential,
     [switch]$NetworkSmoke
 )
 $ErrorActionPreference = 'Stop'
+if($DirectLogin -and ($AccountUrl -or $Credential)){throw 'Direct login takes the password in the client. Omit AccountUrl and Credential.'}
 if ($PortraitSmoke) { $UISmoke = $true }
+if ($AvatarPickingSmoke) { $UISmoke = $true }
 if ($EnvironmentSmoke) { $Block = '75B8' }
 # Windows PowerShell 5.1 does not populate PSScriptRoot while binding defaults.
 if ([string]::IsNullOrWhiteSpace($DatDirectory)) {
@@ -74,9 +80,10 @@ if ($Mode -eq 'Inspect') {
 $materialRoot = Join-Path $PSScriptRoot 'Unreal/Content/AC2/Materials'
 $missingMaterials = @('M_AC2Opaque','M_AC2Cutout','M_AC2Sky','M_AC2SkyAlpha','M_AC2SkyAdd','M_AC2Water','M_AC2Far','M_AC2Particle','M_AC2SceneryAlpha','M_AC2SceneryAdd','M_AC2ParticleAdd','M_AC2Grass','M_AC2UIOpaque','M_AC2UICutout','M_AC2UIAlpha','M_AC2UIAdd') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $materialVersion = Join-Path $materialRoot 'template-version.txt'
-$missingMaterials += @('M_AC2Capture') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
+$missingMaterials += @('M_AC2Terrain','M_AC2Capture','M_AC2FrameBuffer','M_AC2FrameBufferOneSided') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $needsMaterialUpdate = !(Test-Path -LiteralPath $materialVersion)
-if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '18' }
+if (!$needsMaterialUpdate) { $needsMaterialUpdate = (Get-Content -LiteralPath $materialVersion -Raw).Trim() -ne '46' }
+$missingMaterials += @('M_AC2OpaqueAnisotropic','M_AC2OpaqueAnisotropicTwoSided','M_AC2UIOpaqueAnisotropic','M_AC2UIOpaqueAnisotropicTwoSided','M_AC2SceneryAlphaAnisotropic','M_AC2SceneryAlphaAnisotropicOneSided','M_AC2UIAlphaAnisotropic','M_AC2UIAlphaAnisotropicOneSided') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 $missingMaterials += @('M_AC2OpaqueTwoSided','M_AC2CutoutOneSided','M_AC2SceneryAlphaOneSided','M_AC2SceneryAddOneSided','M_AC2UIOpaqueTwoSided','M_AC2UICutoutOneSided','M_AC2UIAlphaOneSided','M_AC2UIAddOneSided') | Where-Object { !(Test-Path -LiteralPath (Join-Path $materialRoot ($_ + '.uasset'))) }
 if ($missingMaterials -or $needsMaterialUpdate) {
     & $commandlet $project -run=AC2Inspect -MaterialsOnly -unattended -nop4 -NullRHI -stdout -FullStdOutLogOutput
@@ -93,7 +100,7 @@ if ($Mode -eq 'Test') {
 }
 $hourText = $Hour.ToString([System.Globalization.CultureInfo]::InvariantCulture)
 $loginTicket=''
-if($Online -or $NetworkSmoke -or $LoginSmoke -or $AccountUrl -or $PSBoundParameters.ContainsKey('Server')) {
+if($Online -or $NetworkSmoke -or $LoginSmoke -or $DirectLogin -or $AccountUrl -or $PSBoundParameters.ContainsKey('Server')) {
     $Online=$true
     $bridge=Join-Path $PSScriptRoot 'Network/Bridge/target/release/ac2-network-bridge.exe'
     if(!(Test-Path -LiteralPath $bridge)){ & (Join-Path $PSScriptRoot 'Build-AC2Network.ps1') }
@@ -114,8 +121,19 @@ if($Online -or $NetworkSmoke -or $LoginSmoke -or $AccountUrl -or $PSBoundParamet
 $launchArgs = @(('"' + $project + '"'), ('-AC2DatDir="' + $DatDirectory + '"'), "-AC2Block=$Block", "-AC2Radius=$Radius", "-AC2Hour=$hourText", '-nosplash')
 if($Online){$launchArgs+=@('-AC2Online',"-AC2Server=$Server","-AC2Port=$Port");if($Account){$launchArgs+="-AC2Account=$Account"}}
 if($AccountUrl){$launchArgs+=('-AC2AccountUrl="'+$AccountUrl+'"')}
-if ($Mode -eq 'Play') { $launchArgs += @('-game', '-windowed', '-ResX=1600', '-ResY=900') }
+if($LoginProfiles){$launchArgs+=('-AC2LoginProfiles="'+$LoginProfiles+'"')}
+if($DirectLogin){$launchArgs+='-AC2DirectLogin'}
+if($Protocol){$launchArgs+="-AC2Protocol=$Protocol"}
+if ($Mode -eq 'Play') {
+    $launchArgs += '-game'
+    if ($Smoke -or $UISmoke -or $MapSmoke -or $EnvironmentSmoke -or $ControllerSmoke -or $LoginSmoke -or $NetworkSmoke) {
+        $launchArgs += @('-windowed', '-ResX=1600', '-ResY=900')
+    } else {
+        $launchArgs += '-fullscreen'
+    }
+}
 if ($PortraitSmoke) { $launchArgs += '-AC2PortraitSmoke' }
+if ($AvatarPickingSmoke) { $launchArgs += '-AC2AvatarPickingSmoke' }
 if ($Dx11) { $launchArgs += '-d3d11' }
 if ($Smoke -and $UISmoke) { throw 'Choose -Smoke or -UISmoke for a single verification run.' }
 if ($MapSmoke -and ($Smoke -or $UISmoke -or $NetworkSmoke -or $Online)) { throw '-MapSmoke requires a separate offline verification run.' }
@@ -141,6 +159,7 @@ if ($Smoke) {
 }
 # Interactive launch requested by the caller; compiler and commandlet modes stay in this terminal.
 if($NetworkSmoke -or $LoginSmoke){
+    if($env:AC2_SMOKE_USER_SETTINGS){$launchArgs+=('-GameUserSettingsINI="' + $env:AC2_SMOKE_USER_SETTINGS + '"')}
     $launchArgs+='-LogCmds="LogTemp Verbose"'
     $smokeReport=Join-Path $PSScriptRoot 'Unreal/Saved/Diagnostics/AC2Network-smoke.txt'
     if(Test-Path -LiteralPath $smokeReport){Remove-Item -LiteralPath $smokeReport}
@@ -151,6 +170,9 @@ if($ControllerSmoke){
     if($Smoke -or $UISmoke -or $MapSmoke -or $NetworkSmoke -or $Online){throw '-ControllerSmoke requires a separate offline run.'}
     $smokeReport=Join-Path $PSScriptRoot 'Unreal/Saved/Diagnostics/AC2Controller-smoke.txt'
     if(Test-Path -LiteralPath $smokeReport){Remove-Item -LiteralPath $smokeReport}
+    # The smoke clicks fixed HUD controls and tests default input. Isolate saved layouts and bindings.
+    $controllerSettings = if ($env:AC2_SMOKE_USER_SETTINGS) { $env:AC2_SMOKE_USER_SETTINGS } else { Join-Path $env:TEMP ('AC2Controller-' + [guid]::NewGuid().ToString('N') + '.ini') }
+    $launchArgs += ('-GameUserSettingsINI="' + $controllerSettings + '"')
     $launchArgs+=@('-AC2ControllerSmoke','-RenderOffscreen','-unattended','-ForceRes','-nosound',('-abslog="'+(Join-Path $PSScriptRoot 'Unreal/Saved/Logs/AC2Controller-smoke.log')+'"'))
 }
 if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $ControllerSmoke -or $EnvironmentSmoke) {
@@ -166,6 +188,7 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     if (!$process.WaitForExit(180000)) { $process.Kill(); throw 'AC2 render smoke test exceeded three minutes.' }
     $smokeExit = $process.ExitCode
     $process.Dispose()
+    if ($ControllerSmoke -and !$env:AC2_SMOKE_USER_SETTINGS -and (Test-Path -LiteralPath $controllerSettings)) { Remove-Item -LiteralPath $controllerSettings }
     if ($smokeExit -ne 0) { throw "AC2 render smoke test failed ($smokeExit). See Unreal/Saved/Logs." }
     if ($EnvironmentSmoke) {
         $environmentLog = Join-Path $PSScriptRoot 'Unreal/Saved/Logs/AC2Environment-smoke.log'
@@ -178,9 +201,11 @@ if ($Smoke -or $UISmoke -or $NetworkSmoke -or $LoginSmoke -or $MapSmoke -or $Con
     }
     if($ControllerSmoke){Write-Output 'AC2 frontend/controller smoke passed. Screenshots: Unreal/Saved/Screenshots/AC2Controller-*.'}
     elseif ($EnvironmentSmoke) { Write-Output 'AC2 environment smoke passed: sign faces, Menhir material, native foliage, distant terrain and Arwic DAT building placement. Screenshots: Unreal/Saved/Screenshots/AC2Environment-*.' }
+    elseif($LoginSmoke -and $env:AC2_SELECTION_SMOKE -eq '1'){Write-Output 'AC2 character selection smoke passed. See the fixture report for registration or selection/entry checks.'}
     elseif($NetworkSmoke -and $env:AC2_FOLIAGE_SMOKE -eq '1'){Write-Output 'AC2 connected foliage smoke passed: authored empty blocks, native grass batches, highres textures and server map travel.'}
     elseif($NetworkSmoke -or $LoginSmoke){Write-Output 'AC2 network render smoke passed: server character, world objects, chat, combat, loot and native inventory/vitals.'}
     elseif ($MapSmoke) { Write-Output 'AC2 map smoke passed: DAT world/detail/continent maps, pan, player marker, radar targeting, coordinate toggle, interior handling, double-click travel and input restoration.' }
+    elseif ($AvatarPickingSmoke) { Write-Output 'AC2 creator picking smoke passed: ten visible race/sex targets, empty-space rejection, mouse hover/click and native selection animation. Screenshots: Unreal/Saved/Screenshots/AC2AvatarPicking-*.' }
     elseif ($PortraitSmoke) { Write-Output 'AC2 portrait smoke passed: all ten avatars at height/build extremes, head/body framing, rotation and grounded feet. Screenshots: Unreal/Saved/Screenshots/AC2Portrait-*.' }
     elseif ($UISmoke) {
         Write-Output 'AC2 UI smoke passed: ten native avatars, stable appearance camera, DAT fonts, eye FX, vitals, local chat, inventory, stats, persistence and input restoration.'

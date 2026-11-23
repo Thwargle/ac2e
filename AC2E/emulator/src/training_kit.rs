@@ -1,4 +1,5 @@
-//! Explicit development equipment grant, not recovered starter entitlement.
+//! Historical t1/t2/t3 journal replay and the legacy merchant weapon definition.
+//! There is no live training-kit grant; retain these values to read existing saves.
 use crate::{
     dat::Dat,
     inventory::{Item, Location},
@@ -7,8 +8,7 @@ use crate::{
 use std::io;
 
 /// Immutable authored supply pack for journal t3, separate from t1/t2's weapon.
-pub const SUPPLIES_COUNT: usize = 5;
-pub fn supply_inventory(
+pub(crate) fn supply_inventory(
     inventory: &crate::inventory::Inventory,
     first: u64,
 ) -> Result<crate::inventory::Inventory, crate::inventory::InventoryError> {

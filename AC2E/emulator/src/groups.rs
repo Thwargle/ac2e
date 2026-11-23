@@ -1,7 +1,7 @@
 //! Bounded session groups and capture-backed native fellowship messages.
 //!
-//! Only the captured no-XP-sharing/personal-reward creation profile is enabled.
-//! Membership is session state; it never grants shared XP or item authority.
+//! Membership is session state with an XP policy and five loot modes.
+//! Corpse sharing grants only normal loot; quest rewards stay with their owner.
 //! Native adapters: 004682c0..00468810, 0060c1a0/0060c230. Interpreted data
 //! packages 1f0/1ee/1ef are checked against the supplied WLib by the caller.
 use crate::{script, world, world::WorldError};
@@ -19,6 +19,7 @@ pub const INVITATION: u32 = 0x820c002e;
 pub const CLEAR: u32 = 0x820c0028;
 pub const LAYOUTS: [(usize, u32); 3] = [(0x1f0, 8), (0x1ee, 5), (0x1ef, 7)];
 pub const MAX_MEMBERS: usize = 8;
+pub(crate) const XP_SHARE_RANGE: f32 = 40.0;
 const MAX_GROUPS: usize = 32;
 const MAX_INVITATIONS: usize = 64;
 const INVITATION_MS: u64 = 30_000;
@@ -128,7 +129,7 @@ pub fn decode(function: u32, bytes: &[u8]) -> Result<Request, WorldError> {
                 1 => true,
                 _ => return Err(WorldError::InvalidValue),
             };
-            if !(1..=3).contains(&looting) {
+            if looting > 4 {
                 return Err(WorldError::InvalidValue);
             }
             Request::Create {
@@ -192,6 +193,10 @@ fn valid_name(name: &str) -> bool {
 struct Group {
     name: String,
     leader: u64,
+    room: u32,
+    looting: u32,
+    loot_turn: u64,
+    shared_xp: bool,
     members: BTreeSet<u64>,
 }
 #[derive(Clone, Debug)]
@@ -199,6 +204,36 @@ struct Invitation {
     group: u64,
     inviter: u64,
     until: u64,
+}
+
+#[cfg(test)]
+mod loot_policy_tests {
+    use super::*;
+    #[test]
+    fn sharing_rotation_and_random_only_assign_present_members() {
+        let mut runtime=Runtime::default();
+        let id=NAMESPACE+1;
+        runtime.groups.insert(id,Group{name:"Test".into(),leader:7,room:1,looting:0,loot_turn:0,shared_xp:false,members:BTreeSet::from([7,8,9])});
+        runtime.membership.insert(7,id);
+        let nearby=BTreeSet::from([7,8,99]);
+        assert_eq!(runtime.loot_recipients(7,10,&nearby),vec![7]);
+        runtime.groups.get_mut(&id).unwrap().looting=1;
+        assert_eq!(runtime.loot_recipients(7,10,&nearby),vec![7,8]);
+        for method in [2,3] {
+            let g=runtime.groups.get_mut(&id).unwrap();g.looting=method;g.loot_turn=0;
+            assert_eq!(runtime.loot_recipients(7,10,&nearby),vec![7]);
+            assert_eq!(runtime.loot_recipients(7,11,&nearby),vec![8]);
+            assert_eq!(runtime.loot_recipients(7,12,&nearby),vec![7]);
+        }
+        runtime.groups.get_mut(&id).unwrap().looting=4;
+        let mut assigned=BTreeSet::new();
+        for corpse in 100..164 {
+            let recipients=runtime.loot_recipients(7,corpse,&nearby);
+            assert_eq!(recipients.len(),1);assert!([7,8].contains(&recipients[0]));assigned.insert(recipients[0]);
+        }
+        assert_eq!(assigned,BTreeSet::from([7,8]));
+        assert_eq!(runtime.loot_recipients(20,10,&nearby),vec![20]);
+    }
 }
 #[derive(Clone, Debug)]
 pub struct Runtime {
@@ -260,7 +295,7 @@ impl GroupError {
             Self::InvitationMissing => "The group invitation is no longer available.",
             Self::InvitationPending => "That player already has a pending group invitation.",
             Self::UnsupportedMode => {
-                "Groups currently support individual experience and personal rewards only. Select the no-sharing group profile."
+                "Choose a valid fellowship looting method."
             }
             _ => "The group action could not be completed.",
         }
@@ -279,6 +314,42 @@ impl From<WorldError> for GroupError {
 }
 
 impl Runtime {
+    /// Snapshot rights at death; later recruits cannot claim old corpses.
+    pub fn loot_recipients(&mut self, player:u64, corpse:u64, eligible:&BTreeSet<u64>)->Vec<u64> {
+        let Some(group)=self.membership.get(&player).and_then(|id|self.groups.get_mut(id)) else{return vec![player]};
+        let members:Vec<_>=group.members.intersection(eligible).copied().collect();
+        if group.looting==0 || members.is_empty(){return vec![player]}
+        if group.looting==1{return members}
+        let index=if group.looting==4 {
+            let mut x=corpse.wrapping_add(group.loot_turn).wrapping_add(0x9e3779b97f4a7c15);
+            x=(x^(x>>30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            x=(x^(x>>27)).wrapping_mul(0x94d049bb133111eb);
+            (x^(x>>31)) as usize % members.len()
+        }else{group.loot_turn as usize % members.len()};
+        group.loot_turn=group.loot_turn.wrapping_add(1);
+        vec![members[index]]
+    }
+    /// Split base combat XP among eligible members and give the killer any remainder.
+    pub(crate) fn split_kill_xp(
+        &self, killer: u64, xp: u64, eligible: impl Fn(u64) -> bool,
+    ) -> (u64, Vec<(u64, u64)>) {
+        let group = self.membership.get(&killer)
+            .and_then(|id| self.groups.get(id))
+            .filter(|group| group.shared_xp);
+        let Some(group) = group else { return (xp, Vec::new()); };
+        let members: Vec<_> = group.members.iter().copied()
+            .filter(|&id| id != killer && eligible(id))
+            .collect();
+        let share = xp / (members.len() as u64 + 1);
+        if share == 0 {
+            return (xp, Vec::new());
+        }
+        (xp - share * members.len() as u64, members.into_iter().map(|id| (id, share)).collect())
+    }
+
+    pub fn chat_room(&self, player: u64) -> Option<u32> {
+        self.membership.get(&player).and_then(|id| self.groups.get(id)).map(|group| group.room)
+    }
     pub fn contains(&self, player: u64) -> bool {
         self.membership.contains_key(&player)
     }
@@ -323,11 +394,7 @@ impl Runtime {
                 looting,
                 social,
             } => {
-                // The native create panel initially sends (1, false). Training
-                // groups explicitly normalize that default to our supported
-                // personal-reward profile, also reflected by snapshot flags 4.
-                let native_default = *looting == 1 && !social;
-                if !native_default && (*looting != 2 || !social) {
+                if *looting > 4 {
                     return Err(GroupError::UnsupportedMode);
                 }
                 if !valid_name(name) {
@@ -350,6 +417,10 @@ impl Runtime {
                     Group {
                         name: name.clone(),
                         leader: actor,
+                        room: 0x10000000 | (id as u32),
+                        looting: *looting,
+                        loot_turn: 0,
+                        shared_xp: !social,
                         members: BTreeSet::from([actor]),
                     },
                 );
@@ -359,7 +430,11 @@ impl Runtime {
                 deliveries.push(Delivery {
                     recipient: actor,
                     data: script::chat(
-                        "Training groups use individual experience and personal rewards.",
+                        if *social {
+                            "Fellowship created with individual experience. Use /f to speak to its members."
+                        } else {
+                            "Fellowship created with shared combat experience. Nearby living members split kill XP."
+                        },
                         1,
                     )?,
                 });
@@ -578,13 +653,6 @@ impl Runtime {
             None => Ok(Vec::new()),
         }
     }
-    pub fn member_updates(
-        &self,
-        player: u64,
-        member: &Member,
-    ) -> Result<Vec<Delivery>, GroupError> {
-        self.member_changes(player, member, None)
-    }
     /// Emit only changed native member fields. Roster/name/level changes require
     /// a full snapshot; callers must publish an admitted batch before caching it.
     pub fn member_changes(
@@ -670,7 +738,7 @@ fn group_deliveries(
                 .ok_or(GroupError::InvalidMember)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let data = snapshot(&group.name, group.leader, &members)?;
+    let data = snapshot_in_room(&group.name, group.leader, &members, group.room, group.looting, group.shared_xp)?;
     Ok(group
         .members
         .iter()
@@ -737,7 +805,7 @@ fn graph(objects: &[Object]) -> Vec<u8> {
     }
     bytes
 }
-fn snapshot(name: &str, leader: u64, members: &[Member]) -> Result<Vec<u8>, WorldError> {
+fn snapshot_in_room(name: &str, leader: u64, members: &[Member], room: u32, looting:u32, shared_xp: bool) -> Result<Vec<u8>, WorldError> {
     if !valid_name(name)
         || members.is_empty()
         || members.len() > MAX_MEMBERS
@@ -746,18 +814,16 @@ fn snapshot(name: &str, leader: u64, members: &[Member]) -> Result<Vec<u8>, Worl
         return Err(WorldError::InvalidValue);
     }
     let name_id = 3 + members.len() as u32 * 3;
-    // Pinned 7148 WLib: 81f1003d -> 01f00002 constructs the native
-    // FellowshipAdaptor from fields 7, 5/6, 2 and 4. Fields 0/1 and 3 are
-    // retained at their native 01f0001e constructor defaults; their wider
-    // server semantics are unknown. Flags 4 decode as social=true, looting=2
-    // through 01f00012 / 01f0002e, matching the captured personal profile.
+    // 01f0002e: bits 2/4/8/16 select methods 1/2/3/4; zero is personal.
+    // 01f00012: clear bit 0 is a social fellowship (individual XP).
+    let flags = (if looting == 0 { 0 } else { 1u32 << looting }) | u32::from(shared_xp);
     let mut objects = vec![Object::interpreted(
         0x1f0,
         vec![
             (0, 0x82),
             (0, 0xcd),
-            (4, 2),
-            (0, 2),
+            (flags, 2),
+            (room, 2),
             (2, 1),
             (leader as u32, 0x84),
             ((leader >> 32) as u32, 0xcd),
@@ -792,12 +858,12 @@ fn snapshot(name: &str, leader: u64, members: &[Member]) -> Result<Vec<u8>, Worl
         objects.push(Object::interpreted(
             0x1ef,
             vec![
-                (member.health, 4),
-                (member.cell, 4),
                 (member.max_health, 4),
+                (member.cell, 4),
+                (member.health, 4),
                 (0, 4),
-                (member.vigor, 4),
                 (member.max_vigor, 4),
+                (member.vigor, 4),
                 (0, 4),
             ],
         ));

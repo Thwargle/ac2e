@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "source_sha256": "c4dec71f4f3b0706e321c8ea3d1a5bc652a7c5dc0851f3f0802825dd850dfe46",
+  "manifest_sha256": "32ad9c26f550ea0c6b6a4344ee222ded1ea5f690976be612d2b135eb250eba01",
+  "routes_sha256": "1d380104624103b5f201735276fc84ef50ad6333c1fbc7b8f063e014a6b3de7f",
+  "actors": 59,
+  "routes": 7,
+  "validation": "AC2.Data.StarterClearance; UE cooked DAT collision and capsule clearance",
+  "policy": "Captured anchors and reconstructed actors in the three supported racial Shelter instances. Native meshes are retained; the Tumerok descent stair is an explicitly documented AC2E geometry repair."
+}

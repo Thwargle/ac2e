@@ -1,0 +1,211 @@
+{
+  "existing_outdoor_sha256": "d68441eff1b621091dc03871718e303976f892a6b23fdab9b556a6569a23cf8b",
+  "groups": [
+    {
+      "capacity": 1,
+      "id": 9313715643050099200,
+      "members": [
+        9313715643050099200,
+        9313715643050099201,
+        9313715643050099202
+      ],
+      "roaming_homes": true
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098689,
+      "members": [
+        9313715643050098689
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098690,
+      "members": [
+        9313715643050098690
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098696,
+      "members": [
+        9313715643050098696
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098700,
+      "members": [
+        9313715643050098700
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098701,
+      "members": [
+        9313715643050098701
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098703,
+      "members": [
+        9313715643050098703
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098704,
+      "members": [
+        9313715643050098704
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098706,
+      "members": [
+        9313715643050098706
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098708,
+      "members": [
+        9313715643050098708
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098710,
+      "members": [
+        9313715643050098710
+      ]
+    },
+    {
+      "capacity": 2,
+      "id": 9313715643050098711,
+      "members": [
+        9313715643050098711,
+        9313715643050098712
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098713,
+      "members": [
+        9313715643050098713
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098714,
+      "members": [
+        9313715643050098714
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098715,
+      "members": [
+        9313715643050098716
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098717,
+      "members": [
+        9313715643050098717
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313715643050098719,
+      "members": [
+        9313715643050098719
+      ]
+    }
+  ],
+  "included": 22,
+  "inferred": false,
+  "manifest_sha256": "fce3b7af575c81a6b49991f193f61ff880ae0241c19c72b73e36cca0677479e1",
+  "native_ground_verified": true,
+  "rejected": [
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098688,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098691,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098692,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098693,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098694,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098695,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098697,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098698,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098699,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098702,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098705,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098707,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191184426,
+      "id": 9313715643050098709,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098715,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186524,
+      "id": 9313715643050098718,
+      "reason": "captured interior anchor has no clear native walking patch"
+    }
+  ],
+  "source_sha256": "fd9f663c2191b5155aacad91679e8ab6c68a7ae9931e8e5d9070a3886983f1ce",
+  "version": 1
+}

@@ -1,4 +1,7 @@
 //! Synthetic peer over real UDP. This does not substitute for running ac2client.exe.
+#[path = "support/udp.rs"]
+mod udp;
+use ac2_net::protocol::{Build, ServerEvent};
 use pyrealium::{
     server::{self, Config},
     store::Store,
@@ -6,6 +9,7 @@ use pyrealium::{
     wire::{self, Header},
     world,
 };
+use std::collections::BTreeMap;
 use std::{
     net::UdpSocket,
     time::{Duration, Instant},
@@ -75,6 +79,7 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
     drop(base);
     drop(secondary);
     let dir = std::env::temp_dir().join(format!("ac2-udp-{}-{}", std::process::id(), addr.port()));
+    std::fs::create_dir(&dir).unwrap();
     {
         let mut store = Store::open(&dir).unwrap();
         if profile_enabled {
@@ -106,14 +111,13 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             world_rules: None,
             admin_bind: None,
             initialize_ui: expect_bootstrap,
-            training_kit: false,
             lifestones: false,
             portals: false,
             map_travel: false,
             bind: addr,
             account: "local".into(),
             data: server_dir,
-            run_seconds: Some(2),
+            run_seconds: Some(45),
             visual_did: None,
             game_data,
         })
@@ -123,7 +127,7 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         .set_read_timeout(Some(Duration::from_millis(100)))
         .unwrap();
     let mut buf = [0; 4096];
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let deadline = Instant::now() + Duration::from_secs(20);
     let (h, connect, connect_bytes) = loop {
         socket.send_to(&[0; 7], addr).unwrap(); // malformed input cannot kill the listener
         socket.send_to(&login("local"), addr).unwrap();
@@ -146,6 +150,9 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             Err(e) => panic!("server did not respond: {e}"),
         }
     };
+    socket
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     socket.send_to(&login("local"), addr).unwrap();
     let (len, _) = socket.recv_from(&mut buf).unwrap();
     assert_eq!(&buf[..len], connect_bytes); // repeated login preserves cookie/seeds
@@ -173,8 +180,10 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             continue;
         }
         // Native world-clock control packets can precede application events.
-        let received=peer.receive(&buf[..len], Instant::now()).unwrap();
-        if !received.messages.is_empty(){break received;}
+        let received = peer.receive(&buf[..len], Instant::now()).unwrap();
+        if !received.messages.is_empty() {
+            break received;
+        }
     };
     assert_eq!(ready.messages.len(), 1);
     assert_eq!(ready.messages[0].queue, 5);
@@ -198,30 +207,45 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         if Header::decode(&buf[..len]).unwrap().flags == wire::CONNECT {
             continue;
         }
-        let received=peer.receive(&buf[..len], Instant::now()).unwrap();
-        if !received.messages.is_empty(){break received;}
+        let received = peer.receive(&buf[..len], Instant::now()).unwrap();
+        if !received.messages.is_empty() {
+            break received;
+        }
     };
     assert_eq!(list.messages.len(), 1);
     assert_eq!(list.messages[0].queue, 1);
     assert_eq!(list.messages[0].blob_id >> 56, 0x23);
     assert_eq!(
         list.messages[0].data,
-        if profile_enabled {
-            world::character_set(
-                b"local",
-                5,
-                &[world::SelectionCharacter {
-                    id: 1,
-                    name: "Explorer".into(),
-                    seconds_greyed_out: 0,
-                    parent_visual_did: 0x1f000023,
-                    appearance: None,
-                }],
-            )
-            .unwrap()
-        } else {
-            world::empty_character_set(b"local", 5).unwrap()
-        }
+        world::character_set_for(
+            "7148",
+            if profile_enabled {
+                world::character_set(
+                    b"local",
+                    5,
+                    &[world::SelectionCharacter {
+                        id: 1,
+                        name: "Explorer".into(),
+                        seconds_greyed_out: 0,
+                        parent_visual_did: 0x1f000023,
+                        appearance: Some(
+                            pyrealium::appearance::body(1, 0x1000)
+                                .unwrap()
+                                .visual_desc(&[])
+                                .unwrap(),
+                        ),
+                    }],
+                )
+                .unwrap()
+            } else {
+                world::empty_character_set(b"local", 5).unwrap()
+            }
+        )
+    );
+    assert_eq!(
+        &list.messages[0].data[list.messages[0].data.len() - 4..],
+        &1u32.to_le_bytes(),
+        "The native selection packet advertises the enabled General chat service"
     );
     let ack_list = wire::encode_control_packet(
         Header {
@@ -257,6 +281,7 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             break;
         }
     }
+    let mut snapshot = None;
     if expect_bootstrap {
         assert_eq!(received_events.len(), 3);
         assert_eq!(received_events[0], world::create_player(1, 1));
@@ -265,52 +290,109 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             &world::CREATE_OBJECT.to_le_bytes()
         );
         assert_eq!(&received_events[2][..4], &world::PLAYER_DESC.to_le_bytes());
-        // Independently walk the variable-length name and int table. Appending
-        // stats without adjusting the count would shift every later qualities
-        // table and can make the real client read invalid script data.
-        let player = &received_events[2];
-        let name_units = u16::from_le_bytes(player[36..38].try_into().unwrap()) as usize;
-        assert_eq!(name_units, 8);
-        let int_offset = 60 + (14 + name_units * 2).next_multiple_of(4);
-        let count =
-            u32::from_le_bytes(player[int_offset..int_offset + 4].try_into().unwrap()) as usize;
-        let end = int_offset + 4 + count * 8;
-        let buckets: Vec<_> = player[int_offset + 4..end]
-            .chunks_exact(8)
-            .map(|entry| u32::from_le_bytes(entry[..4].try_into().unwrap()) % 11)
-            .collect();
-        assert!(buckets.windows(2).all(|pair| pair[0] <= pair[1]));
-        let ints: std::collections::BTreeMap<_, _> = player[int_offset + 4..end]
-            .chunks_exact(8)
-            .map(|entry| {
-                (
-                    u32::from_le_bytes(entry[..4].try_into().unwrap()),
-                    u32::from_le_bytes(entry[4..].try_into().unwrap()),
-                )
-            })
-            .collect();
-        assert_eq!(count, 12);
-        assert_eq!(ints.len(), count);
+        // Decode native variable-length descriptions and every populated qualities table.
+        let ServerEvent::PlayerDescription(player) =
+            ServerEvent::decode(&received_events[2], Build::Admin7148).unwrap()
+        else {
+            panic!("expected PlayerDescription");
+        };
+        assert_eq!(
+            player.weenie.unwrap().name.unwrap().literal.as_deref(),
+            Some("Explorer")
+        );
+        assert!(player.ints.windows(2).all(|p| p[0].0 % 11 <= p[1].0 % 11));
+        assert_eq!(player.ints.len(), 17);
+        let ints: BTreeMap<_, _> = player.ints.into_iter().collect();
+        assert_eq!(ints.len(), 17);
         for stat in [0x100, 0x101, 0x102, 0x103, 0x107, 0x108] {
             assert_eq!(ints[&stat], 100);
         }
-        assert_eq!(ints[&0x12e], 1);
-        assert_eq!(ints[&0x3b6], u32::MAX);
-        assert_eq!(ints[&0x118], 78);
-        assert_eq!(ints[&0x2d1], 4);
-        assert_eq!(ints[&0x14], 31);
-        assert_eq!(ints[&0xa], 1);
+        for (stat, value) in [
+            (0x12e, 1),
+            (0x3b6, -1),
+            (0x118, 78),
+            (0x2d1, 4),
+            (0x14, 31),
+            (0xa, 1),
+            (0xc1c, 0),
+            (pyrealium::progression::QUEST_POINTS, 0),
+            (0x122, 1),
+            (0x123, 0x1000),
+            (0x124, 0),
+        ] {
+            assert_eq!(ints[&stat], value, "quality {stat:x}");
+        }
         let mut portal = pyrealium::dat::Dat::open(
             std::path::PathBuf::from(std::env::var_os("AC2_TEST_COMPAT_DATA").unwrap())
                 .join("portal.dat"),
         )
         .unwrap();
         let authored = portal.read(0x8100110f).unwrap();
-        assert_eq!(&player[end..player.len() - 4], &authored[96..200]);
-        assert_eq!(&player[player.len() - 4..], &0x470000cdu32.to_le_bytes());
-        let initial_cell = u32::from_le_bytes(received_events[1][28..32].try_into().unwrap());
+        let word = |offset| u32::from_le_bytes(authored[offset..offset + 4].try_into().unwrap());
+        let mut bools: BTreeMap<_, _> = (100..180)
+            .step_by(8)
+            .map(|i| (word(i), word(i + 4) as i32))
+            .collect();
+        bools.insert(0x117, 0); // alive
+        assert_eq!(player.bools.into_iter().collect::<BTreeMap<_, _>>(), bools);
+        let floats = BTreeMap::from([(word(184), f32::from_bits(word(188))), (0x11e, 100.)]);
+        assert_eq!(
+            player.floats.into_iter().collect::<BTreeMap<_, _>>(),
+            floats
+        );
+        assert_eq!(player.dids, [(word(196), 0x470000cd)]);
+        assert_eq!(
+            player.long_ints.into_iter().collect::<BTreeMap<_, _>>(),
+            BTreeMap::from([
+                (pyrealium::progression::LEVEL_XP_FLOOR, 0),
+                (pyrealium::progression::LEVEL_XP_CEILING, 40),
+                (0x12c, 0),
+                (0x12d, 0),
+                (0x13b, 0),
+                (0x13c, 0),
+            ])
+        );
         let mut position = pyrealium::movement::Placement::HUMAN_START;
-        assert_eq!(initial_cell, position.cell);
+        udp::assert_spawn(&received_events[1], 1, 1, position);
+        let mut receive_until = |peer: &mut Transport, predicate: &dyn Fn(&[u8]) -> bool| {
+            let mut events = Vec::new();
+            let deadline = Instant::now() + Duration::from_secs(8);
+            while !events.iter().any(|p: &Vec<u8>| predicate(p)) {
+                assert!(Instant::now() < deadline, "missing UDP event");
+                let (len, source) = socket.recv_from(&mut buf).unwrap();
+                assert_eq!(source, addr);
+                let header = Header::decode(&buf[..len]).unwrap();
+                if header.flags == wire::CONNECT {
+                    continue;
+                }
+                let reply = peer.receive(&buf[..len], Instant::now()).unwrap();
+                if header.sequence != 0 {
+                    let ack = wire::encode_control_packet(
+                        Header {
+                            flags: wire::ACK,
+                            recipient: h.recipient,
+                            iteration: h.iteration,
+                            ..Default::default()
+                        },
+                        &reply.ack.to_le_bytes(),
+                        None,
+                    )
+                    .unwrap();
+                    socket.send_to(&ack, addr).unwrap();
+                }
+                events.extend(reply.messages.into_iter().map(|m| m.data));
+            }
+            events
+        };
+        let is_ui = |p: &[u8]| p.get(4..8) == Some(&pyrealium::ui::LOAD.to_le_bytes());
+        let initial = receive_until(&mut peer, &is_ui);
+        let initial_ui = initial.iter().find(|e| is_ui(e)).unwrap();
+        assert!(
+            initial
+                .iter()
+                .any(|p| p.starts_with(&world::CREATE_OBJECT.to_le_bytes())),
+            "missing starter gear"
+        );
         position.coordinates[0] += 3.0;
         let update = pyrealium::movement::ClientPosition {
             time: 10.0,
@@ -342,6 +424,12 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             ..update
         };
         events.push((0x0100000200000004, 3, invalid.encode().unwrap()));
+        let wrong_instance = pyrealium::movement::ClientPosition {
+            time: 11.0,
+            stamps: [2, 0, 0, 0],
+            ..invalid
+        };
+        events.push((0x0100000300000008, 3, wrong_instance.encode().unwrap()));
         let mut logout = world::CHAR_EXIT_GAME.to_le_bytes().to_vec();
         logout.extend(1u64.to_le_bytes());
         events.push((0x0300000000000005, 4, logout));
@@ -350,16 +438,14 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
                 socket.send_to(&packet, addr).unwrap();
             }
         }
-        let mut exit_events = Vec::new();
-        while exit_events.len() < 3 {
-            let (len, _) = socket.recv_from(&mut buf).unwrap();
-            let reply = peer.receive(&buf[..len], Instant::now()).unwrap();
-            exit_events.extend(reply.messages.into_iter().map(|m| m.data));
-        }
-        assert_eq!(exit_events.len(), 3);
-        assert_eq!(exit_events[0], pyrealium::ui::empty_player().unwrap());
-        assert_eq!(exit_events[1], world::char_exit_game());
-        assert_eq!(&exit_events[2][..4], &world::CHARACTER_SET.to_le_bytes());
+        let exit_events = receive_until(&mut peer, &|p| {
+            p.starts_with(&world::CHARACTER_SET.to_le_bytes())
+        });
+        let exit_index = exit_events
+            .iter()
+            .position(|p| p == &world::char_exit_game())
+            .unwrap();
+        assert!(exit_events[exit_index + 1].starts_with(&world::CHARACTER_SET.to_le_bytes()));
         for packet in peer
             .send(
                 0x0300000000000006,
@@ -371,14 +457,10 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
         {
             socket.send_to(&packet, addr).unwrap();
         }
-        let mut reentry = Vec::new();
-        while reentry.len() < 3 {
-            let (len, _) = socket.recv_from(&mut buf).unwrap();
-            let reply = peer.receive(&buf[..len], Instant::now()).unwrap();
-            reentry.extend(reply.messages.into_iter().map(|m| m.data));
-        }
-        assert_eq!(&reentry[1][24..26], &2u16.to_le_bytes());
-        assert_eq!(&reentry[1][32..36], &position.coordinates[0].to_le_bytes());
+        let reentry = receive_until(&mut peer, &is_ui);
+        udp::assert_spawn(&reentry[1], 1, 2, position);
+        assert_eq!(reentry.iter().find(|p| is_ui(p)).unwrap(), initial_ui);
+        snapshot = Some(initial_ui.clone());
     } else {
         assert_eq!(
             received_events,
@@ -387,6 +469,7 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             )]
         );
     }
+    std::fs::write(dir.join("stop.request"), b"stop").unwrap();
     worker.join().unwrap();
     assert!(!dir.join("server.lock").exists());
     {
@@ -396,12 +479,22 @@ fn run_enter_rejection(game_data: Option<std::path::PathBuf>, expect_bootstrap: 
             let mut position = pyrealium::movement::Placement::HUMAN_START;
             position.coordinates[0] += 3.0;
             assert_eq!(store.placement(1), Some(position));
+            let saved = &store.characters[&1];
+            assert!(saved.inventory.items().count() > 0);
+            assert!(!saved.skills.is_empty());
+            let starter_bar = pyrealium::preferences::Hotbar::starter(1, 0x1000);
+            let restored = pyrealium::ui::player_all_quests_options(
+                saved.ui.as_ref(),
+                Some(&starter_bar),
+                Some(&saved.inventory),
+                Some(&saved.progression),
+                Some(&saved.skills),
+                Some(&saved.quests),
+                saved.gameplay_options.as_ref(),
+            )
+            .unwrap();
+            assert_eq!(snapshot.unwrap(), restored);
         }
     }
-    std::fs::remove_file(dir.join("characters.journal")).unwrap();
-    std::fs::remove_file(dir.join("clock-origin.json")).unwrap();
-    if expect_bootstrap {
-        std::fs::remove_file(dir.join("positions.snapshot")).unwrap();
-    }
-    std::fs::remove_dir(dir).unwrap();
+    udp::remove_test_store(&dir);
 }

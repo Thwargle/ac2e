@@ -80,7 +80,7 @@ def main():
                auth / 'account-stop.request')
         launch(['serve', '--bind', '127.0.0.1:19492', '--auth-data', str(auth), '--data', str(world),
                 '--game-data', str(DAT_DIRECTORY), '--content', str(content), '--initialize-ui', 'true',
-                '--training-kit', 'false', '--lifestones', 'false', '--portals', 'false', '--seconds', '90'],
+                '--lifestones', 'false', '--portals', 'false', '--seconds', '90'],
                world / 'stop.request')
         for index, name in enumerate(['Recovery Hero', 'Recovery Observer']):
             ticket = login(f'combat_recovery_{index}')

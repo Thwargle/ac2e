@@ -216,7 +216,9 @@ pub fn plan(
                 .get(&referral)
                 .is_some_and(|s| s.completed == 0)
             {
-                next.exploration = next.exploration.converse(NPC, 1, time)?.book;
+                let conversation = next.exploration.converse(NPC, 1, time)?;
+                rewards.extend(conversation.rewards());
+                next.exploration = conversation.book;
             }
             match next.arwic.phase {
                 0 | 5
@@ -266,6 +268,7 @@ pub fn plan(
                     grant(GLYPH, 1, &mut bag, &mut items)?;
                     grant(GUIDE, 1, &mut bag, &mut items)?;
                     rewards.push(crate::progression::Command::AwardXp(150));
+                    rewards.extend(crate::quest_points::award(QUEST));
                     next.arwic.phase = 5;
                     next.arwic.completed = time;
                 }
@@ -388,7 +391,7 @@ mod tests {
         let rewards = apply(&mut q, &mut b, Action::Talk, 105);
         assert!(matches!(
             rewards.as_slice(),
-            [crate::progression::Command::AwardXp(150)]
+            [crate::progression::Command::AwardXp(150), crate::progression::Command::AwardQuestPoints(200)]
         ));
         assert_eq!(
             (
@@ -428,6 +431,10 @@ mod tests {
         apply(&mut q, &mut b, Action::Craft(primary), 103);
         assert_eq!(quantity(&b, IRON), 8);
         assert_eq!(quantity(&b, SWORD), 1);
+        assert_eq!(crate::professions::weapon_damage(&b), None);
+        let sword = owned(&b, SWORD).unwrap();
+        let equipped = b.apply(&Command::Wear { item: sword, slot: 0x40 }).unwrap();
+        assert_eq!(crate::professions::weapon_damage(&equipped), Some(10));
         assert!(b.dense_bags());
         let primary = owned(&b, IRON).unwrap();
         let old = b.clone();
@@ -450,7 +457,8 @@ mod tests {
         assert_eq!(b, oldb);
         let remove = owned(&b, GUIDE).unwrap();
         b = b.apply(&Command::ConsumeDense { item: remove }).unwrap();
-        assert_eq!(apply(&mut q, &mut b, Action::Talk, 105).len(), 1);
+        assert_eq!(apply(&mut q, &mut b, Action::Talk, 105),
+                   [crate::progression::Command::AwardXp(150), crate::progression::Command::AwardQuestPoints(200)]);
         assert!(b.free_slot().is_none());
     }
     #[test]

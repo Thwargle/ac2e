@@ -38,3 +38,21 @@ struct FAC2PreviewLighting
             }
     }
 };
+
+// FillVerts::GetLighting: lit particles receive the first five scene lights,
+// without a Lambert normal. CalculateAttenuation uses the native range curve;
+// light/material RGB stays in byte space until the particle material renders.
+inline FLinearColor AC2LitParticleColor(FLinearColor Color,const FVector& Position,const FAC2PreviewLighting& Scene)
+{
+    FLinearColor Light=Scene.Ambient;
+    for(int32 I=0;I<FMath::Min(5,Scene.Lights.Num());++I)
+    {
+        const auto& L=Scene.Lights[I];
+        const double Falloff=L.Directional?1:1+10*FVector::DistSquared(Position,L.Position)/FMath::Square(FMath::Max(.02f,L.Range));
+        Light+=L.Diffuse*(L.Intensity/Falloff);
+    }
+    Color.R=FMath::Clamp(Color.R*Light.R,0.f,1.f);
+    Color.G=FMath::Clamp(Color.G*Light.G,0.f,1.f);
+    Color.B=FMath::Clamp(Color.B*Light.B,0.f,1.f);
+    return Color;
+}

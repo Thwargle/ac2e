@@ -4,7 +4,7 @@
 
 bool SAC2GameUI::ShopOwnsPointer(FVector2D Point) const
 {
-    return Native.Bounds(TEXT("Shop")).Contains(FIntPoint(Point.X,Point.Y));
+    return WindowOwns(FAC2UILayout::Token(TEXT("Shop")),Point);
 }
 bool SAC2GameUI::ShopButton(FName Name) const
 {
@@ -79,7 +79,7 @@ bool SAC2GameUI::SmokeShopInput(int32 Step,FString& Error)
 {
     auto Fail=[&](const TCHAR* Why){Error=Why;return false;};
     static FIntPoint SavedInventoryOffset;
-    const uint32 InventoryRoot=FAC2UILayout::Token(TEXT("RightSidePanel"));
+    const uint32 InventoryRoot=FAC2UILayout::Token(RightPanelRoot());
     if(Step==0){
         // A user's saved inventory may be underneath the shop. Exercise an
         // unobscured drag, without changing their persisted window position.

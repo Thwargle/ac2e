@@ -15,7 +15,7 @@ def main(render=False,combat_render=False):
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19506','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--encounters','training',
+            '--initialize-ui','true','--encounters','world',
             '--portals','false','--lifestones','false','--test-map-travel','true','--seconds','240'],
             env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1'),stdout=log,stderr=log,creationflags=0x08000000)
         try:

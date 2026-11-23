@@ -1,0 +1,4 @@
+pyrealium-creature-combat-v3
+# Native inherited Illuminated Drudge fields. Absent weapon time stays 0 (runtime default).
+# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor
+470015f2	745	111	0	14	158	21	0.3	360	252	30.0	50.0	0	745

@@ -9,10 +9,12 @@ import subprocess
 import time
 import uuid
 from test_network import Peer, ROOT, SERVER, DAT_DIRECTORY
-from test_gameplay import until
+from test_gameplay import panel_text, until
 
 PORT = 19526
 IDOL, TARGET, BOSS = [str(0x8140000000030D00+n) for n in range(3)]
+# Native Tumerok arrival cell. Cross-dungeon movement is not a teleport.
+CELL, ORIGIN = 0x03FD0113, [-4.16552, -27.519, -24.2035]
 
 
 def main():
@@ -20,20 +22,21 @@ def main():
     run.mkdir(parents=True)
     content = run/'world.tsv'
     content.write_text('pyrealium-world-v4\n'+''.join(
-        f'{int(iid):016x}\t{entity:08x}\t{visual:08x}\t02990109\t{x}\t240.199\t-44.606205\t1\t0\t0\t0\t-\t-\n'
-        for iid,entity,visual,x in [(IDOL,0x470007d1,0x1f0003d1,60),
-                                   (TARGET,0x470015ac,0x1f000036,62),
-                                   (BOSS,0x4700390b,0x1f001a01,60.5)]))
+        f'{int(iid):016x}\t{entity:08x}\t{visual:08x}\t{CELL:08x}\t{ORIGIN[0]+dx}\t{ORIGIN[1]+dy}\t-24.22\t1\t0\t0\t0\t-\t-\n'
+        # These nearby floor points have clear native BSP sight lines from arrival.
+        for iid,entity,visual,dx,dy in [(IDOL,0x470007d1,0x1f0003d1,1.5,-2),
+                                       (TARGET,0x470015ac,0x1f000036,2,-1),
+                                       (BOSS,0x47003b1b,0x1f001b56,2,2)]))
     encounters = run/'encounters.tsv'
     encounters.write_text('pyrealium-encounters-v1\nplayer\t20\t1\t1000\t3\nregen\t0\t0\t1000\n'
                           'npc\t470007d1\t20\t1\t60000\t3\t300000\t1000\t0\n'
-                          'npc\t4700390b\t20\t1\t60000\t3\t300000\t0\t0\n')
+                          'npc\t47003b1b\t20\t1\t60000\t3\t300000\t0\t0\n')
     peers = []
     with (run/'server.log').open('w', encoding='utf-8') as log:
         process = subprocess.Popen([str(SERVER),'serve','--bind',f'127.0.0.1:{PORT}',
             '--account','local','--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),
             '--content',str(content),'--encounters',str(encounters),'--initialize-ui','true',
-            '--training-kit','false','--lifestones','false','--portals','false','--seconds','110'],
+            '--lifestones','false','--portals','false','--seconds','110'],
             stdout=log,stderr=log,creationflags=0x08000000,
             env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='42'))
         try:
@@ -45,7 +48,7 @@ def main():
                 p.send('create',name=name,start_area=0,race=4,sex=4096,physical=[[1,1],[2,1]])
                 p.id=p.wait('created')['character']['id'];p.send('enter',id=p.id);p.wait('player')
                 p.send('ready');p.wait('status',lambda e:e['phase']=='world');until(p,0,'inventory')
-                p.send('move',cell=0x02990109,position=[58.5,240.199,-44.606205],heading=0,motion=[0,0,0])
+                p.send('move',cell=CELL,position=ORIGIN,heading=0,motion=[0,0,0])
             hero,observer=peers
             until(hero,0,'object',lambda e:e['id']==IDOL)
             mark=len(hero.events);hero.send('attack',id=IDOL)
@@ -53,17 +56,19 @@ def main():
             hero.send('combat',enabled=False);until(hero,mark,'combat',lambda e:not e['enabled'])
             for skill in [0x2a1,0x2a6]:
                 hero.send('skill_train',skill=skill);time.sleep(.3)
+            # Respect the Outcast's native delayed spawn before targeting it.
+            until(hero,0,'object',lambda e:e['id']==TARGET)
             # The native drum is required even though the skill is learned.
             mark=len(hero.events);hero.send('skill',skill=0x2a6,target=TARGET)
             until(hero,mark,'chat',lambda e:'requires a drum' in str(e));until(hero,mark,'skill_finished')
             drum=next(e for e in hero.events if e.get('event')=='object' and e.get('container')==hero.id and e.get('entity')==0x470007f7)
             mark=len(hero.events);hero.send('use',item=drum['id'],target='0')
             until(hero,mark,'inventory_result',lambda e:e['id']==drum['id'] and e['status']==0)
-            for p in peers:p.send('move',cell=0x02990109,position=[58.5,240.199,-44.606205],heading=0,motion=[0,0,0])
+            for p in peers:p.send('move',cell=CELL,position=ORIGIN,heading=0,motion=[0,0,0])
             until(hero,0,'quality',lambda e:e['id']==TARGET and e['key']==0x108 and e['value']==164)
             for attempt in range(5):
                 mark,remote=len(hero.events),len(observer.events)
-                hero.send('skill',skill=0x2a6,target=TARGET);until(hero,mark,'skill_finished')
+                hero.send('skill',skill=0x2a6,target=TARGET);until(hero,mark,'story', lambda e: e.get('request') is not None)
                 try:
                     first=until(hero,mark,'quality',lambda e:e['id']==TARGET and e['key']==0x103 and e['value']==162,timeout=3)
                     break
@@ -73,22 +78,26 @@ def main():
             until(hero,mark,'quality',lambda e:e['id']==TARGET and e['key']==0x103 and e['value']==160)
             mark=len(hero.events);hero.send('examine',id=TARGET)
             panel=until(hero,mark,'examination')
-            assert any(f'Vigor: {n} / 164' in str(panel) for n in range(150,161)),panel
+            assert any(f'Vigor: {n} / 164' in panel_text(panel) for n in range(150,161)),panel
+            chance = next(line for line in panel_text(panel).splitlines() if line.startswith('Chance to hit: '))
+            assert 5 <= int(chance.removeprefix('Chance to hit: ').removesuffix('%')) <= 95, chance
             # Kill the weakened boss and verify its native 3..6 generic slots.
             hero.send('combat',enabled=False)
-            for p in peers:p.send('move',cell=0x02990109,position=[61,240.199,-44.606205],heading=0,motion=[0,0,0])
+            for p in peers:p.send('move',cell=CELL,position=ORIGIN,heading=0,motion=[0,0,0])
             mark=len(hero.events);hero.send('attack',id=BOSS)
             until(hero,mark,'quality',lambda e:e['id']==BOSS and e['key']==0x102 and e['value']==0)
             hero.send('combat',enabled=False);until(hero,mark,'combat',lambda e:not e['enabled'])
             mark=len(hero.events);hero.send('open_container',id=BOSS)
-            opened=until(hero,mark,'container_state',lambda e:e['open']);assert 3<=len(opened['items'])<=6,opened
+            opened=until(hero,mark,'container_state',lambda e:e['open'])
             drops=[until(hero,mark,'object',lambda e:e['id']==iid) for iid in opened['items']]
+            ordinary=[item for item in drops if item['entity']!=0x470039b8]  # Skeleton Legionary trophy
+            assert 3<=len(ordinary)<=6 and len(drops)-len(ordinary)<=1,drops
             # Seed 42 includes equipment. Inspect its durable rating/level before
             # and after the temporary corpse IID becomes an owned inventory IID.
-            mark=len(hero.events);hero.send('examine',id=drops[0]['id'])
+            mark=len(hero.events);hero.send('examine',id=ordinary[0]['id'])
             before=until(hero,mark,'examination')
             def stats(panel):
-                values = [n.get('text', {}).get('literal') or '' for n in panel['nodes']]
+                values = panel_text(panel).splitlines()
                 return [value for value in values if value.startswith(('Armor:', 'Weapon damage:', 'Treasure level:'))]
             expected=stats(before)
             assert len(expected)==2 and 'Treasure level: 56' in expected,before
@@ -100,12 +109,12 @@ def main():
             mark=len(hero.events);hero.send('loot',id=BOSS);until(hero,mark,'container_state',lambda e:not e['open'])
             owned=[e for e in hero.events[mark:] if e.get('event')=='object' and e.get('container')==hero.id]
             assert sorted(e['entity'] for e in owned)==sorted(e['entity'] for e in drops),(owned,drops)
-            received=next(e for e in owned if e['entity']==drops[0]['entity'])
+            received=next(e for e in owned if e['entity']==ordinary[0]['entity'])
             time.sleep(.15)  # Respect the server's 100 ms examination cooldown.
             mark=len(hero.events);hero.send('examine',id=received['id'])
             assert stats(until(hero,mark,'examination'))==expected
             result=dict(lightning_bolt_vigor_ticks=True,observer_receives_vigor=True,
-                        examination_uses_current_vigor=True,native_boss_treasure_count=len(drops),
+                        examination_uses_current_vigor=True,examination_uses_combat_hit_chance=True,native_boss_treasure_count=len(ordinary),
                         no_reroll=True,owner_only=True,loot_claims=True,rolled_stats_preserved=True)
             (run/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result));print(run)
         finally:

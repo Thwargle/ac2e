@@ -24,8 +24,7 @@ def main():
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19486',
             '--account','local','--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),
-            '--content',str(content),'--initialize-ui','true','--training-kit','false',
-            '--encounters','training','--lifestones','true','--portals','true','--seconds','240'],
+            '--content',str(content),'--initialize-ui','true','--encounters','world','--lifestones','true','--portals','true','--seconds','240'],
             env=env,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW)
         try:
             time.sleep(1)

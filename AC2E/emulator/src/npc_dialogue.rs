@@ -13,18 +13,20 @@ pub fn profiles()->&'static BTreeMap<u32,Profile> {
     static DATA:OnceLock<BTreeMap<u32,Profile>>=OnceLock::new();
     DATA.get_or_init(|| {
         #[derive(Deserialize)] struct Catalog { version:u32, profiles:Vec<Profile> }
-        let catalog:Catalog=serde_json::from_str(include_str!("../content/npc-dialogue-v1.json"))
-            .expect("validated NPC dialogue catalog");
-        assert_eq!(catalog.version,1);
         let mut result=BTreeMap::new();
-        for p in catalog.profiles {
+        for source in [include_str!("../content/npc-dialogue-v1.json"),
+                       include_str!("../content/ac2hero-settlements-v1.json")] {
+          let catalog:Catalog=serde_json::from_str(source).expect("validated NPC dialogue catalog");
+          assert_eq!(catalog.version,1);
+          for p in catalog.profiles {
             assert!(p.entity>>24==0x47 && !p.name.trim().is_empty() && !p.topics.is_empty());
             for i in 0..p.topics.len() {
                 let text=p.reply(i);
-                assert!(crate::interaction::speech(1,&p.name,&text).is_ok());
-                assert!(crate::interaction::dialogue(&p.name,&text).is_ok());
+                assert!(crate::interaction::speech(1,&p.name,&text).is_ok(), "Invalid speech for {}", p.name);
+                assert!(crate::interaction::dialogue(&p.name,&text).is_ok(), "Invalid dialogue for {}", p.name);
             }
             assert!(result.insert(p.entity,p).is_none());
+          }
         }
         result
     })

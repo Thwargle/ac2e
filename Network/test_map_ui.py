@@ -23,7 +23,7 @@ def main():
             str(SERVER), 'serve', '--bind', f'127.0.0.1:{port}', '--account', 'local',
             '--data', str(data / 'world'), '--game-data', str(DAT_DIRECTORY),
             '--content', str(content),
-            '--initialize-ui', 'true', '--training-kit', 'false', '--lifestones', 'false',
+            '--initialize-ui', 'true', '--lifestones', 'false',
             '--portals', 'false', '--seconds', '180',
         ], env=env, stdout=log, stderr=log, creationflags=0x08000000)
         peer = None

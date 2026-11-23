@@ -24,20 +24,6 @@ bool FAC2PortalSounds::Decode(TConstArrayView<uint8> Bytes)
     return Enter>>24==0x2a && Exit>>24==0x2a;
 }
 
-namespace {
-// PerlinNoise::Init/Noise, including the native MSVC srand(0) table.
-float Noise(float X)
-{
-    struct FTable {float G[256];int32 P[256];FTable(){uint32 Seed=0;
-        auto Rand=[&](){Seed=Seed*214013u+2531011u;return (Seed>>16)&32767;};
-        for(int32 I=0;I<256;++I){P[I]=I;G[I]=(int32(Rand()&511)-256)/256.f;}
-        for(int32 I=255;I>0;--I)Swap(P[I],P[Rand()&255]);}};
-    static const FTable Table;
-    const int32 Cell=int32(X);const double T=double(X)-Cell;
-    const double Lower=float(T*Table.G[Table.P[Cell&255]]);
-    return Lower+T*T*(3-2*T)*((T-1)*Table.G[Table.P[(Cell+1)&255]]-Lower);
-}
-}
 AAC2PortalSpace::AAC2PortalSpace()
 {
     PrimaryActorTick.bCanEverTick=true;
@@ -73,7 +59,7 @@ bool AAC2PortalSpace::Initialize()
     for(int32 R=0;R<149;++R)for(int32 J=0;J<16;++J){int32 A=R*17+J,B=A+17;
         // AC2 +Y forward to Unreal +X forward changes handedness.
         Indices.Append({A,B,A+1,A+1,B,B+1});}
-    Effects=MakeUnique<FAC2Effects>();Effects->Open(GetWorld(),Mode->DatDirectory);
+    Effects=MakeUnique<FAC2Effects>();Effects->Open(GetWorld(),Mode->DatDirectory,false);
     Capture->ShowOnlyActors.Add(Effects->RenderActor());
     return true;
 }
@@ -81,7 +67,7 @@ void AAC2PortalSpace::Generate(int32 Index)
 {
     const FRing Previous=Rings[(Index+149)%150];auto& R=Rings[Index];
     R.Distance=Previous.Distance+3;R.Radius=10+6*FMath::Sin(R.Distance*.01f);
-    const float X=.35f*Noise(Seed*UE_PI+R.Distance*.005f),Y=.25f*Noise(Seed*UE_PI+R.Distance*.002f);
+    const float X=.35f*FAC2Wave::Perlin(Seed*UE_PI+R.Distance*.005f),Y=.25f*FAC2Wave::Perlin(Seed*UE_PI+R.Distance*.002f);
     // Native X/Y/Z axes become UE Y/X/Z; reflection reverses each rotation.
     const FQuat Q=FQuat(FVector::YAxisVector,-X)*FQuat(FVector::XAxisVector,-Y)*FQuat(FVector::ZAxisVector,-X);
     R.Frame=FTransform(Q,FVector(300,0,0))*Previous.Frame;
@@ -102,7 +88,20 @@ void AAC2PortalSpace::UpdateGeometry()
     const auto& A=Rings[First];const auto& B=Rings[(First+1)%150];const float Blend=FMath::Clamp((Position-A.Distance)/3,0.f,1.f);
     Capture->SetRelativeLocation(FMath::Lerp(A.Frame.GetLocation(),B.Frame.GetLocation(),Blend));
     Capture->SetRelativeRotation(FQuat::Slerp(A.Frame.GetRotation(),B.Frame.GetRotation(),Blend));
-    Capture->FOVAngle=FMath::Clamp(65.f*(Phase==3?1+1.4f*Age*Age:1),35.f,150.f);
+    Capture->FOVAngle=65.f*(Phase==3?1+1.4f*Age*Age:1);
+}
+bool AAC2PortalSpace::HoldDeparture()
+{
+    // The source scene must stay resident while the tunnel fades over it.
+    if (!Phase && !DepartureScene) DepartureScene=Initialize();
+    return DepartureScene;
+}
+float AAC2PortalSpace::WorldFOVScale() const
+{
+    const float Fraction=FMath::Clamp(Age,0.f,1.f);
+    if (Phase==1 && DepartureScene) return 1.f-.8f*Fraction*Fraction;
+    if (Phase==4 && !Requested()) return 1.f+1.4f*FMath::Square(1.f-Fraction);
+    return 1.f;
 }
 void AAC2PortalSpace::Tick(float Delta)
 {
@@ -117,7 +116,7 @@ void AAC2PortalSpace::Tick(float Delta)
             for(uint32 Loop:Sounds.Loops)SoundContexts.Add(Audio->Play(Loop));
         }
     }
-    if(!Phase)return;
+    if(!Phase){DepartureScene=false;return;}
     if(Wanted && Phase>=3)
     {
         // A second travel can arrive during either exit phase. Resume the
@@ -127,7 +126,7 @@ void AAC2PortalSpace::Tick(float Delta)
             for(uint32 Loop:Sounds.Loops)SoundContexts.Add(Audio->Play(Loop));
     }
     Age+=Delta;Time+=Delta;
-    if(Phase==1 && Age>=1){Phase=2;Age=0;
+    if(Phase==1 && Age>=1){Phase=2;Age=0;DepartureScene=false;
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_MAP_TRAVEL_SMOKE"))==TEXT("1"))
             FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Map-network-portal.png"),true,false);
         if(FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_JOURNAL_SMOKE"))==TEXT("1"))

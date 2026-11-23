@@ -1,8 +1,28 @@
 //! Reconstructed ringway conversations. `q9` is an immutable version-one policy.
 //! Native quest IDs/text and NPC table identities are recovered; guide XP/timers
-//! and new obelisk placements are authored. Buff rewards are not yet implemented.
+//! and new obelisk placements are authored.
 use serde::Deserialize;
 use std::{collections::BTreeMap, io, sync::OnceLock};
+
+// The 6f WStates reference the effect classes and contain their actual
+// duration and stat tables. Their DIDs differ between the two retail builds.
+#[derive(Clone, Copy)]
+pub enum Boon { Speed, Courage, Vengeance, Ward }
+
+impl Boon {
+    pub const ALL: [Self; 4] = [Self::Speed, Self::Courage, Self::Vengeance, Self::Ward];
+
+    pub fn effect(self) -> u32 {
+        let first = if crate::data_profile::unconverted_7230() { 0x6f001df7 } else { 0x6f000259 };
+        first + match self { Self::Courage => 0, Self::Speed => 1, Self::Vengeance => 2, Self::Ward => 3 }
+    }
+}
+
+pub const COURAGE_HEALTH: u32 = 30;
+pub const VENGEANCE_DAMAGE: u32 = 5;
+pub const WARD_ARMOR: i32 = 6;
+const WARD_SECONDS: u64 = 10_800;
+const TAP_SECONDS: u64 = 7_200;
 
 #[derive(Debug, Deserialize)]
 pub struct Profile {
@@ -82,11 +102,21 @@ pub struct State {
     pub completed: u64,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Book(pub BTreeMap<u32, State>);
+pub struct Book(pub BTreeMap<u32, State>, [u64; 3]);
 pub struct Conversation {
     pub book: Book,
     pub xp: u64,
+    completed_quest: Option<u32>,
     pub text: String,
+}
+impl Conversation {
+    pub(crate) fn settle(&self, progression: &crate::progression::Progression) -> io::Result<crate::progression::Progression> {
+        crate::quest_points::apply(progression, &self.rewards())
+    }
+
+    pub(crate) fn rewards(&self) -> Vec<crate::progression::Command> {
+        self.completed_quest.map(|id| crate::quest_points::completion_rewards(id, self.xp)).unwrap_or_default()
+    }
 }
 fn invalid(message: &str) -> io::Error {
     io::Error::other(message)
@@ -104,6 +134,20 @@ impl State {
     }
 }
 impl Book {
+    /// All regions grant the same four blessings. Only the corresponding
+    /// ordered tap or final turn-in refreshes its own timer.
+    pub fn boon(&self, boon: Boon, now: u64) -> Option<crate::effects::Lifetime> {
+        let (start, duration) = match boon {
+            Boon::Speed => (self.1[0], TAP_SECONDS),
+            Boon::Courage => (self.1[1], TAP_SECONDS),
+            Boon::Vengeance => (self.1[2], TAP_SECONDS),
+            Boon::Ward => (catalog().quests.iter()
+                .filter_map(|q| self.0.get(&q.id)).map(|s| s.completed)
+                .filter(|s| *s <= now).max()?, WARD_SECONDS),
+        };
+        crate::effects::Lifetime::from_quest(start, duration, now)
+    }
+
     pub fn guidance(q: &Profile, s: &State) -> String {
         if s.completed > 0 {
             return format!(
@@ -138,12 +182,14 @@ impl Book {
         let c = catalog();
         let mut next = self.clone();
         let mut xp = 0;
+        let mut completed_quest = None;
         let text;
         if entity == c.referral.npc {
             let q = &c.referral;
             match next.0.get_mut(&q.id) {
                 Some(s) if s.active(q, now) => {
                     s.completed = now;
+                    completed_quest = Some(q.id);
                     text = "You found the Arwic Mines Overseer. The New Arwic Mines lie northeast of town at 45.6N, 2.6W. The mining and crafting lesson is not available yet.".to_owned();
                 }
                 Some(s) if s.completed > 0 => text = Self::guidance(q, s),
@@ -173,9 +219,10 @@ impl Book {
                 }
                 if s.active(q, now) && s.phase == 4 {
                     s.completed = now;
+                    completed_quest = Some(q.id);
                     xp = q.xp;
                     text = format!(
-                        "{} complete. You receive {} experience. My friend, the Arwic Mines Overseer at 44.0N, 6.1W, needs help.",
+                        "{} complete. You receive {} experience and the Obelisk Ward (+6 armor for three hours). My friend, the Arwic Mines Overseer at 44.0N, 6.1W, needs help.",
                         q.title, xp
                     );
                     let referral = &c.referral;
@@ -208,6 +255,7 @@ impl Book {
                 let objective = q.objectives.iter().position(|e| *e == entity).unwrap() + 1;
                 if s.phase == objective {
                     s.phase += 1;
+                    next.1[objective - 1] = now;
                 }
                 text = Self::guidance(q, s);
             }
@@ -215,6 +263,7 @@ impl Book {
         Ok(Conversation {
             book: next,
             xp,
+            completed_quest,
             text,
         })
     }
@@ -237,18 +286,38 @@ mod tests {
                 assert_eq!(r.xp, 0);
                 book = r.book;
                 assert_eq!(book.0[&q.id].phase, i + 2);
+                let boon = [Boon::Speed, Boon::Courage, Boon::Vengeance][i];
+                let time = 102 + i as u64;
+                let effect = book.boon(boon, time).unwrap();
+                assert_eq!(effect.start, time * 1000);
+                assert_eq!(effect.until, (time + TAP_SECONDS) * 1000);
+                assert!(book.boon(boon, time + TAP_SECONDS).is_none());
                 assert_eq!(book.converse(*entity, 1, 105).unwrap().book, book);
             }
             let r = book.converse(q.npc, 1, 106).unwrap();
             assert_eq!(r.xp, 80);
             assert_eq!(r.book.0[&q.id].completed, 106);
+            assert_eq!(r.book.boon(Boon::Ward, 106), Some(crate::effects::Lifetime { start: 106_000, until: 10_906_000 }));
             assert_eq!(r.book.converse(q.npc, 1, 107).unwrap().xp, 0);
             let referral = &catalog().referral;
             assert_eq!(r.book.0[&referral.id].completed, 0);
             let done = r.book.converse(referral.npc, 1, 108).unwrap();
             assert_eq!(done.xp, 0);
             assert_eq!(done.book.0[&referral.id].completed, 108);
+            assert_eq!(done.book.boon(Boon::Ward, 108), r.book.boon(Boon::Ward, 106));
         }
+    }
+    #[test]
+    fn ward_refreshes_from_the_last_regional_turn_in_and_expires_offline() {
+        let mut book = Book::default();
+        for (q, time) in catalog().quests.iter().zip([100, 200, 300]) {
+            book.0.insert(q.id, State { phase: 4, started: 1, completed: time });
+        }
+        assert_eq!(book.boon(Boon::Ward, 250).unwrap().start, 200_000);
+        let active = book.boon(Boon::Ward, 300 + WARD_SECONDS - 1).unwrap();
+        assert_eq!(active.start, 300_000);
+        assert_eq!(active.until, (300 + WARD_SECONDS) * 1000);
+        assert!(book.boon(Boon::Ward, 300 + WARD_SECONDS).is_none());
     }
     #[test]
     fn timers_expiry_and_other_regions_cannot_skip_objectives() {

@@ -32,11 +32,13 @@ class FAC2DatArchive
     bool Open(const FString &Path, uint32 ExpectedDataSet, FString &Error);
     bool Find(uint32 Id, FAC2DatEntry &Entry, FString &Error);
     bool Read(uint32 Id, TArray<uint8> &Bytes, FString &Error);
+    uint32 ReadPublicEnumId(uint32 Map, uint32 Key, FString &Error);
     bool Enumerate(TArray<FAC2DatEntry> &Entries, FString &Error);
     const FAC2DatHeader &GetHeader() const
     {
         return Header;
     }
+    const FString& GetPath() const { return Filename; }
 
   private:
     struct FNode
@@ -49,6 +51,7 @@ class FAC2DatArchive
     bool ValidBlock(uint32 Offset) const;
     TUniquePtr<IFileHandle> File;
     FAC2DatHeader Header;
+    FString Filename;
 };
 
 namespace AC2

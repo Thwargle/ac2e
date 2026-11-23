@@ -135,6 +135,10 @@ pub fn creation_bonus<'a>(
         })
         .map(|i| (i, u32::from(i.roll.map_or(1, |r| r.level))))
 }
+/// AC2E's per-level crafting curve, shared by creation and spellbinding.
+pub fn crafted_rating(base: u32, level: u16) -> u16 {
+    (base + u32::from(level.saturating_sub(1)) * 2).min(1000) as u16
+}
 pub fn valid_finish(item: &Item) -> bool {
     let Some(d) = catalog()
         .items
@@ -163,13 +167,21 @@ pub fn valid_finish(item: &Item) -> bool {
         && r.armor == 0
         && ((d.damage > 0 && r.damage > 0) || (d.damage == 0 && r.damage == 0))
 }
+pub fn item_weapon_damage(item: &Item) -> Option<u32> {
+    if crate::esper_camp::slayer_weapon(item) {
+        return Some(22);
+    }
+    if item.definition == crate::arwic_mines::SWORD
+        && crate::arwic_mines::content().items.iter().any(|a| a.id == item.definition && a.visual == item.visual)
+    {
+        return Some(10);
+    }
+    item.roll
+        .filter(|r| r.damage > 0 && (r.crafted || crate::treasure_weapons::valid_finish(item)))
+        .map(|r| u32::from(r.damage))
+}
 pub fn weapon_damage(inventory: &Inventory) -> Option<u32> {
-    crate::treasure_weapons::equipped_damage(inventory).or_else(|| inventory
-        .items()
-        .find(|i| i.location == Location::Equipped(0x40))
-        .and_then(|i| i.roll)
-        .filter(|r| r.crafted && r.damage > 0)
-        .map(|r| u32::from(r.damage)))
+    inventory.items().find(|item| item.location == Location::Equipped(0x40)).and_then(item_weapon_damage)
 }
 pub fn value(curve: &[u64], level: u32) -> u64 {
     curve
@@ -278,13 +290,17 @@ pub fn chance(rank: u32, difficulty: u64) -> u32 {
 }
 pub fn require_workshop(scene: &crate::scene::Scene, player: u64, recipe: u32) -> io::Result<()> {
     let r = self::recipe(recipe).ok_or_else(|| bad("Unknown crafting recipe."))?;
-    if r.workshop == 0 {
+    near_workshop(scene, player, r.workshop)
+}
+
+pub fn near_workshop(scene: &crate::scene::Scene, player: u64, effect: u32) -> io::Result<()> {
+    if effect == 0 {
         return Ok(());
     }
     if scene.content_objects().any(|o| {
         catalog().workshops.iter().any(|w| {
             w.id == o.entity
-                && w.effect == r.workshop
+                && w.effect == effect
                 && scene
                     .combat_distance(player, o.id)
                     .is_some_and(|d| d <= w.radius)
@@ -292,7 +308,7 @@ pub fn require_workshop(scene: &crate::scene::Scene, player: u64, recipe: u32) -
     }) {
         return Ok(());
     }
-    Err(bad(match r.workshop {
+    Err(bad(match effect {
         0x6f002ee6 => "Move within eight meters of a refining workshop.",
         0x6f002ee7 => "Move within eight meters of a spellbinding workshop.",
         _ => "Move within eight meters of a crafting workshop.",
@@ -522,9 +538,7 @@ pub fn plan(
             })
         } else if apparel.is_some() {
             Some(crate::inventory::Roll {
-                armor: (crate::apparel::item_armor(definition.id).unwrap_or(10)
-                    + u32::from(level.saturating_sub(1)) * 2)
-                    .min(1000) as u16,
+                armor: crafted_rating(crate::apparel::item_armor(definition.id).unwrap_or(10), level),
                 tint: (random / 100000 % 1001) as u16,
                 level,
                 crafted: true,
@@ -537,7 +551,7 @@ pub fn plan(
                 tint: 0,
                 level,
                 damage: if definition.damage > 0 {
-                    (definition.damage + u32::from(level.saturating_sub(1)) * 2).min(1000) as u16
+                    crafted_rating(definition.damage, level)
                 } else {
                     0
                 },
@@ -650,6 +664,11 @@ pub fn validate_assets(
     metadata: &mut BTreeMap<u32, Option<Metadata>>,
 ) -> io::Result<()> {
     let mut valid = 0;
+    if dat.read(crate::totem::VISUAL).is_ok() {
+        if let Ok(info) = Metadata::load(dat, crate::totem::TOTEM) {
+            metadata.insert(crate::totem::TOTEM, Some(info));
+        }
+    }
     for item in &catalog().items {
         if metadata.get(&item.id).is_some_and(|i| i.is_some()) {
             continue;

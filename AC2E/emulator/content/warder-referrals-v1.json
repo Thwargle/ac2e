@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "policy": "Native quest and NPC identities; reconstructed conversation transitions from archived guide evidence. Cragstone requires completed Drudge Outcast Camp; the Corporal and Scout referrals can begin independently. Blank guide deadlines are treated as unlimited. Completion and the next eligible referral happen in the same conversation. Rewards are paid once per accepted run. This profile covers the first three introductions. Notebook and Captain continuation use warder-notebook-v1; Dantry remains excluded because Potion Raid is not implemented.",
+  "quests": [
+    {
+      "id": 1073742031,
+      "title": "Find a Warder in Cragstone",
+      "giver": 1191187906,
+      "recipient": 1191187904,
+      "giver_name": "Esper Warder",
+      "recipient_name": "Warder of Cragstone",
+      "level": 3,
+      "limit": 0,
+      "repeat": 72000,
+      "xp": 0,
+      "direction": "Speak to the Warder of Cragstone at 32.8N, 12.7W. The gateway to Cragstone requires level 6.",
+      "prerequisite": "esper_camp",
+      "native_fields": [
+        {
+          "quest": "400000cf",
+          "package": "QuestFindWarderCragstone",
+          "field": "name",
+          "table": "250016b8",
+          "key": "a8607cec",
+          "text_raw": "Find a Warder in Cragstone.[E]",
+          "records": [
+            {
+              "table": "250016b8",
+              "sha256": "4290881cd1a7dba2f0eb4f9449c0acd7fbb8e0fb6fa07708fac7b9b206646a07",
+              "installed_record_identical": true
+            },
+            {
+              "table": "250216b8",
+              "sha256": "733683a69a4845e1d4746f8e7a3d6a5008e03b8ec9f657b450d983f2743c6c3a",
+              "installed_record_identical": false
+            }
+          ]
+        },
+        {
+          "quest": "400000cf",
+          "package": "QuestFindWarderCragstone",
+          "field": "summary",
+          "table": "250016b8",
+          "key": "6c459364",
+          "text_raw": "\n\nFind a Warder of Osteth in Cragstone.\n\n",
+          "records": [
+            {
+              "table": "250016b8",
+              "sha256": "4290881cd1a7dba2f0eb4f9449c0acd7fbb8e0fb6fa07708fac7b9b206646a07",
+              "installed_record_identical": true
+            },
+            {
+              "table": "250416b8",
+              "sha256": "d66a89578d9898d86498f3f868712d92a44f85d203611c691f9ce6cf0484c667",
+              "installed_record_identical": false
+            }
+          ]
+        },
+        {
+          "quest": "400000cf",
+          "package": "QuestFindWarderCragstone",
+          "field": "phases/1/journal",
+          "table": "250016b8",
+          "key": "2e5c1e52",
+          "text_raw": "The Esper Warder would like you to give the Warder in Cragstone at 32.2 N, 12.5 W his regards.\n\nThe Esper Warder told you, \\qI knew my friend the Miller was correct in sending you to me. You have proven yourself worthy of the Warders of Osteth's regard. Let me reward you with experience and this Glyph. The Menhir it allows access to will tell you a few secrets of this land's history. If you should pass on to Cragstone, please give a friend of mine my regards. She is watching over the city of Cragstone even now.\\q",
+          "records": [
+            {
+              "table": "250016b8",
+              "sha256": "4290881cd1a7dba2f0eb4f9449c0acd7fbb8e0fb6fa07708fac7b9b206646a07",
+              "installed_record_identical": true
+            },
+            {
+              "table": "250616b8",
+              "sha256": "2f50953daecbb97a606c485c213927556e699f154476c357377bb9776b3025e3",
+              "installed_record_identical": false
+            }
+          ]
+        }
+      ],
+      "source": {
+        "url": "http://ac2wiki.info/index.php/Find_a_Warder_in_Cragstone",
+        "html_sha256": "7ff128d03261e1c7ecc07f6c7370388e4ae49fa4b9215c934c39f6240acabeef",
+        "facts": {
+          "Requirements": "Level 3+, completed Drudge Outcast Camp Quest",
+          "Type": "Solo",
+          "Start Location": "Millstone , Esper Reaches",
+          "Quest Starter": "Esper Warder (37.5N, 19.9W)",
+          "Time Limit": "",
+          "XP Reward": "0",
+          "Other Rewards": "",
+          "Repeat Time": "20 hours",
+          "Related Quests": "Drudge Outcast Camp Quest , Old Cragstone Excavation"
+        }
+      }
+    },
+    {
+      "id": 1073742033,
+      "title": "Find the Warder Corporal",
+      "giver": 1191187904,
+      "recipient": 1191187910,
+      "giver_name": "Warder of Cragstone",
+      "recipient_name": "Warder Corporal",
+      "level": 1,
+      "limit": 0,
+      "repeat": 72000,
+      "xp": 0,
+      "direction": "Speak to the Warder Corporal near Rithwic at 23.9N, 4.3E. The Rithwic gateway is at 32.0N, 12.4W in Cragstone.",
+      "prerequisite": null,
+      "native_fields": [
+        {
+          "quest": "400000d1",
+          "package": "QuestFindWarderCorporal",
+          "field": "name",
+          "table": "250016bb",
+          "key": "a8607cec",
+          "text_raw": "Find the Warder Corporal",
+          "records": [
+            {
+              "table": "250016bb",
+              "sha256": "a6c68b70372d1fc50b142f953e2e0111d9b58c4b104ff96ed12e86e1251da9a6",
+              "installed_record_identical": true
+            },
+            {
+              "table": "250216bb",
+              "sha256": "254da944b3c88ddcb98dc82a127e1af67e8655f030b82a009b7b3928a43713d2",
+              "installed_record_identical": false
+            }
+          ]
+        }
+      ],
+      "source": {
+        "url": "http://ac2wiki.info/index.php/Find_the_Warder_Corporal",
+        "html_sha256": "ca3ebda2797c8e3d857f1ab9ff8190165101424b79128541ff7760a9c0995602",
+        "facts": {
+          "Requirements": "Level 1+",
+          "Type": "Solo",
+          "Start Location": "Cragstone",
+          "Quest Starter": "Warder of Cragstone (32.8N, 12.7W)",
+          "Time Limit": "",
+          "XP Reward": "0",
+          "Other Rewards": "",
+          "Repeat Time": "20 hours",
+          "Related Quests": "Isle of Tears Drudge Fort"
+        }
+      }
+    },
+    {
+      "id": 1073742028,
+      "title": "Find the Warder Scout",
+      "giver": 1191187910,
+      "recipient": 1191187916,
+      "giver_name": "Warder Corporal",
+      "recipient_name": "Warder Scout",
+      "level": 1,
+      "limit": 172800,
+      "repeat": 72000,
+      "xp": 30,
+      "direction": "Speak to the Warder Scout near Molwirth at 14.0N, 0.6E within 48 hours.",
+      "prerequisite": null,
+      "native_fields": [
+        {
+          "quest": "400000cc",
+          "package": "QuestFindWarderMadCrone",
+          "field": "name",
+          "table": "250016a5",
+          "key": "a8607cec",
+          "text_raw": "Find the Warder Scout",
+          "records": [
+            {
+              "table": "250016a5",
+              "sha256": "a342b74cf5ca8617ec6c043c360ba6f8c4055af1fa352088dcc422015bf13e38",
+              "installed_record_identical": true
+            },
+            {
+              "table": "250216a5",
+              "sha256": "a04eb2508a5583624dc883c13ba367cad5b16c410d436ebe1bd1ec5ec8f7d235",
+              "installed_record_identical": false
+            }
+          ]
+        }
+      ],
+      "source": {
+        "url": "http://ac2wiki.info/index.php/Find_the_Warder_Scout",
+        "html_sha256": "3df667afd31881239c7f24100e1a166aa326f1cd7bf8923878c05ff1fff04db0",
+        "facts": {
+          "Requirements": "Level 1+",
+          "Type": "Solo",
+          "Start Location": "Rithwic , Mad Crone Mountains",
+          "Quest Starter": "Warder Corporal (23.9N, 4.3E)",
+          "Time Limit": "48 hours",
+          "XP Reward": "30",
+          "Other Rewards": "",
+          "Repeat Time": "20 hours",
+          "Related Quests": "The Warder Scout's Notebook , Seek the Warder Captain"
+        }
+      }
+    }
+  ]
+}

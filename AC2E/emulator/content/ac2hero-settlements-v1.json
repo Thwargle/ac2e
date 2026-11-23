@@ -1,0 +1,1115 @@
+{
+  "version": 1,
+  "basis": "AC2Hero named outdoor NPC coordinates, matched to unique installed Legions definitions. Position is fitted to walkable native ground. Quest associations describe guide references.",
+  "validate_camp_bodies": true,
+  "npcs": [
+    {
+      "id": 9313683724128239780,
+      "entity": 1191198884,
+      "land": [
+        1479.0,
+        609.96
+      ],
+      "evidence": {
+        "coordinates": [
+          -40.2,
+          45.0
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch626b.html",
+        "quests": [
+          {
+            "title": "A Fell Plot",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_afellplot.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239777,
+      "entity": 1191198881,
+      "land": [
+        1483.08,
+        612.0
+      ],
+      "evidence": {
+        "coordinates": [
+          -40.0,
+          45.4
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearched26.html",
+        "quests": [
+          {
+            "title": "A Grievous Threat",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_agrievousthreat.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239771,
+      "entity": 1191198875,
+      "land": [
+        1485.12,
+        614.04
+      ],
+      "evidence": {
+        "coordinates": [
+          -39.8,
+          45.6
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearche12e.html",
+        "quests": [
+          {
+            "title": "Clense the Standing Stones",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_clensethestandingstones.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239550,
+      "entity": 1191198654,
+      "land": [
+        1484.1,
+        617.1
+      ],
+      "evidence": {
+        "coordinates": [
+          -39.5,
+          45.5
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch3848.html",
+        "quests": [
+          {
+            "title": "Destroy the Sorrow Thralls",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_destroythesorrowthralls.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239467,
+      "entity": 1191198571,
+      "land": [
+        1389.24,
+        650.76
+      ],
+      "evidence": {
+        "coordinates": [
+          -36.2,
+          36.2
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch96d3.html",
+        "quests": [
+          {
+            "title": "Eradicate Skyport Controllers",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_eradicatetheskyportcontrollers.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239465,
+      "entity": 1191198569,
+      "land": [
+        1394.34,
+        655.86
+      ],
+      "evidence": {
+        "coordinates": [
+          -35.7,
+          36.7
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchd238.html",
+        "quests": [
+          {
+            "title": "Exterminate Iridescent Piercers",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheiridescentpiercers.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239860,
+      "entity": 1191198964,
+      "land": [
+        1537.14,
+        507.96
+      ],
+      "evidence": {
+        "coordinates": [
+          -50.2,
+          50.7
+        ],
+        "local": "Greenstone",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch0eee.html",
+        "quests": [
+          {
+            "title": "Journey to Greenstone",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_journeytogreenstone.html"
+          },
+          {
+            "title": "Journey to the Aerie",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_journeytotheaerie.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239546,
+      "entity": 1191198650,
+      "land": [
+        1528.98,
+        510.0
+      ],
+      "evidence": {
+        "coordinates": [
+          -50.0,
+          49.9
+        ],
+        "local": "Greenstone",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch7b68.html",
+        "quests": [
+          {
+            "title": "Kill the Chromu Sclavus",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_killthechromusclavus.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239774,
+      "entity": 1191198878,
+      "land": [
+        1486.14,
+        608.94
+      ],
+      "evidence": {
+        "coordinates": [
+          -40.3,
+          45.7
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch276e.html",
+        "quests": [
+          {
+            "title": "Lost Ithkanda",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_lostithkanda.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128237999,
+      "entity": 1191197103,
+      "land": [
+        1394.34,
+        651.78
+      ],
+      "evidence": {
+        "coordinates": [
+          -36.1,
+          36.7
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchb22f.html",
+        "quests": [
+          {
+            "title": "Mysteries of the Skyport",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_mysteriesoftheskyport.html"
+          },
+          {
+            "title": "Siege Stores",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_seigestores.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239696,
+      "entity": 1191198800,
+      "land": [
+        1555.5,
+        685.44
+      ],
+      "evidence": {
+        "coordinates": [
+          -32.8,
+          52.5
+        ],
+        "local": "Jethrics Outpost",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchd7ed.html",
+        "quests": [
+          {
+            "title": "Release Uncle Finiel",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_releaseunclefiniel.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239624,
+      "entity": 1191198728,
+      "land": [
+        1381.08,
+        664.02
+      ],
+      "evidence": {
+        "coordinates": [
+          -34.9,
+          35.4
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch3777.html",
+        "quests": [
+          {
+            "title": "Remove the Iridescent Stinger",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_removetheiridescentstinger.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239451,
+      "entity": 1191198555,
+      "land": [
+        1386.18,
+        663.0
+      ],
+      "evidence": {
+        "coordinates": [
+          -35.0,
+          35.9
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch4250.html",
+        "quests": [
+          {
+            "title": "Slay the Banderling Berserkers",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingberserkers.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239463,
+      "entity": 1191198567,
+      "land": [
+        1384.14,
+        656.88
+      ],
+      "evidence": {
+        "coordinates": [
+          -35.6,
+          35.7
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch2817.html",
+        "quests": [
+          {
+            "title": "Slay the Banderling Maulers",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingmaulers.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239549,
+      "entity": 1191198653,
+      "land": [
+        1484.1,
+        612.0
+      ],
+      "evidence": {
+        "coordinates": [
+          -40.0,
+          45.5
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchb0ac.html",
+        "quests": [
+          {
+            "title": "Smash the Sandstone Colossi",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_smashthesandstonecolossi.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239768,
+      "entity": 1191198872,
+      "land": [
+        1485.12,
+        621.18
+      ],
+      "evidence": {
+        "coordinates": [
+          -39.1,
+          45.6
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch28e4.html",
+        "quests": [
+          {
+            "title": "Terminate the Swarm",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_terminatetheswarm.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239618,
+      "entity": 1191198722,
+      "land": [
+        1390.26,
+        655.86
+      ],
+      "evidence": {
+        "coordinates": [
+          -35.7,
+          36.3
+        ],
+        "local": "Yaosenji",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchabb1.html",
+        "quests": [
+          {
+            "title": "Tree Avenger",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_treeavenger.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128236866,
+      "entity": 1191195970,
+      "land": [
+        483.48,
+        931.26
+      ],
+      "evidence": {
+        "coordinates": [
+          -8.7,
+          -52.6
+        ],
+        "local": "Eastern Gevoth Outpost",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch54ee.html",
+        "quests": [
+          {
+            "title": "Find My Idiot Son!",
+            "url": "http://ac2hero.e5i5o.com/quest/linvak_findmyidiotson.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128236604,
+      "entity": 1191195708,
+      "land": [
+        1771.74,
+        1190.34
+      ],
+      "evidence": {
+        "coordinates": [
+          16.7,
+          73.7
+        ],
+        "local": "Zu",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchb4d4.html",
+        "quests": [
+          {
+            "title": "The Path into Darkness",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_pathofdarkness.html"
+          },
+          {
+            "title": "The Path of Light",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_pathoflight.html"
+          },
+          {
+            "title": "Retracing the Path",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_retracingthepath.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128231832,
+      "entity": 1191190936,
+      "land": [
+        1299.48,
+        1096.5
+      ],
+      "evidence": {
+        "coordinates": [
+          7.5,
+          27.4
+        ],
+        "local": "Shoushi",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch361b.html",
+        "quests": [
+          {
+            "title": "Eep Treats",
+            "url": "http://ac2hero.e5i5o.com/quest/osteth_eeptreats.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128225418,
+      "entity": 1191184522,
+      "land": [
+        1209.72,
+        1025.1
+      ],
+      "evidence": {
+        "coordinates": [
+          0.5,
+          18.6
+        ],
+        "local": "Eastern Prosper Outpost",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch77b7.html",
+        "quests": [
+          {
+            "title": "Seek the Drudge Counselors",
+            "url": "http://ac2hero.e5i5o.com/quest/osteth_seekthedrudgecounselors.html"
+          },
+          {
+            "title": "The Slavetaker's Head",
+            "url": "http://ac2hero.e5i5o.com/quest/osteth_theslavetakershead.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128231145,
+      "entity": 1191190249,
+      "land": [
+        1253.58,
+        1131.18
+      ],
+      "evidence": {
+        "coordinates": [
+          10.9,
+          22.9
+        ],
+        "local": "Shoushi",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearchf9a2.html",
+        "quests": [
+          {
+            "title": "Portal Beacon Blowout",
+            "url": "http://ac2hero.e5i5o.com/quest/osteth_portalbeaconblowout.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239853,
+      "entity": 1191198957,
+      "land": [
+        1422.9,
+        491.64
+      ],
+      "evidence": {
+        "coordinates": [
+          -51.8,
+          39.5
+        ],
+        "local": "Fort Strathelar",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch57ac.html",
+        "quests": [
+          {
+            "title": "Journey to Fort Strathelar",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_journeytofortstrathelar.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128239552,
+      "entity": 1191198656,
+      "land": [
+        1484.672302,
+        626.448786
+      ],
+      "evidence": {
+        "coordinates": [
+          -38.4,
+          45.8
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_eliminatetheswarmdronenymphs.html",
+        "quests": [
+          {
+            "title": "Eliminate the Swarm Drone Nymphs",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_eliminatetheswarmdronenymphs.html"
+          }
+        ],
+        "placement_note": "The guide places Temakhe at the Aerie lookout. The nominal coordinate fails native walking/body checks. Fitted on the walkable upper plateau at 193.65 m, 62.3 m from the guide point. Closer ground is at the base of the cliff."
+      }
+    },
+    {
+      "id": 9313683724128239589,
+      "entity": 1191198693,
+      "land": [
+        1482.06,
+        609.96
+      ],
+      "evidence": {
+        "coordinates": [
+          -40.2,
+          45.3
+        ],
+        "local": "The Aerie",
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheswarmharvesters.html",
+        "quests": [
+          {
+            "title": "Exterminate the Swarm Harvesters",
+            "url": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheswarmharvesters.html"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128230401,
+      "entity": 1191189505,
+      "land": [
+        1767.66,
+        1184.22
+      ],
+      "evidence": {
+        "coordinates": [
+          16.1,
+          73.3
+        ],
+        "local": "Zu",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearcha32e.html",
+        "html_sha256": "356e6ec86471b3c84c43b49d4f144fb4202bbdd3f34b524805fa07a866574bd1",
+        "quests": [
+          {
+            "title": "Shreth-Hunter's Guide to Omishan",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_shrethhuntersguide.html",
+            "html_sha256": "fe9871302ce374b75b193df206f60fcd627069834b8fb36ff1aecda658c21146"
+          }
+        ]
+      }
+    },
+    {
+      "id": 9313683724128232202,
+      "entity": 1191191306,
+      "land": [
+        1694.22,
+        1350.48
+      ],
+      "evidence": {
+        "coordinates": [
+          32.4,
+          66.1
+        ],
+        "local": "Northeast Naderu",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch93b9.html",
+        "html_sha256": "1e3e001c559530ef16ce6544610c960792f34e3404ef99eb5266affc8a0d712b",
+        "quests": [
+          {
+            "title": "Temple Search",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html",
+            "html_sha256": "627cc997bdc7d49ecbe614b1aa56339761207360fbfc7588e9dd033b7d7a9cae"
+          }
+        ]
+      },
+      "foundation_offset_m": [
+        -2,
+        0
+      ]
+    },
+    {
+      "id": 9313683724128232204,
+      "entity": 1191191308,
+      "land": [
+        1691.16,
+        1106.7
+      ],
+      "evidence": {
+        "coordinates": [
+          8.5,
+          65.8
+        ],
+        "local": "Southern Tou-Tou",
+        "url": "http://ac2hero.e5i5o.com/search/npcsearch810f.html",
+        "html_sha256": "2b478b1695cfa009a3209d8040c0373349787a3255170ee0ba00b494db30cf52",
+        "quests": [
+          {
+            "title": "Temple Search",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html",
+            "html_sha256": "627cc997bdc7d49ecbe614b1aa56339761207360fbfc7588e9dd033b7d7a9cae"
+          }
+        ]
+      },
+      "foundation_offset_m": [
+        -4,
+        8
+      ]
+    },
+    {
+      "id": 9313683724128232210,
+      "entity": 1191191314,
+      "land": [
+        1893.12,
+        1052.64
+      ],
+      "evidence": {
+        "coordinates": [
+          3.2,
+          85.6
+        ],
+        "local": "Hakata",
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html",
+        "html_sha256": "627cc997bdc7d49ecbe614b1aa56339761207360fbfc7588e9dd033b7d7a9cae",
+        "quests": [
+          {
+            "title": "Temple Search",
+            "url": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html",
+            "html_sha256": "627cc997bdc7d49ecbe614b1aa56339761207360fbfc7588e9dd033b7d7a9cae"
+          }
+        ]
+      },
+      "foundation_offset_m": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": 9313683724128225365,
+      "entity": 1191184469,
+      "land": [
+        633.42,
+        989.4
+      ],
+      "evidence": {
+        "coordinates": [
+          -3.0,
+          -37.9
+        ],
+        "local": "Winterhollows",
+        "url": "http://ac2hero.e5i5o.com/quest/linvak_icefire.html",
+        "html_sha256": "7625447851d600f4c69f3f870c4edffd54da7c9554aae91f74888aea9150ad83",
+        "quests": [
+          {
+            "title": "Icefire",
+            "url": "http://ac2hero.e5i5o.com/quest/linvak_icefire.html",
+            "html_sha256": "7625447851d600f4c69f3f870c4edffd54da7c9554aae91f74888aea9150ad83"
+          }
+        ]
+      },
+      "foundation_offset_m": [
+        -2,
+        4
+      ]
+    }
+  ],
+  "templates": {
+    "1191198884": {
+      "name": "Shrill Angostara",
+      "visual": 520100857
+    },
+    "1191198881": {
+      "name": "Valt Ondar",
+      "visual": 520100856
+    },
+    "1191198875": {
+      "name": "Illior Yalaern",
+      "visual": 520100854
+    },
+    "1191198654": {
+      "name": "Arlen Jenis",
+      "visual": 520100796
+    },
+    "1191198571": {
+      "name": "Maera Torvaeya",
+      "visual": 520100732
+    },
+    "1191198569": {
+      "name": "Ivor Stronghand",
+      "visual": 520100731
+    },
+    "1191198964": {
+      "name": "Captain Trammel",
+      "visual": 520100895
+    },
+    "1191198650": {
+      "name": "Yurikhe",
+      "visual": 520100792
+    },
+    "1191198878": {
+      "name": "Telemanua",
+      "visual": 520100855
+    },
+    "1191197103": {
+      "name": "Tretna Byer",
+      "visual": 520100359
+    },
+    "1191198800": {
+      "name": "Gerald Maquail",
+      "visual": 520100834
+    },
+    "1191198728": {
+      "name": "Muriona",
+      "visual": 520100816
+    },
+    "1191198555": {
+      "name": "Gwynna Stronghand",
+      "visual": 520100724
+    },
+    "1191198567": {
+      "name": "Savorlin Gahntar",
+      "visual": 520100730
+    },
+    "1191198653": {
+      "name": "Jasper Urleg",
+      "visual": 520100795
+    },
+    "1191198872": {
+      "name": "Daranua",
+      "visual": 520100853
+    },
+    "1191198722": {
+      "name": "Tiamary Graziel",
+      "visual": 520100817
+    },
+    "1191195970": {
+      "name": "Lord Stubbington III",
+      "visual": 520100100
+    },
+    "1191195708": {
+      "name": "Lataua",
+      "visual": 520099990
+    },
+    "1191190936": {
+      "name": "Chief Mudlurk",
+      "visual": 520093730
+    },
+    "1191184522": {
+      "name": "Counselor of the New Drudge Republic",
+      "visual": 520093750
+    },
+    "1191199513": {
+      "name": "Cunning Tom",
+      "visual": 520100543
+    },
+    "1191197337": {
+      "name": "Cunning Kallikan",
+      "visual": 520100543
+    },
+    "1191197430": {
+      "name": "Iridescent Worker",
+      "visual": 520100788
+    },
+    "1191199518": {
+      "name": "Iridescent Stinger",
+      "visual": 520100788
+    },
+    "1191197244": {
+      "name": "Banderling Berserker",
+      "visual": 520094622
+    },
+    "1191186373": {
+      "name": "Sandy Armoredillo",
+      "visual": 520094626
+    },
+    "1191186332": {
+      "name": "Green Phyntos Wasp",
+      "visual": 520094411
+    },
+    "1191190249": {
+      "name": "Ghatnor",
+      "visual": 520098350
+    },
+    "1191198957": {
+      "name": "Legionary Brigadier Maekarn",
+      "visual": 520100892
+    },
+    "1191198656": {
+      "name": "Temakhe",
+      "visual": 520100798
+    },
+    "1191198693": {
+      "name": "Bertrand Jas",
+      "visual": 520100799
+    },
+    "1191189505": {
+      "name": "Miraua, Warder Tracker",
+      "visual": 520097850
+    },
+    "1191191306": {
+      "name": "Shrine to Mother Audetanga",
+      "visual": 520095546
+    },
+    "1191191308": {
+      "name": "Shrine to Blue Mother Heaven",
+      "visual": 520095546
+    },
+    "1191191314": {
+      "name": "Shrine to Brother Tanae",
+      "visual": 520095546
+    },
+    "1191184469": {
+      "name": "Frostbound One",
+      "visual": 520095482
+    }
+  },
+  "profiles": [
+    {
+      "entity": 1191198654,
+      "name": "Arlen Jenis",
+      "topics": [
+        {
+          "title": "Destroy the Sorrow Thralls",
+          "text": "Sorrow Thralls are ambushing the Ramparts patrols. Look for them there.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_destroythesorrowthralls.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191198569,
+      "name": "Ivor Stronghand",
+      "topics": [
+        {
+          "title": "Exterminate Iridescent Piercers",
+          "text": "Look for the Iridescent Piercers north of Yaosenji.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheiridescentpiercers.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191198650,
+      "name": "Yurikhe",
+      "topics": [
+        {
+          "title": "Kill the Chromu Sclavus",
+          "text": "The Chromu Sclavus are on the central southern island of the Gardens.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_killthechromusclavus.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191197103,
+      "name": "Tretna Byer",
+      "topics": [
+        {
+          "title": "Mysteries of the Skyport",
+          "text": "Wiamli Bigson was exploring a mine northeast of the Skyport, close to the coast. Look for its entrance at 27.3 S, 37.1 E.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_mysteriesoftheskyport.html"
+        },
+        {
+          "title": "Siege Stores",
+          "text": "The Skyport needs bread for its storehouse. Quatrid grain is what we use for the flatbread.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_seigestores.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191198728,
+      "name": "Muriona",
+      "topics": [
+        {
+          "title": "Remove the Iridescent Stinger",
+          "text": "The Iridescent Stinger has been spotted west of Yaosenji, near 33.9 S, 32.8 E. Watch for the workers around it.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_removetheiridescentstinger.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191198722,
+      "name": "Tiamary Graziel",
+      "topics": [
+        {
+          "title": "Tree Avenger",
+          "text": "Look for Cunning Tom in the hills to the north, around 31.4 S, 37.6 E.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_treeavenger.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191184522,
+      "name": "Counselor of the New Drudge Republic",
+      "topics": [
+        {
+          "title": "Seek the Drudge Counselors",
+          "text": "Dantry can be found at 7.4 N, 15.4 E.",
+          "source": "http://ac2hero.e5i5o.com/quest/osteth_seekthedrudgecounselors.html"
+        },
+        {
+          "title": "The Slavetaker's Head",
+          "text": "Look for the Burun Slavetakers near the King Toad Idol, at 2.5 N, 17.8 E.",
+          "source": "http://ac2hero.e5i5o.com/quest/osteth_theslavetakershead.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191190249,
+      "name": "Ghatnor",
+      "topics": [
+        {
+          "title": "Portal Beacon Blowout",
+          "text": "A Drudge recruit can lead you to the outpost under siege. Its portal beacon summons reinforcements and can repair itself. Sledgehammer disables that protection.",
+          "source": "http://ac2hero.e5i5o.com/quest/osteth_portalbeaconblowout.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191198957,
+      "name": "Legionary Brigadier Maekarn",
+      "topics": [
+        {
+          "title": "Journey to Fort Strathelar",
+          "text": "From this fort the Stalwart directed their Gearknights against the Olthoi. The Knorr Expeditionary Forces now defend the Shield Wall. Otonku sends his reports here from the Aerie.",
+          "source": "http://ac2hero.e5i5o.com/quest/knorr_journeytofortstrathelar.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191189505,
+      "name": "Miraua, Warder Tracker",
+      "topics": [
+        {
+          "title": "Shreth-Hunter's Guide to Omishan",
+          "text": "Lupe in Hakata is compiling a guide to Omishan. The Warders of Zu, Hakata, Ankoro, Rakani, Ikeras, Shinoko and Mayoi are the seven trackers named in her manuscript.",
+          "source": "http://ac2hero.e5i5o.com/quest/omishan_shrethhuntersguide.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191191306,
+      "name": "Shrine to Mother Audetanga",
+      "topics": [
+        {
+          "title": "Temple Search",
+          "text": "This shrine to Mother Audetanga stands on the grand circuit of the Animae. Chief Ariatah in Hakata knows the story of the temple amulet.",
+          "source": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191191308,
+      "name": "Shrine to Blue Mother Heaven",
+      "topics": [
+        {
+          "title": "Temple Search",
+          "text": "The shrine to Blue Mother Heaven marks the southern Tou-Tou stop on the circuit of the Animae. Chief Ariatah in Hakata knows the story of the temple amulet.",
+          "source": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html"
+        }
+      ]
+    },
+    {
+      "entity": 1191191314,
+      "name": "Shrine to Brother Tanae",
+      "topics": [
+        {
+          "title": "Temple Search",
+          "text": "This shrine honors Brother Tanae. It is one of the eleven shrines of the Animae that Chief Ariatah describes in Hakata.",
+          "source": "http://ac2hero.e5i5o.com/quest/omishan_templesearch.html"
+        }
+      ]
+    }
+  ],
+  "camps": [
+    {
+      "id": 9313685921968685056,
+      "land": [
+        1403.52,
+        699.72
+      ],
+      "roster": [
+        1191199513,
+        1191197337,
+        1191197337,
+        1191197337
+      ],
+      "capacity": 4,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_treeavenger.html",
+        "sha256": "a7deff1b1c41ebd9217186633730bda93f5b96394cfb7cabe82458361f098ddd",
+        "basis": "Guide specifies three Kallikan. Their subtype is inferred from the local Cunning Kallikan population."
+      }
+    },
+    {
+      "id": 9313685921968685312,
+      "land": [
+        1354.56,
+        674.22
+      ],
+      "roster": [
+        1191199518,
+        1191197430,
+        1191197430,
+        1191197430
+      ],
+      "capacity": 4,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_removetheiridescentstinger.html",
+        "sha256": "40d44d953246c622852ed9b76bb916d0f7327064cb3038e33780c7f914bfecc5",
+        "basis": "Guide identifies the boss and three Iridescent Workers."
+      }
+    },
+    {
+      "id": 9313685921968685568,
+      "land": [
+        1418.412,
+        680.85
+      ],
+      "roster": [
+        1191197244,
+        1191197244,
+        1191197244
+      ],
+      "capacity": 3,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingberserkers.html",
+        "sha256": "d2f6fd49051a40d66459b37ce544dad8f616c1c59fbfc8c376a532b531ce51db",
+        "basis": "The guide locates the quest in the Knorr Wilds and requires ten kills. Center and concurrent count are inferred from the nearby Banderling Mauler population at 8140c10000b15500."
+      }
+    },
+    {
+      "id": 9313685921968685824,
+      "land": [
+        935.34,
+        1469.82
+      ],
+      "roster": [
+        1191186373,
+        1191186373,
+        1191186373,
+        1191186373,
+        1191186373
+      ],
+      "capacity": 5,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/osteth_crushthesandyarmoredillos.html",
+        "sha256": "f6cb0aab1d986ceb96cdff6c896aef33c627d00a453e2405c41af0a9268d3271",
+        "basis": "AC2Hero describes a pack of five Sandy Armoredillos at this position west of Arwic."
+      }
+    },
+    {
+      "id": 9313685921968686080,
+      "land": [
+        946.56,
+        1452.48
+      ],
+      "roster": [
+        1191186332,
+        1191186332,
+        1191186332
+      ],
+      "capacity": 3,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/osteth_exterminatethephyntoswasps.html",
+        "sha256": "6d528a641e19430fe75dca54bfd745e749f560d3e4e254a311c463d70b79ca4f",
+        "basis": "AC2Hero identifies the ravine south of Arwic. The simultaneous population of three is inferred; the guide specifies five kills, not a pack size."
+      }
+    }
+  ]
+}

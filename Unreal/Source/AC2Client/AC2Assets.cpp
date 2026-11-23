@@ -1,16 +1,24 @@
 #include "AC2Assets.h"
+#include "AC2Sky.h"
+#include "AC2Fog.h"
+#include <atomic>
 #include "AC2CellConnectivity.h"
 #include "AC2Animation.h"
 #include "AC2Effects.h"
+#include "AC2EffectLight.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "GameFramework/PlayerController.h"
+#include "AC2StaticCollision.h"
+#include "AC2AcademyRepairs.h"
 #include "AC2AssetReader.h"
 #include "AC2MaterialAlpha.h"
 #include "AC2NativeMaterial.h"
 #include "AC2TextureMips.h"
 #include "AC2CellLighting.h"
 #include "AC2Audio.h"
+#include "AC2FXScalar.h"
+#include "AC2AttachmentStreak.h"
 #include "AC2GameMode.h"
 #include "AC2Scenery.h"
 #include "Async/ParallelFor.h"
@@ -21,7 +29,14 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "PhysicsEngine/BodyInstance.h"
+#include "Components/PointLightComponent.h"
 #include "ProceduralMeshComponent.h"
+#include "Dom/JsonObject.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Engine/Engine.h"
+#include "Misc/AutomationTest.h"
+#include "AC2CharacterData.h"
+#endif
 
 namespace
 {
@@ -35,6 +50,9 @@ struct FAC2DecodedImage
     bool HighResolution = false;
     int32 W = 0, H = 0;
     TArray<FColor> Pixels;
+    // RenderTexture::m_SourceLevels, indexed relative to the selected top surface.
+    // Where a level is present both masked and ordinary samplers use its original alpha.
+    TArray<TArray<FColor>> SourceMips;
     TArray<TArray<FColor>> Mips;
     TArray<TArray<FColor>> CutoutMips;
     TMap<uint32,UTexture2D*> Samplers;
@@ -82,10 +100,12 @@ struct FAC2UVModifier
 struct FAC2DecodedLayer
 {
     uint32 SourceBlend = 0, DestBlend = 0, TrueFlags=0, FalseFlags=0, CullMode=2;
-    bool PixelShader=false;
+    bool PixelShader=false, ParticleLighting=false;
+    bool DepthFog=false, DepthAlphaFog=false, DiffuseFog=false;
     TArray<uint32> Textures;
     TArray<FAC2AlphaStage> AlphaStages, ColorStages;
     TArray<uint32> TextureCoordinates, SpecialTextures;
+    TArray<bool> ProjectedCoordinates;
     TArray<FIntPoint> AddressModes;
     TArray<FAC2UVModifier> Modifiers;
     FLinearColor Tint = FLinearColor::White;
@@ -98,6 +118,7 @@ struct FAC2DecodedLayer
 };
 struct FAC2DecodedMaterial
 {
+    float AppearanceOpacity = 1.f;
     TArray<FAC2DecodedLayer> Layers;
     TArray<FAC2DecodedProperty> Properties;
 };
@@ -111,7 +132,11 @@ struct FAC2DecodedEntity
 };
 struct FAC2FXNode
 {
+    FAC2EffectLight Light;
     FAC2Decal Decal;
+    FAC2RepulsorFX Repulsor;
+    FAC2StreakDefinition Streak;
+    bool StartStreak = false, StopStreak = false;
     TMap<uint32,uint32> Channels;
     TMap<uint32, TSharedPtr<FAC2FXNode>> Terrain;
     TArray<uint32> Descriptors, Sounds;
@@ -119,7 +144,7 @@ struct FAC2FXNode
     uint32 Visual=0,Behavior=0,TargetFX=0,Script=0;
     uint32 AppearanceTable=0,AppearanceKey=0;
     float AppearanceScalar=1;
-    float Lifetime=0;
+    float Lifetime=0, RampTime=0;
     bool Parent=false,Retarget=false,FireAndForget=false;
     FVector Offset = FVector::ZeroVector;
     bool Water = false, RemoveRotation = false;
@@ -131,6 +156,7 @@ struct FAC2DecodedPart
     uint32 Connection = 0, AnimMap = 0, FXTable = 0;
     FAC2Appearance Appearance;
     TArray<uint32> Startup;
+    TMap<uint32,float> StartupStrength;
     TMap<uint32, TArray<FAC2FXNode>> Overrides;
 };
 struct FAC2MatAtom
@@ -150,6 +176,8 @@ struct FAC2PartAtom
 };
 struct FAC2Atoms
 {
+    TArray<FVector2f> Opacities; // priority, authored opacity (including -999)
+    FAC2AppearanceOpacity Opacity;
     TArray<FAC2IconLayer> Icons;
     TArray<FAC2MatAtom> Materials;
     TArray<FAC2MeshAtom> Meshes;
@@ -194,8 +222,11 @@ struct FAC2DecodedGeometry
     TArray<FInfluence> Skin;
     TArray<FVector> Vertices, Normals;
     TArray<FVector2D> UVs, DetailUVs, UV2, UV3;
+    TArray<FVector2D> FrillBend; // normalized root-to-tip weight, plant height in cm
     TArray<FColor> Colors;
     TArray<FAC2DecodedFragment> Fragments;
+    bool NativeCollision = false;
+    TArray<int32> PhysicsIndices;
 };
 
 TArray<FAC2DecodedProperty> Properties(FAC2AssetReader &R)
@@ -246,12 +277,26 @@ struct FAC2AssetLibrary::FImpl
 {
     bool PreviewMode = false;
     FLinearColor InteriorAmbient=FLinearColor::Black;
+    // CLandBlockInfo defaults: no indoor fog, white colour, zero range.
+    uint32 InteriorFogType=0;
+    FLinearColor InteriorFogColor=FLinearColor::White;
+    float InteriorFogNear=0, InteriorFogFar=0;
     TArray<FAC2CellLight> CellLights;
+    bool DamageDecalsLoaded=false;
+    TArray<FAC2FXNode> DamageDecals;
+    TArray<TPair<int32,TWeakObjectPtr<UPointLightComponent>>> RoomLights;
+    bool RoomLightsUploaded=false;
     FAC2PreviewLighting PreviewLighting;
     FTransform PreviewToWorld;
     void LightPreview(UMaterialInstanceDynamic* M)
     {
         M->SetVectorParameterValue(TEXT("AC2UIAmbient"), PreviewLighting.Ambient);
+        FLinearColor Previous;
+        if(M->GetVectorParameterValue(FMaterialParameterInfo(TEXT("AC2AnisotropicLight")),Previous)){
+            const auto* Sun=PreviewLighting.Lights.FindByPredicate([](const auto& L){return L.Directional && L.Intensity>0;});
+            const FVector Direction=Sun?-PreviewToWorld.TransformVectorNoScale(Sun->Direction).GetSafeNormal():FVector::ZeroVector;
+            M->SetVectorParameterValue(TEXT("AC2AnisotropicLight"),FLinearColor(Direction));
+        }
         for (int32 I = 0; I < 8; ++I)
         {
             FVector P = FVector::ZeroVector;
@@ -321,8 +366,12 @@ struct FAC2AssetLibrary::FImpl
     {
         FAC2Setup Setup;
         FTransform Frame;
+        // Preserve the full affine attachment chain until it reaches vertices.
+        // FTransform composition cannot retain rotation followed by unequal scales.
+        FMatrix PartFrame=FMatrix::Identity;
         TArray<FMatrix> BindInverse, World, Bones;
         TArray<FAnimatedMesh> Meshes;
+        bool Skinned = false;
         TSharedPtr<FAC2Animation> Idle;
         TSharedPtr<FAC2Animator> Locomotion;
         TMap<uint32,TSharedPtr<FAC2Animator>> Graphs;
@@ -338,16 +387,51 @@ struct FAC2AssetLibrary::FImpl
         FAC2Setup::FSocket Socket;
     };
     TArray<FAnimatedGroup> Animated;
+    FAC2AnimatorState AnimatorState;
+    bool CreatureIdleAudio=false;
+    float NextIdleSoundRoll=0;
+    FVector AnimationNormal=FVector::UpVector,AnimationLook=FVector::ZeroVector;
+    bool AnimationGrounded=false;
     FAC2MotionData Movement;
     FAC2BehaviorData Behaviors;
+    TOptional<TSet<uint32>> HoldBehaviors;
+    bool IsHoldBehavior(uint32 Behavior)
+    {
+        if(!HoldBehaviors.IsSet())
+        {
+            HoldBehaviors.Emplace();
+            // CharTemplate::GetBehavior (7160 006244A0) reads global Behavior flags;
+            // the similarly named per-body BehaviorInfo supplies ramp and layer metadata.
+            constexpr uint32 CharTemplateId=0x2f000000;
+            TArray<uint8> Bytes;
+            if(Read(CharTemplateId,Bytes))
+            {
+                FAC2AssetReader R(MoveTemp(Bytes));
+                if(R.Word()==CharTemplateId)
+                {
+                    const uint32 Count=R.Word()&0x00ffffff;
+                    if(Count<=uint32(R.Left()/12))
+                        for(uint32 I=0;I<Count;++I)
+                        {
+                            const uint32 Id=R.Word(),Flags=R.Word();R.Word();
+                            if(Flags&2)HoldBehaviors->Add(Id);
+                        }
+                }
+            }
+        }
+        return HoldBehaviors->Contains(Behavior);
+    }
     uint32 Element=AC2Motion::Ground, Mode=AC2Motion::Peace;
     // BehaviorTracker keeps independent tracks per native layer. Damage reactions
     // must not replace an attack on another layer (Legions BehaviorTracker::Think).
     struct FActionTrack
     {
         uint32 Behavior=0,Key=0,Layer=0,Mode=0,Element=0;
-        float Time=0,Previous=0,Duration=0,Rate=1,Ramp=.1f;
+        double Time=0,Previous=0;
+        float Duration=0,Rate=1,Ramp=.1f;
         bool Hold=false;
+        uint64 Instance=0;
+        FAC2HoldLoop Loop;
     };
     TArray<FActionTrack> Actions;
     void BlendFromCurrent(float Seconds)
@@ -373,6 +457,71 @@ struct FAC2AssetLibrary::FImpl
     TArray<FNetworkEffect> NetworkEffects;
     struct FVisualEffect {FAppearanceAttachment Attachment;uint32 Effect=0;float Age=0,Life=2;TWeakObjectPtr<AActor> Actor;TSharedPtr<FAC2AssetLibrary> Model;TWeakObjectPtr<USceneComponent> Target;};
     TArray<FVisualEffect> VisualEffects;
+    struct FLightEffect { FAC2FXNode Node; uint32 Effect=0; float Age=0; TWeakObjectPtr<UPointLightComponent> Light; };
+    TArray<FLightEffect> LightEffects;
+    TArray<TSharedPtr<FAC2ParticleRepulsor>> Repulsors;
+    TArray<FAC2AttachmentStreak> Streaks;
+    struct FStreakController {uint32 Effect; uint64 Action;};
+    TMap<uint32,FStreakController> StreakControllers; // keyed by native holding location
+    uint64 StreakAction = 0;
+    FVector StreakModelScale = FVector::OneVector;
+    bool HeldStreakActive = false;
+    bool ApplyStreak(const FAC2FXNode& Node, uint32 Effect)
+    {
+        if (Node.StartStreak) StreakControllers.Add(Node.Holding, {Effect, StreakAction});
+        if (Node.StopStreak) StreakControllers.Remove(Node.Holding);
+        if (!Node.Holding && (Node.StartStreak || Node.StopStreak))
+            for (auto& Streak : Streaks) Streak.Activate(HeldStreakActive || !Node.StopStreak);
+        if (Node.Streak.Enabled && Streaks.Num() < 16)
+        {
+            auto& Trail = Streaks.AddDefaulted_GetRef();
+            Trail.Definition = Node.Streak;
+            Trail.Effect = Effect;
+            Trail.Created = PreviousAnimationTime;
+            Trail.Activate(Node.Streak.Life > 0 || HeldStreakActive || StreakControllers.Contains(0));
+            return true;
+        }
+        return Node.StartStreak || Node.StopStreak;
+    }
+    void ReleaseEndedStreakControllers()
+    {
+        // Interrupting an attack can skip its authored stop cue.
+        for (auto It = StreakControllers.CreateIterator(); It; ++It)
+        {
+            const uint64 Owner = It.Value().Action;
+            if (!Owner || Actions.ContainsByPredicate([Owner](const FActionTrack& A){return A.Instance == Owner;})) continue;
+            if (!It.Key()) for (auto& Trail : Streaks) Trail.Activate(HeldStreakActive);
+            It.RemoveCurrent();
+        }
+    }
+    bool StartRepulsor(const FAC2FXNode& Node)
+    {
+        if (!Node.Repulsor.Enabled || PreviewMode || Repulsors.Num() >= 64) return false;
+        auto Field = FAC2ParticleRepulsor::Register(ModelRoot.Get(), Node.Repulsor);
+        if (!Field) return false;
+        Repulsors.Add(MoveTemp(Field));
+        return true;
+    }
+    bool StartLight(const FAC2FXNode& Node,uint32 Effect)
+    {
+        if(!Node.Light.Enabled || PreviewMode || !ModelRoot.IsValid() || LightEffects.Num()>=64)return false;
+        auto* Owner=ModelRoot->GetOwner();
+        auto* Light=NewObject<UPointLightComponent>(Owner);
+        Owner->AddInstanceComponent(Light);Light->SetupAttachment(ModelRoot.Get());
+        Light->SetMobility(EComponentMobility::Movable);
+        // DoLightSourceFX stores the FX offset on the source object (not the
+        // effect's visual mesh or the victim). Model scaling applies once.
+        Light->SetRelativeLocation(Node.Offset*100);
+        Light->bUseInverseSquaredFalloff=false;Light->LightFalloffExponent=2;
+        Light->SetAttenuationRadius(FMath::Max(0.f,Node.Light.Range.Value(0))*100);
+        Light->SetIntensity(FMath::Max(0.f,Node.Light.Intensity.Value(0))*4*Node.Light.Envelope(0));
+        Light->SetLightColor(FLinearColor::FromSRGBColor(Node.Light.Color));
+        Light->SetLightingChannels(true,true,false);
+        Light->SetCastShadows(true);Light->ShadowBias=.25f;Light->SourceRadius=5;
+        Light->ShadowResolutionScale=.5f;
+        Light->RegisterComponent();RegisterAC2EffectLight(Light);
+        LightEffects.Add({Node,Effect,0,Light});return true;
+    }
     struct FScriptEffect {FAC2FXScript Script;float Phase=0;int32 Depth=0;};
     TArray<FScriptEffect> ScriptEffects;
     int32 EffectDepth=0;
@@ -381,9 +530,24 @@ struct FAC2AssetLibrary::FImpl
     float ModelParticleScale=1;
     TMap<uint32, TArray<FAC2FXNode>> AppearanceEffects;
     TMap<uint32, TArray<FAC2FXNode>> StartupEffects;
-    TMap<uint32,TArray<uint32>> SoundEffects;
+    TMap<uint32,float> StartupStrength;
+    struct FScalarEffect
+    {
+        TArray<uint32> Contexts;
+        TArray<FAC2FXNode> Nodes;
+        FAC2FXScalar Scalar;
+        bool Startup=false;
+    };
+    TMap<uint32,FScalarEffect> ScalarEffects;
     TMap<uint32,bool> LoopingSounds;
+    TMap<uint32,uint32> SoundChannels;
     TUniquePtr<FAC2Effects> AttachedEffects;
+    bool HasLoopingParticles(uint32 Effect) const
+    {
+        return AttachedEffects && NetworkEffects.ContainsByPredicate([&](const auto& Child){
+            return Child.Effect==Effect && AttachedEffects->LoopingSource(Child.Attachment.Key);
+        });
+    }
     TWeakObjectPtr<USceneComponent> ModelRoot;
     FTransform EffectFrame(const FAC2FXNode& Node) const
     {
@@ -408,13 +572,18 @@ struct FAC2AssetLibrary::FImpl
     FString TextureNamespace;
     FAC2AssetStats Stats;
     TMap<uint32, uint32> TerrainSurfaces, PropertyTypes;
+    uint32 CloudShadowTexture = 0;
+    FLinearColor CloudShadowMotion = FLinearColor::Black;
     uint32 DefaultSurface = 0;
     TMap<uint32, TArray<FAC2DecodedBand>> Surfaces;
     TMap<uint32, TSharedPtr<FAC2DecodedImage>> Images;
     TMap<uint32, TSharedPtr<FAC2DecodedMaterial>> Materials;
+    struct FShoreMaterials { uint32 Waves = 0, Transmission = 0; };
+    TOptional<FShoreMaterials> ShoreMaterials;
     TMap<uint32, TSharedPtr<FAC2DecodedGeometry>> Geometry;
     TMap<uint32, FAC2DecodedVisual> Visuals;
     TArray<FAC2ParticleSource> Sources;
+    TArray<FAC2ScenerySound> Sounds;
     struct FMovingMaterial
     {
         UMaterialInstanceDynamic *Material;
@@ -507,7 +676,11 @@ struct FAC2AssetLibrary::FImpl
         S.Word();
         if (S.Word() != 0x13000000)
             return false;
-        S.Take(28);
+        S.Take(12); // far terrain texture, scale and far water material
+        CloudShadowTexture = S.Word();
+        CloudShadowMotion.R = S.Float(); // repeats per world metre
+        CloudShadowMotion.G = S.Float(); // U and V drift in repeats per second
+        CloudShadowMotion.B = S.Float();
         for (int32 List = 0; List < 2 && S.Good; ++List)
         {
             const int32 NS = S.Count(12, 4096);
@@ -589,6 +762,46 @@ struct FAC2AssetLibrary::FImpl
         return true;
     }
 
+    static void ApplyMaterialProperty(FAC2DecodedMaterial& Material, const FAC2DecodedProperty& Reference,
+                                      const TArray<uint8>& Data)
+    {
+        for (const FAC2DecodedField &F : Reference.Fields)
+        {
+            if (!Material.Layers.IsValidIndex(F.Layer))
+                continue;
+            FAC2DecodedLayer &L = Material.Layers[F.Layer];
+            FAC2AssetReader V(Data);
+            if (F.Kind == 10 && L.Textures.IsValidIndex(F.Index) && V.Left() >= 4)
+                L.Textures[F.Index] = V.Word();
+            if (F.Kind == 1 && V.Left() >= 16)
+                L.Tint = Color(V);
+            if (F.Kind == 0 && V.Left() >= 16)
+                L.Ambient = Color(V);
+            // MaterialProperty::Apply: RMFIELD_LAYER_SPECULAR / SPECULARPOWER.
+            if (F.Kind == 2 && V.Left() >= 16)
+                L.Specular = Color(V);
+            if (F.Kind == 3 && V.Left() >= 44)
+                L.SpecularPower = FAC2Wave::Read(V);
+            if ((F.Kind==11 || F.Kind==12) && L.AddressModes.IsValidIndex(F.Index) && V.Left()>=4) {
+                const int32 Address=V.Word()?1:3;
+                if(F.Kind==11)L.AddressModes[F.Index].X=Address; else L.AddressModes[F.Index].Y=Address;
+            }
+            if (F.Kind == 8 && V.Left() >= 4)
+                L.Masked = V.Word() != 0;
+            // FIELD_CULL_MODE is the authored "two sided" boolean, not
+            // the D3D enum stored directly in MaterialLayer::StreamPack.
+            if (F.Kind == 5 && V.Left() >= 4)
+                L.CullMode = V.Word() ? 1 : 2;
+            if (F.Kind >= 33 && F.Kind <= 37 && L.Modifiers.IsValidIndex(F.Index) && V.Left() >= 44)
+            {
+                auto &Modifier = L.Modifiers[F.Index];
+                if (F.Kind == 34 || F.Kind == 37)
+                    Modifier.V = FAC2Wave::Read(V);
+                else
+                    Modifier.U = FAC2Wave::Read(V);
+            }
+        }
+    }
     bool ModifyMaterial(TSharedPtr<FAC2DecodedMaterial> M, uint32 Mod)
     {
         TArray<uint8> B;
@@ -604,44 +817,8 @@ struct FAC2AssetLibrary::FImpl
         {
             const FAC2DecodedProperty *P =
                 M->Properties.FindByPredicate([&](const FAC2DecodedProperty &V) { return V.Name == O.Name; });
-            if (!P)
-                continue;
-            for (const FAC2DecodedField &F : P->Fields)
-            {
-                if (!M->Layers.IsValidIndex(F.Layer))
-                    continue;
-                FAC2DecodedLayer &L = M->Layers[F.Layer];
-                FAC2AssetReader V(O.Data);
-                if (F.Kind == 10 && L.Textures.IsValidIndex(F.Index) && V.Left() >= 4)
-                    L.Textures[F.Index] = V.Word();
-                if (F.Kind == 1 && V.Left() >= 16)
-                    L.Tint = Color(V);
-                if (F.Kind == 0 && V.Left() >= 16)
-                    L.Ambient = Color(V);
-                // MaterialProperty::Apply: RMFIELD_LAYER_SPECULAR / SPECULARPOWER.
-                if (F.Kind == 2 && V.Left() >= 16)
-                    L.Specular = Color(V);
-                if (F.Kind == 3 && V.Left() >= 44)
-                    L.SpecularPower = FAC2Wave::Read(V);
-                if ((F.Kind==11 || F.Kind==12) && L.AddressModes.IsValidIndex(F.Index) && V.Left()>=4) {
-                    const int32 Address=V.Word()?1:3;
-                    if(F.Kind==11)L.AddressModes[F.Index].X=Address; else L.AddressModes[F.Index].Y=Address;
-                }
-                if (F.Kind == 8 && V.Left() >= 4)
-                    L.Masked = V.Word() != 0;
-                // FIELD_CULL_MODE is the authored "two sided" boolean, not
-                // the D3D enum stored directly in MaterialLayer::StreamPack.
-                if (F.Kind == 5 && V.Left() >= 4)
-                    L.CullMode = V.Word() ? 1 : 2;
-                if (F.Kind >= 33 && F.Kind <= 37 && L.Modifiers.IsValidIndex(F.Index) && V.Left() >= 44)
-                {
-                    auto &Modifier = L.Modifiers[F.Index];
-                    if (F.Kind == 34 || F.Kind == 37)
-                        Modifier.V = FAC2Wave::Read(V);
-                    else
-                        Modifier.U = FAC2Wave::Read(V);
-                }
-            }
+            if (P)
+                ApplyMaterialProperty(*M, *P, O.Data);
         }
         return true;
     }
@@ -707,7 +884,7 @@ struct FAC2AssetLibrary::FImpl
                 const uint32 AU=R.Word(), AV=R.Word(); L.AddressModes.Add(FIntPoint(AU,AV));
                 R.Take(8); // min/mag filters (all installed stages use linear)
                 L.TextureCoordinates.Add(R.Word());
-                R.Word(); // projected coordinates
+                L.ProjectedCoordinates.Add(R.Word()!=0);
                 L.SpecialTextures.Add(R.Word());
             }
             const int32 NM = R.Count(8, 256);
@@ -738,7 +915,7 @@ struct FAC2AssetLibrary::FImpl
             const uint32 AlphaMode = R.Word();
             L.Masked = AlphaMode != 0 && AlphaMode != 8;
             R.Take(44); // alpha-test waveform
-            R.Word(); // particle lighting
+            L.ParticleLighting = R.Word() != 0;
             L.DynamicLighting = R.Word() != 0;
             R.Word(); // per-pixel lighting
             L.IgnoreDirectional = R.Word() != 0;
@@ -748,7 +925,10 @@ struct FAC2AssetLibrary::FImpl
             L.MaterialDiffuse = R.Word() != 0;
             L.VertexDiffuse = R.Word() != 0;
             L.ModulateVertexDiffuse = R.Word() != 0;
-            R.Take(16); // additional lighting/fog switches
+            R.Word(); // per-pixel multiple lights
+            L.DepthFog=R.Word()!=0;
+            L.DepthAlphaFog=R.Word()!=0;
+            L.DiffuseFog=R.Word()!=0;
             L.Ambient = Color(R);
             L.Tint = Color(R);
             L.Specular = Color(R);
@@ -767,23 +947,10 @@ struct FAC2AssetLibrary::FImpl
             Warn(Id, TEXT("unsupported material layout"));
             return nullptr;
         }
-        // Templates keep their default sampler resources in the property table.
-        // The serialized stage is often zero (e.g. the signed detail map in
-        // 2B000000). Leaving it unbound terminates the cascade before diffuse
-        // lighting and appearance colours are applied.
+        // RenderMaterial::GetSubObjects calls MaterialProperty::Apply with
+        // each property's own data before MaterialInstance applies overrides.
         for (const auto& P : M->Properties)
-            for (const auto& F : P.Fields)
-                if (P.Data.Num()==4 && M->Layers.IsValidIndex(F.Layer))
-                {
-                    auto& Layer=M->Layers[F.Layer];
-                    if (F.Kind==10 && Layer.Textures.IsValidIndex(F.Index) && !Layer.Textures[F.Index])
-                        Layer.Textures[F.Index]=AC2::U32(P.Data.GetData());
-                    // Admin7148 RenderMaterial::GetSubObjects applies default
-                    // properties after unpacking layers, before instance mods.
-                    // Several foliage templates store no-cull only here.
-                    if (F.Kind==5)
-                        Layer.CullMode=AC2::U32(P.Data.GetData()) ? 1 : 2;
-                }
+            ApplyMaterialProperty(*M, P, P.Data);
         Materials[Id] = M;
         return M;
     }
@@ -811,8 +978,16 @@ struct FAC2AssetLibrary::FImpl
             if (!R.End())
                 return nullptr;
         }
-        auto Best = MakeShared<FAC2DecodedImage>();
-        Best->Id = Id;
+        struct FSurfaceLevel
+        {
+            uint32 Id;
+            bool HighResolution;
+            TArray<FColor> Pixels;
+        };
+        TMap<FIntPoint, FSurfaceLevel> Levels;
+        FIntPoint Largest(0, 0);
+        int64 RetainedBytes = 0;
+        constexpr int64 ImageBudget = 512LL * 1024 * 1024;
         for (uint32 Surface : SurfacesToTry)
         {
             // Compare every valid candidate, including portal fallback if a highres
@@ -835,23 +1010,86 @@ struct FAC2AssetLibrary::FImpl
                     Warn(Surface, TEXT("unsupported texture pixels; trying fallback"));
                     continue;
                 }
-                if (int64(W) * H > int64(Best->W) * Best->H)
+                const FIntPoint Size(W, H);
+                const bool HighResolution = Pass == 0;
+                const auto* Existing = Levels.Find(Size);
+                if (!Existing || (HighResolution && !Existing->HighResolution))
                 {
-                    Best->W = W;
-                    Best->H = H;
-                    Best->Pixels = MoveTemp(Pixels);
-                    Best->SurfaceId = Surface;
-                    Best->HighResolution = Pass == 0;
+                    if (!Existing)
+                        RetainedBytes += int64(Pixels.Num()) * sizeof(FColor);
+                    if (RetainedBytes > ImageBudget)
+                    {
+                        Warn(Id, TEXT("texture source levels exceed memory limit"));
+                        return nullptr;
+                    }
+                    Levels.Add(Size, FSurfaceLevel{Surface, HighResolution, MoveTemp(Pixels)});
+                    if (int64(W) * H > int64(Largest.X) * Largest.Y)
+                        Largest = Size;
                 }
             }
         }
-        if (Best->Pixels.IsEmpty())
+        if (Levels.IsEmpty())
             return nullptr;
-        // Bound patch memory even when a record requests an unusually large texture.
+        auto Best = MakeShared<FAC2DecodedImage>();
+        Best->Id = Id;
+        auto UseSurface = [&](FIntPoint Size, FSurfaceLevel& Source)
+        {
+            Best->W = Size.X;
+            Best->H = Size.Y;
+            Best->Pixels = MoveTemp(Source.Pixels);
+            Best->SurfaceId = Source.Id;
+            Best->HighResolution = Source.HighResolution;
+        };
+        UseSurface(Largest, Levels.FindChecked(Largest));
         while (Best->W > 2048 || Best->H > 2048)
-            Downsample(*Best);
-        const int64 Bytes = Best->Pixels.Num() * sizeof(FColor);
-        if (ImageBytes + Bytes > 512LL * 1024 * 1024)
+        {
+            const FIntPoint Next(FMath::Max(1, Best->W / 2), FMath::Max(1, Best->H / 2));
+            if (auto* Source = Levels.Find(Next))
+                UseSurface(Next, *Source);
+            else
+                Downsample(*Best);
+        }
+        if (SkyMode && Id == 0x400003e7)
+        {
+            // The horizon matte is white with a vertical opacity ramp. The DAT
+            // encodes intermediate opacity with a repeating 4-bit DXT3 dither.
+            // On a full-resolution dome the individual dither rows become
+            // conspicuous. Reconstruct their coverage before magnification.
+            TArray<int64> Prefix;
+            Prefix.Add(0);
+            for (int32 Y = 0; Y < Best->H; ++Y)
+            {
+                int64 Sum = Prefix.Last();
+                for (int32 X = 0; X < Best->W; ++X)
+                    Sum += Best->Pixels[Y * Best->W + X].A;
+                Prefix.Add(Sum);
+            }
+            TArray<FColor> Ramp;
+            Ramp.Reserve(Best->H);
+            const int32 Radius = FMath::Max(1, Best->H / 256);
+            for (int32 Y = 0; Y < Best->H; ++Y)
+            {
+                const int32 First = FMath::Max(0,Y - Radius), End = FMath::Min(Best->H,Y + Radius + 1);
+                const int32 Samples = (End - First) * Best->W;
+                Ramp.Add(FColor(255,255,255,(Prefix[End] - Prefix[First] + Samples / 2) / Samples));
+            }
+            Best->Pixels = MoveTemp(Ramp);
+            Best->W = 1;
+            Levels.Reset();
+        }
+        int64 Bytes = int64(Best->Pixels.Num()) * sizeof(FColor);
+        FIntPoint Size(Best->W, Best->H);
+        while (Size.X > 1 || Size.Y > 1)
+        {
+            Size = FIntPoint(FMath::Max(1, Size.X / 2), FMath::Max(1, Size.Y / 2));
+            auto& Mip = Best->SourceMips.AddDefaulted_GetRef();
+            if (auto* Source = Levels.Find(Size))
+            {
+                Mip = MoveTemp(Source->Pixels);
+                Bytes += int64(Mip.Num()) * sizeof(FColor);
+            }
+        }
+        if (ImageBytes + Bytes > ImageBudget)
         {
             Warn(Id, TEXT("patch texture memory limit reached"));
             return nullptr;
@@ -893,20 +1131,32 @@ struct FAC2AssetLibrary::FImpl
         auto& Mips=PreserveMask?Image.CutoutMips:Image.Mips;
         if (!Mips.IsEmpty())
             return;
-        FAC2DecodedImage M;
-        M.W = Image.W;
-        M.H = Image.H;
-        M.Pixels = Image.Pixels;
+        int32 Width = Image.W, Height = Image.H;
+        TConstArrayView<FColor> Previous = Image.Pixels;
+        TArray<FColor> RawMask;
         const float Coverage=PreserveMask?AC2TextureMips::Coverage(Image.Pixels):0;
-        while (M.W > 1 || M.H > 1)
+        while (Width > 1 || Height > 1)
         {
-            M.Pixels=AC2TextureMips::Downsample(M.Pixels,M.W,M.H,PreserveMask);
-            M.W=FMath::Max(1,M.W/2);M.H=FMath::Max(1,M.H/2);
-            // Always filter the unscaled alpha, so coverage correction does not
-            // compound at subsequent levels or affect translucent/UI samplers.
-            auto Pixels=M.Pixels;
-            if(PreserveMask)AC2TextureMips::PreserveCoverage(Pixels,Coverage);
-            Mips.Add(MoveTemp(Pixels));
+            const int32 Index = Mips.AddDefaulted();
+            if (Image.SourceMips.IsValidIndex(Index) && !Image.SourceMips[Index].IsEmpty())
+            {
+                Previous = Image.SourceMips[Index];
+            }
+            else if (PreserveMask)
+            {
+                // Generate only missing levels. Avoid compounding coverage correction.
+                RawMask = AC2TextureMips::Downsample(Previous, Width, Height, true);
+                Mips[Index] = RawMask;
+                AC2TextureMips::PreserveCoverage(Mips[Index], Coverage);
+                Previous = RawMask;
+            }
+            else
+            {
+                Mips[Index] = AC2TextureMips::Downsample(Previous, Width, Height);
+                Previous = Mips[Index];
+            }
+            Width = FMath::Max(1, Width / 2);
+            Height = FMath::Max(1, Height / 2);
         }
     }
     UTexture2D *Texture(FAC2DecodedImage &Image, bool Clamp = false, uint32 AU=0, uint32 AV=0, bool PreserveMask=false)
@@ -942,7 +1192,9 @@ struct FAC2AssetLibrary::FImpl
         int32 W = Image.W, H = Image.H;
         for (int32 Level = 0; Level <= Mips.Num(); ++Level)
         {
-            const auto &Pixels = Level ? Mips[Level - 1] : Image.Pixels;
+            const int32 Index = Level - 1;
+            const bool Authored = Image.SourceMips.IsValidIndex(Index) && !Image.SourceMips[Index].IsEmpty();
+            const auto &Pixels = Level == 0 ? Image.Pixels : Authored ? Image.SourceMips[Index] : Mips[Index];
             if (Level)
             {
                 auto *NewMip = new FTexture2DMipMap();
@@ -986,11 +1238,47 @@ struct FAC2AssetLibrary::FImpl
         M->SetVectorParameterValue(TEXT("Tint"), Tint);
         return M;
     }
+    void ConfigureTerrainCloud(UMaterialInstanceDynamic* Material)
+    {
+        if (Material && CloudShadowTexture)
+            if (auto Mask = Image(CloudShadowTexture))
+            {
+                Material->SetTextureParameterValue(TEXT("AC2CloudShadow"), Texture(*Mask));
+                Material->SetVectorParameterValue(TEXT("AC2CloudMotion"), CloudShadowMotion);
+            }
+    }
+    UMaterialInterface* GroundMaterial(FAC2DecodedImage& Atlas)
+    {
+        auto* Parent = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/AC2/Materials/M_AC2Terrain.M_AC2Terrain"));
+        if (!Parent) return nullptr;
+        auto* Material = UMaterialInstanceDynamic::Create(Parent, GetTransientPackage());
+        Objects.Add(Material);
+        Material->SetTextureParameterValue(TEXT("Albedo"), Texture(Atlas,true));
+        ConfigureTerrainCloud(Material);
+        return Material;
+    }
+    static bool UsesMaskedFrameBuffer(const FAC2DecodedLayer& L)
+    {
+        // Native frame-buffer copy selected by stage 0, retained as CURRENT
+        // by stage 1. Ordinary texture stages still compute the authored alpha.
+        return L.Textures.Num()==2 && !L.PixelShader && !L.DynamicLighting &&
+            L.SpecialTextures[0]==1 && L.TextureCoordinates[0]==0x400 && L.ProjectedCoordinates[0] &&
+            L.AddressModes[0]==FIntPoint(1,1) && L.SpecialTextures[1]==0 &&
+            L.TextureCoordinates[1]<=3 && !L.ProjectedCoordinates[1] &&
+            L.ColorStages[0].Operation==2 && L.ColorStages[0].Argument1==2 &&
+            L.ColorStages[1].Operation==3 && L.ColorStages[1].Argument2==1 &&
+            L.AlphaStages[0].Operation==3 && L.AlphaStages[0].Argument2==0 &&
+            L.SourceBlend==5 && L.DestBlend==6 && !L.Masked;
+    }
     static bool FixedFunction(const FAC2DecodedLayer &L)
     {
         if(L.PixelShader || L.Textures.Num()>4)return false;
-        for(int32 I=0;I<L.Textures.Num();++I)
-            if(L.SpecialTextures[I] || L.TextureCoordinates[I]>3)return false;
+        if(UsesMaskedFrameBuffer(L))return true;
+        for(int32 I=0;I<L.Textures.Num();++I){
+            if(L.SpecialTextures[I])return false;
+            if(L.TextureCoordinates[I]>3 && !(L.TextureCoordinates[I]==0x200 && !L.ProjectedCoordinates[I] &&
+                !L.Masked && L.SourceBlend==5 && L.DestBlend==6))return false;
+        }
         return true;
     }
     static int32 SelectedLayer(const FAC2DecodedMaterial &M)
@@ -1001,6 +1289,7 @@ struct FAC2AssetLibrary::FImpl
     }
     void ConfigureStages(UMaterialInstanceDynamic *MID,const FAC2DecodedLayer &L,int32 LayerIndex,bool PreserveMask)
     {
+        MID->SetVectorParameterValue(TEXT("AC2FogMode"),FLinearColor(L.DepthFog,L.DepthAlphaFog,L.DiffuseFog,0));
         if(!FixedFunction(L))return;
         MID->SetScalarParameterValue(TEXT("AC2NativeStages"),1);
         MID->SetVectorParameterValue(TEXT("AC2UIMaterialAmbient"),L.Ambient);
@@ -1015,12 +1304,45 @@ struct FAC2AssetLibrary::FImpl
             const FString P=FString::Printf(TEXT("AC2Stage%d"),S);
             const auto &C=L.ColorStages[S], &A=L.AlphaStages[S];
             auto StageImage=L.Textures[S]?Image(L.Textures[S]):nullptr;
-            MID->SetVectorParameterValue(*(P+TEXT("Color")),FLinearColor(AC2BoundColorOperation(C.Operation,C.Argument1,StageImage.IsValid()),C.Argument1,C.Argument2,0));
+            const bool Bound=StageImage.IsValid() || L.SpecialTextures[S]==1;
+            MID->SetVectorParameterValue(*(P+TEXT("Color")),FLinearColor(AC2BoundColorOperation(C.Operation,C.Argument1,Bound),C.Argument1,C.Argument2,0));
             MID->SetVectorParameterValue(*(P+TEXT("Alpha")),FLinearColor(A.Operation,A.Argument1,A.Argument2,0));
             MID->SetVectorParameterValue(*(P+TEXT("UV")),FLinearColor(L.TextureCoordinates[S],0,0,0));
             if(StageImage) MID->SetTextureParameterValue(*(P+TEXT("Texture")),Texture(*StageImage,false,L.AddressModes[S].X,L.AddressModes[S].Y,PreserveMask));
         }
     }
+    void ConfigureShore(UMaterialInstanceDynamic* MID)
+    {
+        if (!ShoreMaterials.IsSet())
+        {
+            FString Error;
+            const uint32 Group = Portal.ReadPublicEnumId(Portal.GetHeader().MasterMap, 0x40000002, Error);
+            FShoreMaterials& Shore = ShoreMaterials.Emplace();
+            Shore.Waves = Portal.ReadPublicEnumId(Group, 0x40000017, Error);
+            Shore.Transmission = Portal.ReadPublicEnumId(Group, 0x40000024, Error);
+        }
+        // DrawShore selects these materials by enum. Their resolved instances
+        // reference different texture DIDs in Legions and Icefire.
+        auto BindStage = [&](uint32 Id, int32 Stage, const TCHAR* Parameter)
+        {
+            const auto Source = Id ? Material(Id) : nullptr;
+            if (!Source || Source->Layers.IsEmpty()) return false;
+            const auto& Layer = Source->Layers[SelectedLayer(*Source)];
+            if (!Layer.Textures.IsValidIndex(Stage) || !Layer.Textures[Stage]) return false;
+            const auto Pixels = Image(Layer.Textures[Stage]);
+            if (!Pixels) return false;
+            const auto Address = Layer.AddressModes[Stage];
+            auto* Sampler = Texture(*Pixels, false, Address.X, Address.Y);
+            if (!Sampler) return false;
+            MID->SetTextureParameterValue(Parameter, Sampler);
+            return true;
+        };
+        BindStage(ShoreMaterials->Transmission, 0, TEXT("AC2ShoreMask"));
+        const bool Waves = BindStage(ShoreMaterials->Waves, 0, TEXT("AC2ShoreFoam"));
+        const bool Mask = BindStage(ShoreMaterials->Waves, 2, TEXT("AC2ShoreFoamMask"));
+        MID->SetScalarParameterValue(TEXT("AC2ShoreFoamEnabled"), Waves && Mask ? 1.f : 0.f);
+    }
+
     TSharedPtr<FAC2DecodedImage> MaterialImage(uint32 Id, FLinearColor &Tint, bool &Masked)
     {
         if ((Id >> 24) == 0x40 || (Id >> 24) == 0x41)
@@ -1068,9 +1390,9 @@ struct FAC2AssetLibrary::FImpl
         const float DiffuseAlpha = Layer && Layer->MaterialDiffuse ? Tint.A : 1.f;
         TArray<FVector2D> Ranges;
         TArray<bool> BoundTextures;
-        if(Layer) for(uint32 TextureId:Layer->Textures) {
-            auto ImageData=TextureId?Image(TextureId):nullptr;
-            BoundTextures.Add(ImageData.IsValid());
+        if(Layer) for(int32 S=0;S<Layer->Textures.Num();++S) {
+            auto ImageData=Layer->Textures[S]?Image(Layer->Textures[S]):nullptr;
+            BoundTextures.Add(ImageData.IsValid() || Layer->SpecialTextures[S]==1);
             Ranges.Add(ImageData?ImageData->AlphaRange():FVector2D(1,1));
         }
         TConstArrayView<FAC2AlphaStage> AlphaStages;
@@ -1097,14 +1419,38 @@ struct FAC2AssetLibrary::FImpl
             }
         }
         const bool HasAlpha=Minimum<.98f;
+        const float AppearanceOpacity = Native ? Native->AppearanceOpacity : 1.f;
+        const bool Faded = AppearanceOpacity < 1.f;
         if(Layer && (Masked || Layer->DestBlend>2) && Maximum<=SMALL_NUMBER)InvisibleMaterials.Add(Id);
         if (!HasAlpha)
             Masked = false;
         UMaterialInterface *Result = nullptr;
-        if (PreviewMode)
+        if(Layer && FixedFunction(*Layer) && Layer->TextureCoordinates.Contains(0x200))
+        {
+            const TCHAR* Name=PreviewMode?(Faded || HasAlpha?TEXT("M_AC2UIAlphaAnisotropic"):TEXT("M_AC2UIOpaqueAnisotropic"))
+                :(Faded || HasAlpha?TEXT("M_AC2SceneryAlphaAnisotropic"):TEXT("M_AC2OpaqueAnisotropic"));
+            if(auto* Parent=NativeParent(Name,Layer->CullMode==1)){
+                auto* MID=UMaterialInstanceDynamic::Create(Parent,GetTransientPackage());Objects.Add(MID);
+                if(I)MID->SetTextureParameterValue(TEXT("Albedo"),Texture(*I));
+                MID->SetVectorParameterValue(TEXT("Tint"),Tint);
+                if(PreviewMode)LightPreview(MID);
+                Result=MID;
+            }
+        }
+        else if (Layer && UsesMaskedFrameBuffer(*Layer))
+        {
+            if(auto* Parent=NativeParent(TEXT("M_AC2FrameBuffer"),Layer->CullMode==1))
+            {
+                auto* MID=UMaterialInstanceDynamic::Create(Parent,GetTransientPackage());
+                MID->SetVectorParameterValue(TEXT("Tint"),Tint);
+                Objects.Add(MID);
+                Result=MID;
+            }
+        }
+        else if (PreviewMode)
         {
             const uint32 Dest = Layer ? Layer->DestBlend : 1;
-            const TCHAR* Name = Masked ? TEXT("M_AC2UICutout") : Dest == 2 ? TEXT("M_AC2UIAdd")
+            const TCHAR* Name = Faded ? TEXT("M_AC2UIAlpha") : Masked ? TEXT("M_AC2UICutout") : Dest == 2 ? TEXT("M_AC2UIAdd")
                 : Dest > 2 && HasAlpha ? TEXT("M_AC2UIAlpha") : TEXT("M_AC2UIOpaque");
             auto* Parent = NativeParent(Name, Layer && Layer->CullMode==1);
             if (Parent)
@@ -1178,9 +1524,9 @@ struct FAC2AssetLibrary::FImpl
         {
             auto Authored = Material(Id);
             uint32 Dest = Authored && !Authored->Layers.IsEmpty() ? Authored->Layers[SelectedLayer(*Authored)].DestBlend : 1;
-            if (!Masked && (Dest == 2 || (Dest > 2 && HasAlpha)))
+            if (Faded || (!Masked && (Dest == 2 || (Dest > 2 && HasAlpha))))
             {
-                auto *Parent = NativeParent(Dest==2?TEXT("M_AC2SceneryAdd"):TEXT("M_AC2SceneryAlpha"),Layer && Layer->CullMode==1);
+                auto *Parent = NativeParent(!Faded && Dest==2?TEXT("M_AC2SceneryAdd"):TEXT("M_AC2SceneryAlpha"),Layer && Layer->CullMode==1);
                 auto *MID =
                     Parent ? UMaterialInstanceDynamic::Create(Parent, GetTransientPackage()) : nullptr;
                 if (MID)
@@ -1197,6 +1543,7 @@ struct FAC2AssetLibrary::FImpl
         }
         if (auto *MID = Cast<UMaterialInstanceDynamic>(Result))
         {
+            MID->SetScalarParameterValue(TEXT("AC2AppearanceOpacity"), AppearanceOpacity);
             MID->SetVectorParameterValue(TEXT("AC2Opacity"),
                                          FLinearColor(Alpha(1) - Alpha(0), Alpha(0), 0, 0));
             // Retail specular is a separate vertex colour added after the texture
@@ -1340,7 +1687,16 @@ struct FAC2AssetLibrary::FImpl
                 {
                     Node.Sounds.Add(Id);
                     if(!LoopingSounds.Contains(Id))
-                    {TArray<uint8> Sound;LoopingSounds.Add(Id,Read(Id,Sound)&&Sound.Num()>=8&&AC2::U32(Sound.GetData())==Id&&(AC2::U32(Sound.GetData()+4)&1));}
+                    {
+                        TArray<uint8> Sound;
+                        const bool Valid=Read(Id,Sound)&&Sound.Num()>=8&&AC2::U32(Sound.GetData())==Id;
+                        const uint32 Flags=Valid?AC2::U32(Sound.GetData()+4):0;
+                        LoopingSounds.Add(Id,Valid&&(Flags&1));
+                        // FXManager::DoSoundFX: MusicInfo uses Player unless
+                        // DEFAULT_CHANNEL (0x40000) selects Music. UI media
+                        // keeps its own Main-channel playback policy.
+                        SoundChannels.Add(Id,Id>>24==0x2c?(Flags&0x40000?1u:2u):0u);
+                    }
                 }}
             }
         if (Bits & 2)
@@ -1352,7 +1708,7 @@ struct FAC2AssetLibrary::FImpl
         Field(4);
         if(Bits&8)Node.AppearanceTable=R.Word();
         if(Bits&16){Node.AppearanceKey=R.Word();Node.AppearanceScalar=R.Float();}
-        Field(32);
+        if(Bits&32){Node.RampTime=R.Float();if(!FMath::IsFinite(Node.RampTime) || Node.RampTime<0)R.Good=false;}
         Field(64);
         if (Bits & 128)
             Node.Holding = R.Word();
@@ -1360,9 +1716,9 @@ struct FAC2AssetLibrary::FImpl
             Node.Bone = R.Word();
         if (Bits & 512)
             Node.Offset = R.Vector();
-        Field(1024, 56);
-        Field(0x800);
-        Field(0x1000);
+        if (Bits & 0x400) Node.Streak = FAC2StreakDefinition::Read(R);
+        if (Bits & 0x800) Node.StartStreak = R.Word() != 0;
+        if (Bits & 0x1000) Node.StopStreak = R.Word() != 0;
         Field(0x2000);
         Field(0x4000);
         Field(0x8000, 20);
@@ -1388,12 +1744,22 @@ struct FAC2AssetLibrary::FImpl
             Node.Water = R.Word() != 0;
         Field(0x40000000);
         if(Bits&0x80000000)Node.Decal=FAC2Decal::Read(R);
-        Field(0x200000000ULL, 24);
+        if (Bits & 0x200000000ULL) Node.Repulsor = FAC2RepulsorFX::Read(R);
         if (Bits & 0x100000000ULL)
         {
-            R.Word();
-            Entity(R);
-            R.Take(8);
+            Node.Light.Enabled=R.Word()!=0;
+            const auto E=Entity(R);
+            Node.Light.Life=R.Float();Node.Light.Fade=R.Float();
+            for(const auto& P:E.Properties)
+            {
+                FAC2AssetReader V(P.Value);
+                if(P.Key==0x40000004)Node.Light.Range=FAC2Wave::Read(V);
+                if(P.Key==0x40000008)Node.Light.Color=FColor(V.Word());
+                if(P.Key==0x40000009)Node.Light.Intensity=FAC2Wave::Read(V);
+                if(!V.Good)R.Good=false;
+            }
+            if(!FMath::IsFinite(Node.Light.Range.Base) || !FMath::IsFinite(Node.Light.Intensity.Base) ||
+                !FMath::IsFinite(Node.Light.Life) || !FMath::IsFinite(Node.Light.Fade))Node.Light.Enabled=false;
         }
         if(Bits&0x400000000ULL)Node.PlayerOnly=R.Word()!=0;
         if(Bits&0x1000000000ULL)Node.Script=R.Word();
@@ -1421,7 +1787,7 @@ struct FAC2AssetLibrary::FImpl
                     const uint32 Terrain = R.Word();
                     Node.Terrain.Add(Terrain, MakeShared<FAC2FXNode>(FXNode(R)));
                 }
-                if (!Node.Descriptors.IsEmpty() || !Node.Sounds.IsEmpty() || !Node.Terrain.IsEmpty() || Node.Visual || Node.TargetFX || Node.Script || Node.AppearanceTable || Node.Decal.Material)
+                if (!Node.Descriptors.IsEmpty() || !Node.Sounds.IsEmpty() || !Node.Terrain.IsEmpty() || Node.Visual || Node.TargetFX || Node.Script || Node.AppearanceTable || Node.Decal.Material || Node.Light.Enabled || Node.Repulsor.Enabled || Node.Streak.Enabled || Node.StartStreak || Node.StopStreak)
                     Nodes.Add(MoveTemp(Node));
             }
         }
@@ -1494,8 +1860,9 @@ struct FAC2AssetLibrary::FImpl
             const uint32 N = R.Word() & 65535;
             for (uint32 I = 0; I < N && R.Good; ++I)
             {
-                P.Startup.Add(R.Word());
-                R.Float();
+                const uint32 Key=R.Word();const float Strength=R.Float();
+                P.Startup.AddUnique(Key);P.StartupStrength.Add(Key,Strength);
+                if(!FMath::IsFinite(Strength) || Strength<0)R.Good=false;
             }
         }
         if (Bits & 256)
@@ -1542,7 +1909,11 @@ struct FAC2AssetLibrary::FImpl
                     C.Atoms.Materials.Add(Atom);
                 }
                 K = R.Count(8);
-                R.Take(int64(K) * 8); // Opacity atoms remain unsupported.
+                for (int32 A = 0; A < K; ++A)
+                {
+                    const float Priority = R.Float(), Opacity = R.Float();
+                    C.Atoms.Opacities.Add(FVector2f(Priority, Opacity));
+                }
                 K = R.Count(12);
                 for (int32 A = 0; A < K; ++A)
                 {
@@ -1619,6 +1990,8 @@ struct FAC2AssetLibrary::FImpl
         }
         if (!Chosen)
             return;
+        for (const auto &A : Chosen->Atoms.Opacities)
+            Out.Opacity.Apply(A.X, A.Y, Key.Value);
         for(const auto& Icon:Chosen->Atoms.Icons)
         {
             Out.Icons.RemoveAll([&](const auto& Old){return Old.Layer==Icon.Layer;});
@@ -1656,21 +2029,21 @@ struct FAC2AssetLibrary::FImpl
     }
     uint32 AppearanceMaterial(uint32 Id, uint32 MeshType, const FAC2Atoms &Atoms)
     {
-        if ((Id >> 24) != 0x31 || Atoms.Materials.IsEmpty())
+        if (((Id >> 24) != 0x31 && (Id >> 24) != 0x2b) || (Atoms.Materials.IsEmpty() && !Atoms.Opacity.Defined))
             return Id;
-        TArray<uint8> B;
-        if (!Read(Id, B))
-            return Id;
-        FAC2AssetReader R(MoveTemp(B));
-        R.Word();
-        uint32 Template = R.Word(), MaterialType = R.Word();
+        uint32 Template = Id, MaterialType = 1;
         TArray<uint32> Mods;
-        int32 N = R.Count();
-        for (int32 I = 0; I < N; ++I)
-            Mods.Add(R.Word());
-        if (!R.End())
-            return Id;
-        bool Changed = false;
+        if ((Id >> 24) == 0x31)
+        {
+            TArray<uint8> B;
+            if (!Read(Id, B)) return Id;
+            FAC2AssetReader R(MoveTemp(B));
+            R.Word(); Template = R.Word(); MaterialType = R.Word();
+            const int32 N = R.Count();
+            for (int32 I = 0; I < N; ++I) Mods.Add(R.Word());
+            if (!R.End()) return Id;
+        }
+        bool Changed = Atoms.Opacity.Defined;
         for (const auto &A : Atoms.Materials)
             if ((A.MeshType == 1 || A.MeshType == MeshType) &&
                 (A.MaterialType == 1 || A.MaterialType == MaterialType))
@@ -1687,6 +2060,7 @@ struct FAC2AssetLibrary::FImpl
         if (!Base)
             return Id;
         auto M = MakeShared<FAC2DecodedMaterial>(*Base);
+        M->AppearanceOpacity = Atoms.Opacity.Value;
         for (uint32 Mod : Mods)
             if (!ModifyMaterial(M, Mod))
                 return Id;
@@ -1728,6 +2102,20 @@ struct FAC2AssetLibrary::FImpl
         }
         return G;
     }
+    void ApplyAppearanceNode(uint32 Effect,const FAC2FXNode& Node,float Scalar)
+    {
+        if(!Node.AppearanceTable || !FMath::IsFinite(Node.AppearanceScalar))return;
+        auto& Keys=LiveAppearanceFX.FindOrAdd(Effect);
+        Keys.RemoveAll([&](const FAC2AppearanceKey& Key){
+            return Key.Table==Node.AppearanceTable && Key.Key==Node.AppearanceKey;
+        });
+        // DoAppearanceFX removes the key at zero; applying an opacity atom at
+        // zero would instead hide the character and leave a stale override.
+        const float Applied=Node.AppearanceScalar*Scalar;
+        if(FMath::IsFinite(Applied) && Applied>0)
+            Keys.Add({Node.AppearanceTable,Node.AppearanceKey,Applied});
+        if(Keys.IsEmpty())LiveAppearanceFX.Remove(Effect);
+    }
     // FXManager::DoAppearanceFX changes materials on the existing part groups.
     // Keep the skeleton, running action tracks, sockets and dyed base appearance.
     // Cache by selected atoms (not the continuously changing health fraction).
@@ -1739,9 +2127,13 @@ struct FAC2AssetLibrary::FImpl
         {
             FAC2Atoms Atoms=Binding.Atoms?*Binding.Atoms:FAC2Atoms();
             for(uint32 Effect:Effects)for(const auto& Key:LiveAppearanceFX[Effect])CollectAtoms(Key,Atoms);
-            FString Cache=FString::Printf(TEXT("%08X:%08X"),Binding.Original,Binding.MeshType);
+            FString Cache=FString::Printf(TEXT("%08X:%08X:%08X"),Binding.Original,Binding.MeshType,Binding.Base);
             for(const auto& Atom:Atoms.Materials)
                 Cache+=FString::Printf(TEXT(":%g/%08X/%08X/%08X/%08X"),Atom.Priority,Atom.Template,Atom.Modifier,Atom.MeshType,Atom.MaterialType);
+            const float Opacity = Atoms.Opacity.Value;
+            // Fade scalars change continuously: cache one translucent material
+            // per atom combination, then update its uniform without allocations.
+            Cache += Opacity < 1.f ? TEXT(":fade") : TEXT(":solid");
             uint32 MaterialId=Binding.Base;
             if(!Effects.IsEmpty())
             {
@@ -1749,6 +2141,7 @@ struct FAC2AssetLibrary::FImpl
                 else
                 {
                     const uint32 BaseAppearanceHash=AppearanceHash;
+                    if (Opacity < 1.f) Atoms.Opacity.Value = .5f;
                     MaterialId=AppearanceMaterial(Binding.Original,Binding.MeshType,Atoms);
                     AppearanceHash=BaseAppearanceHash;
                     AppearanceFXMaterials.Add(Cache,MaterialId);
@@ -1759,19 +2152,22 @@ struct FAC2AssetLibrary::FImpl
                 DamageAppearanceHash=HashCombineFast(DamageAppearanceHash,FCrc::MemCrc32(&Layer.Tint,sizeof(Layer.Tint)));
                 for(uint32 TextureId:Layer.Textures)DamageAppearanceHash=HashCombineFast(DamageAppearanceHash,TextureId);
             }
+            auto* MaterialObject=RuntimeMaterial(MaterialId);
+            if (auto* MID = Cast<UMaterialInstanceDynamic>(MaterialObject))
+                MID->SetScalarParameterValue(TEXT("AC2AppearanceOpacity"), Opacity);
+            MeshComponent->SetMeshSectionVisible(Binding.Section,Opacity > 0.f && !InvisibleMaterials.Contains(MaterialId));
             if(Binding.Applied==MaterialId)continue;
             Binding.Applied=MaterialId;
-            auto* MaterialObject=RuntimeMaterial(MaterialId);
             MeshComponent->SetMaterial(Binding.Section,MaterialObject);
-            MeshComponent->SetMeshSectionVisible(Binding.Section,!InvisibleMaterials.Contains(MaterialId));
             if(!PreviewMode)RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(MaterialObject),MeshComponent,false);
         }
     }
     TMap<FString, TSharedPtr<FAC2DecodedGeometry>> SceneAppearanceMeshes;
     TSharedPtr<FAC2DecodedGeometry> SceneAppearanceMesh(uint32 Id, const FAC2Atoms &Atoms)
     {
-        if (Atoms.Materials.IsEmpty() && Atoms.Meshes.IsEmpty()) return Mesh(Id);
+        if (Atoms.Materials.IsEmpty() && Atoms.Meshes.IsEmpty() && !Atoms.Opacity.Defined) return Mesh(Id);
         FString Key = FString::Printf(TEXT("%08X"), Id);
+        Key += FString::Printf(TEXT(":opacity=%g"), Atoms.Opacity.Value);
         for (const auto &A : Atoms.Materials)
             Key += FString::Printf(TEXT("M%08X:%08X:%08X:%08X"), A.Template, A.Modifier, A.MeshType, A.MaterialType);
         for (const auto &A : Atoms.Meshes)
@@ -1855,7 +2251,10 @@ struct FAC2AssetLibrary::FImpl
             for (const auto &Key : Parent.FX.Appearance)
                 V.FX.Appearance.Insert(Key, 0);
             for (uint32 Key : Parent.FX.Startup)
+            {
                 V.FX.Startup.AddUnique(Key);
+                if(!V.FX.StartupStrength.Contains(Key))V.FX.StartupStrength.Add(Key,Parent.FX.StartupStrength.FindRef(Key));
+            }
             for (const auto &Override : Parent.FX.Overrides)
                 if (!V.FX.Overrides.Contains(Override.Key))
                     V.FX.Overrides.Add(Override.Key, Override.Value);
@@ -1881,7 +2280,10 @@ struct FAC2AssetLibrary::FImpl
                 if (!(Child->Fields & 64))
                     Child->FXTable = P.FXTable;
                 if (!(Child->Fields & 128))
+                {
                     Child->Startup = P.Startup;
+                    Child->StartupStrength = P.StartupStrength;
+                }
                 if (!(Child->Fields & 256))
                     Child->Overrides = P.Overrides;
             }
@@ -1891,7 +2293,7 @@ struct FAC2AssetLibrary::FImpl
     }
     void StartFX(const FAC2DecodedVisual &V, const FTransform &Frame)
     {
-        if (SkyMode || Animating || Sources.Num() >= 256)
+        if (SkyMode || Animating)
             return;
         // Native PartGroupDataDesc::FillFXTable overlays appearance atoms after
         // explicit overrides. Static scenery must use the same selected FX as
@@ -1899,13 +2301,18 @@ struct FAC2AssetLibrary::FImpl
         FAC2Atoms Atoms;
         for (const auto& Key : V.FX.Appearance) CollectAtoms(Key, Atoms);
         TArray<FAC2FXNode> Nodes;
+        TArray<float> Strengths;
         for (uint32 Key : V.FX.Startup)
+        {
+            const int32 First=Nodes.Num();
             if (const auto* Appearance = Atoms.Effects.Find(Key))
                 Nodes.Append(*Appearance);
             else if (const auto* Override = V.FX.Overrides.Find(Key))
                 Nodes.Append(*Override);
             else if (V.FX.FXTable)
                 TableFX(V.FX.FXTable, Key, Nodes);
+            for(int32 I=First;I<Nodes.Num();++I)Strengths.Add(V.FX.StartupStrength.FindRef(Key));
+        }
         FAC2Setup Setup;
         TArray<uint8> Bytes;
         for (const auto &P : V.Parts)
@@ -1920,13 +2327,32 @@ struct FAC2AssetLibrary::FImpl
             const int32 Y = FMath::Clamp(FMath::RoundToInt(P.Y / 10), 0, 16);
             Terrain = EnvironmentLand->CellInfo[X * 17 + Y] & EnvironmentTerrainMask;
         }
-        for (const auto &Default : Nodes)
+        for (int32 Index=0;Index<Nodes.Num();++Index)
         {
-            if (Sources.Num() >= 256)
-                break;
+            const auto& Default=Nodes[Index];
             const auto *Override = Default.Terrain.Find(Terrain);
             const auto &Node = Override ? **Override : Default;
-            if (Node.Descriptors.IsEmpty())
+            if(!Node.Sounds.IsEmpty() && !Node.PlayerOnly && Strengths[Index]>0)
+            {
+                FAC2ScenerySound Source;
+                // FXManager::DoSoundFX uses the object's origin, not the particle
+                // bone/holding offset. SoundInfo keeps its own native attenuation.
+                Source.Position=Frame.GetLocation();
+                const uint32 Choice=HashCombineFast(GetTypeHash(Source.Position),Index)%Node.Sounds.Num();
+                Source.Sound=Node.Sounds[Choice];Source.Volume=Strengths[Index];
+                Source.Channel=SoundChannels.FindRef(Source.Sound);
+                Source.DayTime=Node.DayTime;Source.NightTime=Node.NightTime;
+                Source.Channels=Node.Channels;
+                Sounds.Add(MoveTemp(Source));
+            }
+            if (Node.Repulsor.Enabled && !Node.PlayerOnly && Sources.Num() < 256)
+            {
+                FAC2ParticleSource Source;
+                Source.Repulsor = Node.Repulsor;
+                Source.Frame = Frame;
+                Sources.Add(MoveTemp(Source));
+            }
+            if (Node.Descriptors.IsEmpty() || Sources.Num()>=256)
                 continue;
             FTransform Attachment(Node.Offset * 100);
             if (Node.Holding)
@@ -1956,8 +2382,42 @@ struct FAC2AssetLibrary::FImpl
                 Source.Frame.SetLocation(P);
             }
             Source.ParticleScale = V.ParticleScale;
+            Source.Shared = true;
             Sources.Add(MoveTemp(Source));
         }
+    }
+
+    bool StartSound(const FAC2FXNode& Node,uint32 Effect,float Strength,bool Startup=false,bool CreatureIdle=false)
+    {
+        if(PreviewMode || !ModelRoot.IsValid() || Node.Sounds.IsEmpty() || Strength<=0)return false;
+        auto* World=ModelRoot->GetWorld();auto* Audio=FAC2Audio::Get(World);
+        if(!Audio)return false;
+        const auto* Game=World->GetAuthGameMode<AAC2GameMode>();
+        const float Hour=Game?Game->MapHour():12;
+        const auto* Player=World->GetFirstPlayerController();
+        if(!(Hour>=6 && Hour<18?Node.DayTime:Node.NightTime) ||
+            (Node.PlayerOnly && (!Player || Player->GetPawn()!=ModelRoot->GetOwner())) ||
+            !FAC2AssetLibrary::EffectChannelsMatch(Node.Channels))return false;
+        const uint32 Sound=Node.Sounds[FMath::RandHelper(Node.Sounds.Num())];
+        if(CreatureIdle && !LoopingSounds.FindRef(Sound))
+        {
+            // A reedshark idle contains eight authored breath cues in 6.67 s. Space out
+            // ambient opportunities per creature while retaining each cue's native timing.
+            if(PreviousAnimationTime<NextIdleSoundRoll)return false;
+            NextIdleSoundRoll=PreviousAnimationTime+FMath::FRandRange(6.f,12.f);
+            if(FMath::FRand()>=.4f)return false;
+        }
+        FAC2FXScalar Scalar;Scalar.Start(Strength,Node.RampTime,Startup);
+        if(const uint32 Context=Audio->Play(Sound,ModelRoot.Get(),Scalar.Current,SoundChannels.FindRef(Sound)))
+        {
+            if(Startup || (LoopingSounds.FindRef(Sound) && !Node.FireAndForget))
+            {
+                auto& State=ScalarEffects.FindOrAdd(Effect);State.Contexts.Add(Context);
+                State.Scalar=Scalar;State.Startup=Startup;
+            }
+            return true;
+        }
+        return false;
     }
 
     TSharedPtr<FAC2DecodedGeometry> Mesh(uint32 Id)
@@ -2103,7 +2563,13 @@ struct FAC2AssetLibrary::FImpl
                 Preferred = (Bits & 4) != 0;
             }
         }
-        // The remaining physics payload is deliberately not interpreted by this renderer.
+        if (((Id >> 24) == 6 || (Id >> 24) == 1) && R.Good)
+        {
+            FAC2AssetReader Physics(R.Data);
+            Physics.Pos=R.Pos;
+            G->NativeCollision=ReadAC2StaticCollision(Physics,NV,G->PhysicsIndices,(Id >> 24) == 1);
+            if (!G->NativeCollision) Warn(Id,TEXT("unsupported static collision payload"));
+        }
         if (!R.Good)
         {
             Warn(Id, TEXT("unsupported mesh layout"));
@@ -2125,8 +2591,16 @@ struct FAC2AssetLibrary::FImpl
         C->bUseAsyncCooking = true;
         C->SetCollisionProfileName(SkyMode || Animating ? TEXT("NoCollision") : TEXT("BlockAll"));
         C->SetCastShadow(!SkyMode);
+        // CPU skinning changes vertices without moving the component. VSM
+        // pages must invalidate for these meshes even while the actor is idle.
+        if(Animating && !SkyMode)C->ShadowCacheInvalidationBehavior=EShadowCacheInvalidationBehavior::Always;
         if (Draw.Frill)
+        {
             C->SetCullDistance(20000); // Ground cover fades at 120-160 m, before batch culling.
+            FBox FrillBounds(ForceInit);for(const auto& V:G->Vertices)FrillBounds+=V;
+            const auto Extent=FrillBounds.GetExtent();
+            C->BoundsScale=1+75.f/FMath::Max(1.,FMath::Min3(Extent.X,Extent.Y,Extent.Z));
+        }
         C->RegisterComponent();
         Stats.FrillBatchesUploaded += Draw.Frill ? 1 : 0;
         bool HasCollision = false;
@@ -2144,20 +2618,40 @@ struct FAC2AssetLibrary::FImpl
                 Authored && Authored->Layers.Num() &&
                 (Authored->Layers[SelectedLayer(*Authored)].VertexDiffuse || Authored->Layers[SelectedLayer(*Authored)].ModulateVertexDiffuse);
             // Leaf cards and translucent surfaces don't become invisible collision walls.
-            const bool Collision = Draw.Solid && !SkyMode && !Animating && Material && !F.Indices.IsEmpty() &&
+            const bool Collision = !G->NativeCollision && Draw.Solid && !SkyMode && !Animating && Material && !F.Indices.IsEmpty() &&
                                    (Draw.Structural || Material->GetBlendMode() == BLEND_Opaque);
             HasCollision |= Collision;
-            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs, G->DetailUVs, G->UV2, G->UV3,
+            // Reuse the fourth UV only when the DAT material does not read it.
+            // Preserve all authored texture coordinates and vertex colours.
+            const bool Bend=Draw.Frill && G->FrillBend.Num()==G->Vertices.Num() && Authored && !Authored->Layers.IsEmpty() &&
+                !Authored->Layers[SelectedLayer(*Authored)].TextureCoordinates.Contains(3);
+            if(Draw.Frill && !Bend && Material){
+                // A DAT that consumes UV3 must retain those coordinates, without
+                // inheriting the shared grass material's deformation switch.
+                auto* Fixed=UMaterialInstanceDynamic::Create(Material,C);
+                Fixed->SetScalarParameterValue(TEXT("AC2FoliageBend"),0);Material=Fixed;
+            }
+            if(Draw.Frill)if(auto* Dynamic=Cast<UMaterialInstanceDynamic>(Material))RegisterAC2FoliageMaterial(Dynamic,C,Bend);
+            C->CreateMeshSection(J, G->Vertices, F.Indices, G->Normals, G->UVs, G->DetailUVs, G->UV2, Bend?G->FrillBend:G->UV3,
                                  VertexColors ? G->Colors : TArray<FColor>(), TArray<FProcMeshTangent>(),
                                  Collision);
             C->SetMaterial(J, Material);
             if(Animating && ModelRoot.IsValid() && !SkyMode)
                 AppearanceBindings.Add({C,J,F.Material,F.OriginalMaterial?F.OriginalMaterial:F.Material,G->Type,F.Material,F.BaseAtoms});
             if(!SkyMode && !PreviewMode) RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(Material),C,Draw.Structural);
-            if (InvisibleMaterials.Contains(F.Material))
+            if (InvisibleMaterials.Contains(F.Material) || (Authored && Authored->AppearanceOpacity <= 0.f))
                 C->SetMeshSectionVisible(J, false);
             ++Stats.ScenerySections;
             Stats.SceneryTriangles += F.Indices.Num() / 3;
+        }
+        if (G->NativeCollision && Draw.Solid && !SkyMode && !Animating && !G->PhysicsIndices.IsEmpty())
+        {
+            const int32 Section=G->Fragments.Num();
+            C->bUseComplexAsSimpleCollision=true;
+            C->CreateMeshSection(Section,G->Vertices,G->PhysicsIndices,TArray<FVector>(),TArray<FVector2D>(),
+                TArray<FColor>(),TArray<FProcMeshTangent>(),true);
+            C->SetMeshSectionVisible(Section,false);
+            HasCollision=true;
         }
         if (HasCollision)
             CollisionMeshes.Add(C);
@@ -2166,6 +2660,7 @@ struct FAC2AssetLibrary::FImpl
         const bool Visible = CellVisible(Cell);
         C->SetVisibility(Visible);
         if (!Visible) C->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        if(!SkyMode && !PreviewMode)RegisterAC2FogComponent(C);
         return C;
     }
     bool AnimatedSetup(const FAC2DecodedPart &P, const FTransform &Frame, AActor *Owner,
@@ -2178,6 +2673,7 @@ struct FAC2AssetLibrary::FImpl
         if (!Group.Setup.Decode(P.Setup, B))
             return false;
         Group.Frame = Frame;
+        Group.PartFrame = Frame.ToMatrixWithScale();
         Group.Parent = Parent;
         Group.Map=P.AnimMap;
         if (Animated.IsValidIndex(Parent))
@@ -2195,6 +2691,7 @@ struct FAC2AssetLibrary::FImpl
             {
                 auto *C = RenderDraw({G, Frame, false}, Owner, Root);
                 Group.Meshes.Add({G, C, I});
+                Group.Skinned |= !G->Skin.IsEmpty();
             }
         if (Group.Meshes.IsEmpty())
             return false;
@@ -2216,17 +2713,37 @@ struct FAC2AssetLibrary::FImpl
         if (!Read(P.Setup, B) || !G.Setup.Decode(P.Setup, B))
             return false;
         G.Frame = Frame;
+        G.PartFrame = Frame.ToMatrixWithScale();
         G.Idle = Idle;
         for (const FMatrix &M : G.Setup.World(G.Setup.Bind))
             G.BindInverse.Add(M.Inverse());
         bool Any = false;
         const int32 Group = Animated.Num();
+        // CPartArray::RefreshMatrices treats the whole group as skinned when
+        // any part has weights. Its unweighted collision part stays in group
+        // space; mesh ordinal 1 is not bone 1 of an animated hanging ornament.
+        TArray<TSharedPtr<FAC2DecodedGeometry>> Parts;
+        for(uint32 MeshId:G.Setup.Meshes) {
+            auto Part=SceneAppearanceMesh(MeshId,Atoms);
+            G.Skinned |= Part && !Part->Skin.IsEmpty();
+            Parts.Add(Part);
+        }
+        const auto Rest=G.Setup.World(G.Setup.Rest,false);
         for (int32 I = 0; I < G.Setup.Meshes.Num(); ++I)
-            if (auto GeometryData = SceneAppearanceMesh(G.Setup.Meshes[I], Atoms))
+            if (auto GeometryData = Parts[I])
             {
                 if (Draws.Num() >= 4096)
                     break;
                 Draws.Add({GeometryData, Frame, false, false, Group, I});
+                // Decorative animation must not remove the native walkable
+                // surface. These unweighted physics vertices are static in
+                // setup space; never cook deforming cloth as a walkable mesh.
+                if(GeometryData->NativeCollision && !GeometryData->PhysicsIndices.IsEmpty() && GeometryData->Skin.IsEmpty()) {
+                    auto Collision=MakeShared<FAC2DecodedGeometry>(*GeometryData);
+                    Collision->Fragments.Reset();
+                    const FTransform CollisionFrame=G.Skinned || !Rest.IsValidIndex(I)?Frame:FTransform(Rest[I])*Frame;
+                    Draws.Add({Collision,CollisionFrame,true,false});
+                }
                 for (const auto &F : GeometryData->Fragments)
                 {
                     FLinearColor Tint;
@@ -2235,9 +2752,49 @@ struct FAC2AssetLibrary::FImpl
                 }
                 Any = true;
             }
-        if (Any)
+        if (Any) {
+            SetupCollision(G.Setup,Frame,nullptr,nullptr);
             Animated.Add(MoveTemp(G));
+        }
         return Any;
+    }
+    void SetupCollision(const FAC2Setup& Setup,const FTransform& Placement,AActor* Owner,USceneComponent* Root)
+    {
+        if(!EnvironmentLand || Decoration || SkyMode || Animating)return;
+        // CPhysicsObj::FindObjCollisions prefers the physics tree, then setup
+        // cylinders, then setup spheres. Never turn leaf cards into blockers.
+        for(uint32 Id:Setup.Meshes)if(auto G=Mesh(Id);G && (!G->PhysicsIndices.IsEmpty() || !G->Skin.IsEmpty()))return;
+        auto G=MakeShared<FAC2DecodedGeometry>();G->NativeCollision=true;
+        constexpr int32 Sides=32;
+        const FVector Scale=Placement.GetScale3D().GetAbs();
+        for(const auto& C:Setup.Cylinders)if(C.Radius>0 && C.Height>0) {
+            const FVector Low=Placement.TransformPosition(C.Low);
+            // Native CCylSphere stays upright even when the scenery is tilted.
+            const double Radius=C.Radius*(Scale.X+Scale.Y)*.5,Height=C.Height*Scale.Z;
+            const int32 Base=G->Vertices.Num();
+            for(int32 Z=0;Z<2;++Z)for(int32 I=0;I<Sides;++I) {
+                const double A=2*PI*I/Sides;
+                G->Vertices.Add(Low+FVector(Radius*FMath::Cos(A),Radius*FMath::Sin(A),Z*Height));
+            }
+            for(int32 I=0;I<Sides;++I){const int32 A=Base+I,B=Base+(I+1)%Sides;
+                G->PhysicsIndices.Append({A,B,A+Sides,B,B+Sides,A+Sides});
+            }
+            for(int32 I=1;I<Sides-1;++I)G->PhysicsIndices.Append({Base,Base+I+1,Base+I,Base+Sides,Base+Sides+I,Base+Sides+I+1});
+        }
+        if(Setup.Cylinders.IsEmpty())for(const auto& S:Setup.Spheres)if(S.Radius>0) {
+            const FVector Center=Placement.TransformPosition(S.Center);const double Radius=S.Radius*Scale.X;
+            const int32 Base=G->Vertices.Num();constexpr int32 Rings=16;
+            for(int32 J=0;J<=Rings;++J)for(int32 I=0;I<Sides;++I){const double A=2*PI*I/Sides,B=PI*J/Rings;
+                G->Vertices.Add(Center+Radius*FVector(FMath::Sin(B)*FMath::Cos(A),FMath::Sin(B)*FMath::Sin(A),FMath::Cos(B)));
+            }
+            for(int32 J=0;J<Rings;++J)for(int32 I=0;I<Sides;++I){const int32 A=Base+J*Sides+I,B=Base+J*Sides+(I+1)%Sides;
+                if(J>0)G->PhysicsIndices.Append({A,A+Sides,B});
+                if(J<Rings-1)G->PhysicsIndices.Append({B,A+Sides,B+Sides});
+            }
+        }
+        if(G->PhysicsIndices.IsEmpty())return;
+        if(Preparing)Draws.Add({G,FTransform::Identity,true,false});
+        else RenderDraw({G,FTransform::Identity,true,false},Owner,Root);
     }
     bool DrawSetup(uint32 Id, const FTransform &Placement, AActor *Owner, USceneComponent *Root,
                    bool RecordBounds, const FAC2Atoms &Atoms = {})
@@ -2284,6 +2841,8 @@ struct FAC2AssetLibrary::FImpl
                 World[I] = World[I] * World[Parents[I]];
         }
         bool Drawn = false;
+        bool Skinned=false;
+        for(uint32 MeshId:Meshes)if(auto Part=Mesh(MeshId))Skinned|=!Part->Skin.IsEmpty();
         for (int32 I = 0; I < NM; ++I)
         {
             if (!Meshes[I])
@@ -2297,7 +2856,7 @@ struct FAC2AssetLibrary::FImpl
                 break;
             }
             const FTransform MeshTransform =
-                (World.IsValidIndex(I) ? World[I] : FTransform::Identity) * Placement;
+                (!Skinned && World.IsValidIndex(I) ? World[I] : FTransform::Identity) * Placement;
             if (RecordBounds)
             {
                 FBox Box(ForceInit);
@@ -2326,6 +2885,7 @@ struct FAC2AssetLibrary::FImpl
                 RenderDraw({G, MeshTransform, !Decoration, Decoration}, Owner, Root);
             Drawn = true;
         }
+        if(Drawn){FAC2Setup Setup;if(Setup.Decode(Id,R.Data))SetupCollision(Setup,Placement,Owner,Root);}
         return Drawn;
     }
     // Grass retains its native mesh, transforms and material, but shares a draw
@@ -2335,12 +2895,16 @@ struct FAC2AssetLibrary::FImpl
     {
         const FVector P = Frame.GetLocation();
         TArray<FVector> Vertices;
+        TArray<FVector2D> BendWeights;
         auto Fields = Source;
-        double MinZ = TNumericLimits<double>::Max();
-        for (const FVector &V : Source->Vertices) MinZ = FMath::Min(MinZ,V.Z);
+        double MinZ = TNumericLimits<double>::Max(),MaxZ=-TNumericLimits<double>::Max();
+        for (const FVector &V : Source->Vertices){MinZ=FMath::Min(MinZ,V.Z);MaxZ=FMath::Max(MaxZ,V.Z);}
         // Native grass meshes can start a few centimetres above their origin.
         // Keep buried roots buried, but seat raised bases on the rendered terrain.
         const double BaseZ = FMath::Max(0.,MinZ);
+        const double LocalHeight=FMath::Max(1.,MaxZ-BaseZ);
+        const double PlantHeight=LocalHeight*FMath::Abs(Frame.GetScale3D().Z);
+        auto BendWeight=[&](double Z){return FVector2D(FMath::Clamp((Z-BaseZ)/LocalHeight,0.,1.),PlantHeight);};
         FTransform LocalFrame = Frame;
         LocalFrame.AddToTranslation(-EnvironmentOffset);
         for (const FVector &V : Source->Vertices)
@@ -2363,7 +2927,10 @@ struct FAC2AssetLibrary::FImpl
                 World = Fitted + EnvironmentOffset;
             }
             if (!GroundDecoration || !EnvironmentDefs || !EnvironmentLand)
+            {
                 Vertices.Add(World);
+                BendWeights.Add(BendWeight(V.Z));
+            }
         }
         if (GroundDecoration && EnvironmentDefs && EnvironmentLand)
         {
@@ -2386,6 +2953,7 @@ struct FAC2AssetLibrary::FImpl
                             Card[Corner]=A*W.X+B*W.Y+C*W.Z;
                             World[Corner]=FitAC2GroundFrill(*EnvironmentDefs,*EnvironmentLand,LocalFrame,Card[Corner],BaseZ);
                             F.Indices.Add(Vertices.Add(World[Corner]+EnvironmentOffset));
+                            BendWeights.Add(BendWeight(Card[Corner].Z));
                             auto UV=[&](const TArray<FVector2D>& U){return U[IA]*W.X+U[IB]*W.Y+U[IC]*W.Z;};
                             Fields->UVs.Add(UV(Source->UVs)); Fields->DetailUVs.Add(UV(Source->DetailUVs));
                             Fields->UV2.Add(UV(Source->UV2)); Fields->UV3.Add(UV(Source->UV3));
@@ -2447,6 +3015,7 @@ struct FAC2AssetLibrary::FImpl
                 G.DetailUVs.Add(Fields->DetailUVs[V]);
                 G.UV2.Add(Fields->UV2[V]);G.UV3.Add(Fields->UV3[V]);
                 G.Colors.Add(Fields->Colors[V]);
+                G.FrillBend.Add(BendWeights[V]);
             }
             for (int32 I : Fragment.Indices)
                 G.Fragments[0].Indices.Add(Base + I);
@@ -2481,6 +3050,7 @@ struct FAC2AssetLibrary::FImpl
         {
             ModelVisual=E.Data;
             ModelParticleScale=V.ParticleScale;
+            StreakModelScale=E.Scale*V.Scale;
             TArray<uint8> Data;
             if(V.MotionDesc && Read(V.MotionDesc,Data))Movement.Decode(V.MotionDesc,Data);
             if(V.BehaviorTable && Read(V.BehaviorTable,Data))Behaviors.Decode(V.BehaviorTable,Data);
@@ -2500,8 +3070,11 @@ struct FAC2AssetLibrary::FImpl
             // persistent. Spell/hit/death overrides must wait for their trigger.
             auto Startup=[&](const FAC2DecodedPart& Part){
                 for(uint32 Key:Part.Startup)
+                {
+                    StartupStrength.Add(Key,Part.StartupStrength.FindRef(Key));
                     if(const auto* Override=Part.Overrides.Find(Key))StartupEffects.FindOrAdd(Key).Append(*Override);
                     else if(Part.FXTable)TableFX(Part.FXTable,Key,StartupEffects.FindOrAdd(Key));
+                }
             };
             Startup(V.FX);for(const auto& P:V.Parts)Startup(P);
         }
@@ -2578,12 +3151,15 @@ struct FAC2AssetLibrary::FImpl
 
 FAC2AssetLibrary::FAC2AssetLibrary() : Impl(MakeUnique<FImpl>())
 {
+    Impl->AnimatorState.Random.GenerateNewSeed();
 }
 FAC2AssetLibrary::~FAC2AssetLibrary()
 {
     if(Impl->ModelRoot.IsValid())if(auto* Audio=FAC2Audio::Get(Impl->ModelRoot->GetWorld()))
-        for(const auto& FX:Impl->SoundEffects)for(uint32 Context:FX.Value)Audio->Stop(Context);
+        for(const auto& FX:Impl->ScalarEffects)for(uint32 Context:FX.Value.Contexts)Audio->Stop(Context);
     for(auto& E:Impl->VisualEffects){E.Model.Reset();if(E.Actor.IsValid())E.Actor->Destroy();}
+    for(auto& E:Impl->LightEffects)if(E.Light.IsValid())E.Light->DestroyComponent();
+    for (auto& Streak : Impl->Streaks) Streak.Release();
 }
 bool FAC2AssetLibrary::ValidateGrassMaterials(int32 &Count)
 {
@@ -2611,7 +3187,10 @@ bool FAC2AssetLibrary::AnimatedHoldingLocation(uint32 Location, FTransform &Out)
         if(const auto* Socket=G.Setup.Sockets.Find(Location))
             if(G.Bones.IsValidIndex(Socket->Bone))
             {
-                Out=FTransform(Socket->Frame.ToMatrixWithScale()*G.Bones[Socket->Bone])*G.Frame;
+                // Keep the full part matrix until the socket is in model space.
+                // Decomposing a scaled parent first loses the translation of
+                // rotated attachments on non-uniformly scaled body parts.
+                Out=FTransform(Socket->Frame.ToMatrixWithScale()*G.Bones[Socket->Bone]*G.PartFrame);
                 return true;
             }
     return false;
@@ -2753,12 +3332,50 @@ FBox FAC2AssetLibrary::ModelBounds(uint32 MeshType) const
         }
     return Bounds;
 }
+bool FAC2AssetLibrary::HitModel(const FVector& Start, const FVector& End, double& Fraction) const
+{
+    Fraction = 1;
+    const double LengthSquared = FVector::DistSquared(Start, End);
+    if (LengthSquared <= SMALL_NUMBER) return false;
+    bool Hit = false;
+    for (const auto& Group : Impl->Animated)
+        for (const auto& Mesh : Group.Meshes)
+        {
+            if (!Mesh.Component->IsVisible()) continue;
+            const FTransform Frame = Mesh.Component->GetComponentTransform();
+            const FVector LocalStart = Frame.InverseTransformPosition(Start);
+            const FVector LocalEnd = Frame.InverseTransformPosition(End);
+            for (int32 S = 0; S < Mesh.Component->GetNumSections(); ++S)
+            {
+                const auto* Section = Mesh.Component->GetProcMeshSection(S);
+                if (!Section || !Section->bSectionVisible ||
+                    !FMath::LineBoxIntersection(Section->SectionLocalBox, LocalStart, LocalEnd, LocalEnd-LocalStart)) continue;
+                for (int32 I = 0; I + 2 < Section->ProcIndexBuffer.Num(); I += 3)
+                {
+                    FVector Point, Normal;
+                    if (FMath::SegmentTriangleIntersection(LocalStart, LocalEnd,
+                        Section->ProcVertexBuffer[Section->ProcIndexBuffer[I]].Position,
+                        Section->ProcVertexBuffer[Section->ProcIndexBuffer[I+1]].Position,
+                        Section->ProcVertexBuffer[Section->ProcIndexBuffer[I+2]].Position, Point, Normal))
+                    {
+                        const double T = FVector::DotProduct(Frame.TransformPosition(Point)-Start, End-Start) / LengthSquared;
+                        if (T >= 0 && T < Fraction) { Fraction = T; Hit = true; }
+                    }
+                }
+            }
+        }
+    return Hit;
+}
 const FAC2MotionData& FAC2AssetLibrary::MotionData() const { return Impl->Movement; }
 bool FAC2AssetLibrary::SetMotionDescriptor(uint32 Id)
 {
     TArray<uint8> Data;FAC2MotionData Motion;
     if((Id>>24)!=0x32||!Impl->Read(Id,Data)||!Motion.Decode(Id,Data))return false;
     Impl->Movement=MoveTemp(Motion);return true;
+}
+void FAC2AssetLibrary::EnableCreatureIdleAudio()
+{
+    Impl->CreatureIdleAudio=true;
 }
 void FAC2AssetLibrary::SetAnimationState(uint32 Element,uint32 Mode)
 {
@@ -2770,7 +3387,9 @@ void FAC2AssetLibrary::SetAnimationState(uint32 Element,uint32 Mode)
     if(Impl->Element!=Element || Impl->Mode!=Mode)
     {
         Impl->BlendFromCurrent(Impl->Behaviors.ModeRamp(Impl->Element,Impl->Mode,Element,Mode));
-        for(auto& G:Impl->Animated){G.Phase=G.IdlePhase=0;G.IdleTriggers={};G.MoveTriggers={};}
+        // Preserve the gait phase across ground/air/stance changes. Resetting it
+        // on every contact change repeatedly snaps a running body's legs back.
+        for(auto& G:Impl->Animated){G.IdleTriggers={};G.MoveTriggers={};}
     }
     Impl->Element=Element;Impl->Mode=Mode;
 }
@@ -2786,17 +3405,29 @@ bool FAC2AssetLibrary::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool 
         {Element=AC2Motion::Air;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
     if(!Key){Element=AC2Motion::Ground;BehaviorMode=AC2Motion::Peace;Key=Impl->Behaviors.Key(Element,BehaviorMode,Behavior);}
     if(!Key)return false;
-    float Duration=0;
+    float Duration=0;int32 DriverBones=0;
+    const bool NativeHold=Impl->IsHoldBehavior(Behavior) && Behavior!=AC2Motion::Death;
+    FAC2HoldLoop Loop;
     for(auto& G:Impl->Animated)
-        if(G.Parent<0)if(auto Graph=Impl->Graph(G,Key))
-        {auto Input=G.Motion;Input.Mode=BehaviorMode;Input.Element=Element;Duration=FMath::Max(Duration,Graph->Period(Input));}
+        if(G.Parent<0 && G.Setup.Parents.Num()>DriverBones)if(auto Graph=Impl->Graph(G,Key))
+        {auto Input=G.Motion;Input.Mode=BehaviorMode;Input.Element=Element;
+            const float Period=Graph->Period(Input);
+            if(Period>.001f)
+            {
+                Duration=Period;DriverBones=G.Setup.Parents.Num();
+                if(NativeHold)Loop=Graph->HoldLoop(Input);
+            }}
     if(Duration<=.001f)return false;
     if(Behavior==AC2Motion::Death){Impl->Actions.Reset();Hold=true;}
     const uint32 Layer=Impl->Behaviors.Layer(Element,BehaviorMode,Behavior);
     const float Ramp=Impl->Behaviors.Ramp(Behavior);
     if(Impl->Actions.ContainsByPredicate([&](const auto& A){return A.Layer==Layer;}))Impl->BlendFromCurrent(Ramp);
     Impl->Actions.RemoveAll([&](const auto& A){return A.Layer==Layer;});
-    Impl->Actions.Add({Behavior,Key,Layer,BehaviorMode,Element,0,0,Duration,FMath::Clamp(Rate,.05f,10.f),Ramp,Hold});
+    Impl->ReleaseEndedStreakControllers();
+    // Also unique across model rebuilds (equipment/appearance changes).
+    static std::atomic<uint64> NextActionInstance{0};
+    uint64 Instance=0;while(!Instance)Instance=NextActionInstance.fetch_add(1,std::memory_order_relaxed)+1;
+    Impl->Actions.Add({Behavior,Key,Layer,BehaviorMode,Element,0,0,Duration,FMath::Clamp(Rate,.05f,10.f),Ramp,Hold||Loop.Active(),Instance,Loop});
     Impl->Actions.StableSort([&](const auto& A,const auto& B){
         // ComboInfo stores a layer INDEX, not the enum in BehaviorTable::mLayers.
         // AnimCompositor::Animate gives the highest index first claim on each bone.
@@ -2810,11 +3441,101 @@ void FAC2AssetLibrary::StopBehavior(uint32 Behavior)
     if(Impl->Actions.ContainsByPredicate([&](const auto& A){return !Behavior || A.Behavior==Behavior;}))
         Impl->BlendFromCurrent(Behavior?Impl->Behaviors.Ramp(Behavior):.25f);
     Impl->Actions.RemoveAll([&](const auto& A){return !Behavior || A.Behavior==Behavior;});
+    Impl->ReleaseEndedStreakControllers();
+}
+void FAC2AssetLibrary::ReleaseBehavior(uint32 Behavior)
+{
+    // ModeTracker::ReleaseBehavior preserves the current track and its phase.
+    // Releasing an absent/non-held action must not restart it or cancel another
+    // layer. Death is a persistent presentation state, not a releasable hold.
+    if(Behavior==AC2Motion::Death)return;
+    if(auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior && A.Hold;}))
+    {
+        if(Track->Loop.Active())
+        {
+            Track->Time=Track->Previous=Track->Loop.PhaseAt(Track->Time/Track->Duration)*Track->Duration;
+            Track->Loop={};
+        }
+        else Impl->BlendFromCurrent(Track->Ramp);
+        Track->Hold=false;
+    }
+}
+void FAC2AssetLibrary::StopAnimationLayer(uint32 Layer)
+{
+    // BehaviorTracker::StopLayer receives a layer index, as stored by ComboInfo.
+    // Stop only that layer; a damage reaction must not cancel an independent cast.
+    TArray<uint32> Matches;
+    for(const auto& A:Impl->Actions)if(A.Layer==Layer && A.Behavior!=AC2Motion::Death)Matches.Add(A.Behavior);
+    for(uint32 Behavior:Matches)StopBehavior(Behavior);
 }
 float FAC2AssetLibrary::BehaviorDuration(uint32 Behavior) const
 {
     const auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior;});
     return Track?Track->Duration/Track->Rate:0;
+}
+bool FAC2AssetLibrary::CompletedHoldCycles(uint32 Behavior,uint32 Cycles) const
+{
+    const auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior;});
+    return Track && Track->Loop.Active() && Track->Loop.Repeats(Track->Time/Track->Duration)>=Cycles;
+}
+void FAC2AssetLibrary::SeekBehavior(uint32 Behavior,float Elapsed)
+{
+    if(!FMath::IsFinite(Elapsed))return;
+    if(auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior;}))
+    {
+        const double Time=FMath::Max(0.,double(Elapsed)*Track->Rate);
+        Track->Previous=Track->Time=Track->Loop.Active()?Time:FMath::Min(Time,double(Track->Duration));
+        // Seeking restores a presentation snapshot; blending from the fresh
+        // model's standing pose would briefly resurrect a rebuilt corpse.
+        for(auto& G:Impl->Animated){G.TransitionPose.Reset();G.TransitionTime=G.TransitionDuration=0;}
+    }
+}
+uint64 FAC2AssetLibrary::BehaviorInstance(uint32 Behavior) const
+{
+    const auto* Track=Impl->Actions.FindByPredicate([&](const auto& A){return A.Behavior==Behavior;});
+    return Track?Track->Instance:0;
+}
+bool FAC2AssetLibrary::HandlingItem() const
+{
+    return BehaviorDuration(AC2Motion::Pickup)>0 || BehaviorDuration(AC2Motion::Putdown)>0;
+}
+bool FAC2AssetLibrary::ReleasedHeldItem(uint32 Holding) const
+{
+    if(Holding!=4)return false;
+    // Legions StoryManager::CreateAndParentMissiles (00502DE0) fades the
+    // equipped thrown weapon while its missile clone is in use; CleanupStory
+    // (00502BA0) restores it. Our network missile is a separate actor. Keep the
+    // held visual until release, then hide it through recovery. Restrict this
+    // bridge to the verified Tumerok clips, not bows sharing holding point 4.
+    for(const auto& Action:Impl->Actions)if(Action.Mode==0x41000010)
+        for(auto& G:Impl->Animated)if(G.Parent<0)if(auto Graph=Impl->Graph(G,Action.Key))
+        {
+            auto Input=G.Motion;Input.Mode=Action.Mode;Input.Element=Action.Element;
+            for(uint32 Clip:Graph->ActiveClips(Input))
+            {
+                const float Release=Clip==0x05000705?.472692996f:Clip==0x05000707?.629001975f:2.f;
+                if(Action.Time/Action.Duration>=Release)return true;
+            }
+        }
+    return false;
+}
+float FAC2AssetLibrary::LocomotionScale() const
+{
+    const FImpl::FAnimatedGroup* Driver=nullptr;
+    for(const auto& G:Impl->Animated)if(G.Parent<0 && (!Driver || G.Setup.Parents.Num()>Driver->Setup.Parents.Num()))Driver=&G;
+    return Driver?FMath::Max(.01f,float(FMath::Abs(Driver->Frame.GetScale3D().Y))):1.f;
+}
+TArray<float> FAC2AssetLibrary::StoryHookDelays(uint32 Behavior) const
+{
+    const auto* A=Impl->Actions.FindByPredicate([&](const auto& V){return V.Behavior==Behavior;});
+    if(A)for(auto& G:Impl->Animated)if(G.Parent<0)if(auto Graph=Impl->Graph(G,A->Key))
+    {
+        auto Input=G.Motion;Input.Mode=A->Mode;Input.Element=A->Element;
+        auto Times=Graph->StoryTriggers(Input);
+        for(float& T:Times)T=FMath::Max(0.f,(T*A->Duration-A->Time)/A->Rate);
+        return Times;
+    }
+    return {};
 }
 float FAC2AssetLibrary::JumpDelay() const
 {
@@ -2830,10 +3551,51 @@ bool FAC2AssetLibrary::AuditAttachments(FString& Error) const
         {
             const auto& P=Impl->Animated[G.Parent];
             if(!P.Bones.IsValidIndex(G.Socket.Bone)){Error=TEXT("Missing attachment bone");return false;}
-            const auto Expected=FTransform(G.Socket.Frame.ToMatrixWithScale()*P.Bones[G.Socket.Bone])*P.Frame;
-            if(!G.Frame.Equals(Expected,.001)){Error=TEXT("Child detached from animated connection point");return false;}
+            const auto Expected=G.Socket.Frame.ToMatrixWithScale()*P.Bones[G.Socket.Bone]*P.PartFrame;
+            if(!G.PartFrame.Equals(Expected,.001)){Error=TEXT("Child detached from animated connection point");return false;}
         }
     return !Impl->Animated.IsEmpty();
+}
+bool FAC2AssetLibrary::AttachmentSeamGap(uint32 MeshType, int32& MatchedVertices, double& Gap) const
+{
+    MatchedVertices=0;Gap=0;
+    auto RigidlyWeighted=[](const FAC2DecodedGeometry& D,int32 V,int32 Bone)
+    {
+        if(!D.Skin.IsValidIndex(V))return false;
+        float Weight=0;
+        for(int32 I=0;I<4;++I)if(D.Skin[V].Bones[I]==Bone)Weight+=D.Skin[V].Weights[I];
+        return Weight>.9999f;
+    };
+    for(const auto& G:Impl->Animated)if(Impl->Animated.IsValidIndex(G.Parent))
+    {
+        const auto& Parent=Impl->Animated[G.Parent];
+        const auto Bind=Parent.Setup.World(Parent.Setup.Bind,false);
+        if(!Bind.IsValidIndex(G.Socket.Bone))continue;
+        const FMatrix Attachment=G.Socket.Frame.ToMatrixWithScale()*Bind[G.Socket.Bone];
+        for(const auto& Child:G.Meshes)if(Child.Data->Type==MeshType && Child.Component)
+        {
+            const auto* ChildSection=Child.Component->GetProcMeshSection(0);
+            if(!ChildSection)continue;
+            TArray<FVector> Checked;
+            for(int32 C=0;C<Child.Data->Vertices.Num();++C)
+            {
+                if(!RigidlyWeighted(*Child.Data,C,0))continue;
+                const FVector Source=FVector(Attachment.TransformPosition(Child.Data->Vertices[C]));
+                if(Checked.ContainsByPredicate([&](const FVector& V){return V.Equals(Source,.01);}))continue;
+                for(const auto& Body:Parent.Meshes)if(Body.Component)
+                {
+                    const auto* BodySection=Body.Component->GetProcMeshSection(0);
+                    if(!BodySection)continue;
+                    const int32 B=Body.Data->Vertices.IndexOfByPredicate([&](const FVector& V){return V.Equals(Source,.01);});
+                    if(B==INDEX_NONE || !RigidlyWeighted(*Body.Data,B,G.Socket.Bone))continue;
+                    const FVector A=Child.Component->GetComponentTransform().TransformPosition(ChildSection->ProcVertexBuffer[C].Position);
+                    const FVector P=Body.Component->GetComponentTransform().TransformPosition(BodySection->ProcVertexBuffer[B].Position);
+                    Gap=FMath::Max(Gap,FVector::Distance(A,P));++MatchedVertices;Checked.Add(Source);break;
+                }
+            }
+        }
+    }
+    return MatchedVertices>0;
 }
 TArray<FAC2IconLayer> FAC2AssetLibrary::IconLayers(uint32 Id,const FAC2Appearance& Appearance)
 {
@@ -2852,12 +3614,16 @@ TArray<FAC2IconLayer> FAC2AssetLibrary::IconLayers(uint32 Id,const FAC2Appearanc
     V.Icons.Sort([](const auto& A,const auto& B){return A.Layer<B.Layer;});
     return V.Icons;
 }
+bool FAC2AssetLibrary::HasLocomotion() const
+{
+    return Impl->Animated.ContainsByPredicate([](const auto& G){return G.Parent<0 && G.Locomotion.IsValid();});
+}
 int32 FAC2AssetLibrary::EnableWorldObjectCollision()
 {
     if (!Impl->ModelRoot.IsValid()) return 0;
     // MotionData is inherited by animated props too (including lifestones).
     // Only a model with an actual locomotion graph is a moving creature.
-    if (Impl->Animated.ContainsByPredicate([](const auto& G){return G.Parent<0 && G.Locomotion.IsValid();})) return 0;
+    if (HasLocomotion()) return 0;
     int32 Count=0;
     TInlineComponentArray<UProceduralMeshComponent*> Meshes(Impl->ModelRoot->GetOwner());
     for(auto* Mesh:Meshes)
@@ -2903,6 +3669,13 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
     for (uint32 Key : Keys)
         for (const auto &Node : Impl->AppearanceEffects.Contains(Key)?Impl->AppearanceEffects[Key]:Impl->StartupEffects[Key])
         {
+            const auto* Game=Owner->GetWorld()->GetAuthGameMode<AAC2GameMode>();
+            const uint32 Terrain=Game?Game->SoundTerrain(Root->GetComponentLocation()):0;
+            const auto* Variant=Node.Terrain.Find(Terrain);
+            Impl->StartSound(Variant?**Variant:Node,Key,Impl->StartupStrength.FindRef(Key),true);
+            Impl->StartLight(Node,Key);
+            Impl->StartRepulsor(Variant ? **Variant : Node);
+            Impl->ApplyStreak(Variant ? **Variant : Node, Key);
             // Root emitters must also follow models without an animated group.
             if(Impl->Animated.IsEmpty() && !Node.Bone && !Node.Holding &&
                 !Node.Descriptors.IsEmpty() && Node.Descriptors[0]>>24==0x39)
@@ -2932,14 +3705,20 @@ bool FAC2AssetLibrary::DrawModel(uint32 Id, AActor *Owner, USceneComponent *Root
     if (!Impl->AppearanceAttachments.IsEmpty())
     {
         Impl->AttachedEffects = MakeUnique<FAC2Effects>();
-        Impl->AttachedEffects->Open(Owner->GetWorld(), Impl->Directory);
+        Impl->AttachedEffects->Open(Owner->GetWorld(), Impl->Directory, !Impl->PreviewMode);
         if (auto *Capture = Owner->FindComponentByClass<USceneCaptureComponent2D>())
             Capture->ShowOnlyActors.Add(Impl->AttachedEffects->RenderActor());
     }
     Animate(0, 0);
     return OK;
 }
-void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalViewer,
+void FAC2AssetLibrary::SetAnimationEnvironment(bool Grounded,const FVector& GroundNormal,const FVector& Look)
+{
+    Impl->AnimationGrounded=Grounded;
+    Impl->AnimationNormal=GroundNormal.ContainsNaN()?FVector::UpVector:GroundNormal.GetSafeNormal();
+    Impl->AnimationLook=Look.ContainsNaN()?FVector::ZeroVector:Look;
+}
+void FAC2AssetLibrary::Animate(float Time, float Speed,
                                const FVector *LocalVelocity)
 {
     if(Impl->SeenEffectChannels!=EffectChannelRevision)
@@ -2948,28 +3727,42 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         const auto Effects=Impl->AppearanceFXStrengths;
         for(const auto& Effect:Effects)PlayEffect(Effect.Key,Effect.Value);
     }
-    TArray<FAC2Animation::FEffect> AnimationEffects;
+    TArray<FAC2Animation::FEffect> AnimationEffects,CreatureIdleEffects;
     const float Delta = FMath::Clamp(Time - Impl->PreviousAnimationTime, 0.f, .2f);
     Impl->PreviousAnimationTime = Time;
     for(auto& Action:Impl->Actions){Action.Previous=Action.Time;Action.Time+=Delta*Action.Rate;}
     for (auto &G : Impl->Animated)
     {
-        if (LocalViewer && FVector::DistSquared(G.Frame.GetLocation(), *LocalViewer) > FMath::Square(12000.))
-            continue;
         auto Pose = G.Idle ? G.Idle->Sample(Time, G.Setup.Rest) : G.Setup.Rest;
         G.Motion.Element=Impl->Element;G.Motion.Mode=Impl->Mode;G.Motion.Terrain=0x80000001;
+        G.Motion.Time=Time;G.Motion.State=&Impl->AnimatorState;G.Motion.BoneNames=G.Setup.Names;
+        G.Motion.Grounded=Impl->AnimationGrounded;G.Motion.GroundNormal=Impl->AnimationNormal;G.Motion.Look=Impl->AnimationLook;
         const uint32 IdleKey=Impl->Behaviors.Key(Impl->Element,Impl->Mode,0x40000002);
-        if(auto Idle=Impl->Graph(G,IdleKey))
+        auto Idle=Impl->Graph(G,IdleKey);
+        auto IdleInput=G.Motion;
+        float IdlePeriod=Idle?Idle->Period(IdleInput):0;
+        // Some state/map combinations intentionally have no idle. Keep the
+        // native ground idle underneath instead of exposing the bind/rest pose.
+        if(!Idle || (IdlePeriod<=.001f && Idle->ActiveClips(IdleInput).IsEmpty()))
         {
-            float Period=Idle->Period(G.Motion);
-            if(Period>.001f)
+            Idle=Impl->Graph(G,0x80000012);
+            IdleInput.Element=AC2Motion::Ground;IdleInput.Mode=AC2Motion::Peace;
+            IdlePeriod=Idle?Idle->Period(IdleInput):0;
+        }
+        if(Idle)
+        {
+            if(IdlePeriod>.001f)
             {
                 const double Previous=G.IdlePhase;
-                G.IdlePhase=Impl->Animated.IsValidIndex(G.Parent)?Impl->Animated[G.Parent].IdlePhase:G.IdlePhase+Delta/Period;
+                G.IdlePhase=Impl->Animated.IsValidIndex(G.Parent)?Impl->Animated[G.Parent].IdlePhase:G.IdlePhase+Delta/IdlePeriod;
                 if(G.Parent<0 && G.MoveWeight<1 && Impl->Mode!=AC2Motion::Dead)
-                    AnimationEffects.Append(Idle->EffectsBetween(Previous,G.IdlePhase,G.Motion,true,&G.IdleTriggers));
-                Pose=Idle->Sample(float(FMath::Frac(G.IdlePhase)),G.Motion,G.Setup.Rest);
+                {
+                    auto& Effects=Impl->CreatureIdleAudio?CreatureIdleEffects:AnimationEffects;
+                    Effects.Append(Idle->EffectsBetween(Previous,G.IdlePhase,IdleInput,true,&G.IdleTriggers));
+                }
             }
+            // Zero-period assets are valid static poses, not missing animation.
+            Pose=Idle->Sample(float(FMath::Frac(G.IdlePhase)),IdleInput,G.Setup.Rest);
         }
         uint32 MoveKey=Impl->Behaviors.Key(Impl->Element,Impl->Mode,AC2Motion::Move);
         auto MovingGraph=MoveKey ? Impl->Graph(G,MoveKey) : G.Locomotion;
@@ -3018,15 +3811,38 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                 {
                     // CPartGroup shares the BehaviorTrack phase with every part.
                     // Timing a head/weapon by its own clip period separates it from the body.
-                    const float Phase=FMath::Min(Action.Time/Action.Duration,.99999f);
-                    if(G.Parent<0)AnimationEffects.Append(ActionGraph->EffectsBetween(Action.Previous/Action.Duration,FMath::Min(Action.Time/Action.Duration,1.f),Input));
-                    auto ActionPose=ActionGraph->Sample(Phase,Input,Pose);
-                    const float In=Action.Ramp>0?FMath::Min(1.f,Action.Time/Action.Ramp):1.f;
-                    const float Out=Action.Hold||Action.Ramp<=0?1.f:FMath::Clamp((Action.Duration-Action.Time)/Action.Ramp,0.f,1.f);
+                    const double From=Action.Previous/Action.Duration, To=Action.Time/Action.Duration;
+                    const double Phase=Action.Loop.PhaseAt(To);
+                    if(G.Parent<0)
+                    {
+                        // Split at the authored range edges. Each repetition can replay
+                        // its own cues, while the windup and release cues occur just once.
+                        const double PreviousPhase=Action.Loop.PhaseAt(From);
+                        const int32 FirstEvent = AnimationEffects.Num();
+                        const double Wraps=Action.Loop.Repeats(To)-Action.Loop.Repeats(From);
+                        if(Wraps>0)
+                        {
+                            AnimationEffects.Append(ActionGraph->EffectsBetween(PreviousPhase,Action.Loop.End,Input));
+                            for(int32 I=1;I<FMath::Min(16.,Wraps);++I)
+                                AnimationEffects.Append(ActionGraph->EffectsBetween(Action.Loop.Start,Action.Loop.End,Input));
+                        }
+                        AnimationEffects.Append(ActionGraph->EffectsBetween(Wraps>0?Action.Loop.Start:PreviousPhase,FMath::Min(Phase,1.),Input));
+                        for (int32 I=FirstEvent; I<AnimationEffects.Num(); ++I) AnimationEffects[I].SourceAction=Action.Instance;
+                    }
+                    auto ActionPose=ActionGraph->Sample(float(FMath::Min(Phase,.99999)),Input,Pose);
+                    const float In=Action.Ramp>0?float(FMath::Min(1.,Action.Time/Action.Ramp)):1.f;
+                    const float Out=Action.Hold||Action.Ramp<=0?1.f:float(FMath::Clamp((Action.Duration-Action.Time)/Action.Ramp,0.,1.));
                     const float Weight=FMath::Min(In,Out);
                     for(int32 I=0;I<Pose.Num();++I){FTransform Blend;Blend.Blend(Pose[I],ActionPose[I],Weight);Pose[I]=Blend;}
                 }
             }
+        // Retail starts these tracks from BehaviorTable::mInitBehaviors.
+        // Look and contact-angle tracks have no period: apply them additively
+        // over locomotion/actions instead of rejecting them as empty clips.
+        if(Impl->Mode!=AC2Motion::Dead)for(uint32 Behavior:Impl->Behaviors.InitialBehaviors)
+            if(Behavior==0x40000003 || Behavior==0x40000010)
+                if(auto Tweak=Impl->Graph(G,Impl->Behaviors.Key(Impl->Element,Impl->Mode,Behavior)))
+                    Pose=Tweak->Sample(0,G.Motion,Pose);
         if(G.TransitionPose.Num()==Pose.Num() && G.TransitionTime<G.TransitionDuration)
         {
             G.TransitionTime=FMath::Min(G.TransitionDuration,G.TransitionTime+Delta);
@@ -3041,26 +3857,34 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         {
             const auto &Parent = Impl->Animated[G.Parent];
             if (Parent.Bones.IsValidIndex(G.Socket.Bone))
-                G.Frame = FTransform(G.Socket.Frame.ToMatrixWithScale() * Parent.Bones[G.Socket.Bone]) *
-                          Parent.Frame;
+            {
+                G.PartFrame=G.Socket.Frame.ToMatrixWithScale()*Parent.Bones[G.Socket.Bone]*Parent.PartFrame;
+                G.Frame=FTransform(G.PartFrame);
+            }
         }
-        TArray<FMatrix> Skin;
+        TArray<FMatrix> Skin, SkinNormals;
         for (int32 I = 0; I < G.World.Num(); ++I)
-            Skin.Add(G.BindInverse[I] * G.World[I]);
+        {
+            Skin.Add(G.BindInverse[I]*G.World[I]*G.PartFrame);
+            SkinNormals.Add(Skin.Last().Inverse().GetTransposed());
+        }
         for (auto &M : G.Meshes)
         {
             const auto &D = *M.Data;
-            if (D.Skin.IsEmpty())
-            {
-                M.Component->SetRelativeTransform(
-                    (G.Bones.IsValidIndex(M.Bone) ? FTransform(G.Bones[M.Bone]) : FTransform::Identity) *
-                    G.Frame);
-                continue;
-            }
             TArray<FVector> V, N;
             V.SetNumUninitialized(D.Vertices.Num());
             N.SetNumUninitialized(D.Vertices.Num());
-            for (int32 I = 0; I < D.Vertices.Num(); ++I)
+            if (D.Skin.IsEmpty())
+            {
+                const FMatrix Rigid=(!G.Skinned && G.Bones.IsValidIndex(M.Bone)?G.Bones[M.Bone]:FMatrix::Identity)*G.PartFrame;
+                const FMatrix Normal=Rigid.Inverse().GetTransposed();
+                for(int32 I=0;I<D.Vertices.Num();++I)
+                {
+                    V[I]=FVector(Rigid.TransformPosition(D.Vertices[I]));
+                    N[I]=FVector(Normal.TransformVector(D.Normals[I])).GetSafeNormal();
+                }
+            }
+            else for (int32 I = 0; I < D.Vertices.Num(); ++I)
             {
                 FVector P = FVector::ZeroVector, Normal = FVector::ZeroVector;
                 float Total = 0;
@@ -3071,33 +3895,70 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
                     if (Skin.IsValidIndex(Bone) && W > 0)
                     {
                         P += FVector(Skin[Bone].TransformPosition(D.Vertices[I])) * W;
-                        Normal += FVector(Skin[Bone].TransformVector(D.Normals[I])) * W;
+                        Normal += FVector(SkinNormals[Bone].TransformVector(D.Normals[I])) * W;
                         Total += W;
                     }
                 }
-                V[I] = Total > 0 ? P / Total : D.Vertices[I];
-                N[I] = Total > 0 ? Normal.GetSafeNormal() : D.Normals[I];
+                V[I] = Total > 0 ? P / Total : FVector(G.PartFrame.TransformPosition(D.Vertices[I]));
+                N[I] = Total > 0 ? Normal.GetSafeNormal() : FVector(G.PartFrame.Inverse().GetTransposed().TransformVector(D.Normals[I])).GetSafeNormal();
             }
-            M.Component->SetRelativeTransform(G.Frame);
+            // Retail CPartArray::RefreshMatrices/Draw composes matrices before
+            // object scaling. Bake every part into their common model root so
+            // UE cannot reorder nonuniform character scale across a tail/head
+            // rotation and tear an otherwise coincident skin seam open.
+            M.Component->SetRelativeTransform(FTransform::Identity);
             for (int32 J = 0; J < D.Fragments.Num(); ++J)
                 M.Component->UpdateMeshSection(J, V, N, D.UVs, D.DetailUVs, D.UV2, D.UV3, D.Colors, TArray<FProcMeshTangent>());
+            MarkAC2FogGeometryDirty(M.Component);
         }
     }
-    Impl->Actions.RemoveAll([](const auto& A){return !A.Hold && A.Time>=A.Duration;});
-    for(const auto& E:AnimationEffects)
+    if(Impl->ModelRoot.IsValid())
     {
-        ++Impl->Stats.AnimationEffectTriggers;
-        if(E.Stop)StopEffect(E.Id);
-        if(E.Play && FMath::FRand()<=FMath::Clamp(E.Probability,0.f,1.f))PlayEffect(E.Id,FMath::Max(0.f,E.Intensity+FMath::FRandRange(-E.Variation,E.Variation)));
+        auto* Audio=FAC2Audio::Get(Impl->ModelRoot->GetWorld());
+        bool AppearanceChanged=false;
+        for(auto It=Impl->ScalarEffects.CreateIterator();It;++It)
+        {
+            auto& State=It.Value();
+            if(Audio)State.Contexts.RemoveAll([&](uint32 Context){return Audio->Finished(Context);});
+            const bool HasAppearance=State.Nodes.ContainsByPredicate([](const auto& Node){return Node.AppearanceTable!=0;});
+            if(State.Contexts.IsEmpty() && !HasAppearance && !Impl->HasLoopingParticles(It.Key())){It.RemoveCurrent();continue;}
+            // Retail shares the scalar across the nodes of a single FX key,
+            // visiting their authored ramps in order during UseTime.
+            if(State.Scalar.Current!=State.Scalar.Desired)
+            {
+                for(const auto& Node:State.Nodes)
+                {
+                    State.Scalar.Ramp=Node.RampTime;State.Scalar.Advance(Delta);
+                    if(Node.AppearanceTable)
+                    {Impl->ApplyAppearanceNode(It.Key(),Node,State.Scalar.Current);AppearanceChanged=true;}
+                    if(Audio)for(uint32 Context:State.Contexts)Audio->SetSoundVolume(Context,State.Scalar.Current);
+                }
+            }
+        }
+        if(AppearanceChanged)Impl->RefreshAppearanceFX();
     }
+    Impl->Actions.RemoveAll([](const auto& A){return !A.Hold && A.Time>=A.Duration;});
+    auto DispatchAnimationFX=[&](const TArray<FAC2Animation::FEffect>& Effects,bool CreatureIdle)
+    {
+        for(const auto& E:Effects)
+        {
+            ++Impl->Stats.AnimationEffectTriggers;
+            TGuardValue<uint64> ActionScope(Impl->StreakAction,E.SourceAction);
+            if(E.Stop)StopEffect(E.Id);
+            if(E.Play && FMath::FRand()<FMath::Clamp(E.Probability,0.f,1.f))
+                PlayModelEffect(E.Id,FMath::Max(0.f,E.Intensity+FMath::FRandRange(-E.Variation,E.Variation)),nullptr,CreatureIdle);
+        }
+    };
+    DispatchAnimationFX(CreatureIdleEffects,true);
+    DispatchAnimationFX(AnimationEffects,false);
+    Impl->ReleaseEndedStreakControllers();
     // Snapshot due events before dispatch: an FX node may schedule another script.
     TArray<TPair<FAC2Animation::FEffect,int32>> ScriptTriggers;
     for(int32 I=Impl->ScriptEffects.Num()-1;I>=0;--I)
     {
         auto& Track=Impl->ScriptEffects[I];const float From=Track.Phase;
         Track.Phase=FMath::Min(1.f,From+Delta/Track.Script.Period);
-        if(Track.Phase>From)for(const auto& E:Track.Script.Effects)
-            if((E.Phase>From || (From==0 && E.Phase==0)) && E.Phase<=Track.Phase)ScriptTriggers.Add({E,Track.Depth+1});
+        for(const auto& E:Track.Script.EffectsBetween(From,Track.Phase))ScriptTriggers.Add({E,Track.Depth+1});
         if(Track.Phase>=1)Impl->ScriptEffects.RemoveAt(I);
     }
     for(const auto& Trigger:ScriptTriggers)
@@ -3107,6 +3968,13 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
         if(E.Play && FMath::FRand()<=FMath::Clamp(E.Probability,0.f,1.f))PlayEffect(E.Id,FMath::Max(0.f,E.Intensity+FMath::FRandRange(-E.Variation,E.Variation)));
         Impl->EffectDepth=Depth;
     }
+    if (!Impl->Repulsors.IsEmpty())
+    {
+        const float WorldSpeed = LocalVelocity ? LocalVelocity->Size() : Speed;
+        Impl->Repulsors.RemoveAllSwap([WorldSpeed](const auto& Field) { return !Field->Update(WorldSpeed); });
+    }
+    if (auto* Root = Impl->ModelRoot.Get())
+        for (auto& Streak : Impl->Streaks) Streak.Update(Time, *Root, Impl->StreakModelScale, *this, !Impl->PreviewMode);
     if (Impl->AttachedEffects && Impl->ModelRoot.IsValid())
     {
         TArray<FAC2ParticleSource> Sources;
@@ -3155,8 +4023,23 @@ void FAC2AssetLibrary::Animate(float Time, float Speed, const FVector *LocalView
             if (PC->PlayerCameraManager)
                 View = FTransform(PC->PlayerCameraManager->GetCameraRotation(),
                                   PC->PlayerCameraManager->GetCameraLocation());
+        FAC2PreviewLighting Preview=Impl->PreviewLighting;
+        if(Impl->PreviewMode)for(auto& Light:Preview.Lights)
+        {
+            Light.Position=Impl->PreviewToWorld.TransformPosition(Light.Position);
+            Light.Direction=Impl->PreviewToWorld.TransformVectorNoScale(Light.Direction);
+        }
         Impl->AttachedEffects->Update(View.GetLocation(), View.GetUnitAxis(EAxis::Y),
-                                      View.GetUnitAxis(EAxis::Z), Delta, 0, FVector::ZeroVector, true);
+                                      View.GetUnitAxis(EAxis::Z), Delta, 0, FVector::ZeroVector, true,
+                                      Impl->PreviewMode?&Preview:nullptr);
+    }
+    for(int32 I=Impl->LightEffects.Num()-1;I>=0;--I)
+    {
+        auto& E=Impl->LightEffects[I];E.Age+=Delta;
+        if(!E.Light.IsValid() || (E.Node.Light.Life>0 && E.Age>=E.Node.Light.Life))
+        {if(E.Light.IsValid())E.Light->DestroyComponent();Impl->LightEffects.RemoveAt(I);continue;}
+        E.Light->SetIntensity(FMath::Max(0.f,E.Node.Light.Intensity.Value(E.Age))*4*E.Node.Light.Envelope(E.Age));
+        E.Light->SetAttenuationRadius(FMath::Max(0.f,E.Node.Light.Range.Value(E.Age))*100);
     }
     for(int32 I=Impl->VisualEffects.Num()-1;I>=0;--I)
     {
@@ -3200,8 +4083,32 @@ bool FAC2AssetLibrary::DamageDecal(FAC2Decal& Out)
     // blood decal (not the ability animation/particles). The surviving table
     // proves this asset, its gore/hue filters and lifetime for Decapitate; it
     // does not establish an identical decal trigger on every retail attack.
-    TArray<FAC2FXNode> Nodes;Impl->TableFX(0x1e000076,0x41000620,Nodes);
-    for(const auto& Node:Nodes){
+    // The native Decapitate key is stable, but its table is not: stock uses
+    // 1E000076 and Icefire uses 1E000077. Discover the authored decal variants
+    // once per archive, preserving their gore/hue gates and material IDs.
+    if(!Impl->DamageDecalsLoaded)
+    {
+        TArray<FAC2DatEntry> Entries;FString Error;
+        if(!Impl->Portal.Enumerate(Entries,Error))return false;
+        Entries.Sort([](const auto& A,const auto& B){return A.Id<B.Id;});
+        for(const auto& Entry:Entries)if((Entry.Id>>24)==0x1e)
+        {
+            // Only decode tables that actually mention the key. Subtables are
+            // themselves indexed records, so inherited variants are found too.
+            // This avoids loading unrelated sounds/materials during a hit.
+            TArray<uint8> Bytes;if(!Impl->Portal.Read(Entry.Id,Bytes,Error))continue;
+            bool MentionsKey=false;
+            for(int32 Offset=4;Offset+4<=Bytes.Num();Offset+=4)
+                if(AC2::U32(Bytes.GetData()+Offset)==0x41000620){MentionsKey=true;break;}
+            if(!MentionsKey)continue;
+            TArray<FAC2FXNode> Nodes;Impl->TableFX(Entry.Id,0x41000620,Nodes);
+            for(auto& Node:Nodes)
+                if(Node.Decal.Material && Node.Channels.Contains(0x40000001) && Node.Channels.Contains(0x40000007))
+                    Impl->DamageDecals.Add(MoveTemp(Node));
+        }
+        Impl->DamageDecalsLoaded=true;
+    }
+    for(const auto& Node:Impl->DamageDecals){
         if(!Node.Decal.Material)continue;
         bool Match=true;for(const auto& C:EffectChannels)if(const auto* V=Node.Channels.Find(C.Key))Match&=*V==C.Value;
         if(Match){Out=Node.Decal;return true;}
@@ -3210,8 +4117,13 @@ bool FAC2AssetLibrary::DamageDecal(FAC2Decal& Out)
 }
 bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* Target)
 {
+    return PlayModelEffect(Effect,Strength,Target,false);
+}
+bool FAC2AssetLibrary::PlayModelEffect(uint32 Effect,float Strength,USceneComponent* Target,bool CreatureIdle)
+{
     if(!Impl->ModelRoot.IsValid() || !FMath::IsFinite(Strength) || Strength<0 || Impl->EffectDepth>=4)return false;
-    if(Strength==0){StopEffect(Effect);return true;}
+    if(Impl->StartupEffects.Contains(Effect))return false;
+    if(Strength==0 && !Impl->ScalarEffects.Contains(Effect)){StopEffect(Effect);return true;}
     FAC2DecodedVisual V;if(!Impl->Visual(Impl->ModelVisual,V))return false;
     TArray<FAC2FXNode> Nodes;
     auto Resolve=[&](const FAC2DecodedPart& Part){
@@ -3235,12 +4147,12 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
     const float Hour=Game?Game->MapHour():12;
     const bool DayTime=Hour>=6 && Hour<18;
     const auto* Player=Impl->ModelRoot->GetWorld()->GetFirstPlayerController();
-    if(Audio)for(auto It=Impl->SoundEffects.CreateIterator();It;++It)
+    if(Audio)for(auto It=Impl->ScalarEffects.CreateIterator();It;++It)
     {
-        It.Value().RemoveAll([&](uint32 Context){return Audio->Finished(Context);});
-        if(It.Value().IsEmpty())It.RemoveCurrent();
+        It.Value().Contexts.RemoveAll([&](uint32 Context){return Audio->Finished(Context);});
+        if(It.Value().Contexts.IsEmpty() && !It.Value().Nodes.ContainsByPredicate([](const auto& Node){return Node.AppearanceTable!=0;}) && !Impl->HasLoopingParticles(It.Key()))It.RemoveCurrent();
     }
-    const bool ExistingSound=Impl->SoundEffects.Contains(Effect);
+    TArray<FAC2FXNode> ActiveNodes;
     for(const auto& DefaultNode:Nodes)
     {
         const auto* Variant=DefaultNode.Terrain.Find(Terrain);
@@ -3249,26 +4161,42 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
         for(const auto& Channel:EffectChannels)if(const auto* Value=Node.Channels.Find(Channel.Key))Mismatch|=*Value!=Channel.Value;
         if(Mismatch || !(DayTime?Node.DayTime:Node.NightTime) ||
             (Node.PlayerOnly && (!Player || Player->GetPawn()!=Impl->ModelRoot->GetOwner())))continue;
-        if(Node.AppearanceTable && FMath::IsFinite(Node.AppearanceScalar) && Node.AppearanceScalar*Strength>0)
+        ActiveNodes.Add(Node);
+    }
+    if(auto* State=Impl->ScalarEffects.Find(Effect))
+    {
+        // DoTargettedFX updates a live key rather than creating its children
+        // again. Appearance and sound share the scalar and node traversal.
+        State->Nodes=ActiveNodes;
+        for(const auto& Node:State->Nodes)
         {
-            Impl->LiveAppearanceFX.FindOrAdd(Effect).Add({Node.AppearanceTable,Node.AppearanceKey,Node.AppearanceScalar*Strength});
+            State->Scalar.Ramp=Node.RampTime;State->Scalar.Set(Strength);
+            Impl->ApplyAppearanceNode(Effect,Node,State->Scalar.Current);
+        }
+        if(Audio)for(uint32 Context:State->Contexts)Audio->SetSoundVolume(Context,State->Scalar.Current);
+        for(auto& Child:Impl->NetworkEffects)if(Child.Effect==Effect && !Child.Attachment.Node.FireAndForget)Child.Target=Target;
+        for(auto& Child:Impl->VisualEffects)if(Child.Effect==Effect)Child.Target=Target;
+        if(HasAppearance)Impl->RefreshAppearanceFX();
+        return true;
+    }
+    for(const auto& Node:ActiveNodes)
+    {
+        FAC2FXScalar Initial;Initial.Start(Strength,Node.RampTime);
+        if(Node.AppearanceTable)
+        {
+            Impl->ApplyAppearanceNode(Effect,Node,Initial.Current);
             Played=true;
         }
-        const auto& SoundNode=Node;
-        if(Audio && !ExistingSound && !Impl->PreviewMode && !SoundNode.Sounds.IsEmpty() &&
-            (DayTime?SoundNode.DayTime:SoundNode.NightTime) &&
-            (!SoundNode.PlayerOnly || (Player && Player->GetPawn()==Impl->ModelRoot->GetOwner())))
-            {
-                const uint32 Sound=SoundNode.Sounds[FMath::RandHelper(SoundNode.Sounds.Num())];
-                if(uint32 Context=Audio->Play(Sound,Impl->ModelRoot.Get(),Strength))
-                {if(Impl->LoopingSounds.FindRef(Sound)&&!SoundNode.FireAndForget)Impl->SoundEffects.FindOrAdd(Effect).Add(Context);Played=true;}
-            }
+        Played|=Impl->StartSound(Node,Effect,Strength,false,CreatureIdle);
+        Played |= Impl->StartRepulsor(Node);
+        Played |= Impl->ApplyStreak(Node, Effect);
         UE_LOG(LogTemp,Verbose,TEXT("AC2 FX node descriptor=%08X holding=%08X bone=%08X"),Node.Descriptors.IsEmpty()?0:Node.Descriptors[0],Node.Holding,Node.Bone);
         if(Impl->NetworkEffects.Num()>=64)continue;
         if(Node.Script)Played|=PlayEffectScript(Node.Script);
         if(Node.Decal.Material && !Impl->PreviewMode && Game)
             Played|=Game->GroundDecal(Node.Decal,Impl->ModelRoot->GetComponentTransform(),Impl->ModelRoot->GetOwner());
         FTransform Source=Impl->EffectFrame(Node);
+        Played|=Impl->StartLight(Node,Effect);
         if(Node.RemoveRotation)Source.SetRotation(FQuat::Identity);
         if(Node.Visual && Impl->VisualEffects.Num()<16)
         {
@@ -3292,7 +4220,7 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
         if(!Impl->AttachedEffects)
         {
             Impl->AttachedEffects=MakeUnique<FAC2Effects>();
-            Impl->AttachedEffects->Open(Impl->ModelRoot->GetWorld(),Impl->Directory);
+            Impl->AttachedEffects->Open(Impl->ModelRoot->GetWorld(),Impl->Directory,!Impl->PreviewMode);
             if(auto* Capture=Impl->ModelRoot->GetOwner()->FindComponentByClass<USceneCaptureComponent2D>())
                 Capture->ShowOnlyActors.Add(Impl->AttachedEffects->RenderActor());
         }
@@ -3316,18 +4244,41 @@ bool FAC2AssetLibrary::PlayEffect(uint32 Effect,float Strength,USceneComponent* 
             {Impl->NetworkEffects.Add({{Group,Node,Key,Descriptor},Effect,Target,Source});Played=true;}
         }
     }
+    if((HasAppearance || Impl->HasLoopingParticles(Effect)) && !ActiveNodes.IsEmpty())Impl->ScalarEffects.FindOrAdd(Effect);
+    if(auto* State=Impl->ScalarEffects.Find(Effect);State && !ActiveNodes.IsEmpty())
+    {
+        State->Nodes=MoveTemp(ActiveNodes);
+        State->Scalar.Start(Strength,State->Nodes.Last().RampTime);
+    }
     if(HasAppearance)Impl->RefreshAppearanceFX();
     return Played;
 }
 void FAC2AssetLibrary::StopEffect(uint32 Effect)
 {
+    // StopFX ignores startup keys unless the model itself is being destroyed.
+    // Destruction releases the owned emitters/components directly.
+    if(Impl->StartupEffects.Contains(Effect))return;
+    for (auto It=Impl->StreakControllers.CreateIterator(); It; ++It)
+        if (It.Value().Effect == Effect)
+        {
+            if (!It.Key()) for (auto& Trail : Impl->Streaks) Trail.Activate(Impl->HeldStreakActive);
+            It.RemoveCurrent();
+        }
+    Impl->Streaks.RemoveAll([Effect](FAC2AttachmentStreak& Trail)
+    {
+        if (Trail.Effect != Effect) return false;
+        Trail.Release();
+        return true;
+    });
+    for(int32 I=Impl->LightEffects.Num()-1;I>=0;--I)if(Impl->LightEffects[I].Effect==Effect)
+    {if(Impl->LightEffects[I].Light.IsValid())Impl->LightEffects[I].Light->DestroyComponent();Impl->LightEffects.RemoveAt(I);}
     Impl->AppearanceFXStrengths.Remove(Effect);
     if(Impl->LiveAppearanceFX.Remove(Effect))Impl->RefreshAppearanceFX();
-    if(auto* Contexts=Impl->SoundEffects.Find(Effect))
+    if(auto* Contexts=Impl->ScalarEffects.Find(Effect))
     {
         if(Impl->ModelRoot.IsValid())if(auto* Audio=FAC2Audio::Get(Impl->ModelRoot->GetWorld()))
-            for(uint32 Context:*Contexts)Audio->Stop(Context);
-        Impl->SoundEffects.Remove(Effect);
+            for(uint32 Context:Contexts->Contexts)Audio->Stop(Context);
+        Impl->ScalarEffects.Remove(Effect);
     }
     for(int32 I=Impl->VisualEffects.Num()-1;I>=0;--I)if(Impl->VisualEffects[I].Effect==Effect)
     {auto& E=Impl->VisualEffects[I];E.Model.Reset();if(E.Actor.IsValid())E.Actor->Destroy();Impl->VisualEffects.RemoveAt(I);}
@@ -3335,6 +4286,16 @@ void FAC2AssetLibrary::StopEffect(uint32 Effect)
     {if(Impl->AttachedEffects)Impl->AttachedEffects->StopSource(Impl->NetworkEffects[I].Attachment.Key);Impl->NetworkEffects.RemoveAt(I);}
 }
 bool FAC2AssetLibrary::HasStartupEffects() const {return !Impl->StartupEffects.IsEmpty();}
+bool FAC2AssetLibrary::HoldingStreakActive(uint32 Holding) const
+{
+    return Holding && Impl->StreakControllers.Contains(Holding);
+}
+void FAC2AssetLibrary::SetHeldStreakActive(bool Active)
+{
+    if (Impl->HeldStreakActive == Active) return;
+    Impl->HeldStreakActive = Active;
+    for (auto& Streak : Impl->Streaks) Streak.Activate(Active || Impl->StreakControllers.Contains(0));
+}
 int32 FAC2AssetLibrary::EffectParticleCount() const
 {
     int32 Count=Impl->AttachedEffects?Impl->AttachedEffects->Count():0;
@@ -3356,6 +4317,7 @@ bool FAC2AssetLibrary::PrepareBlock(const FString &Directory, const FAC2Landscap
         Impl->MaterialImage(Impl->BlockWater.Above, Tint, Masked);
     }
     AddScenery(Cell, Defs, Land, nullptr, nullptr, FVector::ZeroVector);
+    if (Impl->CloudShadowTexture) Impl->Image(Impl->CloudShadowTexture);
     FImpl::BuildMips(Impl->TerrainAtlas);
     for (auto &Pair : Impl->Images)
         if (Pair.Value)
@@ -3363,16 +4325,45 @@ bool FAC2AssetLibrary::PrepareBlock(const FString &Directory, const FAC2Landscap
     Impl->Preparing = false;
     return true;
 }
+void FAC2AssetLibrary::ConfigureTerrainCloud(UMaterialInstanceDynamic* Material)
+{
+    Impl->ConfigureTerrainCloud(Material);
+}
 UMaterialInterface *FAC2AssetLibrary::UploadTerrain()
 {
     check(IsInGameThread());
     ++Impl->Stats.TerrainMaterials;
     // A landblock atlas is not tileable: wrapping blends the opposite bank into
     // its edges. Keep the clamp sampler on the texture actually bound to the MID.
-    return Impl->Instance(&Impl->TerrainAtlas, FLinearColor::White, false, 0, true);
+    return Impl->GroundMaterial(Impl->TerrainAtlas);
 }
 bool FAC2AssetLibrary::UploadScenery(AActor *Owner, USceneComponent *Root, int32 MeshBudget)
 {
+    if(!Impl->RoomLightsUploaded) {
+        Impl->RoomLightsUploaded=true;
+        for(int32 I=0;I<Impl->CellLights.Num();++I) {
+            const auto& Native=Impl->CellLights[I];
+            if(Native.Sunlight || Native.Directional || Native.Intensity<=0 || Native.Range<=0)continue;
+            auto* Light=NewObject<UPointLightComponent>(Owner);
+            Owner->AddInstanceComponent(Light);Light->SetupAttachment(Root);
+            Light->SetMobility(EComponentMobility::Movable);
+            Light->SetRelativeLocation(Native.Position);
+            Light->bUseInverseSquaredFalloff=false;Light->LightFalloffExponent=2;
+            Light->SetAttenuationRadius(Native.Range);
+            Light->SetIntensity(Native.Intensity*4);
+            Light->SetLightColor(FLinearColor::FromSRGBColor(Native.Diffuse.ToFColor(false)));
+            Light->SetLightingChannels(false,true,false);
+            Light->SetCastShadows(true);Light->ShadowBias=.25f;Light->SourceRadius=5;
+            Light->ShadowResolutionScale=.5f;
+            // Fade the light and its shadow together outside the nearby room.
+            // Never switch shadow casting between the eight closest lights.
+            Light->MaxDrawDistance=Native.Range+3000;
+            Light->MaxDistanceFadeRange=1000;
+            bool Visible=false;for(const auto& Pair:Native.Vertices)Visible|=Impl->CellVisible(Pair.Key);
+            Light->SetVisibility(Visible);Light->RegisterComponent();
+            Impl->RoomLights.Add({I,Light});
+        }
+    }
     const double Start = FPlatformTime::Seconds();
     while (Impl->NextDraw < Impl->Draws.Num() && MeshBudget-- > 0)
     {
@@ -3408,6 +4399,10 @@ void FAC2AssetLibrary::SetActiveCell(uint32 Cell)
             C->SetVisibility(Visible);
             C->SetCollisionEnabled(Visible && Entry.Solid ? ECollisionEnabled::QueryAndPhysics : ECollisionEnabled::NoCollision);
         }
+    for(const auto& Entry:Impl->RoomLights)if(auto* Light=Entry.Value.Get()) {
+        bool Visible=false;for(const auto& Pair:Impl->CellLights[Entry.Key].Vertices)Visible|=Impl->CellVisible(Pair.Key);
+        Light->SetVisibility(Visible);
+    }
 }
 bool FAC2AssetLibrary::CellVisible(uint32 Cell) const { return Impl->CellVisible(Cell); }
 bool FAC2AssetLibrary::CellReachesOutside(uint32 Cell) const { return Impl->Cells.ReachesOutside(Cell); }
@@ -3472,7 +4467,7 @@ bool FAC2AssetLibrary::DrawSky(uint32 ObjectId, AActor *Owner, USceneComponent *
            ObjectId, Nearest);
     return true;
 }
-UMaterialInterface *FAC2AssetLibrary::Material(uint32 Id, bool Water)
+UMaterialInterface *FAC2AssetLibrary::Material(uint32 Id, bool Water, bool Below)
 {
     if (!Water)
         return Impl->RuntimeMaterial(Id);
@@ -3487,6 +4482,18 @@ UMaterialInterface *FAC2AssetLibrary::Material(uint32 Id, bool Water)
     if (I)
         M->SetTextureParameterValue(TEXT("Albedo"), Impl->Texture(*I));
     M->SetVectorParameterValue(TEXT("Tint"), Tint);
+    M->SetScalarParameterValue(TEXT("AC2WaterBelow"),Below?1.f:0.f);
+    // Water still uses the DAT material cascade and its UV/texture modifiers.
+    // Taking only its first image loses the ripples, transparency and motion.
+    if(auto Native=Impl->Material(Id);Native && !Native->Layers.IsEmpty())
+    {
+        const int32 Index=FImpl::SelectedLayer(*Native);
+        const auto& Layer=Native->Layers[Index];
+        Impl->ConfigureStages(M,Layer,Index,false);
+    }
+    if (!Below)
+        Impl->ConfigureShore(M);
+    Impl->TrackMaterial(Id,M);
     return M;
 }
 int32 FAC2AssetLibrary::AnimationCount() const
@@ -3530,6 +4537,11 @@ bool FAC2AssetLibrary::AuditLocomotion(uint32 VisualId, FString &Details)
                                    Part.AnimMap, Part.Setup, Changed, Graph->Period(Input), *Clips);
     }
     return Found;
+}
+bool FAC2AssetLibrary::ParticleMaterialUsesLighting(uint32 Id)
+{
+    const auto M=Impl->Material(Id);
+    return M && !M->Layers.IsEmpty() && M->Layers[0].ParticleLighting;
 }
 UMaterialInterface *FAC2AssetLibrary::ParticleMaterial(uint32 Id)
 {
@@ -3636,13 +4648,17 @@ void FAC2AssetLibrary::AddReferencedObjects(FReferenceCollector &Collector)
 bool FAC2AssetLibrary::Open(const FString &Directory, FString &Error)
 {
     Impl->Directory = AC2::ResolveDatDirectory(Directory);
+    Impl->HoldBehaviors.Reset();
     check(IsInGameThread());
     FModuleManager::LoadModuleChecked<IImageWrapperModule>(TEXT("ImageWrapper"));
     if (!Impl->Portal.Open(FPaths::Combine(Directory, TEXT("portal.dat")), 1, Error))
         return false;
+    Impl->ShoreMaterials.Reset();
+    Impl->DamageDecalsLoaded=false;
+    Impl->DamageDecals.Reset();
     FString OptionalError;
     Impl->HasHighRes = Impl->HighRes.Open(FPaths::Combine(Directory, TEXT("highres.dat")), 1, OptionalError);
-    Impl->TextureNamespace = FPaths::ConvertRelativePathToFull(Directory);
+    Impl->TextureNamespace = Impl->Directory;
     Impl->Stats.HighResAvailable = Impl->HasHighRes;
     if (!Impl->HasHighRes)
         UE_LOG(LogTemp, Warning, TEXT("AC2 highres.dat unavailable: %s"), *OptionalError);
@@ -3753,7 +4769,95 @@ UMaterialInterface *FAC2AssetLibrary::TerrainMaterial(const FAC2LandscapeDefs &D
         return nullptr;
     }
     ++Impl->Stats.TerrainMaterials;
-    return Impl->Instance(&Atlas, FLinearColor::White, false, 0, true);
+    return Impl->GroundMaterial(Atlas);
+}
+
+TSharedPtr<FJsonObject> FAC2AssetLibrary::AuditRenderRecords(FString &Error)
+{
+    TArray<FAC2DatEntry> Entries;
+    if (!Impl->Portal.Enumerate(Entries, Error)) return nullptr;
+    auto Report = MakeShared<FJsonObject>();
+    bool Passed = true;
+    for (uint32 Type : {0x04u, 0x05u, 0x06u, 0x1fu, 0x20u, 0x2bu, 0x31u, 0x57u})
+    {
+        int32 Decoded = 0, Fallback = 0, AlternateLayers = 0, OpacityAtoms = 0;
+        TArray<TSharedPtr<FJsonValue>> Rejected, Limited, Opacities;
+        for (const auto &E : Entries) if ((E.Id >> 24) == Type)
+        {
+            bool Valid = false;
+            if (Type == 0x04 || Type == 0x57)
+            {
+                TArray<uint8> Bytes;
+                if (Impl->Read(E.Id, Bytes))
+                {
+                    if (Type == 0x04) { FAC2Setup Setup; Valid = Setup.Decode(E.Id, Bytes); }
+                    else { FAC2FXScript Script; Valid = Script.Decode(E.Id, Bytes); }
+                }
+            }
+            else if (Type == 0x05) Valid = FAC2Animator::Load(Impl->Portal, E.Id, 0).IsValid();
+            else if (Type == 0x06)
+            {
+                Valid = Impl->Mesh(E.Id).IsValid();
+                Impl->Geometry.Reset();
+            }
+            else if (Type == 0x1f)
+            {
+                FAC2DecodedVisual V; Valid = Impl->Visual(E.Id, V);
+                Impl->Visuals.Reset();
+            }
+            else if (Type == 0x20)
+            {
+                auto Table = Impl->AppearanceTable(E.Id); Valid = Table.IsValid();
+                if (Table) for (const auto &Pair : Table->Collections) for (const auto &C : Pair.Value)
+                    for (const auto &A : C.Atoms.Opacities)
+                    {
+                        ++OpacityAtoms;
+                        auto Atom = MakeShared<FJsonObject>();
+                        Atom->SetStringField(TEXT("table"), FString::Printf(TEXT("%08X"), E.Id));
+                        Atom->SetStringField(TEXT("key"), FString::Printf(TEXT("%08X"), Pair.Key));
+                        Atom->SetNumberField(TEXT("threshold"), C.Intensity);
+                        Atom->SetNumberField(TEXT("priority"), A.X); Atom->SetNumberField(TEXT("opacity"), A.Y);
+                        Opacities.Add(MakeShared<FJsonValueObject>(Atom));
+                    }
+                Impl->AppearanceTables.Reset();
+            }
+            else
+            {
+                auto M = Impl->Material(E.Id); Valid = M.IsValid();
+                if (M && !M->Layers.IsEmpty())
+                {
+                    const int32 Selected = FImpl::SelectedLayer(*M);
+                    if (!FImpl::FixedFunction(M->Layers[Selected]))
+                    {
+                        ++Fallback; Limited.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%08X"), E.Id)));
+                    }
+                    for (int32 I=0; I<M->Layers.Num(); ++I)
+                        if (I!=Selected && !FImpl::FixedFunction(M->Layers[I])) ++AlternateLayers;
+                }
+                Impl->Materials.Reset();
+            }
+            if (Valid) ++Decoded;
+            else Rejected.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%08X"), E.Id)));
+        }
+        auto Family = MakeShared<FJsonObject>();
+        Family->SetNumberField(TEXT("decoded"), Decoded);
+        Family->SetArrayField(TEXT("rejected"), Rejected);
+        Family->SetNumberField(TEXT("fallback_materials"), Fallback);
+        Family->SetArrayField(TEXT("fallback_ids"), Limited);
+        Family->SetNumberField(TEXT("unsupported_alternate_layers"), AlternateLayers);
+        if (Type == 0x20)
+        {
+            Family->SetNumberField(TEXT("opacity_atoms"), OpacityAtoms);
+            Family->SetArrayField(TEXT("opacity_definitions"), Opacities);
+        }
+        Report->SetObjectField(FString::Printf(TEXT("%02X"), Type), Family);
+        Passed &= Rejected.IsEmpty();
+        UE_LOG(LogTemp, Display, TEXT("AC2 render records %02X: %d decoded, %d rejected, %d fallback, %d opacity atoms"),
+            Type, Decoded, Rejected.Num(), Fallback, OpacityAtoms);
+    }
+    Report->SetBoolField(TEXT("decoders_passed"), Passed);
+    Report->SetStringField(TEXT("scope"), TEXT("Setups, animation trees, geometry, visual descriptions, appearance tables, materials and FX scripts. Fallback counts use the runtime-selected material layer. Decoding does not establish complete rendering or gameplay parity."));
+    return Report;
 }
 
 void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs &Defs,
@@ -3796,6 +4900,16 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
             TMap<uint32,TArray<uint8>> Props; Impl->SkipProperties(R,&Props);
             if(const auto* A=Props.Find(0x4000005a); A && A->Num()>=4)
                 Impl->InteriorAmbient=AC2NativeRGB(FColor(AC2::U32(A->GetData())));
+            // CLandBlockInfo::SetProperty: interior fog is independent of the
+            // surrounding daylight/weather and may explicitly be disabled.
+            if(const auto* P=Props.Find(0x40000056); P && P->Num()>=4)
+                Impl->InteriorFogType=AC2::U32(P->GetData())==0x40000002?1:0;
+            if(const auto* P=Props.Find(0x40000057); P && P->Num()>=4)
+                Impl->InteriorFogColor=AC2NativeRGB(FColor(AC2::U32(P->GetData())));
+            if(const auto* P=Props.Find(0x40000058); P && P->Num()>=4)
+                Impl->InteriorFogNear=AC2::F32(P->GetData());
+            if(const auto* P=Props.Find(0x40000059); P && P->Num()>=4)
+                Impl->InteriorFogFar=AC2::F32(P->GetData());
         } else Impl->Warn(Id,TEXT("unsupported entity links before interior lighting properties"));
     }
     Impl->CellLights.Reset();
@@ -3820,7 +4934,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         if (R.Word() != CellId)
             continue;
         TGuardValue<uint32> CellContext(Impl->DrawingCell, CellId);
-        const int32 FirstDraw = Impl->Draws.Num(), FirstSource = Impl->Sources.Num();
+        const int32 FirstDraw = Impl->Draws.Num(), FirstSource = Impl->Sources.Num(), FirstSound=Impl->Sounds.Num();
         Impl->Cells.Links.FindOrAdd(CellId);
         const FVector Origin = R.Vector() * 100;
         const FQuat Rotation = R.Quaternion();
@@ -3831,8 +4945,9 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         const FTransform Frame(Rotation, Origin + Offset);
         // A shared room mesh can appear in many cells with different light lists.
         G=MakeShared<FAC2DecodedGeometry>(*G);
-        G->Colors=BakeAC2CellLights(CellId,FTransform(Rotation,Origin),G->Vertices,G->Normals,
-            Impl->CellLights,Impl->InteriorAmbient,HasLightInfo);
+        // Native room vertex colors contain baked illumination. Actual shadowed
+        // lights now supply that illumination once, for both rooms and actors.
+        G->Colors.Init(FColor::White,G->Vertices.Num());
         FBox Bounds(ForceInit);
         for (const auto &V : G->Vertices)
             Bounds += Frame.TransformPosition(V);
@@ -3910,6 +5025,12 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
             for (int32 J = 0; J < N && R.Good; ++J)
             {
                 auto E = Impl->Entity(R);
+                if(const auto* RoomFloors=Impl->InteriorFloorTriangles.Find(CellId))
+                    if(RepairAC2AcademyPlacement(CellId,J,E.Data,E.Origin,Offset,*RoomFloors))
+                    {
+                        ++Impl->Stats.AcademyPlacementRepairs;
+                        UE_LOG(LogTemp,Display,TEXT("AC2 academy placement repair cell=%08X ordinal=%d entity=%08X position=%s"),CellId,J,E.Data,*E.Origin.ToString());
+                    }
                 // CEnvCell::CreatePhysicsObj applies EntityDesc::m_offset directly
                 // in landblock space. Only the room mesh uses the cell frame.
                 // Applying it twice displaces torches and furnishings from their lights.
@@ -3918,6 +5039,7 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
         }
         for (int32 J = FirstDraw; J < Impl->Draws.Num(); ++J) Impl->Draws[J].Cell = CellId;
         for (int32 J = FirstSource; J < Impl->Sources.Num(); ++J) Impl->Sources[J].Cell = CellId;
+        for (int32 J = FirstSound; J < Impl->Sounds.Num(); ++J) Impl->Sounds[J].Cell = CellId;
     }
     for (FBox &Box : Impl->PlacedBounds)
     {
@@ -3957,6 +5079,16 @@ void FAC2AssetLibrary::AddScenery(FAC2DatArchive &Cell, const FAC2LandscapeDefs 
 const TArray<FAC2ParticleSource> &FAC2AssetLibrary::ParticleSources() const
 {
     return Impl->Sources;
+}
+const TArray<FAC2ScenerySound> &FAC2AssetLibrary::SoundSources() const
+{
+    return Impl->Sounds;
+}
+bool FAC2AssetLibrary::EffectChannelsMatch(const TMap<uint32,uint32>& Channels)
+{
+    for(const auto& Channel:EffectChannels)
+        if(const auto* Value=Channels.Find(Channel.Key))if(*Value!=Channel.Value)return false;
+    return true;
 }
 TArray<FAC2AmbientPoint> FAC2AssetLibrary::AmbientPoints(bool Landscape) const
 {
@@ -4028,6 +5160,14 @@ void FAC2AssetLibrary::RetainRuntimeMaterials(const TArray<UMaterialInterface *>
     Impl->MovingMaterials.RemoveAll([&](const auto &Entry) { return !Materials.Contains(Entry.Material); });
 }
 
+void FAC2AssetLibrary::InteriorFog(FAC2SkyKey& Fog) const
+{
+    Fog.FogType=Impl->InteriorFogType;
+    Fog.FogMin=Impl->InteriorFogNear;
+    Fog.FogMax=Impl->InteriorFogFar;
+    Fog.FogColor=Impl->InteriorFogColor;
+}
+
 FAC2PreviewLighting FAC2AssetLibrary::InteriorLighting(uint32 Cell,const FVector& LocalViewer) const
 {
     FAC2PreviewLighting Result; Result.Ambient=Impl->InteriorAmbient;
@@ -4047,3 +5187,243 @@ bool FAC2AssetLibrary::LightingCellAt(const FVector& Position,uint32& Cell) cons
         { Cell=B.Key; Smallest=B.Value.GetVolume(); }
     return Smallest<DBL_MAX;
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2AttachmentStreakTest,"AC2.Data.AttachmentStreaks",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FAC2AttachmentStreakTest::RunTest(const FString&)
+{
+    const FString Directory=AC2::ResolveDatDirectory(TEXT("../Asheron's Call 2 - Legions"));
+    FAC2CharacterCatalog Catalog;
+    FString Error;
+    if (!TestTrue(TEXT("Native avatar catalog"), Catalog.Open(Directory,Error) && !Catalog.Avatars.IsEmpty())) return false;
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false)
+        .CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+    auto MakeModelRoot = [&](){
+        auto* Actor=World->SpawnActor<AActor>();
+        auto* Root=NewObject<USceneComponent>(Actor);
+        Actor->SetRootComponent(Root);
+        Root->RegisterComponent();
+        return Root;
+    };
+    {
+        FAC2AssetLibrary Holder, Weapon;
+        auto* Body=MakeModelRoot();
+        auto* Grip=MakeModelRoot();
+        const auto& Avatar=Catalog.Avatars[0];
+        const bool Loaded=Holder.Open(Directory,Error) && Holder.DrawModel(Avatar.Physics,Body->GetOwner(),Body,Avatar.Resolve(Avatar.Defaults()))
+            && Weapon.Open(Directory,Error) && Weapon.DrawModel(0x1f000056,Grip->GetOwner(),Grip);
+        if (TestTrue(TEXT("Native avatar and native blade render"),Loaded)
+            && TestEqual(TEXT("Blade startup installs one dormant ribbon"),Weapon.Impl->Streaks.Num(),1))
+        {
+            const auto& Trail = Weapon.Impl->Streaks[0];
+            const auto& D = Trail.Definition;
+            TestFalse(TEXT("Blade motion alone cannot start the ribbon"),Trail.Active || Trail.Mesh.IsValid());
+            TestEqual(TEXT("Native material"),D.Material,0x31000200u);
+            AddInfo(FString::Printf(TEXT("Blade edges %s to %s threshold %.3f life %.3f duration %.3f"),
+                *D.Edge0.ToString(), *D.Edge1.ToString(), D.MinDistance, D.Life, D.Duration));
+            TestTrue(TEXT("Appearance-overridden blade edges, threshold and lifetime"),
+                D.Edge0.Equals(FVector(0,10,0),.001) && D.Edge1.Equals(FVector(-20,80,0),.001)
+                && FMath::IsNearlyEqual(D.MinDistance,10.f) && D.Duration>0 && D.Life==0);
+            const auto Material=Weapon.Impl->Material(D.Material);
+            if (Material && Material->Layers.Num())
+            {
+                const auto& L=Material->Layers[0];
+                AddInfo(FString::Printf(TEXT("Native blade material %08X blend %u/%u vertex=%d modulate=%d cull=%u"),
+                    D.Material,L.SourceBlend,L.DestBlend,L.VertexDiffuse,L.ModulateVertexDiffuse,L.CullMode));
+            }
+            constexpr uint32 Start=0x810002ae,Stop=0x810002af;
+            TestTrue(TEXT("Native shared avatar start cue dispatches"),Holder.PlayEffect(Start));
+            TestTrue(TEXT("Only the authored holding location activates"),Holder.HoldingStreakActive(1) && !Holder.HoldingStreakActive(2));
+            Weapon.SetHeldStreakActive(Holder.HoldingStreakActive(1));
+            Grip->SetWorldScale3D(FVector(1,1.5,1));
+            Weapon.Animate(.01f,0);
+            Grip->SetWorldLocation(FVector(5,0,0));
+            Weapon.Animate(.02f,0);
+            if (TestTrue(TEXT("Moving live tip generates geometry"),Trail.Mesh.IsValid() && Trail.Mesh->GetNumSections()==1))
+            {
+                const auto* S=Trail.Mesh->GetProcMeshSection(0);
+                TestEqual(TEXT("Sub-threshold motion updates a single quad"),S->ProcVertexBuffer.Num(),4);
+                const auto Base = S->ProcVertexBuffer[0].Position;
+                TestTrue(TEXT("Scaled authored edges span the weapon"),FMath::IsNearlyEqual(
+                    FVector::Distance(Base,S->ProcVertexBuffer[1].Position),
+                    FVector::Distance(D.Edge0,D.Edge1)*1.5*Weapon.Impl->StreakModelScale.GetAbsMax(),.01));
+                Grip->SetWorldLocation(FVector(40,0,0));
+                Weapon.Animate(.04f,0);
+                S=Trail.Mesh->GetProcMeshSection(0);
+                TestEqual(TEXT("Threshold commits a new world-space segment"),S->ProcVertexBuffer.Num(),6);
+                TestTrue(TEXT("Previous vertex remains at its world anchor"),Trail.Mesh->GetComponentLocation().IsNearlyZero()
+                    && Base.Equals(S->ProcVertexBuffer[0].Position));
+                TestTrue(TEXT("Texture U advances by travelled metres"),FMath::IsNearlyEqual(S->ProcVertexBuffer.Last().UV0.X,.4,.001));
+                TestTrue(TEXT("Native stop cue dispatches"),Holder.PlayEffect(Stop));
+                TestFalse(TEXT("Stop clears its holding"),Holder.HoldingStreakActive(1));
+                Weapon.SetHeldStreakActive(Holder.HoldingStreakActive(1));
+                Grip->SetWorldLocation(FVector(500,0,0));
+                Weapon.Animate(.04f + D.Duration*.5f,0);
+                S=Trail.Mesh->GetProcMeshSection(0);
+                TestTrue(TEXT("Deactivation fades existing samples quadratically"),S && FMath::Abs(
+                    int32(S->ProcVertexBuffer.Last().Color.A)-FMath::RoundToInt(D.Color.A*.25))<=1);
+                TestTrue(TEXT("Stopped blade creates no more path"),S && FMath::IsNearlyEqual(S->ProcVertexBuffer.Last().UV0.X,.4,.001));
+                Weapon.Animate(D.Duration+.2f,0);
+                TestEqual(TEXT("Expired ribbon removes its triangles"),Trail.Mesh->GetNumSections(),0);
+            }
+            Holder.PlayEffect(Start);Holder.StopEffect(Start);
+            TestFalse(TEXT("Explicit cancellation releases its holding"),Holder.HoldingStreakActive(1));
+            // This mode selects the shared basic attack's blade-trail clip (05000A01).
+            constexpr uint32 BladeMode=0x4100000e;
+            if (TestTrue(TEXT("Avatar can play its authored blade swing"),Holder.PlayBehavior(AC2Motion::Attack,BladeMode)))
+            {
+                for (int32 Frame=1; Frame<=180 && !Holder.HoldingStreakActive(1); ++Frame)
+                    Holder.Animate(Frame/60.f,0);
+                TestTrue(TEXT("Native attack frame activates the wielded blade"),Holder.HoldingStreakActive(1));
+                Holder.StopBehavior(AC2Motion::Attack);
+                TestFalse(TEXT("Interrupting the swing releases its wielded blade"),Holder.HoldingStreakActive(1));
+            }
+            FAC2AssetLibrary DoubleBlade;
+            auto* DoubleGrip=MakeModelRoot();
+            TestTrue(TEXT("Double blade imports both independent native startup ribbons"),
+                DoubleBlade.Open(Directory,Error) && DoubleBlade.DrawModel(0x1f0001fb,DoubleGrip->GetOwner(),DoubleGrip)
+                    && DoubleBlade.Impl->Streaks.Num()==2);
+        }
+    }
+    World->DestroyWorld(false);
+    GEngine->DestroyWorldContext(World);
+    return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2AppearanceRampTest,"AC2.Data.AppearanceEffectRamps",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2AppearanceRampTest::RunTest(const FString&)
+{
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).RequiresHitProxies(false)
+        .CreateNavigation(false).CreateAISystem(false).ShouldSimulatePhysics(false).CreateFXSystem(false);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    GEngine->CreateNewWorldContext(EWorldType::Game).SetCurrentWorld(World);
+    auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);
+    Actor->SetRootComponent(Root);Root->RegisterComponent();
+    {
+        FAC2AssetLibrary Model;FString Error;
+        if(TestTrue(TEXT("Installed model for appearance ramp"),Model.Open(AC2::ResolveDatDirectory(TEXT("")),Error) &&
+            Model.DrawModel(0x1f000026,Actor,Root)))
+        {
+            // Synthetic appearance atoms exercise a recovered record type
+            // absent from both installed datasets, on actual rendered sections.
+            constexpr uint32 FX=0x81fffffe,TableId=0x28fffffe,Key=1;
+            auto Table=MakeShared<FAC2AppearanceTable>();FAC2AtomCollection Collection;
+            Collection.Atoms.Opacities.Add({10000,-999});Table->Collections.Add(Key,{Collection});
+            Model.Impl->AppearanceTables.Add(TableId,Table);
+            FAC2FXNode Node;Node.AppearanceTable=TableId;Node.AppearanceKey=Key;Node.RampTime=2;
+            Node.Light.Enabled=true;
+            Model.Impl->AppearanceEffects.Add(FX,{Node});
+            auto Opacity=[&](float Expected){
+                TestTrue(TEXT("Model has bound material sections"),!Model.Impl->AppearanceBindings.IsEmpty());
+                for(const auto& B:Model.Impl->AppearanceBindings)if(B.Mesh.IsValid())
+                {
+                    float Value=-1;auto* MID=Cast<UMaterialInstanceDynamic>(B.Mesh->GetMaterial(B.Section));
+                    TestTrue(TEXT("Ramped scalar reaches material opacity"),MID &&
+                        MID->GetScalarParameterValue(TEXT("AC2AppearanceOpacity"),Value) &&
+                        FMath::IsNearlyEqual(Value,Expected,.001f));
+                }
+            };
+            TestTrue(TEXT("Ramped appearance starts"),Model.PlayEffect(FX,.8f));
+            TestFalse(TEXT("Zero initial scalar removes its appearance key"),Model.Impl->LiveAppearanceFX.Contains(FX));
+            Opacity(1);
+            Model.Animate(.2f,0);Opacity(.1f);
+            TestTrue(TEXT("Active scalar can be retargeted"),Model.PlayEffect(FX,.3f));Opacity(.1f);
+            TestEqual(TEXT("Retarget does not duplicate a child light"),Model.Impl->LightEffects.Num(),1);
+            Model.Animate(.4f,0);Opacity(.2f);
+            Model.Animate(.6f,0);Opacity(.3f);
+            const int32 CachedMaterials=Model.Impl->AppearanceFXMaterials.Num();
+            TestTrue(TEXT("Zero desired scalar ramps down"),Model.PlayEffect(FX,0));Opacity(.3f);
+            Model.Animate(.8f,0);Opacity(.2f);
+            Model.Animate(1.f,0);Opacity(.1f);
+            Model.Animate(1.2f,0);Model.Animate(1.4f,0);Opacity(1);
+            TestFalse(TEXT("Completed ramp removes its key and restores base appearance"),Model.Impl->LiveAppearanceFX.Contains(FX));
+            TestEqual(TEXT("Ramping does not allocate a material for each frame"),Model.Impl->AppearanceFXMaterials.Num(),CachedMaterials);
+            Model.StopEffect(FX);
+            TestFalse(TEXT("Explicit stop removes scalar state"),Model.Impl->ScalarEffects.Contains(FX));
+            TestTrue(TEXT("Explicit stop releases child lights"),Model.Impl->LightEffects.IsEmpty());
+            Node.RampTime=0;Model.Impl->AppearanceEffects.Add(FX,{Node});
+            Model.PlayEffect(FX,.4f);Opacity(.4f);
+            Model.PlayEffect(FX,0);Opacity(1);
+            Model.StopEffect(FX);
+            // Startup keys are protected in native DoTargettedFX/StopFX.
+            Model.PlayEffect(FX,.6f);Model.Impl->StartupEffects.Add(FX,{Node});
+            TestFalse(TEXT("Updates cannot replace startup FX"),Model.PlayEffect(FX,.1f));
+            Model.StopEffect(FX);Opacity(.6f);
+            TestTrue(TEXT("Ordinary stop cannot cancel a startup key"),Model.Impl->ScalarEffects.Contains(FX));
+            // A native looping particle key has the same update-in-place
+            // behavior even when it carries no sound or appearance atom.
+            TArray<FAC2DatEntry> Entries;Model.Impl->Portal.Enumerate(Entries,Error);
+            uint32 LoopId=0;
+            for(const auto& Entry:Entries)if(Entry.Id>>24==0x39)
+            {
+                TArray<uint8> Bytes;FAC2ParticlePreset Preset;
+                if(Model.Impl->Portal.Read(Entry.Id,Bytes,Error) && Preset.Decode(Entry.Id,Bytes) && Preset.ApproximateLifetime()<0)
+                {LoopId=Entry.Id;break;}
+            }
+            if(TestTrue(TEXT("Installed profile supplies a looping particle descriptor"),LoopId!=0))
+            {
+                constexpr uint32 ParticleFX=0x81fffffd;
+                FAC2FXNode ParticleNode;ParticleNode.Descriptors.Add(LoopId);ParticleNode.RampTime=1;
+                Model.Impl->AppearanceEffects.Add(ParticleFX,{ParticleNode});
+                TestTrue(TEXT("Looping particle-only effect starts"),Model.PlayEffect(ParticleFX,.5f));
+                const int32 Children=Model.Impl->NetworkEffects.Num();
+                TestTrue(TEXT("Looping key is retained for updates"),Model.Impl->ScalarEffects.Contains(ParticleFX));
+                Model.Animate(1.6f,0);
+                TestTrue(TEXT("Looping effect accepts a new scalar"),Model.PlayEffect(ParticleFX,.8f));
+                TestEqual(TEXT("Update does not duplicate looping emitters"),Model.Impl->NetworkEffects.Num(),Children);
+                Model.StopEffect(ParticleFX);
+                TestFalse(TEXT("Explicit stop clears particle key"),Model.Impl->HasLoopingParticles(ParticleFX));
+            }
+            // Both installed FX tables include nodes consisting solely of a
+            // repulsor. The moving field must survive filtering and model dispatch.
+            constexpr uint32 FieldTable = 0x1e000057;
+            TArray<uint8> FieldBytes;
+            if (TestTrue(TEXT("Installed repulsor effect table"), Model.Impl->Read(FieldTable, FieldBytes)))
+            {
+                FAC2AssetReader FieldReader(MoveTemp(FieldBytes));
+                TestEqual(TEXT("Repulsor table record ID"), FieldReader.Word(), FieldTable);
+                const auto FieldMap = Model.Impl->FXMap(FieldReader);
+                TestTrue(TEXT("Repulsor table decoded"), FieldReader.Good);
+                int32 Fields = 0;
+                bool Started = false;
+                for (const auto& Entry : FieldMap)
+                    for (const auto& FieldNode : Entry.Value)
+                    {
+                        const auto& D = FieldNode.Repulsor;
+                        if (!D.Enabled) continue;
+                        ++Fields;
+                        if (D.MinimumVelocity <= 0) continue;
+                        TestTrue(TEXT("Moving field preserves authored thresholds"),
+                            D.Acceleration == 3 && D.Range == 3.5f && D.Lifetime == -1 &&
+                            !D.Attractor && FMath::IsNearlyEqual(D.MinimumVelocity, .1f));
+                        // The avatar can already own this field through a startup
+                        // key. Targeted replay of a startup key is ignored by retail.
+                        if (Model.Impl->StartupEffects.Contains(Entry.Key))
+                            TestTrue(TEXT("Avatar startup created its native moving field"),
+                                Model.Impl->Repulsors.ContainsByPredicate([&](const auto& Field) {
+                                    return Field->Data.MinimumVelocity == D.MinimumVelocity && Field->Data.Range == D.Range;
+                                }));
+                        constexpr uint32 Trigger = 0x81fffffc;
+                        Model.Impl->AppearanceEffects.Add(Trigger, {FieldNode});
+                        const int32 Before = Model.Impl->Repulsors.Num();
+                        Started = Model.PlayEffect(Trigger, 1) && Model.Impl->Repulsors.Num() == Before + 1;
+                        if (Started)
+                        {
+                            Model.Animate(2.f, 110);
+                            const auto& Field = Model.Impl->Repulsors.Last();
+                            TestTrue(TEXT("Model animation updates the owner velocity in meters per second"),
+                                FMath::IsNearlyEqual(Field->Speed, 1.1f));
+                        }
+                    }
+                TestEqual(TEXT("Six authored repulsor-only nodes in the native FX table"), Fields, 6);
+                TestTrue(TEXT("Movement-driven model effect registers its field"), Started);
+            }
+        }
+    }
+    Actor->Destroy();World->DestroyWorld(false);GEngine->DestroyWorldContext(World);
+    return true;
+}
+#endif

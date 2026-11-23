@@ -1,14 +1,15 @@
 {
   "counts": {
     "bound-lifestone recall": 1,
-    "executable core effects": 538,
-    "no executable active effect decoded (includes passives)": 878,
+    "executable core effects": 580,
+    "no executable active effect decoded (includes passives)": 877,
     "passive mastery implemented": 9,
     "recall entitlement/destination pending": 29,
-    "specialized effect handler pending": 472
+    "specialized effect handler pending": 431
   },
-  "playable_race_core_profiles": 235,
-  "scope": "Core single-target effects only. Multi-hit timing, area targeting, combos, stacking categories and specialized statuses are not fully recovered. Training and racial requirements still apply.",
+  "data_profile": "legions",
+  "playable_race_core_profiles": 236,
+  "scope": "Includes single-target effects, selected-target areas for Explosion, Earthquake and Volley, and Sand Fiend. Other area shapes, multi-hit timing, combos, stacking categories and specialized statuses remain incomplete. Skill training and racial requirements still apply.",
   "skills": [
     {
       "race": 0,
@@ -1568,7 +1569,7 @@
       "race": 2,
       "record": "7000180a",
       "skill": "109",
-      "status": "no executable active effect decoded (includes passives)"
+      "status": "executable core effects"
     },
     {
       "race": 2,
@@ -3806,7 +3807,7 @@
       "race": 4,
       "record": "700019fe",
       "skill": "292",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 4,
@@ -6248,7 +6249,7 @@
       "race": 1,
       "record": "70003158",
       "skill": "43a",
-      "status": "executable core effects"
+      "status": "specialized effect handler pending"
     },
     {
       "race": 2,
@@ -7592,7 +7593,7 @@
       "race": 0,
       "record": "7000357d",
       "skill": "51d",
-      "status": "executable core effects"
+      "status": "specialized effect handler pending"
     },
     {
       "race": 0,
@@ -7712,7 +7713,7 @@
       "race": 0,
       "record": "7000362d",
       "skill": "535",
-      "status": "executable core effects"
+      "status": "specialized effect handler pending"
     },
     {
       "race": 0,
@@ -7736,7 +7737,7 @@
       "race": 0,
       "record": "70003682",
       "skill": "539",
-      "status": "executable core effects"
+      "status": "specialized effect handler pending"
     },
     {
       "race": 0,
@@ -8060,7 +8061,7 @@
       "race": 0,
       "record": "70003712",
       "skill": "570",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8102,7 +8103,7 @@
       "race": 0,
       "record": "70003714",
       "skill": "577",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8564,7 +8565,7 @@
       "race": 0,
       "record": "70003a10",
       "skill": "626",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8606,7 +8607,7 @@
       "race": 0,
       "record": "70003a17",
       "skill": "62d",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8630,7 +8631,7 @@
       "race": 0,
       "record": "70003a1b",
       "skill": "631",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8672,7 +8673,7 @@
       "race": 0,
       "record": "70003a22",
       "skill": "638",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8696,7 +8697,7 @@
       "race": 0,
       "record": "70003a26",
       "skill": "63c",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8738,7 +8739,7 @@
       "race": 0,
       "record": "70003a2d",
       "skill": "643",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8762,7 +8763,7 @@
       "race": 0,
       "record": "70003a31",
       "skill": "647",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8804,7 +8805,7 @@
       "race": 0,
       "record": "70003a38",
       "skill": "64e",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8828,7 +8829,7 @@
       "race": 0,
       "record": "70003a3c",
       "skill": "652",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8870,7 +8871,7 @@
       "race": 0,
       "record": "70003a43",
       "skill": "659",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8894,7 +8895,7 @@
       "race": 0,
       "record": "70003a47",
       "skill": "65d",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8936,7 +8937,7 @@
       "race": 0,
       "record": "70003a4e",
       "skill": "664",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -8960,7 +8961,7 @@
       "race": 0,
       "record": "70003a52",
       "skill": "668",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9002,7 +9003,7 @@
       "race": 0,
       "record": "70003a59",
       "skill": "66f",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9026,7 +9027,7 @@
       "race": 0,
       "record": "70003a5d",
       "skill": "673",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9068,7 +9069,7 @@
       "race": 0,
       "record": "70003a64",
       "skill": "67a",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9092,7 +9093,7 @@
       "race": 0,
       "record": "70003a68",
       "skill": "67e",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9134,7 +9135,7 @@
       "race": 0,
       "record": "70003a6f",
       "skill": "685",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9158,7 +9159,7 @@
       "race": 0,
       "record": "70003a73",
       "skill": "689",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9200,7 +9201,7 @@
       "race": 0,
       "record": "70003a7a",
       "skill": "690",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9224,7 +9225,7 @@
       "race": 0,
       "record": "70003a7e",
       "skill": "694",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9266,7 +9267,7 @@
       "race": 0,
       "record": "70003a85",
       "skill": "69b",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9290,7 +9291,7 @@
       "race": 0,
       "record": "70003a89",
       "skill": "69f",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9332,7 +9333,7 @@
       "race": 0,
       "record": "70003a90",
       "skill": "6a6",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9356,7 +9357,7 @@
       "race": 0,
       "record": "70003a94",
       "skill": "6aa",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9398,7 +9399,7 @@
       "race": 0,
       "record": "70003a9b",
       "skill": "6b1",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9422,7 +9423,7 @@
       "race": 0,
       "record": "70003a9f",
       "skill": "6b5",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9464,7 +9465,7 @@
       "race": 0,
       "record": "70003aa6",
       "skill": "6bc",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9488,7 +9489,7 @@
       "race": 0,
       "record": "70003aaa",
       "skill": "6c0",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9530,7 +9531,7 @@
       "race": 0,
       "record": "70003ab1",
       "skill": "6c7",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9554,7 +9555,7 @@
       "race": 0,
       "record": "70003ab5",
       "skill": "6cb",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9596,7 +9597,7 @@
       "race": 0,
       "record": "70003abc",
       "skill": "6d2",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9620,7 +9621,7 @@
       "race": 0,
       "record": "70003ac0",
       "skill": "6d6",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9662,7 +9663,7 @@
       "race": 0,
       "record": "70003ac7",
       "skill": "6dd",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9686,7 +9687,7 @@
       "race": 0,
       "record": "70003acb",
       "skill": "6e1",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9728,7 +9729,7 @@
       "race": 0,
       "record": "70003ad2",
       "skill": "6e8",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9752,7 +9753,7 @@
       "race": 0,
       "record": "70003ad6",
       "skill": "6ec",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9794,7 +9795,7 @@
       "race": 0,
       "record": "70003add",
       "skill": "6f3",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9818,7 +9819,7 @@
       "race": 0,
       "record": "70003ae1",
       "skill": "6f7",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -9860,7 +9861,7 @@
       "race": 0,
       "record": "70003ae8",
       "skill": "6fe",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -11504,7 +11505,7 @@
       "race": 0,
       "record": "70003dca",
       "skill": "878",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,
@@ -11546,7 +11547,7 @@
       "race": 0,
       "record": "70003dd1",
       "skill": "87f",
-      "status": "specialized effect handler pending"
+      "status": "executable core effects"
     },
     {
       "race": 0,

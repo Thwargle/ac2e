@@ -1,7 +1,7 @@
 """Importer regressions for differing Legions effect layouts and typed tables."""
 import struct
 import unittest
-from import_skill_effects import NODE, ROOT, ROW, LIST, effect_record, value_rows
+from import_skill_effects import NODE, ROOT, ROW, LIST, STATS, effect_record, value_rows, stat_tables
 
 
 class Portal:
@@ -26,6 +26,43 @@ def effect(kind, slot):
 
 
 class SkillEffects(unittest.TestCase):
+    def test_stat_magnitude_follows_reference_including_zero_and_operator(self):
+        # A one-row zero override is meaningful (Tanglefoot), even with a
+        # larger default/adjacent table. Both modifiers of one stat survive.
+        fields = [0] * 39
+        fields[3], fields[35] = 0, 1
+        nodes = [[ROOT, 0, 0, len(fields), *fields],
+                 [NODE, 0, 0xffff0065, 2, 2, 3]]
+        for operation, magnitude in [(9, 5), (0xa, 7)]:
+            child = [0] * 39
+            child[3], child[30], child[31], child[36] = operation, 4, 7, magnitude
+            nodes.append([NODE, 0, 0, len(child), *child])
+        nodes += [[NODE, 0, STATS, 1, 0x30127],
+                  [NODE, 0, LIST, 1, 6], [NODE, 0, ROW, 2, 0, 0],
+                  [NODE, 0, LIST, 2, 8, 9],
+                  [NODE, 0, ROW, 2, 0x3f800000, 0],
+                  [NODE, 0, ROW, 2, 0x3f800000, 0x42480000]]
+        def flatten():
+            values, graph = [], []
+            for node in nodes:
+                graph.append((node[0], len(values)))
+                values.extend(node)
+            return values, graph
+        expected = [(0x30127, 9, [(0., 0.)]),
+                    (0x30127, 0xa, [(0., 1.), (50., 1.)])]
+        self.assertEqual(stat_tables(*flatten()), expected)
+        # Stat classes retain field 36 in both profiles; unlike the vital
+        # classes, the next field is not a magnitude reference.
+        for index in (2, 3):
+            nodes[index][4 + 37] = 7
+        self.assertEqual(stat_tables(*flatten()), expected)
+        # An unhandled sibling cannot make a partially decoded bundle usable.
+        nodes[1] = [NODE, 0, 0xffff0065, 3, 2, 3, 99]
+        self.assertEqual(stat_tables(*flatten())[-1], (0xffffffff, 0, []))
+        nodes[1] = [NODE, 0, 0xffff0065, 1, 0]
+        with self.assertRaisesRegex(ValueError, 'cyclic'):
+            stat_tables(*flatten())
+
     def test_7230_layout_is_explicit_and_does_not_change_legions(self):
         for kind in (0x21, 0x22, 0x11, 0x12):
             portal = Portal(effect(kind, 37))

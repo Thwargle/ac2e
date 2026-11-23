@@ -47,6 +47,22 @@ void AAC2GameMode::UISmokeTick(float Delta)
         FScreenshotRequest::RequestScreenshot(
             FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Screenshots"), Name), true, false);
     };
+    if (FParse::Param(FCommandLine::Get(), TEXT("AC2AvatarPickingSmoke")))
+    {
+        if(bRevealing || UITime<1.f)return;
+        if(UIStage==0)UI->Open(SAC2CharacterUI::EScreen::Create);
+        else
+        {
+            if(UIStage==12 && UI->WaitingForAvatarAnimation())return;
+            FString Error;
+            if(!UI->SmokeAvatarPicking(UIStage-1,Error)){Finish(false,Error);return;}
+            if(UIStage==12){Finish(true,TEXT("All ten avatars, overlap, empty-space rejection, scaled mouse routing and Empyrean selection animation"));return;}
+            Capture(*FString::Printf(TEXT("AC2AvatarPicking-%02d.png"),UIStage));
+        }
+        ++UIStage;
+        UITime=0; // Allow the rendered hover pose to advance between pointer probes.
+        return;
+    }
     if (FParse::Param(FCommandLine::Get(), TEXT("AC2PortraitSmoke")))
     {
         if (UITime < (UIStage + 1) * .75f) return;
@@ -222,6 +238,20 @@ void AAC2GameMode::UISmokeTick(float Delta)
         Capture(TEXT("AC2UI-character-selection.png"));
     else if (UIStage == 40)
     {
+        UI->Close();HUD->GameUI->ClosePanels();FString Error;
+        if(!HUD->GameUI->SmokeShortcutNumbers(0,Error)){Finish(false,Error);return;}
+    }
+    else if (UIStage == 41)
+        Capture(TEXT("AC2UI-shortcut-numbers-on.png"));
+    else if (UIStage == 42)
+    {
+        FString Error;if(!HUD->GameUI->SmokeShortcutNumbers(1,Error)){Finish(false,Error);return;}
+    }
+    else if (UIStage == 43)
+        Capture(TEXT("AC2UI-shortcut-numbers-off.png"));
+    else if (UIStage == 44)
+    {
+        FString Error;if(!HUD->GameUI->SmokeShortcutNumbers(2,Error)){Finish(false,Error);return;}
         if(FParse::Param(FCommandLine::Get(),TEXT("AC2AudioSmoke"))){
             auto* Player=FAC2Audio::Get(GetWorld());
             if(!Player || Player->Plays<3){Finish(false,TEXT("Native audio device/UI routing failed"));return;}

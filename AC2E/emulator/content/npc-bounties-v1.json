@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "quests": [
+    {
+      "id": 1073742209,
+      "title": "Beetle Hunt",
+      "npc": 1191189052,
+      "speaker": "Kanten",
+      "text": "The Cavendo council has posted a bounty on a Poison Scythe Beetle. Defeat one at Fetter Mound before the two hours are up.",
+      "targets": [
+        1191186571
+      ],
+      "level": 11,
+      "xp": 1500,
+      "limit_seconds": 7200,
+      "goal": 1,
+      "kill_starters": [],
+      "use_starters": [],
+      "repeat_seconds": 7200,
+      "evidence": {
+        "guide": "http://ac2hero.e5i5o.com/quest/osteth_kantenbeetlehunt.html",
+        "wiki": "https://20oz.net/index.php/Beetle_Hunt.html",
+        "native_death_effect": "Eff_CompleteQuestKanten19",
+        "reward_note": "AC2Hero and the archived wiki agree on 1,500 XP."
+      }
+    },
+    {
+      "id": 1073742255,
+      "title": "Kill the Keerik",
+      "npc": 1191189144,
+      "speaker": "Akkilea",
+      "text": "Defeat a Burun Keerik within half an hour. Search around the Northeast Tou-Tou Outpost.",
+      "targets": [
+        1191184326,
+        1191184544,
+        1191186500,
+        1191187067
+      ],
+      "level": 20,
+      "xp": 10000,
+      "limit_seconds": 1800,
+      "goal": 1,
+      "kill_starters": [],
+      "use_starters": [],
+      "repeat_seconds": 7200,
+      "evidence": {
+        "guide": "http://ac2hero.e5i5o.com/quest/omishan_killthekeerik.html",
+        "wiki": "https://20oz.net/index.php/Kill_the_Keerik.html",
+        "native_death_effect": "Eff_CompleteQuestAkkilea3",
+        "reward_note": "AC2Hero lists 10,000 XP. The archived wiki gives 20,000. The native death effect identifies the quest but does not resolve the payout. AC2E follows the AC2Hero walkthrough."
+      }
+    }
+  ],
+  "starter_hunts": [
+    {
+      "id": 1073741833,
+      "level": 2,
+      "guide": "http://ac2hero.e5i5o.com/quest/osteth_beetleslayer.html",
+      "sha256": "9da41058006742e916c7c0f2652c71109f895aeafac6546d7ff144566d4f75c1"
+    },
+    {
+      "id": 1073741834,
+      "level": 3,
+      "guide": "http://ac2hero.e5i5o.com/quest/osteth_waspbane.html",
+      "sha256": "3c9bf58b8563473d82d8dcfa8efe36c33ddb43846524cf434e01fa9c803611dd",
+      "intended_level": 6
+    },
+    {
+      "id": 1073741835,
+      "level": 3,
+      "guide": "http://ac2hero.e5i5o.com/quest/osteth_armoredillodoom.html",
+      "sha256": "b3e5855bb1625d828ac8eff55c9bd94b7a90a351808fe0df793ebe799a98b122",
+      "giver": {
+        "npc": 1191187382,
+        "speaker": "Armoredillo Doom Ancestor"
+      }
+    }
+  ]
+}

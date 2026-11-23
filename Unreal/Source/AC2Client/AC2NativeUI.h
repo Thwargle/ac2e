@@ -7,7 +7,7 @@
 // Reference instances retain their own identity/anchors while inheriting their template's contents.
 struct FAC2NativeNode
 {
-    uint32 Id = 0, Kind = 0, State = 0;
+    uint32 Id = 0, Kind = 0, State = 0, Window = 0;
     int32 Parent = INDEX_NONE;
     int32 Z = 0;
     FIntRect Rect, Clip;
@@ -18,8 +18,15 @@ struct FAC2NativeNode
     float Opacity=1;
     // Pixel end caps for a runtime-widened single-bitmap window frame.
     float ImageBorderX=0;
+    float ImageBorderY=0;
+    bool ResizableFrame=false;
+    bool FitHeader=false;
+    uint32 PressState=0;
+    TArray<uint32> PressSounds;
     uint32 Attr(const TCHAR *Name, uint32 Default = 0) const;
     float Float(const TCHAR *Name, float Default = 0) const;
+    void SetTextColor(const FLinearColor& Color);
+    FLinearColor TextColor(uint32 Palette=0) const;
 };
 
 // UIElement::{SetState,UpdateSizeAndPosition,ResetMedia}, LayoutDesc::DereferenceElementDesc.
@@ -38,9 +45,19 @@ class FAC2NativeUI
     TMap<uint32, float> Positions;
     // User window positions are applied before descendants and hit regions are resolved.
     TMap<uint32, FIntPoint> RootOffsets;
-    uint32 Hovered = 0, Pressed = 0;
+    TMap<uint32, FIntPoint> DisplayedRootOffsets;
+    TMap<uint32, FIntPoint> RootSizes;
+    // Row-based roots use their DAT row_height/border_size and retain the bottom edge.
+    TMap<uint32, int32> RootBottomRows;
+    FString Localized(const TCHAR* Key, const TMap<uint32,FString>& Arguments = {});
+    FString Localized(uint32 Key);
+    uint32 Hovered = 0, Pressed = 0, ContentWindow = 0;
+    TMap<uint32,FIntPoint> WindowMinimums;
+    void Press(uint32 Id);
     void Begin(FIntPoint Viewport);
     bool Root(uint32 Layout, const TCHAR *Name);
+    // Older DATs wrap panels; Icefire's layout exposes each panel as a root.
+    const TCHAR* PanelRoot(const TCHAR* Field) const;
     bool Template(uint32 Layout, const TCHAR *Name, FIntRect Rect, FIntRect Clip, uint32 ParentId = 0);
     bool Template(uint32 Layout, uint32 ElementId, FIntRect Rect, FIntRect Clip, uint32 ParentId = 0);
     const FAC2NativeNode *Find(const TCHAR *Name) const;
@@ -53,7 +70,7 @@ class FAC2NativeUI
     void Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts);
     int32 Paint(FSlateWindowElementList &, int32 Layer, const FGeometry &, FAC2Fonts &,
                           TFunction<int32(const FAC2NativeNode &, int32)> Content = {},
-                          int32 FirstNode = 0, int32 EndNode = MAX_int32) const;
+                          int32 FirstNode = 0, int32 EndNode = MAX_int32, uint32 Window = 0) const;
     int32 PaintText(const FAC2NativeNode &, const FString &, FSlateWindowElementList &, int32,
                     const FGeometry &, FAC2Fonts &) const;
     const FSlateBrush *Brush(uint32 Id) const

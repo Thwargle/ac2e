@@ -1,0 +1,420 @@
+{
+  "schema": 1,
+  "guide": "http://ac2hero.e5i5o.com/essence2.html",
+  "source": "2017 NPC_TrophyDrop slots and paired rates. Definition IDs and visuals translated to installed Legions.",
+  "rules": [
+    {
+      "entity": 1191184292,
+      "name": "Banderling Thrasher",
+      "sources": {
+        "470007a4": "a1d0273e9e6b6c52",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f8": {
+          "470021f8": "8077ff56a10d6e96",
+          "470021f0": "72b34c1ea441ad7e"
+        },
+        "4700221d": {
+          "4700221d": "d66e83c66aa35949",
+          "470021f0": "72b34c1ea441ad7e"
+        }
+      }
+    },
+    {
+      "entity": 1191184316,
+      "name": "Banderling Raver",
+      "sources": {
+        "470007bc": "e9deaebe92195943",
+        "47000fc4": "15e96a6bd4d609e1",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f5": {
+          "470021f5": "03888deeaf68fd6d",
+          "470021f6": "5db8f45f2879de54"
+        },
+        "4700221a": {
+          "4700221a": "9e115bcfafad1405",
+          "470021f6": "5db8f45f2879de54"
+        }
+      }
+    },
+    {
+      "entity": 1191186370,
+      "name": "Banderling Crasher",
+      "sources": {
+        "47000fc2": "bd9f51f6ab020baf",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f3": {
+          "470021f3": "b53b19808ddeb49f",
+          "470021f4": "f0aaaa6836940850"
+        }
+      }
+    },
+    {
+      "entity": 1191186372,
+      "name": "Banderling Raver",
+      "sources": {
+        "47000fc4": "15e96a6bd4d609e1",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f5": {
+          "470021f5": "03888deeaf68fd6d",
+          "470021f6": "5db8f45f2879de54"
+        },
+        "4700221a": {
+          "4700221a": "9e115bcfafad1405",
+          "470021f6": "5db8f45f2879de54"
+        }
+      }
+    },
+    {
+      "entity": 1191186530,
+      "name": "Banderling Raver",
+      "sources": {
+        "47001062": "14ef7fb66eda9934",
+        "47000fc4": "15e96a6bd4d609e1",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "47002219": {
+          "47002219": "8bc6acbe5698ccf7",
+          "470021f6": "5db8f45f2879de54"
+        }
+      }
+    },
+    {
+      "entity": 1191187374,
+      "name": "Banderling Thrasher",
+      "sources": {
+        "470013ae": "38a70c81bf04b37a",
+        "470007a4": "a1d0273e9e6b6c52",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f8": {
+          "470021f8": "8077ff56a10d6e96",
+          "470021f0": "72b34c1ea441ad7e"
+        },
+        "4700221d": {
+          "4700221d": "d66e83c66aa35949",
+          "470021f0": "72b34c1ea441ad7e"
+        }
+      }
+    },
+    {
+      "entity": 1191189203,
+      "name": "Banderling Chief",
+      "sources": {
+        "47001ad3": "e260730e9371a8f4",
+        "47001dc9": "504f3d4439cd8bca",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "470021f1": {
+          "470021f1": "09e15f9f50132301",
+          "470021f2": "1c8c5728121549ff"
+        }
+      }
+    },
+    {
+      "entity": 1191191556,
+      "name": "Debased Skeleton",
+      "sources": {
+        "47002404": "6ffa946c9d9c3df9",
+        "47001ba1": "cdbf124794f51025",
+        "470039b9": "0ed0941616ce9140",
+        "810039b9": "20fa367b8b12d4d3"
+      },
+      "drops": [
+        {
+          "definition": 1191197113,
+          "visual": 520097564,
+          "probability": 0.05000000074505806,
+          "slot": 1,
+          "reference_definition": 1191189722,
+          "name": "Skeleton Jaw Bone"
+        }
+      ],
+      "reference_entities": {
+        "47002b6a": {
+          "47002b6a": "af76d2714435056e",
+          "47002478": "4ef779c6047db457"
+        }
+      }
+    },
+    {
+      "entity": 1191194569,
+      "name": "Banderling Raver",
+      "sources": {
+        "47002fc9": "fee145d7b4dd606d",
+        "47001b40": "12002edcb4ee9605",
+        "47000f7c": "664570d47edb06eb",
+        "81000f7c": "ca868b60801ccc09",
+        "47000f7a": "cf69e8ad92545220",
+        "81000f7a": "52f99fe1da7de235",
+        "47000f7b": "94341bde07b23c9a",
+        "81000f7b": "ddf7767ffdfba9ca"
+      },
+      "drops": [
+        {
+          "definition": 1191186300,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 1,
+          "reference_definition": 1191184638,
+          "name": "Banderling Beard"
+        },
+        {
+          "definition": 1191186298,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 2,
+          "reference_definition": 1191184627,
+          "name": "Banderling Heart"
+        },
+        {
+          "definition": 1191186299,
+          "visual": 520094159,
+          "probability": 0.016699999570846558,
+          "slot": 3,
+          "reference_definition": 1191184128,
+          "name": "Banderling Tooth"
+        }
+      ],
+      "reference_entities": {
+        "4700244e": {
+          "4700244e": "b863fca152066790",
+          "470021f6": "5db8f45f2879de54"
+        }
+      }
+    }
+  ]
+}

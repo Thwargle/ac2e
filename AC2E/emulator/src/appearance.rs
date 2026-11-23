@@ -74,13 +74,13 @@ const TUMEROK_START: Placement = Placement {
     coordinates: [-4.16552, -27.519, -24.2035],
     heading: 236,
 };
-// The Lugian starter dungeon (lugian_start_position, cells 04xx0144) is absent
-// from the supported cell_1.dat; the Linvak Tukal recall point is used instead,
-// as the 2012 server did.
+// Pyreal lugian_start_position1, mirrored to the installed 04FD instance.
+// The installed dungeon exists. Ground Z is checked against client collision;
+// the old telepad's -24.2357 is above this floor, not a missing-cell indication.
 const LUGIAN_START: Placement = Placement {
-    cell: 0x58740039,
-    coordinates: [147.74, 15.13, 161.75],
-    heading: 96,
+    cell: 0x04fd0144,
+    coordinates: [-14.0137, 19.304, -24.947807],
+    heading: 64,
 };
 
 const BODIES: [Body; 6] = [

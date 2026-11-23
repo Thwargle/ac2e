@@ -87,7 +87,7 @@ if(!$DevelopmentLogin){
 $env:AC2E_PUBLIC_ORIGIN=$PublicOrigin
 $env:PYREALIUM_UNREAL_LEGIONS_DATA='1'
 $serverArgs=@('serve','--bind',"${Bind}:$Port",'--account',$Account,'--data',$DataDirectory,'--game-data',$DatDirectory,
-    '--content',$Content,'--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','true')
+    '--content',$Content,'--initialize-ui','true','--lifestones','true','--portals','true')
 # Local testing convenience only: never enable map relocation on a public bind.
 # World-builder overlay; its NAME.rules.tsv creature rules load automatically.
 if($ContentOverlay){$serverArgs+=@('--content-overlay',$ContentOverlay)}

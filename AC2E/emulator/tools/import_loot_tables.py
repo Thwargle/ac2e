@@ -67,6 +67,23 @@ def templates(directory):
         rows[did]=dict(name=name,visual=visual,base=cur,props=props,ai=props.get(0x41000189),role=role,signature=signature)
     return profile,local,rows
 
+def loot_area(cell, reference, installed, checks):
+    if not isinstance(cell, int) or not 0 < cell <= 0xffffffff:
+        return None
+    local = cell & 0xffff
+    if 1 <= local <= 64:
+        area, record = cell & 0xffff0000, cell | 0xffff
+    elif 0x100 <= local < 0xfffe:
+        area = record = cell
+    else:
+        return None
+    if record not in checks:
+        try:
+            checks[record] = reference.read(record) == installed.read(record)
+        except KeyError:
+            checks[record] = False
+    return area if checks[record] else None
+
 def convert(audit,reference,installed):
     sp,sl,source=templates(reference);tp,tl,target=templates(installed)
     creatures=collections.defaultdict(list);items=collections.defaultdict(list);mapped={};skipped=collections.Counter()
@@ -87,6 +104,8 @@ def convert(audit,reference,installed):
         if dest and r['ai'] and runtime_role(dest,target[dest])=='monster':
             source_monsters[(r['name'],r['visual'])].append(did)
     bundles=collections.defaultdict(dict);proof=[];definitions={};dedup=set()
+    source_cells=Archive(reference/'cell_1.dat');target_cells=Archive(installed/'cell_1.dat')
+    areas=collections.defaultdict(collections.Counter);checks={}
     for file in sorted(audit.glob('*.json')):
         if len(file.stem)!=64:continue
         report=json.loads(file.read_text());objects=report.get('objects',[])
@@ -117,22 +136,38 @@ def convert(audit,reference,installed):
                 resolved.extend([dest]*quantity);definitions[dest]=row
             if failed or not 1<=len(resolved)<=32:continue
             key=tuple(sorted(resolved));bundles[monster][key]=bundles[monster].get(key,0)+1
-            proof.append(dict(source_sha256=report['sha256'],corpse_message_sha256=corpse['message_sha256'],
-                              monster=f'{monster:08x}',items=[f'{d:08x}' for d in key]))
+            row=dict(source_sha256=report['sha256'],corpse_message_sha256=corpse['message_sha256'],
+                     monster=f'{monster:08x}',items=[f'{d:08x}' for d in key])
+            cell=(corpse.get('position') or {}).get('cell')
+            area=loot_area(cell,source_cells,target_cells,checks)
+            if area is not None:
+                areas[monster,key][area]+=1
+                row['cell']=f'{cell:08x}'
+            proof.append(row)
     # Keep identifiers/data only; use runtime metadata validation before enabling.
-    lines=['ac2e-observed-loot-v1','# monster profile observed_count item_definitions (one complete observed bundle)']
+    lines=['ac2e-observed-loot-v2','# monster profile observed_count item_definitions matching_landblock_or_room:count']
     for monster,choices in sorted(bundles.items()):
         profile=target[monster]['props'].get(0x410001a6,0)
         for choice,count in sorted(choices.items()):
-            lines.append(f'{monster:08x}\t{profile}\t{count}\t'+','.join(f'{did:08x}' for did in choice))
+            local=','.join(f'{area:08x}:{n}' for area,n in sorted(areas[monster,choice].items()))
+            lines.append(f'{monster:08x}\t{profile}\t{count}\t'+','.join(f'{did:08x}' for did in choice)+'\t'+(local or '-'))
     used={did for choices in bundles.values() for choice in choices for did in choice}
     itemlines=['ac2e-loot-items-v1','# definition visual name; native metadata is validated at server startup']
     for did in sorted(used):itemlines.append(f'{did:08x}\t{definitions[did]["visual"]:08x}\t{definitions[did]["name"]}')
+    def file_hash(path):
+        digest=hashlib.sha256()
+        with path.open('rb') as stream:
+            for chunk in iter(lambda:stream.read(1024*1024),b''):
+                digest.update(chunk)
+        return digest.hexdigest()
+    creature_areas={(monster,area) for (monster,_),counts in areas.items() for area in counts}
     report=dict(monsters=len(bundles),bundles=sum(map(len,bundles.values())),items=len(used),skipped=dict(skipped),evidence=proof,
+        located_observations=sum('cell' in row for row in proof),creature_areas=len(creature_areas),
+        located_creatures=len({monster for monster,_ in creature_areas}),
         limitation='Observed base items only. Original generation weights, affixes, quality rolls and unobserved tables are unavailable. Runtime rejects unsupported metadata; no potion replacement.',
-        dat_sha256={label:{n:hashlib.sha256((d/n).read_bytes()).hexdigest() for n in ['portal.dat','local_English.dat']}
+        dat_sha256={label:{n:file_hash(d/n) for n in ['portal.dat','local_English.dat','cell_1.dat']}
                     for label,d in [('reference',reference),('installed',installed)]})
-    sp.close();sl.file.close();tp.close();tl.file.close()
+    sp.close();sl.file.close();tp.close();tl.file.close();source_cells.file.close();target_cells.file.close()
     return '\n'.join(lines)+'\n','\n'.join(itemlines)+'\n',report
 
 def main():

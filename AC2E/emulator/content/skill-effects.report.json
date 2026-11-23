@@ -1,5 +1,6 @@
 {
-  "source": "Vanquish-6/Pyrealium@468793018b332b87228794b0720ea1ce0400f96d, adapted for local Legions DAT layouts",
+  "source": "Vanquish-6/Pyrealium@468793018b332b87228794b0720ea1ce0400f96d, with explicit release-specific effect layouts",
+  "profile": "legions",
   "catalog_records": 1927,
   "effect_records": 1602,
   "unresolved": [

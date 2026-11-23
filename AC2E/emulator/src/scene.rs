@@ -20,6 +20,7 @@ pub struct Body {
     physics: usize,
     position_offset: usize,
     ready: bool,
+    receiving: bool,
     public_stats: BTreeMap<(u32, u32), (u32, Arc<[u8]>)>,
     hands: BTreeMap<u64, Arc<[u8]>>,
     item_instances: BTreeMap<u64, u16>,
@@ -64,6 +65,7 @@ impl Body {
             physics,
             position_offset,
             ready: false,
+            receiving: false,
             public_stats: BTreeMap::new(),
             hands: BTreeMap::new(),
             item_instances: BTreeMap::new(),
@@ -110,7 +112,7 @@ impl Body {
     fn save_public_stats(&mut self, state: &crate::progression::Progression) -> Vec<Arc<[u8]>> {
         let mut updates = Vec::new();
         for (key, value) in [
-            (0x107, state.level().health),
+            (0x107, state.max_health()),
             (0x102, state.health),
             (0x12e, u32::from(state.level().number)),
         ] {
@@ -487,9 +489,9 @@ impl Scene {
     }
     pub fn move_creature(&mut self,id:u64,placement:Placement,now:u64) -> std::io::Result<Vec<Delivery>> {
         self.prepare_cell(placement.cell)?;
-        let previous=self.bodies.keys().filter(|observer|self.can_observe(**observer,id)).copied().collect::<BTreeSet<_>>();
+        let previous=self.bodies.keys().filter(|observer|self.receives(**observer,id)).copied().collect::<BTreeSet<_>>();
         let wire=self.content.move_creature(id,placement,now)?;
-        let current=self.bodies.keys().filter(|observer|self.can_observe(**observer,id)).copied().collect::<BTreeSet<_>>();
+        let current=self.bodies.keys().filter(|observer|self.receives(**observer,id)).copied().collect::<BTreeSet<_>>();
         let object=self.content.object(id).unwrap();
         let mut deliveries=Vec::new();
         for &recipient in previous.difference(&current){deliveries.push(Delivery{recipient,data:object.destroy.clone()});}
@@ -522,7 +524,7 @@ impl Scene {
         let door=self.examination_content(observer,target).ok_or_else(||std::io::Error::other("Door is not visible."))?;
         if !player.distance(door.placement).is_some_and(|d|d<=4.) {return Err(std::io::Error::other("Move within four metres of the door."));}
         let wire=self.content.toggle_door(target)?;
-        Ok(self.bodies.keys().filter(|id|self.can_observe(**id,target)).map(|id|Delivery{recipient:*id,data:wire.clone()}).collect())
+        Ok(self.bodies.keys().filter(|id|self.receives(**id,target)).map(|id|Delivery{recipient:*id,data:wire.clone()}).collect())
     }
     pub fn open_chest(&mut self,observer:u64,target:u64)->std::io::Result<Vec<Delivery>> {
         if self.examination_content(observer,target).and_then(|o|o.service)!=Some(crate::services::Service::Chest{locked:false})
@@ -571,16 +573,10 @@ impl Scene {
             .min_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)))
             .map(|(_, id)| id)
     }
-    pub fn visible_hand_definition(&self, observer: u64, target: u64) -> Option<u32> {
-        for body in self.bodies.values() {
-            if self.can_observe(observer, body.id) {
-                if let Some(spawn) = body.hands.get(&target) {
-                    // Cached native hand-object subset has a fixed 72-byte shape.
-                    return Some(u32::from_le_bytes(spawn[56..60].try_into().unwrap()));
-                }
-            }
-        }
-        None
+    pub fn visible_hand_owner(&self, observer: u64, target: u64) -> Option<u64> {
+        self.bodies.values()
+            .find(|body| body.hands.contains_key(&target) && self.can_observe(observer, body.id))
+            .map(|body| body.id)
     }
     pub fn content_stat(
         &mut self,
@@ -602,7 +598,7 @@ impl Scene {
     }
     pub fn corpse_name(&mut self,id:u64,names:&crate::examination::Names)->std::io::Result<Vec<Delivery>> {
         let data=self.content.corpse_name(id,names)?;
-        Ok(self.bodies.keys().filter(|observer|self.can_observe(**observer,id))
+        Ok(self.bodies.keys().filter(|observer|self.receives(**observer,id))
             .map(|recipient|Delivery{recipient:*recipient,data:data.clone()}).collect())
     }
     pub fn despawn_content(&mut self, id: u64) -> std::io::Result<Vec<Delivery>> {
@@ -624,12 +620,13 @@ impl Scene {
         victim: u64,
         attacker: u64,
         health_change: i32,
+        skill: Option<u32>,
     ) -> std::io::Result<Vec<Delivery>> {
         let cell = self
             .content
             .cell(victim)
             .ok_or_else(|| std::io::Error::other("creature damage story inactive"))?;
-        let data = self.content.damage_story(victim, attacker, health_change)?;
+        let data = self.content.damage_story(victim, attacker, health_change, skill)?;
         Ok(self
             .neighbor_ids(cell, 0)
             .map(|recipient| Delivery {
@@ -639,8 +636,11 @@ impl Scene {
             .collect())
     }
     pub fn content_effect(&mut self,id:u64,fx:u32) -> std::io::Result<Vec<Delivery>> {
+        self.content_effect_action(id,fx,false)
+    }
+    pub fn content_effect_action(&mut self,id:u64,fx:u32,stop:bool) -> std::io::Result<Vec<Delivery>> {
         let cell=self.content.cell(id).ok_or_else(||std::io::Error::other("inactive effect owner"))?;
-        let data=self.content.effect(id,fx)?;
+        let data=self.content.effect_action(id,fx,stop)?;
         Ok(self.neighbor_ids(cell,0).map(|recipient|Delivery{recipient,data:data.clone()}).collect())
     }
     pub fn idol_presentation(
@@ -688,17 +688,21 @@ impl Scene {
         }
     }
     pub fn can_observe(&self, observer: u64, target: u64) -> bool {
+        self.bodies.get(&observer).is_some_and(|body|body.ready) && self.receives(observer,target)
+    }
+    /// Loading clients receive the scene but cannot interact or be targeted.
+    fn receives(&self, observer: u64, target: u64) -> bool {
         if let Some(cell) = self.content.cell(target) {
             return self
                 .bodies
                 .get(&observer)
-                .is_some_and(|body| body.ready && self.sees_cell(body.placement.cell, cell));
+                .is_some_and(|body| (body.ready || body.receiving) && self.sees_cell(body.placement.cell, cell));
         }
         self.bodies
             .get(&observer)
             .zip(self.bodies.get(&target))
             .is_some_and(|(a, b)| {
-                a.ready && b.ready && self.sees_cell(a.placement.cell, b.placement.cell)
+                (a.ready || a.receiving) && b.ready && self.sees_cell(a.placement.cell, b.placement.cell)
             })
     }
     pub fn visible_content_count(&self, observer: u64) -> Option<usize> {
@@ -726,7 +730,7 @@ impl Scene {
         self.bodies
             .values()
             .filter(move |body| {
-                body.ready && body.id != except && self.sees_cell(body.placement.cell, cell)
+                (body.ready || body.receiving) && body.id != except && self.sees_cell(body.placement.cell, cell)
             })
             .map(|body| body.id)
     }
@@ -750,16 +754,15 @@ impl Scene {
         self.bodies.insert(body.id, body);
         Ok(())
     }
-    pub fn activate(&mut self, id: u64) -> Result<Vec<Delivery>, WorldError> {
+    /// Begin scene delivery before SceneRenderingComplete, without exposing the
+    /// arriving player to combat. Live updates keep this snapshot current.
+    pub fn preload(&mut self, id: u64) -> Result<Vec<Delivery>, WorldError> {
         let body = self.bodies.get_mut(&id).ok_or(WorldError::InvalidValue)?;
-        if body.ready {
-            return Ok(Vec::new());
-        }
-        body.ready = true;
-        self.cells
-            .entry(body.placement.cell)
-            .or_default()
-            .insert(id);
+        if body.ready || body.receiving {return Ok(Vec::new());}
+        body.receiving=true;
+        Ok(self.snapshot(id))
+    }
+    fn snapshot(&self, id:u64) -> Vec<Delivery> {
         let body = &self.bodies[&id];
         let mut deliveries = Vec::new();
         for object in self
@@ -778,20 +781,6 @@ impl Scene {
                 });
             }
         }
-        let spawn: Arc<[u8]> = body.spawn.clone().into();
-        for id in self.neighbors(body.placement.cell, body.id) {
-            deliveries.push(Delivery {
-                recipient: id,
-                data: spawn.clone(),
-            });
-            body.hand_spawns(id, &mut deliveries);
-            for (_, data) in body.public_stats.values() {
-                deliveries.push(Delivery {
-                    recipient: id,
-                    data: data.clone(),
-                });
-            }
-        }
         for id in self.visible_bodies(body.placement.cell, body.id) {
             deliveries.push(Delivery {
                 recipient: body.id,
@@ -805,6 +794,23 @@ impl Scene {
                 });
             }
         }
+        deliveries
+    }
+    pub fn activate(&mut self, id: u64) -> Result<Vec<Delivery>, WorldError> {
+        let body = self.bodies.get_mut(&id).ok_or(WorldError::InvalidValue)?;
+        if body.ready {return Ok(Vec::new());}
+        let preloaded=body.receiving;
+        body.ready=true;
+        self.cells.entry(body.placement.cell).or_default().insert(id);
+        let body=&self.bodies[&id];
+        let mut deliveries=Vec::new();
+        let spawn:Arc<[u8]>=body.spawn.clone().into();
+        for recipient in self.neighbors(body.placement.cell,id) {
+            deliveries.push(Delivery{recipient,data:spawn.clone()});
+            body.hand_spawns(recipient,&mut deliveries);
+            for (_,data) in body.public_stats.values() {deliveries.push(Delivery{recipient,data:data.clone()});}
+        }
+        if !preloaded {deliveries.extend(self.snapshot(id));}
         Ok(deliveries)
     }
     fn unindex(&mut self, cell: u32, id: u64) {
@@ -848,13 +854,15 @@ impl Scene {
             return Err(WorldError::InvalidValue);
         }
         let old_cell = body.placement.cell;
-        if !body.ready {
+        if !body.ready && !body.receiving {
             self.bodies.get_mut(&id).unwrap().relocate(update.placement);
             return Ok(Vec::new());
         }
         if old_cell == update.placement.cell {
             let instance = body.instance;
+            let published=body.ready;
             self.bodies.get_mut(&id).unwrap().relocate(update.placement);
+            if !published {return Ok(Vec::new());}
             let mut recipients = self.neighbor_ids(old_cell, id).peekable();
             if recipients.peek().is_none() {
                 return Ok(Vec::new());
@@ -867,8 +875,8 @@ impl Scene {
                 })
                 .collect());
         }
-        let previous = self.neighbors(old_cell, id);
-        let current = self.neighbors(update.placement.cell, id);
+        let previous = if body.ready {self.neighbors(old_cell, id)} else {BTreeSet::new()};
+        let current = if body.ready {self.neighbors(update.placement.cell, id)} else {BTreeSet::new()};
         let previous_seen = self.visible_bodies(old_cell, id);
         let current_seen = self.visible_bodies(update.placement.cell, id);
         let previous_content = self.visible_content(old_cell);
@@ -916,7 +924,7 @@ impl Scene {
             });
         }
         self.bodies.get_mut(&id).unwrap().relocate(update.placement);
-        if old_cell != update.placement.cell {
+        if old_cell != update.placement.cell && self.bodies[&id].ready {
             self.unindex(old_cell, id);
             self.cells
                 .entry(update.placement.cell)
@@ -1196,6 +1204,33 @@ mod tests {
         assert_eq!(scene.broadcast(1, vec![1]).unwrap().len(), 2);
         assert!(scene.remove(4).is_empty());
         assert!(scene.activate(99).is_err());
+    }
+    #[test]
+    fn loading_receives_live_scene_changes_without_exposing_player_or_replaying_snapshot() {
+        let home=Placement::HUMAN_START;let target=crate::content::NAMESPACE+7;
+        let mut scene=Scene::with_content(crate::content::Content::fixture(target,home,None));
+        scene.enter(body(1,home.cell)).unwrap();scene.enter_hidden(body(2,home.cell)).unwrap();
+        let initial=scene.preload(2).unwrap();
+        assert!(initial.iter().all(|e|e.recipient==2));
+        for id in [1,target] {assert!(initial.iter().any(|e|e.data[..4]==world::CREATE_OBJECT.to_le_bytes()
+            && e.data[4..12]==id.to_le_bytes()));}
+        assert!(scene.preload(2).unwrap().is_empty());
+        assert!(!scene.can_observe(1,2));assert!(!scene.can_observe(2,target));
+        assert_eq!(scene.player_placement(2),None);assert_eq!(scene.combat_distance(2,target),None);
+        assert!(scene.broadcast(2,vec![1]).is_err());
+        let moved=scene.move_creature(target,home.translated([0.2,0.,0.]).unwrap(),100).unwrap();
+        assert!(moved.iter().any(|e|e.recipient==2 && e.data[..4]==movement::SERVER_POSITION.to_le_bytes()));
+        assert!(scene.content_stat(target,0x102,40).unwrap().iter().any(|e|e.recipient==2));
+        assert!(scene.despawn_content(target).unwrap().iter().any(|e|e.recipient==2));
+        assert!(scene.respawn_content(target).unwrap().iter().any(|e|e.recipient==2));
+        assert!(scene.remove(1).iter().any(|e|e.recipient==2),"No ghost players after loading");
+        let joined=scene.enter(body(3,home.cell)).unwrap();
+        assert!(joined.iter().any(|e|e.recipient==2));
+        assert!(!joined.iter().any(|e|e.recipient==3 && e.data[4..12]==2u64.to_le_bytes()));
+        let activated=scene.activate(2).unwrap();
+        assert!(activated.iter().all(|e|e.recipient==3),"Do not rebuild the arriving client's models after readiness");
+        assert!(scene.can_observe(3,2));assert!(scene.can_observe(2,target));
+        assert!(scene.activate(2).unwrap().is_empty());
     }
     #[test]
     fn unobserved_movement_is_visible_to_later_arrivals() {

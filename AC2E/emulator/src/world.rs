@@ -35,6 +35,7 @@ impl std::error::Error for WorldError {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClientEvent {
+    RoomChat(ac2_net::protocol::ChatRequest),
     ScriptCall {
         function_id: u32,
         arguments: Vec<u8>,
@@ -173,6 +174,11 @@ pub(crate) fn ui_text(text: &str) -> Result<Vec<u8>, WorldError> {
 pub fn decode_client_event(bytes: &[u8]) -> Result<ClientEvent, WorldError> {
     let mut reader = Reader { bytes, pos: 0 };
     let event = match reader.u32()? {
+        crate::room_chat::EVENT => {
+            let length = reader.u32()? as usize;
+            if length > 8192 { return Err(WorldError::LimitExceeded); }
+            ClientEvent::RoomChat(crate::room_chat::decode(reader.take(length)?)?)
+        }
         CLIENT_SCRIPT_EVENT => {
             let function_id = reader.u32()?;
             let length = reader.u32()? as usize;
@@ -340,7 +346,9 @@ pub fn legions_character_set(mut set: Vec<u8>) -> Vec<u8> {
 }
 
 /// The `CharacterSet` layout for a logon's client data version.
-pub fn character_set_for(client_version: &str, set: Vec<u8>) -> Vec<u8> {
+pub fn character_set_for(client_version: &str, mut set: Vec<u8>) -> Vec<u8> {
+    // The live server provides the native queue-4 General room service.
+    if set.len() >= 4 { let at = set.len() - 4; set[at..].copy_from_slice(&1u32.to_le_bytes()); }
     if client_version == "7148" {
         set
     } else {
@@ -508,6 +516,49 @@ pub fn create_stationary_object(object: &StationaryObject) -> Result<Vec<u8>, Wo
     create_stationary_object_with_scale(object, None)
 }
 
+/// Append the native PhysicsDesc FX map (StreamPack 00641530, bit 0x200)
+/// to an outgoing CreateObject. Keep stored spawn offsets and ordering stamps
+/// unchanged: a visibility snapshot is not a new PlayFX action.
+pub fn with_physics_fx(spawn:&[u8], effects:&[u32])->Result<Vec<u8>,WorldError> {
+    with_visible_physics(spawn, effects, false)
+}
+
+pub(crate) fn with_visible_physics(spawn: &[u8], effects: &[u32], charging: bool) -> Result<Vec<u8>, WorldError> {
+    // Up to the status FX capacity plus one independent player portal glow.
+    if spawn.get(..4)!=Some(CREATE_OBJECT.to_le_bytes().as_slice()) || effects.len()>crate::status_fx::LIMIT + 1 {
+        return Err(WorldError::InvalidValue);
+    }
+    let physics=12+crate::appearance::visual_len(spawn.get(12..).ok_or(WorldError::InvalidValue)?)
+        .ok_or(WorldError::InvalidValue)?;
+    let flags=u32::from_le_bytes(spawn.get(physics..physics+4).ok_or(WorldError::InvalidValue)?.try_into().unwrap());
+    let position=physics+match flags {0x8000=>8,0x8080=>12,0x8082=>28,_=>return Err(WorldError::InvalidValue)};
+    // Position is 32 bytes, followed by the FX map, then four timestamps and
+    // gmWeenieDesc. Only server-generated actor subsets enter this function.
+    let offset=position+32;
+    if spawn.len()<offset+16 || effects.iter().any(|fx|!matches!(fx>>24,0x40|0x41|0x81)) {
+        return Err(WorldError::InvalidValue);
+    }
+    let effects:std::collections::BTreeSet<_>=effects.iter().copied().collect();
+    // The behavior list follows the optional mode, before sliders and position.
+    let after_mode = physics + if flags & 0x80 != 0 { 12 } else { 8 };
+    let mut wire = spawn[..after_mode].to_vec();
+    let mut bits = flags;
+    if charging {
+        bits |= 1;
+        wire.extend(1u32.to_le_bytes());
+        crate::combat_visual::recall_charge_params(&mut wire);
+    }
+    wire.extend_from_slice(&spawn[after_mode..offset]);
+    if !effects.is_empty() {
+        bits |= 0x200;
+        wire.extend((effects.len() as u32).to_le_bytes());
+        for fx in effects {wire.extend(fx.to_le_bytes());wire.extend(1.0f32.to_le_bytes());wire.extend(0u64.to_le_bytes());}
+    }
+    wire[physics..physics+4].copy_from_slice(&bits.to_le_bytes());
+    wire.extend_from_slice(&spawn[offset..]);
+    Ok(wire)
+}
+
 /// Optional native gmWeenieDesc scale (bit 0x80, StreamPack 006037c0).
 /// The positive scale bound is local content policy, not a recovered game limit.
 pub fn create_stationary_object_with_scale(
@@ -523,7 +574,19 @@ pub fn create_named_stationary_object(
     scale: Option<f32>,
     name: Option<&str>,
 ) -> Result<Vec<u8>, WorldError> {
-    if scale.is_some_and(|scale| !scale.is_finite() || scale <= 0.0 || scale > 100.0) {
+    create_stationary_with_owner(object, scale, name, None)
+}
+
+pub(crate) fn create_summoned_object(
+    object: &StationaryObject, owner: u64, name: &str,
+) -> Result<Vec<u8>, WorldError> {
+    create_stationary_with_owner(object, None, Some(name), Some(owner))
+}
+
+fn create_stationary_with_owner(
+    object: &StationaryObject, scale: Option<f32>, name: Option<&str>, owner: Option<u64>,
+) -> Result<Vec<u8>, WorldError> {
+    if owner == Some(0) || scale.is_some_and(|scale| !scale.is_finite() || scale <= 0.0 || scale > 100.0) {
         return Err(WorldError::InvalidValue);
     }
     let norm: f32 = object.orientation.iter().map(|v| v * v).sum();
@@ -589,10 +652,14 @@ pub fn create_named_stationary_object(
     for stamp in object.timestamps {
         bytes.extend(stamp.to_le_bytes());
     }
-    bytes.extend((0x02000000_u32 | if scale.is_some() { 0x80 } else { 0 } | if name.is_some() { 4 } else { 0 }).to_le_bytes());
+    bytes.extend((0x02000000_u32 | if scale.is_some() { 0x80 } else { 0 } | if name.is_some() { 4 } else { 0 }
+        | if owner.is_some() { 0x04000000 } else { 0 }).to_le_bytes());
     bytes.extend(object.entity_did.to_le_bytes());
     if let Some(name) = name {
         bytes.extend(literal_name(name)?);
+    }
+    if let Some(owner) = owner {
+        bytes.extend(owner.to_le_bytes());
     }
     if let Some(scale) = scale {
         bytes.extend(scale.to_le_bytes());
@@ -981,8 +1048,12 @@ mod character_set_layout_tests {
     #[test]
     fn the_7230_character_set_has_the_legions_words() {
         let set = empty_character_set(b"local", 5).unwrap();
-        assert_eq!(character_set_for("7148", set.clone()), set);
+        let mut enabled=set.clone();
+        let flag=enabled.len()-4;
+        enabled[flag..].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(character_set_for("7148", set.clone()), enabled);
         let legions = character_set_for("7230", set.clone());
+        assert_eq!(&legions[..set.len()],enabled);
         assert_eq!(legions.len(), set.len() + 8);
         assert_eq!(&legions[set.len()..], &[0; 8]);
     }

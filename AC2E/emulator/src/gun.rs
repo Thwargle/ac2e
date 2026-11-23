@@ -11,7 +11,7 @@
 //! only) the account name; with an account store the web backend's `account:token` ticket, spent
 //! once. Friends and the ignore list persist per account in `gun-users.json` under the data
 //! directory. Presence follows two sources: the GUN sessions themselves (`SetLoc` flags) and the
-//! game server's characters in the world ([`publish_online`]).
+//! game server's characters in the world ([`Hub::update_online`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Read, Write};
@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 pub mod native;
+mod friends;
 
 #[cfg(test)]
 mod regression_tests;
@@ -36,7 +37,6 @@ pub const MAX_NAME: usize = 63;
 pub const MAX_LIST: usize = 256;
 const MAX_TEXT: usize = 1024;
 const MAX_SESSIONS: usize = 256;
-const MAX_DEPTH: usize = 4;
 
 pub const MODE_LOGGED_IN: u32 = 1;
 pub const MODE_IN_GAME: u32 = 8;
@@ -56,224 +56,7 @@ pub const ZT_E_NOT_IN_LIST: u32 = 0xC112_1401;
 
 // ------------------------------------------------------------------------------------- XML
 
-/// One element of the wire: a name, attributes in order, and flat children.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Elem {
-    pub name: String,
-    pub attrs: Vec<(String, String)>,
-    pub children: Vec<Elem>,
-}
-
-impl Elem {
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_owned(),
-            ..Self::default()
-        }
-    }
-    pub fn attr(mut self, key: &str, value: impl Into<String>) -> Self {
-        self.attrs.push((key.to_owned(), value.into()));
-        self
-    }
-    pub fn child(mut self, child: Elem) -> Self {
-        self.children.push(child);
-        self
-    }
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.attrs
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.as_str())
-    }
-    pub fn encode(&self) -> String {
-        let mut out = String::new();
-        self.write(&mut out);
-        out
-    }
-    fn write(&self, out: &mut String) {
-        out.push('<');
-        out.push_str(&self.name);
-        for (key, value) in &self.attrs {
-            out.push(' ');
-            out.push_str(key);
-            out.push_str("=\"");
-            for c in value.chars() {
-                match c {
-                    '&' => out.push_str("&amp;"),
-                    '<' => out.push_str("&lt;"),
-                    '>' => out.push_str("&gt;"),
-                    '"' => out.push_str("&quot;"),
-                    c if (c as u32) < 0x20 => out.push_str(&format!("&#{};", c as u32)),
-                    c => out.push(c),
-                }
-            }
-            out.push('"');
-        }
-        if self.children.is_empty() {
-            out.push_str("/>");
-        } else {
-            out.push('>');
-            for child in &self.children {
-                child.write(out);
-            }
-            out.push_str("</");
-            out.push_str(&self.name);
-            out.push('>');
-        }
-    }
-    /// Parses one element (no declaration, comments or text between elements).
-    pub fn parse(text: &str) -> Result<Elem, &'static str> {
-        let mut parser = Parser {
-            bytes: text.as_bytes(),
-            at: 0,
-        };
-        parser.space();
-        let elem = parser.element(0)?;
-        parser.space();
-        if parser.at != parser.bytes.len() {
-            return Err("trailing data");
-        }
-        Ok(elem)
-    }
-}
-
-struct Parser<'a> {
-    bytes: &'a [u8],
-    at: usize,
-}
-
-impl Parser<'_> {
-    fn space(&mut self) {
-        while self.bytes.get(self.at).is_some_and(u8::is_ascii_whitespace) {
-            self.at += 1;
-        }
-    }
-    fn name(&mut self) -> Result<String, &'static str> {
-        let start = self.at;
-        while self
-            .bytes
-            .get(self.at)
-            .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
-        {
-            self.at += 1;
-        }
-        if self.at == start || self.at - start > 64 {
-            return Err("bad name");
-        }
-        Ok(String::from_utf8_lossy(&self.bytes[start..self.at]).into_owned())
-    }
-    fn expect(&mut self, byte: u8) -> Result<(), &'static str> {
-        if self.bytes.get(self.at) == Some(&byte) {
-            self.at += 1;
-            Ok(())
-        } else {
-            Err("unexpected byte")
-        }
-    }
-    fn element(&mut self, depth: usize) -> Result<Elem, &'static str> {
-        if depth > MAX_DEPTH {
-            return Err("too deep");
-        }
-        self.expect(b'<')?;
-        let mut elem = Elem::new(&self.name()?);
-        loop {
-            self.space();
-            match self.bytes.get(self.at) {
-                Some(b'/') => {
-                    self.at += 1;
-                    self.expect(b'>')?;
-                    return Ok(elem);
-                }
-                Some(b'>') => {
-                    self.at += 1;
-                    break;
-                }
-                Some(_) => {
-                    if elem.attrs.len() >= 16 {
-                        return Err("too many attributes");
-                    }
-                    let key = self.name()?;
-                    self.space();
-                    self.expect(b'=')?;
-                    self.space();
-                    let value = self.value()?;
-                    elem.attrs.push((key, value));
-                }
-                None => return Err("truncated"),
-            }
-        }
-        loop {
-            self.space();
-            if self.bytes.get(self.at) == Some(&b'<') && self.bytes.get(self.at + 1) == Some(&b'/')
-            {
-                self.at += 2;
-                let close = self.name()?;
-                self.space();
-                self.expect(b'>')?;
-                return if close == elem.name {
-                    Ok(elem)
-                } else {
-                    Err("mismatched close")
-                };
-            }
-            if elem.children.len() >= MAX_LIST {
-                return Err("too many children");
-            }
-            elem.children.push(self.element(depth + 1)?);
-        }
-    }
-    fn value(&mut self) -> Result<String, &'static str> {
-        let quote = *self.bytes.get(self.at).ok_or("truncated")?;
-        if quote != b'"' && quote != b'\'' {
-            return Err("unquoted value");
-        }
-        self.at += 1;
-        let mut out = Vec::new();
-        loop {
-            let byte = *self.bytes.get(self.at).ok_or("truncated")?;
-            self.at += 1;
-            if byte == quote {
-                break;
-            }
-            if byte == b'<' {
-                return Err("bad value");
-            }
-            if byte != b'&' {
-                out.push(byte);
-                continue;
-            }
-            let end = self.bytes[self.at..]
-                .iter()
-                .position(|&b| b == b';')
-                .ok_or("bad entity")?;
-            let entity = &self.bytes[self.at..self.at + end];
-            self.at += end + 1;
-            let ch = match entity {
-                b"amp" => '&',
-                b"lt" => '<',
-                b"gt" => '>',
-                b"quot" => '"',
-                b"apos" => '\'',
-                [b'#', b'x', rest @ ..] => char::from_u32(
-                    u32::from_str_radix(std::str::from_utf8(rest).map_err(|_| "bad entity")?, 16)
-                        .map_err(|_| "bad entity")?,
-                )
-                .ok_or("bad entity")?,
-                [b'#', rest @ ..] => char::from_u32(
-                    std::str::from_utf8(rest)
-                        .map_err(|_| "bad entity")?
-                        .parse::<u32>()
-                        .map_err(|_| "bad entity")?,
-                )
-                .ok_or("bad entity")?,
-                _ => return Err("bad entity"),
-            };
-            let mut buffer = [0u8; 4];
-            out.extend_from_slice(ch.encode_utf8(&mut buffer).as_bytes());
-        }
-        String::from_utf8(out).map_err(|_| "not UTF-8")
-    }
-}
+pub use ac2_gun_friends::element::Elem;
 
 /// One frame: a big-endian `u32` payload length, then the payload.
 pub fn frame(elem: &Elem) -> Vec<u8> {
@@ -292,7 +75,7 @@ pub fn hr_text(hr: u32) -> String {
 // ------------------------------------------------------------------------------- the state
 
 /// How a ticket becomes an account.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GunAuth {
     /// The ticket is the account name. Loopback binds only.
     Developer,
@@ -334,13 +117,20 @@ struct State {
     sessions: BTreeMap<u64, Session>,
     /// Characters in the world: lower-case name to its account.
     characters: BTreeMap<String, String>,
+    /// Availability set by authenticated game sessions, keyed by character.
+    world_status: BTreeMap<String, u32>,
     /// The mode last announced for each lower-case base name, to send changes only.
     announced: BTreeMap<String, (u32, String)>,
+    /// A world peer only needs to compare its roster when a list or presence changed.
+    friend_revision: u64,
     next_session: u64,
 }
 
 pub struct Hub {
     state: Mutex<State>,
+    // Latest world snapshot, independent of the persistence/session lock. A
+    // transiently busy service must not lose the final logout notification.
+    pending_online: Mutex<Option<BTreeMap<String, String>>>,
     file: PathBuf,
     auth: GunAuth,
 }
@@ -360,21 +150,23 @@ fn lock(hub: &Hub) -> std::sync::MutexGuard<'_, State> {
 impl State {
     /// Mode and location of a base name now: 0 when nobody is it.
     fn presence(&self, who: &str) -> (u32, String) {
-        let owner = self.characters.get(who);
+        if let Some(owner) = self.characters.get(who) {
+            return self.character_presence(who, owner);
+        }
         let mut mode = 0;
         let mut location = String::new();
         for session in self.sessions.values() {
             let Some(account) = &session.account else {
                 continue;
             };
-            if account == who || owner == Some(account) {
+            if account == who {
                 mode |= session.flags | MODE_LOGGED_IN;
                 if location.is_empty() {
                     location = session.location.clone();
                 }
             }
         }
-        if owner.is_some() {
+        if self.characters.values().any(|account| account == who) {
             mode |= MODE_LOGGED_IN | MODE_IN_GAME;
         }
         (mode, location)
@@ -396,10 +188,18 @@ impl State {
     fn announce(&mut self, names: &BTreeSet<String>) {
         for who in names {
             let (mode, location) = self.presence(who);
-            if self.announced.get(who) == Some(&(mode, location.clone())) {
+            let previous = self.announced.get(who);
+            if previous.is_some_and(|(m, l)| *m == mode && l == &location)
+                || previous.is_none() && mode == 0
+            {
                 continue;
             }
-            self.announced.insert(who.clone(), (mode, location.clone()));
+            self.friend_revision = self.friend_revision.wrapping_add(1);
+            if mode == 0 {
+                self.announced.remove(who);
+            } else {
+                self.announced.insert(who.clone(), (mode, location.clone()));
+            }
             let mut sends = Vec::new();
             for (&id, session) in &self.sessions {
                 let Some(user) = session.account.as_ref().and_then(|a| self.users.get(a)) else {
@@ -422,28 +222,13 @@ impl State {
     }
 
     fn friends_elems(&self, account: &str) -> Vec<Elem> {
-        self.users
-            .get(account)
-            .map(|user| {
-                user.friends
-                    .iter()
-                    .map(|name| {
-                        let (mode, location) = self.presence(&base(name));
-                        Elem::new("Friend")
-                            .attr("Name", name.clone())
-                            .attr("Mode", mode.to_string())
-                            .attr("Location", location)
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    fn save(&self, file: &PathBuf) -> io::Result<()> {
-        let text = serde_json::to_string_pretty(&self.users)?;
-        let temporary = file.with_extension("json.tmp");
-        std::fs::write(&temporary, text)?;
-        std::fs::rename(&temporary, file)
+        let mut statuses: Vec<_> = self.users.get(account).into_iter().flat_map(|user| &user.friends).map(|name| {
+            let (mode, location) = self.presence(&base(name));
+            ac2_gun_friends::Friend { name: name.clone(), mode, location }
+        }).collect();
+        friends::fit_optional_locations(&mut statuses);
+        statuses.into_iter().map(|f| Elem::new("Friend").attr("Name", f.name)
+            .attr("Mode", f.mode.to_string()).attr("Location", f.location)).collect()
     }
 }
 
@@ -454,19 +239,14 @@ pub fn publish_online(online: impl IntoIterator<Item = (String, String)>) {
     let Ok(active) = registry.try_lock() else { return };
     let Some(hub) = active.upgrade() else { return };
     drop(active);
-    let now: BTreeMap<String, String> = online
-        .into_iter()
-        .map(|(name, account)| (name.to_ascii_lowercase(), account))
-        .collect();
-    // Called every 500 ms: retry next time if chat/persistence is busy.
+    hub.update_online(online);
+}
+
+fn flush_online(hub: &Hub) {
+    // No disk or socket IO on the game thread; the service loop retries while
+    // its request handler owns state. Newer snapshots replace older ones.
     let Ok(mut state) = hub.state.try_lock() else { return };
-    if state.characters == now {
-        return;
-    }
-    let mut changed: BTreeSet<String> = state.characters.keys().cloned().collect();
-    changed.extend(now.keys().cloned());
-    state.characters = now;
-    state.announce(&changed);
+    hub.apply_pending(&mut state);
 }
 
 // --------------------------------------------------------------------------- the requests
@@ -627,41 +407,12 @@ fn request(hub: &Hub, state: &mut State, session: u64, account: &str, seq: &str,
             state.deliver(session, &elem);
         }
         "FriendAdd" | "FriendDelete" | "IgnoredAdd" | "IgnoredDelete" => {
-            let hr = match check_name(message.get("Name")) {
-                Err(hr) => hr,
-                Ok(who) => {
-                    let who = who.to_owned();
-                    let user = state.users.entry(account.to_owned()).or_default();
-                    let previous = user.clone();
-                    let list = if name.starts_with("Friend") {
-                        &mut user.friends
-                    } else {
-                        &mut user.ignored
-                    };
-                    let at = list.iter().position(|n| n.eq_ignore_ascii_case(&who));
-                    let hr = if name.ends_with("Add") {
-                        if at.is_some() {
-                            ZT_E_ALREADY_IN_LIST
-                        } else if list.len() >= MAX_LIST {
-                            ZT_E_TOO_MANY
-                        } else {
-                            list.push(who.clone());
-                            S_OK
-                        }
-                    } else if let Some(at) = at {
-                        list.remove(at);
-                        S_OK
-                    } else {
-                        ZT_E_NOT_IN_LIST
-                    };
-                    if hr == S_OK && state.save(&hub.file).is_err() {
-                        state.users.insert(account.to_owned(), previous);
-                        // E_FAIL: do not acknowledge a list edit that was not saved.
-                        0x80004005
-                    } else { hr }
-                }
-            };
+            let friends = name.starts_with("Friend");
+            let hr = state.edit_list(&hub.file, account, message.get("Name"), friends, name.ends_with("Add"));
             state.deliver(session, &reply(&res, seq, hr));
+            if hr == S_OK && friends {
+                state.refresh_adapter_roster(account, Some(session));
+            }
             if hr == S_OK && name == "FriendAdd" {
                 // The new friend's current presence, as a status event.
                 if let Some(who) = message.get("Name") {
@@ -702,7 +453,9 @@ fn request(hub: &Hub, state: &mut State, session: u64, account: &str, seq: &str,
         "SetLoc" => {
             let flags: u32 = message.get("Flags").and_then(|v| v.parse().ok()).unwrap_or(0);
             let location = message.get("Location").unwrap_or("");
-            let hr = if location.chars().count() > MAX_NAME {
+            let hr = if location.chars().any(char::is_control) {
+                ZT_E_INVALID_ARG
+            } else if location.chars().count() > MAX_NAME {
                 ZT_E_INVALID_NAME_LENGTH
             } else {
                 if let Some(entry) = state.sessions.get_mut(&session) {
@@ -934,41 +687,37 @@ impl Drop for GunHandle {
 
 /// Starts the service on its own threads. Developer mode requires a loopback bind.
 pub fn start(config: GunConfig) -> io::Result<GunHandle> {
+    let hub = Hub::open(&config.data, config.auth.clone())?;
+    let service = start_with_hub(config, Arc::clone(&hub))?;
+    // Compatibility with standalone adapter callers using publish_online().
+    let registry = HUB.get_or_init(|| Mutex::new(Weak::new()));
+    let mut active = registry.lock().unwrap_or_else(|poison| poison.into_inner());
+    if active.upgrade().is_none() {
+        *active = Arc::downgrade(&hub);
+    }
+    Ok(service)
+}
+
+/// Starts the optional adapter over the same account rosters used by game sessions.
+pub fn start_with_hub(config: GunConfig, hub: Arc<Hub>) -> io::Result<GunHandle> {
+    if hub.file != config.data.join("gun-users.json") || hub.auth != config.auth {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "GUN hub and adapter configuration differ"));
+    }
     if matches!(config.auth, GunAuth::Developer) && !config.bind.ip().is_loopback() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "GUN developer authentication requires a loopback bind",
         ));
     }
-    let file = config.data.join("gun-users.json");
-    let users = match std::fs::read_to_string(&file) {
-        Ok(text) => serde_json::from_str(&text).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => BTreeMap::new(),
-        Err(e) => return Err(e),
-    };
     let listener = TcpListener::bind(config.bind)?;
     listener.set_nonblocking(true)?;
     let addr = listener.local_addr()?;
-    let hub = Arc::new(Hub {
-        state: Mutex::new(State {
-            users,
-            ..State::default()
-        }),
-        file,
-        auth: config.auth,
-    });
-    // Preserve the active service, but allow a stopped one to be replaced.
-    let registry = HUB.get_or_init(|| Mutex::new(Weak::new()));
-    let mut active = registry.lock().unwrap_or_else(|poison| poison.into_inner());
-    if active.upgrade().is_none() {
-        *active = Arc::downgrade(&hub);
-    }
-    drop(active);
     let stop = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&stop);
     let join = std::thread::spawn(move || {
         let mut workers = Vec::new();
         while !flag.load(Ordering::Relaxed) {
+            flush_online(&hub);
             match listener.accept() {
                 Ok((stream, peer)) => {
                     workers.retain(|w: &std::thread::JoinHandle<()>| !w.is_finished());
@@ -1149,11 +898,19 @@ mod tests {
         );
 
         // A character in the world shows its owner's friends a logged-in, in-game mode.
-        publish_online([("Zed".to_owned(), "zed_account".to_owned())]);
         assert_eq!(alice.ask(Elem::new("FriendAdd").attr("Name", "Zed@AC2e")).get("hr"), Some("0x00000000"));
-        assert_eq!(alice.next().get("Mode"), Some("9"));
-        publish_online(Vec::new());
         assert_eq!(alice.next().get("Mode"), Some("0"));
+        let hub=HUB.get().unwrap().lock().unwrap().upgrade().unwrap();
+        let busy=lock(&hub);
+        publish_online([("Zed".to_owned(), "zed_account".to_owned())]);
+        assert!(busy.characters.is_empty());
+        drop(busy);
+        assert_eq!(alice.next().get("Mode"), Some("9"));
+        let busy=lock(&hub);
+        publish_online(Vec::new());
+        drop(busy);
+        assert_eq!(alice.next().get("Mode"), Some("0"));
+        drop(hub);
 
         // Bob leaves: Alice is told he is gone.
         drop(bob);

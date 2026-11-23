@@ -1,0 +1,289 @@
+{
+  "existing_outdoor_sha256": "cf0f269cbf45c620ba5f3d7a9a305bf4660d3cbe14c23e4f0b6d7dfd7b2ad25e",
+  "groups": [
+    {
+      "capacity": 1,
+      "id": 9313684822448807936,
+      "members": [
+        9313684822448807936
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448808448,
+      "members": [
+        9313684822448808448
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448804864,
+      "members": [
+        9313684822448804864
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448803072,
+      "members": [
+        9313684822448803072
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448807168,
+      "members": [
+        9313684822448807168
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448802304,
+      "members": [
+        9313684822448802304
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448801024,
+      "members": [
+        9313684822448801024
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448799744,
+      "members": [
+        9313684822448799744
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448804608,
+      "members": [
+        9313684822448804608
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448801280,
+      "members": [
+        9313684822448801280
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448803328,
+      "members": [
+        9313684822448803328
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448803584,
+      "members": [
+        9313684822448803584
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448808704,
+      "members": [
+        9313684822448808704
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448804096,
+      "members": [
+        9313684822448804096
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448807424,
+      "members": [
+        9313684822448807424
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448809472,
+      "members": [
+        9313684822448809472
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448816896,
+      "members": [
+        9313684822448816896
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448798720,
+      "members": [
+        9313684822448798720
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448801536,
+      "members": [
+        9313684822448801536
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448806912,
+      "members": [
+        9313684822448806912
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448798976,
+      "members": [
+        9313684822448798976
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448810496,
+      "members": [
+        9313684822448810496
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448802560,
+      "members": [
+        9313684822448802560
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448809984,
+      "members": [
+        9313684822448809984
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448803840,
+      "members": [
+        9313684822448803840
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448799232,
+      "members": [
+        9313684822448799232
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    },
+    {
+      "capacity": 1,
+      "id": 9313684822448801792,
+      "members": [
+        9313684822448801792
+      ],
+      "regeneration_ms": 180000,
+      "region": "Arramora"
+    }
+  ],
+  "included": 27,
+  "inferred": true,
+  "manifest_sha256": "1226c524a900227d7359e154c96a2c632ee7a723b7eb85b39bfeb1c75fc31f54",
+  "native_ground_verified": true,
+  "newly_populated_outdoor_blocks": 2,
+  "outdoor_blocks_after": 5020,
+  "outdoor_blocks_before": 5018,
+  "regions": {
+    "Arramora": [
+      15249,
+      15251,
+      15513,
+      15515,
+      15759,
+      15760,
+      16013,
+      16015,
+      16017,
+      16022,
+      16023,
+      16276,
+      16541,
+      16787,
+      17050,
+      17295,
+      17297,
+      17557,
+      17558,
+      17560,
+      17563,
+      17807,
+      17808,
+      17818,
+      18323,
+      18328,
+      18583
+    ]
+  },
+  "rejected": [],
+  "source_sha256": "ecd551d97836a98cb5fb0afdd03006e8c8a23fa39af8bfe80aa2d85ce01457f8",
+  "version": 1
+}

@@ -71,7 +71,10 @@ bool FAC2SwimmingClipsTest::RunTest(const FString&)
             }
             Input.Mode=AC2Motion::Riding;
             const auto Riding=Graph->ActiveClips(Input);
-            TestTrue(TEXT("Old incorrect mode selects a distinct mounted pose"),Riding.Contains(0x05000ebe)||Riding.Contains(0x05000ebf));
+            // The same two mounted keyframe payloads have different DIDs in
+            // Icefire's portal.dat (byte-identical after their record IDs).
+            TestTrue(TEXT("Old incorrect mode selects a distinct mounted pose"),
+                Riding.Contains(0x05000ebe)||Riding.Contains(0x05000ebf)||Riding.Contains(0x05000a47)||Riding.Contains(0x05000a48));
             Input.Mode=AC2Locomotion::AnimationMode(Input.Element,Requested);
         }
         TestEqual(TEXT("Leaving water restores requested stance"),AC2Locomotion::AnimationMode(AC2Motion::Ground,Requested),Requested);
@@ -155,7 +158,7 @@ bool FAC2SwimmingRenderTest::RunTest(const FString&)
                     J->SetNumberField(TEXT("mode"),AC2Motion::Melee);Mode->Network->Handle(J);
                 }
                 Player->GetCharacterMovement()->Velocity=Velocity;Player->Tick(.05f);
-                State->Time+=.05f;Remote.Model->Animate(State->Time,Velocity.Size2D(),nullptr,&Velocity);
+                State->Time+=.05f;Remote.Model->Animate(State->Time,Velocity.Size2D(),&Velocity);
             }
             const auto LocalPose=SwimVertices(Player,Player->Body),RemotePose=SwimVertices(State->Remote,Remote.Body.Get());
             TestTrue(TEXT("Local player and observer render the same multipart pose"),SwimDifference(LocalPose,RemotePose)<.1);

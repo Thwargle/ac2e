@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dereth content atlas · AC2E</title>
+<link rel="stylesheet" href="atlas.css">
+<script defer src="terrain-tiles.js"></script>
+<script defer src="atlas-data.js"></script>
+<script defer src="quest-review.js"></script>
+<script defer src="rooms-data.js"></script>
+<script defer src="interiors.js"></script>
+<script defer src="world-map.js"></script>
+<script defer src="atlas.js"></script>
+</head>
+<body data-pane="geography">
+<header><div><h1>Dereth content atlas</h1><p id="summary"></p></div><a href="http://ac2hero.e5i5o.com/index.html">AC2Hero guide ↗</a></header>
+<nav id="panes" aria-label="Atlas view">
+  <button data-show="catalog" aria-controls="catalog" aria-pressed="false">Catalog</button>
+  <button data-show="geography" aria-controls="geography" aria-pressed="true">World map</button>
+  <button data-show="detail" aria-controls="detail" aria-pressed="false">Record details</button>
+</nav>
+<main>
+<section id="catalog"><h2>Catalog</h2>
+<label for="search">Find a record</label><input type="search" id="search" placeholder="Name, region or native ID" autocomplete="off">
+<div class="filters"><label>Kind<select id="kind"><option value="">All kinds</option></select></label>
+<label>Show<select id="coverage"><option value="">All evidence</option><option value="index">Guide quest index</option><option value="sources">Guide entries</option><option value="spawns">Prepared placements</option><option value="places">Guide coordinates</option><option value="quest">Server quest policies</option><option value="questPoints">Quests with a sourced point award</option><option value="questSteps">Partial quests and missing route steps</option><option value="questGap">Guide quests without a linked policy</option><option value="unplaced">Without a prepared placement</option><option value="unplacedActor">Guide creatures and NPCs without a placement</option><option value="offers">Merchants with native stock</option></select></label></div>
+<p id="count" aria-live="polite"></p><div id="results"></div>
+<nav aria-label="Result pages"><button id="prev">Previous</button><span id="page"></span><button id="next">Next</button></nav></section>
+<section id="geography"><div class="heading"><h2>World map</h2><div class="map-tools"><button id="zoomIn" aria-label="Zoom in">+</button> <button id="zoomOut" aria-label="Zoom out">−</button> <button id="mapSettings" type="button" aria-label="Map settings" title="Map settings" aria-haspopup="dialog" aria-controls="markerSettings">⚙︎</button> <button id="reset">Fit world</button></div></div>
+<dialog id="markerSettings" aria-labelledby="markerSettingsTitle">
+  <form method="dialog">
+    <h2 id="markerSettingsTitle">Map settings</h2>
+    <fieldset>
+      <legend>Visible marker kinds</legend>
+      <label class="all-kinds"><input id="allMarkerKinds" type="checkbox" checked autofocus>All kinds</label>
+      <div id="markerKinds"></div>
+    </fieldset>
+    <button class="dialog-done">Done</button>
+  </form>
+</dialog>
+<div class="map-frame"><canvas id="map" tabindex="0" aria-label="World terrain and placements. Use arrow keys to pan, plus and minus to zoom, or select a location from the catalog."></canvas></div>
+<div class="legend" aria-label="Map layers">
+  <label><input type="checkbox" id="spawnLayer" checked><i class="server"></i>Prepared spawns</label>
+  <label><input type="checkbox" id="guideLayer" checked><i class="guide"></i>Guide coordinates</label>
+  <span><i class="selected"></i>Selected</span><span><i class="related"></i>Related</span>
+</div>
+<p class="note">Select a point to inspect it. Drag to pan, scroll or pinch to zoom, and right-click to copy coordinates.</p></section>
+<section id="detail" aria-label="Selected record" tabindex="-1"><h2>Record details</h2><p>Select a record or a point on the map.</p></section>
+</main>
+<div id="coordinateMenu" popover aria-label="Map coordinates">
+  <input id="coordinateValue" aria-label="Coordinates" readonly>
+  <button id="copyCoordinates" type="button">Copy coordinates to clipboard</button>
+  <small id="copyStatus" role="status"></small>
+</div>
+</body></html>

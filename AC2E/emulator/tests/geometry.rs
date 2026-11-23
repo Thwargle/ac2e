@@ -1,6 +1,31 @@
 use pyrealium::{falling::Fall,geometry::Geometry,movement::Placement};
 
 #[test]
+fn living_bodies_reserve_space_across_ticks_and_block_edges() {
+    use pyrealium::geometry::Occupancy;
+    let p=Placement{cell:0x76b80001,coordinates:[159.8,10.,100.],heading:0}.translated([0.;3]).unwrap();
+    let q=p.translated([1.4,0.,0.]).unwrap();
+    assert_ne!(p.cell>>16,q.cell>>16);
+    let mut occupied=Occupancy::default();occupied.insert(1,p,0.5,2.);occupied.insert(2,q,0.5,2.);
+    let step=p.translated([0.5,0.,0.]).unwrap();
+    assert!(!occupied.permits(1,p,step,0.5,2.),"Block borders do not bypass body clearance");
+    let next=q.translated([1.,0.,0.]).unwrap();
+    assert!(occupied.permits(2,q,next,0.5,2.));occupied.reserve(2,q,next,0.5,2.);
+    assert!(occupied.permits(1,p,step,0.5,2.),"Reservation removes the old position");
+    let overhead=next.translated([0.,0.,3.]).unwrap();
+    assert!(occupied.permits(3,overhead,overhead,0.5,2.),"Separate floors do not collide");
+    let tunnel=p.translated([4.,0.,0.]).unwrap();
+    assert!(!occupied.permits(1,p,tunnel,0.5,2.),"Whole segment is checked");
+    occupied.insert(4,p.translated([0.2,0.,0.]).unwrap(),0.5,2.);
+    assert!(occupied.permits(1,p,p.translated([-0.2,0.,0.]).unwrap(),0.5,2.),"Existing overlap can separate");
+    assert!(!occupied.permits(1,p,p.translated([0.2,0.,0.]).unwrap(),0.5,2.));
+    let indoor=Placement{cell:0x02990109,coordinates:[0.,0.,0.],heading:0};
+    occupied.insert(5,indoor,0.5,2.);
+    let elsewhere=Placement{cell:0x03990109,..indoor};
+    assert!(occupied.permits(6,elsewhere,elsewhere,0.5,2.),"Different dungeon instances stay separate");
+}
+
+#[test]
 fn repaired_lake_bank_uses_adjacent_native_water_and_rejects_submerged_spawns() {
     let Ok(path)=std::env::var("AC2_TEST_GAME_DATA") else{return};
     let world=Geometry::open(std::path::Path::new(&path)).unwrap();
@@ -28,6 +53,8 @@ fn native_geometry_verifies_dungeon_floor_and_blocks_walls() {
     let idol=Placement{coordinates:[58.,243.,-45.010002],..p};
     let mut next=idol;next.coordinates[1]-=0.2;
     assert!(world.walk_step(idol,next,0.35).is_some(),"Authored tutorial pursuit has a verified walkable step");
+    assert!(world.body_fits(idol,0.35,1.2));
+    assert!(!world.body_fits(idol,12.,1.2),"A center floor hit cannot support a body outside the room");
     let bad=Placement{coordinates:[63.060577,239.199,-44.606205],..p};
     assert!(world.ground(bad,2.,5.).is_none(),"The old authored spawn is outside the room floor");
 }

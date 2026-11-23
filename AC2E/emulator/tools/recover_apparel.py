@@ -92,6 +92,13 @@ def recover(directory):
     return rows
 
 
+def write_client_rows(rows):
+    (ROOT/'Unreal/Source/AC2Client/AC2RecoveredApparel.inl').write_text(
+        '// Generated wearable metadata: definition, race, slot, armor (-1 = unknown), qualities and entity fingerprints.\n' +
+        ''.join(f'{{0x{r["definition"]:08x}, {r["race"]}, {r["slot"]}, {r["armor"] if r["armor"] is not None else -1}, '
+                f'0x{r["hash"]:016x}ull, 0x{r["entity_hash"]:016x}ull}},\n' for r in rows))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dat', type=Path, default=ROOT/"Asheron's Call 2 - Legions")
@@ -106,8 +113,6 @@ if __name__ == '__main__':
         'const RECOVERED_PROFILES:&[Profile]=&[\n' + ''.join('    Profile{'+','.join(f'{k}:{value(k,r[k])}' for k in fields)+'},\n' for r in rows) + '];\n'
         '// Only ordinary loot/manufactured outputs; dye input eligibility is not sale permission.\n'
         'const RECOVERED_TRADABLE:&[u32]=&['+','.join(f'0x{r["definition"]:08x}' for r in rows if r['tradable'])+'];\n')
-    (ROOT/'Unreal/Source/AC2Client/AC2RecoveredApparel.inl').write_text(
-        '// Generated native wearable metadata: definition, race, slot, known armor (-1 = unknown).\n' +
-        ''.join(f'{{0x{r["definition"]:08x}, {r["race"]}, {r["slot"]}, {r["armor"] if r["armor"] is not None else -1}}},\n' for r in rows))
+    write_client_rows(rows)
     (ROOT/'AC2E/emulator/content/recovered-apparel-evidence.json').write_text(json.dumps(rows, indent=2)+'\n')
     print(f'Recovered {len(rows)} wearable profiles; {sum(r["armor"] is not None for r in rows)} have native armor ratings.')

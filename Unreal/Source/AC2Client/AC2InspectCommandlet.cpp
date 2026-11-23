@@ -1,5 +1,6 @@
 #include "AC2InspectCommandlet.h"
 #include "AC2Assets.h"
+#include "AC2AssetReader.h"
 #include "AC2CreatureCatalog.h"
 #include "AC2Particle.h"
 #include "AC2Scenery.h"
@@ -46,6 +47,9 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         return 1;
     }
     const bool FullTerrain = FParse::Param(*Params, TEXT("FullTerrain"));
+    const bool FullRecords = FParse::Param(*Params, TEXT("FullRecords"));
+    bool RecordChainsPassed = true;
+    bool SurfacePixelsPassed = true;
     TSharedRef<FJsonObject> Report = MakeShared<FJsonObject>();
     Report->SetStringField(TEXT("dat_directory"), Directory);
     Report->SetStringField(TEXT("generated_utc"), FDateTime::UtcNow().ToIso8601());
@@ -90,6 +94,33 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         Item->SetNumberField(TEXT("engine_pack_version"), H.EngineVersion);
         Item->SetNumberField(TEXT("game_pack_version"), H.GameVersion);
         Item->SetNumberField(TEXT("records"), Entries.Num());
+        if (FullRecords)
+        {
+            int32 Readable = 0;
+            TArray<TSharedPtr<FJsonValue>> Rejected;
+            for (const auto &Entry : Entries)
+                if (Archive.Read(Entry.Id, Bytes, Error)) ++Readable;
+                else Rejected.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%08X: %s"), Entry.Id, *Error)));
+            Item->SetNumberField(TEXT("record_chains_validated"), Readable);
+            Item->SetArrayField(TEXT("unreadable_records"), Rejected);
+            RecordChainsPassed &= Rejected.IsEmpty();
+        }
+        // Cell archives use location IDs, not asset-type prefixes. A cell in
+        // landblock 0x41xx is not a 0x41 surface record.
+        if (H.DataSet != 2 && FParse::Param(*Params, TEXT("SurfacePixels")))
+        {
+            int32 Decoded = 0;
+            TArray<TSharedPtr<FJsonValue>> Rejected;
+            for (const auto &Entry : Entries) if ((Entry.Id >> 24) == 0x41)
+            {
+                int32 Width=0, Height=0; TArray<FColor> Pixels;
+                if (Archive.Read(Entry.Id, Bytes, Error) && DecodeAC2Surface(Bytes, Entry.Id, Width, Height, Pixels)) ++Decoded;
+                else Rejected.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("%08X"), Entry.Id)));
+            }
+            Item->SetNumberField(TEXT("surface_pixels_decoded"), Decoded);
+            Item->SetArrayField(TEXT("surface_pixels_rejected"), Rejected);
+            SurfacePixelsPassed &= Rejected.IsEmpty();
+        }
         auto Types = MakeShared<FJsonObject>();
         TMap<uint32, int32> Counts;
         for (const auto &Entry : Entries)
@@ -173,8 +204,13 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         Report->SetNumberField(TEXT("particle_rejected"), Failed);
         FAC2DatArchive Local;
         TArray<TSharedPtr<FJsonValue>> Layouts;
-        if (Local.Open(FPaths::Combine(Directory, TEXT("local_English.dat")), 3, Error) &&
-            Local.Enumerate(Entries, Error))
+        if (!Local.Open(FPaths::Combine(Directory, TEXT("local_English.dat")), 3, Error) ||
+            !Local.Enumerate(Entries, Error))
+        {
+            ++Failed;
+            Report->SetStringField(TEXT("ui_layout_archive_error"), Error);
+        }
+        else
             for (const auto &E : Entries)
                 if ((E.Id >> 24) == 0x22)
                 {
@@ -242,7 +278,9 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         FAC2AssetLibrary Character;
         if (!Character.Open(Directory, Error))
             return 1;
-        for (uint32 Id : {0x31000037u, 0x31000038u, 0x31000843u})
+        // 31000039 is the body material (type 81000016, modifier 30000038)
+        // in both profiles. 31000843 is repurposed by Icefire.
+        for (uint32 Id : {0x31000037u, 0x31000038u, 0x31000039u})
         {
             auto *M = Character.Material(Id);
             const bool Opaque = M && M->GetBlendMode() == BLEND_Opaque;
@@ -298,6 +336,16 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         Report->SetArrayField(TEXT("creature_locomotion"), Creatures);
         Report->SetBoolField(TEXT("locomotion_passed"), Passed);
     }
+    bool RenderRecordsPassed = true;
+    if (FParse::Param(*Params, TEXT("RenderRecords")))
+    {
+        FAC2AssetLibrary Assets;
+        if (!Assets.Open(Directory, Error)) return 1;
+        const auto Audit = Assets.AuditRenderRecords(Error);
+        if (!Audit) return 1;
+        RenderRecordsPassed = Audit->GetBoolField(TEXT("decoders_passed"));
+        Report->SetObjectField(TEXT("render_records"), Audit.ToSharedRef());
+    }
     FString Json;
     FJsonSerializer::Serialize(Report, TJsonWriterFactory<>::Create(&Json));
     IFileManager::Get().MakeDirectory(*FPaths::GetPath(Output), true);
@@ -313,6 +361,7 @@ int32 UAC2InspectCommandlet::Main(const FString &Params)
         return 1;
     if (FParse::Param(*Params, TEXT("Locomotion")) && !Report->GetBoolField(TEXT("locomotion_passed")))
         return 1;
+    if (!RenderRecordsPassed || !RecordChainsPassed || !SurfacePixelsPassed) return 1;
     UE_LOG(LogTemp, Display, TEXT("AC2 inspection PASS: %d/%d terrain records validated; %s"), Validated,
            TerrainEntries.Num(), *Output);
     return 0;

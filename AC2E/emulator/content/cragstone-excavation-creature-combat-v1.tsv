@@ -1,0 +1,6 @@
+pyrealium-creature-combat-v3
+# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor
+470015bb	420	67	0	9	41	14	0.5	244	171	30.0	60.0	0	420
+470015bc	350	56	0	8	31	12	0.5	222	155	30.0	60.0	0	350
+470015d3	410	42	0	21	35	7	0.4	103	72	30.0	60.0	3	410
+4700160e	1100	83	0	32	128	14	0.4	244	171	10.0	0.0	3	1100

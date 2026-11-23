@@ -53,6 +53,15 @@ bool FAC2AvatarSequenceTest::RunTest(const FString&)
             Advance(Duration*.5f+.1f);
             TestEqual(Label+TEXT(" completion releases transition"),Assets.BehaviorDuration(AC2Motion::AvatarSelect),0.f);
             AddInfo(FString::Printf(TEXT("Avatar %s selection duration %.3fs"),*Label,Duration));
+            Assets.SetAnimationState(AC2Motion::Ground,AC2Motion::Peace);
+            for (const uint32 Action : {AC2Motion::Pickup, AC2Motion::Putdown})
+            {
+                if (!TestTrue(Label+TEXT(" inventory action starts"), Assets.PlayBehavior(Action,AC2Motion::Peace))) continue;
+                const float Seconds = Assets.BehaviorDuration(Action);
+                if (!TestTrue(Label+TEXT(" inventory action has a finite duration"), Seconds>0 && Seconds<20)) continue;
+                Advance(Seconds+.1f);
+                TestEqual(Label+TEXT(" inventory action completes"), Assets.BehaviorDuration(Action),0.f);
+            }
         }
         Actor->Destroy();ControlActor->Destroy();
     }

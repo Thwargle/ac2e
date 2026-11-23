@@ -14997,7 +14997,7 @@
   ],
   "included": 2553,
   "inferred": true,
-  "manifest_sha256": "9590696fe36a6f8d69d828fe87baebacfd7ca6a102f11c5c06d5b9a631ea5b2e",
+  "manifest_sha256": "df475deb7319391029b53b20530207d721cfb7b211579b7398c89fc2af9dcab7",
   "native_ground_verified": true,
   "newly_populated_outdoor_blocks": 1167,
   "outdoor_blocks_after": 5001,
@@ -25078,6 +25078,173 @@
       "slot": 1
     }
   ],
-  "source_sha256": "c54c1ad1a45eb3e03b422b1ff04a9fa85b6b33b417e1b0004fcfe55346ceed8f",
+  "reviewed_groups": [
+    {
+      "existing_outdoor_sha256": "5af1a0b2adb256e120fa4d16bb2429aee8d8f6b4bec15ff345d929500a9cb723",
+      "fixed_actors": [
+        "8140da0047003f5b"
+      ],
+      "id": 9313656235157705216,
+      "members": [
+        "8140c10000ad5200",
+        "8140c10000ad5201"
+      ],
+      "reason": "Regrounded the inferred Knorr Wilds group against recovered guide placements with the regional_population generator and 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "5af1a0b2adb256e120fa4d16bb2429aee8d8f6b4bec15ff345d929500a9cb723",
+      "fixed_actors": [
+        "8140dc0000800000",
+        "8140dc0000800001",
+        "8140dc0000800002",
+        "8140dc0000800003"
+      ],
+      "id": 9313656235157837568,
+      "members": [
+        "8140c10000af5700",
+        "8140c10000af5701"
+      ],
+      "reason": "Regrounded the inferred Knorr Wilds group against recovered guide placements with the regional_population generator and 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "5af1a0b2adb256e120fa4d16bb2429aee8d8f6b4bec15ff345d929500a9cb723",
+      "fixed_actors": [
+        "8140dc0000800002"
+      ],
+      "id": 9313656235157903104,
+      "members": [
+        "8140c10000b05700",
+        "8140c10000b05701"
+      ],
+      "reason": "Regrounded the inferred Knorr Wilds group against recovered guide placements with the regional_population generator and 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "5af1a0b2adb256e120fa4d16bb2429aee8d8f6b4bec15ff345d929500a9cb723",
+      "fixed_actors": [
+        "8140dc0000800200",
+        "8140dc0000800201",
+        "8140dc0000800202"
+      ],
+      "id": 9313656235157968128,
+      "members": [
+        "8140c10000b15500",
+        "8140c10000b15501"
+      ],
+      "reason": "Regrounded the inferred Knorr Wilds group against recovered guide placements with the regional_population generator and 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000600",
+        "8140dd0000000601",
+        "8140dd0000000602"
+      ],
+      "id": 9313656235158360576,
+      "members": [
+        "8140c10000b75200",
+        "8140c10000b75201"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000100",
+        "8140dd0000000101",
+        "8140dd0000000102"
+      ],
+      "id": 9313656235159345408,
+      "members": [
+        "8140c10000c65900",
+        "8140c10000c65901"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000b00"
+      ],
+      "id": 9313656235158423808,
+      "members": [
+        "8140c10000b84900"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000200"
+      ],
+      "id": 9313656235157703168,
+      "members": [
+        "8140c10000ad4a00",
+        "8140c10000ad4a01"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000c00",
+        "8140dd0000000c01"
+      ],
+      "id": 9313656235158028800,
+      "members": [
+        "8140c10000b24200"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000300"
+      ],
+      "id": 9313656235158292224,
+      "members": [
+        "8140c10000b64700",
+        "8140c10000b64701"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "01a77863c57d16ac45fb3c8fe223394603d242abb8ca940ec0566d568f55003e",
+      "fixed_actors": [
+        "8140dd0000000a00",
+        "8140dd0000000a01"
+      ],
+      "id": 9313656235156786432,
+      "members": [
+        "8140c100009f4d00",
+        "8140c100009f4d01"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "ac609ffdab649477b6135dbb342cb6f310cd117aec57836739496a53d3295995",
+      "fixed_actors": [
+        "8140dd0000000903"
+      ],
+      "id": 9313656235159730176,
+      "members": [
+        "8140c10000cc3800",
+        "8140c10000cc3801"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "c35d01870f1954f3784eaa173e6ba5cd1e9cba28577b066836e5db8a26d2fa36",
+      "fixed_actors": [
+        "8140da0047002312"
+      ],
+      "id": 9313656235161846528,
+      "members": [
+        "8140c10000ec8300",
+        "8140c10000ec8301"
+      ],
+      "reason": "Regrounded the inferred group within its documented region to preserve the 80 m exclusion around the sourced actor. All original group members passed the native ground and body checks."
+    }
+  ],
+  "source_sha256": "81d262739b72c4b05264c0d4c8dbc7aca1d5322f999986a8f6f2170d9f0b2eb7",
   "version": 1
 }

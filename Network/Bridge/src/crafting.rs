@@ -38,11 +38,12 @@ pub fn command(v: &Value) -> Result<ClientEvent, String> {
         }
         "craft_execute" => {
             let entries=v["ingredients"].as_array().filter(|e|e.len()<=16).ok_or("Invalid ingredients")?;
-            let mut ingredients=Vec::new();let mut ids=std::collections::BTreeSet::new();
+            let mut ingredients=Vec::new();
             for (i,value) in entries.iter().enumerate() {
                 let ordinal=value.get("ordinal").and_then(Value::as_u64).unwrap_or(i as u64+1);if !(1..=16).contains(&ordinal){return Err("Invalid ingredient ordinal".into())}
                 let item=value.as_str().or_else(||value["item"].as_str()).and_then(|s|s.parse::<u64>().ok()).filter(|n|![0,u64::MAX].contains(n)).ok_or("Invalid ingredient identity")?;
-                if !ids.insert(item) {return Err("Duplicate ingredient identity".into());}
+                // Multiple ordinals may select the same owned stack. The
+                // server validates and reserves their combined quantity.
                 if ingredients.iter().any(|(o,_)|*o==ordinal as u32){return Err("Duplicate ingredient ordinal".into())}
                 ingredients.push((ordinal as u32,item));
             }
@@ -59,6 +60,30 @@ pub fn command(v: &Value) -> Result<ClientEvent, String> {
 mod tests {
     use super::*;
     #[test]
+    fn server_registry_accepts_zero_root_and_legacy_skill_records() {
+        let message=CraftMessage::SetRegistry{skills:vec![0x6f0028d7],recipes:vec![0x6f001f17]};
+        for root_id in [0,42] {
+            let mut args=message.arguments();
+            let PackValue::Reference(r)=&mut args[0] else {panic!("registry")};
+            // The sender owns reference IDs. Rebase all reference-bearing
+            // fields, leaving DIDs and other scalar values unchanged.
+            let remap=|id:u32| id-1+root_id;
+            for id in &mut r.ids {*id=remap(*id);}
+            for entry in &mut r.entries {if let PackedEntry::Heap{object,..}=entry {
+                if object.pkg_id==0x1d2 {for slot in [5,6]{object.slots[slot]=remap(object.slots[slot]);}}
+                if let Some(NativeObject::Hash(h))=&mut object.native {for id in &mut h.values{*id=u64::from(remap(*id as u32));}}
+                if object.pkg_id==0x345f {object.pkg_id=0x1b4f;object.slots[5]=3;}
+            }}
+            let event=decode(message.function(),&pack_values(&args)).unwrap();
+            assert_eq!(event["event"],"craft_registry");assert_eq!(event["recipes"],json!([0x6f001f17]));
+            assert_eq!(event["skills"],json!([0x6f0028d7]));assert_eq!(event["progress"][0]["level"],3);
+            // An arbitrary package is not treated as a skill record.
+            let PackValue::Reference(r)=&mut args[0] else {unreachable!()};
+            for entry in &mut r.entries {if let PackedEntry::Heap{object,..}=entry {if object.pkg_id==0x1b4f{object.pkg_id=0x1234;}}}
+            assert_eq!(decode(message.function(),&pack_values(&args)).unwrap()["event"],"error");
+        }
+    }
+    #[test]
     fn native_registry_replaces_entitlements_and_empty_registry_clears_them() {
         for recipes in [vec![0x6f001f17,0x6f001f18],vec![]] {
             let m=CraftMessage::SetRegistry{skills:vec![0x6f0028d7],recipes:recipes.clone()};
@@ -73,8 +98,19 @@ mod tests {
         let ClientEvent::Interp{function,arguments,..}=command(&v).unwrap() else {panic!()};
         let ScriptRequest::CraftExecute{helper,ingredients,..}=ScriptRequest::decode(function,&arguments).unwrap().unwrap() else {panic!()};
         assert_eq!(helper,9308940437337407489);assert_eq!(ingredients,vec![(1,helper),(2,helper+1)]);
-        v["ingredients"]=json!([helper.to_string(),helper.to_string()]);assert!(command(&v).is_err());
+        v["ingredients"]=json!([helper.to_string(),helper.to_string()]);assert!(command(&v).is_ok());
         v["ingredients"]=json!([helper]);assert!(command(&v).is_err());
+    }
+    #[test]
+    fn shared_stack_ordinals_do_not_depend_on_revision_specific_recipe_ids() {
+        let iid="9308940437337407489";
+        let mut v=json!({"command":"craft_execute","recipe":0x6f001fe4u32,
+            "ingredients":(1..=7).map(|i|json!({"ordinal":i,"item":iid})).collect::<Vec<_>>()});
+        let ClientEvent::Interp{function,arguments,..}=command(&v).unwrap() else {panic!()};
+        let ScriptRequest::CraftExecute{ingredients,..}=ScriptRequest::decode(function,&arguments).unwrap().unwrap() else {panic!()};
+        assert_eq!(ingredients,(1..=7).map(|i|(i,iid.parse::<u64>().unwrap())).collect::<Vec<_>>());
+        v["ingredients"][1]["ordinal"]=json!(1);assert!(command(&v).is_err());
+        v["ingredients"][1]["ordinal"]=json!(2);v["recipe"]=json!(0x6f001f17u32);assert!(command(&v).is_ok());
     }
 }
 
@@ -85,7 +121,7 @@ fn enrich(event:&mut Value,arguments:&[u8]){
     if !matches!(event["event"].as_str(),Some("craft_registry"|"craft_skills")){return}
     if let Ok(values)=unpack_values(arguments){
         let mut progress=Vec::new();
-        for v in values {if let PackValue::Reference(r)=v{for entry in r.entries {if let PackedEntry::Heap{object,..}=entry{if object.pkg_id==0x345f&&object.slots.len()==6{
+        for v in values {if let PackValue::Reference(r)=v{for entry in r.entries {if let PackedEntry::Heap{object,..}=entry{if matches!(object.pkg_id,0x345f|0x1b4f)&&object.slots.len()==6 && object.slots[2]>>24==0x6f{
             let s=&object.slots;progress.push(json!({"id":s[2],"level":s[5],"earned":u64::from(s[0])|(u64::from(s[1])<<32),"available":u64::from(s[3])|(u64::from(s[4])<<32)}));
         }}}}}
         event["progress"]=json!(progress);

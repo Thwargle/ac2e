@@ -1,6 +1,7 @@
 //! Native projectile presentation with bounded, authored development timing.
 //! Entity/visual pairs come from the Legions skill scripts and entity records.
-//! Release timing and speed below are server rules, not recovered retail physics.
+//! Tumerok javelin release cues come from native AnimInfo hooks; remaining
+//! release timing and flight speed are authored server rules.
 use crate::{
     movement::Placement,
     scene::{Delivery, Scene},
@@ -8,6 +9,17 @@ use crate::{
 };
 
 pub const RELEASE_MS: u64 = 350;
+pub fn release_ms(race: u32, category: usize, behavior: u32) -> u64 {
+    // 0300001c / 03000034, combat_missile: shared body clips for both sexes.
+    // AnimInfo's first story hook (40000003) drives StoryManager::FireMissile.
+    // Auto1: 05000705, 1.416669965 s * .472692996 = .669649970 s.
+    // Normal1: 05000707, 2.041670084 s * .629001975 = 1.284214525 s.
+    match (race, category, behavior) {
+        (4, 1, 0x410000e2) => 670,
+        (4, 1, 0x4100007a) => 1284,
+        _ => RELEASE_MS,
+    }
+}
 pub const SPEED: f32 = 22.0;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Profile {
@@ -156,6 +168,13 @@ impl Projectiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn javelins_release_at_the_native_throw_hook() {
+        assert_eq!(release_ms(4, 1, crate::combat_visual::MISSILE_AUTO), 670);
+        assert_eq!(release_ms(4, 1, 0x4100007a), 1284);
+        assert_eq!(release_ms(1, 1, crate::combat_visual::MISSILE_AUTO), RELEASE_MS);
+        assert_eq!(release_ms(4, 2, crate::combat_visual::MAGIC_AUTO), RELEASE_MS);
+    }
     #[test]
     fn native_projectile_envelope_and_racial_profiles() {
         for race in [1, 2, 4] {

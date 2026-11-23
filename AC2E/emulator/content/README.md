@@ -1,5 +1,127 @@
 # Stationary world content
 
+## Placement clearance
+
+`placement-clearance-v1.json` is a bounded correction layer over the admitted
+world manifest. The November 2026 pass checks 9,635 terrestrial outdoor combat
+actors against installed DAT collision and inherited CSetup body dimensions.
+It initially corrected 178 anchors: 135 with inadequate ground/body clearance and
+43 with overlapping living bodies. Four additional vertical corrections of
+15–26 cm address shallow penetrations exposed by the stricter contact check,
+bringing this layer to 182 anchors (including the noncombat Mimbu Shaman).
+Each correction is within 3.5 metres and pins the
+complete original row. `Network/prepare_content.py` fails on changed evidence;
+it preserves identity, visual, scale, orientation and spawner membership. Original
+capture packs remain intact. The final merged manifest is independently tested
+against native floor, dry-ground, footprint and inter-creature clearance.
+
+The initial policy's 26 `unresolved` entries are the input to
+`placement-reviewed-v1.json`. This second review corrects 22 more anchors, for
+**204 total repairs**: 13 escape native static props containing their original
+points, three move from submerged ground onto dry floor, and six gain support
+for their full body footprint. Moves range from 0.68 to 12.97 metres, within an
+explicit 20-metre bound and the original landblock. IDs, models, scales and
+spawner slots remain unchanged. All 26 decisions pin the original rows; the
+preparer rejects changed evidence and incomplete or duplicate review decisions.
+
+The review uses installed Legions CSetup dimensions, VisualDesc scales, native
+terrain/interior/static collision and admitted capture/recovery mappings. The
+local 7160 decompile's `CPhysicsObj::GetRadius/GetHeight`,
+`CPartArray::TraceRayThroughPartsPhysics` and `Cylsphere::TraceRay` corroborate
+the body/ray behavior. A native ray beginning inside a prop reports a
+zero-distance hit; `Geometry::contact` now rejects that as supporting floor.
+
+Each correction follows existing floor in 25-cm samples with slope, step and
+body-height ray checks, then verifies the complete destination body, dry ground
+and separation from creatures and known grounded NPCs. For escape-route queries
+only, the authoring tool may omit a static prop proven to contain the original
+anchor. Every prop remains in destination clearance and runtime collision.
+The Immense Energy Flame Construct stays on its 139-metre platform rather than
+being grounded on terrain about 75 metres below it.
+
+The final four Energy Flame Constructs are **verified unchanged**:
+`8140db030fc1c77d`, `814095bffa0c90b2`, `8140e8e67d64bd68` and
+`8140f5817d7c1aa4`, all in `4DA2`. Their installed visual `1f001384` has two
+native collision spheres (radii 2.520416 and 2.119103 metres), not a flat
+3.564406-metre CSetup-radius disk. Requiring floor under the entire disk falsely
+rejects their narrow platforms. The lower sphere extends 2.84 cm below the pivot,
+matching the captured origins above platform floors at 169.425, 139.415, 125.900
+and 135.425 metres. Native AI explicitly disables wandering for this template.
+The recovered actors map captured `47002708` / `1f000d76` to installed
+`47002760` / `1f001384`; the source and installed `4DA2` landblock record hashes
+match. Capture IDs, message hashes and that cell-record comparison are retained
+in each verified decision's provenance.
+
+The 7160 decompile's `CPhysicsObj::transition` (`0x004D6BC0`) and
+`CTransition::init_sphere` (`0x004CE450`) pass the CSetup sphere array into
+placement; `CPhysicsObj::CheckPositionInternal` (`0x004D4910`) and
+`CTransition::find_placement_position/find_placement_pos` (`0x004D0680` /
+`0x004CFF30`) distinguish checked placement from sliding or forcing. The pinned
+native physics port accepts all four captures with flags **zero**, retains their
+cells and exact positions, and maintains walkable contact with zero velocity
+through 100 consecutive 100-ms quanta. Removing the platforms, raising the actors
+into open air, or burying them by one metre all fail verification. This is a
+native-data/physics replay, not a visual playthrough in the retail executable.
+
+`placement-reviewed-v1.json` now contains 22 repairs, four `verified` originals
+and zero unresolved anchors from this review. It retains the earlier failed ray
+probes, native verification results and negative controls as evidence. The
+preparer pins unchanged rows and rejects altered scales, models, coordinates or
+verification that used sliding/forcing. Source captures and spawner membership
+are unchanged. Both authoring tools use the native sphere check for unsupported
+original platforms; dry-ground and living-body separation still apply. Runtime
+walking retains its conservative swept checks, and no actor-ID collision
+exception or reduced model size is introduced. The correction total stays 204.
+
+Three earlier overlap warnings cleared after their neighbours were repaired;
+the authoring tool rechecks the final population.
+Interior placements, airborne creatures and static
+attachments are not automatically relocated: the collision backend does not
+represent every repaired dungeon structure, and nearby captured prop variants
+can be intentional. This is a conservative placement pass, not a recovery of
+retail generator coordinates or a full capsule solver.
+
+Runtime spawners also reserve the bodies of pending children in each tick. An
+anchor occupied by another living creature waits and retries after one second;
+it does not relocate, duplicate, or consume a group's capacity while waiting.
+The retry interval is AC2E scheduling policy, not a recovered retail timer.
+
+Reproduce the review with `cargo run --example placement_audit -- DAT WORLD REPORT`.
+Author a candidate using `cargo run --example repair_placements -- DAT ORIGINAL_WORLD POLICY`;
+the input must be the merged manifest before these corrections. To reproduce
+the follow-up, use `cargo run --release --example review_placements -- DAT INITIAL_WORLD content/placement-clearance-v1.json CANDIDATE_JSON`.
+`INITIAL_WORLD` must have the first correction layer applied and the 26 flagged rows
+at their original positions, before the follow-up layer. The tool rejects
+changed anchors. Review the candidate before replacing the policy. Set `AC2_TEST_GAME_DATA` and
+`AC2_TEST_WORLD_CONTENT` to run `cargo test --test placement_clearance` against a
+freshly prepared manifest. Source rows changed by a later content recovery require
+a new collision review, rather than silently retaining an old correction.
+Replay the four platform decisions and negative controls with
+`cargo run --release --example construct_platforms -- DAT WORLD REPORT_JSON`.
+This read-only tool checks the complete original rows, including orientation and
+scale, and exits unsuccessfully if a support or negative-control check regresses.
+
+At runtime, walking checks native scaled radius/height, support around the
+footprint and body clearance. Per-tick living-body reservations prevent new
+overlaps during wandering, pursuit and retreat, including across outdoor block
+borders. Already intersecting bodies may move apart. Client presentation grounds
+locomoting creatures even without humanoid feet meshes and resets stale offsets
+when a floor disappears; static prop pivots and native hover heights are retained.
+
+Spawn admission also reserves ready, living players and known grounded NPCs
+(vendors and protected scripted entities with native motion bodies). Player sizes
+use the six supported race/sex CSetups with the inline build/height scale replacing
+inherited VisualDesc scale. Loading, disconnected, deleted and dead players do not
+hold these reservations. Live NPC edits update the reservation catalog atomically.
+An occupied point retries after one second without consuming group capacity or
+moving its home. These extra bodies affect spawn admission only; they do not add
+player collision or change the existing combat reach/navigation rules.
+
+`Network/test_spawn_clearance.py` checks a delayed native spawn over UDP: it stays
+absent while a player occupies its anchor and appears once, at the same anchor,
+when that player leaves. Unit tests also cover scaled player bodies, separate
+floors, NPC classification and rejected/replaced/removed live edits.
+
 Game-data mode loads the bundled snapshot automatically, independent of the
 working directory. Use the normal server options and:
 
@@ -21,6 +143,43 @@ Furs Turfna, eggs, chests and other world objects at their captured positions.
 It does not populate the human starter dungeon or supply AI, trading, damage,
 loot, quest interactions, death or respawn behavior. The regular default pack
 continues to use only the table-derived placements.
+
+## Racial Shelter content
+
+`starter-areas-v1.json` describes the Human, Tumerok and Lugian Shelter routes.
+`tools/author_starters.py` generates 62 additional actors in `starter-world-v1.tsv`,
+seven travel routes in `starter-routes-v1.tsv`, and the hashes consumed during
+content preparation. Starting the server through the launcher regenerates the
+prepared manifest. A running server loads new placements on restart.
+
+The Human Shelter has 32 actors in the main dungeon and four in the Menhir Vault.
+Player captures in the matching 0298/028D instances establish the positions of
+three Straw Drudges, four Drudge Diggers, eight Drudge Sentinels, the Shelter
+officers, lesson stones, and the two dungeon portals. Their corresponding room
+geometry matches 0299 in the installed DAT. Captured entity IDs that changed
+between client versions are resolved to the installed template by identity.
+The prototype Human practice idols, lifestones, quartermasters, duplicate mentors
+and two generic exits are confined to a dedicated legacy test fixture.
+Straw Drudges have 25,000 health and can be struck for practice without
+retaliating, as described in the [retail strategy guide](https://catalogimages.wiley.com/images/db/pdf/0782141641.excerpt.pdf#page=6).
+
+All three races can progress from the Guard through the Lieutenant and Sentry,
+recover the Digger's tool for the Scout, obtain the Sentinel's glyph, enter the
+Menhir Vault, speak with the Advance Scout, and use the shard to see the Menhir
+history and travel to their racial overworld destination.
+In the Human starting room an experienced player can instead read the exit warning,
+confirm at the skull and use the early gateway. See the
+[Human Shelter map](../../../Docs/HUMAN_SHELTER_MAP.png),
+[archived quest walkthrough](https://www.20oz.net/index.php/Rescue_the_Shelter_Hold.html)
+and [archived map index](https://www.20oz.net/index.php/Maps.html).
+
+`Network/test_starters.py` exercises production placements, progression, travel
+and relogin over the real protocol. `AC2.Data.StarterClearance` separately tests
+forward and reverse routes against loaded native geometry using the largest
+supported body capsule for each race. See the
+[starter audit](../../../Docs/NATIVE_GAMEPLAY_PASS.md#racial-shelter-routes-and-dungeon-traversal--2026-11-02)
+for reconstruction limits and the Tumerok stair repair. Server character creation
+currently supports Human, Lugian and Tumerok.
 
 ## Regional wilderness population (2026-10-31)
 
@@ -532,21 +691,47 @@ quantity overrides for these placements have not been recovered.
 
 ## Loot and idle AI
 
-`observed-loot.tsv` contains 698 observed corpse bundles mapped to 146 installed
-monster templates; `loot-items.tsv` contains 222 native item definitions. The
-source/mapping evidence and DAT hashes are in `observed-loot.report.json`.
-The runtime admits 146 creature tables, 125 native death-loot profiles and 222
-items with the current DATs. Exact creature tables take precedence over a shared native
-`NPC_DeathLootProfile`. `NPC_LootProof` suppresses drops. Unknown profiles return
-an empty corpse, never the old universal potion. Existing authored tutorial
-quest-item/gear rewards remain separate from generic corpse loot.
+`observed-loot.tsv` contains 698 distinct bundles from 820 deduplicated corpses
+of 146 monster templates. `loot-items.tsv` identifies 222 compatible items.
+The importer matched the landblock or indoor room in both cell DATs for 652
+corpses, yielding 497 local tables for 133 monster types. The provenance report
+records the capture hashes, matched cells and DAT hashes. The other 168 corpses
+contribute to their creature's table without asserting a location.
 
-These are observed base-item bundles. Observed frequencies supply AC2E weights;
-retail probabilities, randomized affixes/quality and unobserved tables have not
-been recovered. A capture is not proof of the complete retail loot generator.
+The server samples the creature's spawn landblock outdoors or its exact room
+indoors, then its species and its shared native `NPC_DeathLootProfile`.
+Pulling a monster into a different area preserves its source. Generic slots prefer
+distinct, level-eligible items from those samples. Captured uncut gems (24),
+rings and talismans (10), and shields (11) can fill ordinary slots on the
+creatures observed to drop them. Their DAT identity, equipment slots and
+use restrictions distinguish them from quest items such as Amulet of Seeking.
+These counts refer to base items; their randomized enchantments are unknown.
+Only supported equipment and restoratives
+can fill remaining slots from the common pool. Undocumented profiles without
+an encounter or native quantity do not generate substitute items.
+`NPC_LootProof` suppresses drops. Tutorial and quest-gated items have their own
+eligibility checks.
+
+Observed frequencies weight sample selection. The captures contain corpses
+seen with contents, so they cannot establish the chance of an empty corpse
+or the overall drop rate. For encounter templates without native quantity
+overrides AC2E gives an observed slot a 35% chance, then rolls independent
+70% and 25% chances for additional generic slots. Retail probabilities,
+randomized affixes and unobserved tables remain unknown.
 The separate `native-trophies.json` now provides explicit installed-DAT trophy
 probabilities: matching trophies are removed from observed bundles and rolled
 with their native slot rates. Generic treasure weights remain unrecovered.
+The [AC2Hero trophy guide](http://ac2hero.e5i5o.com/essence2.html) also identifies
+carriers whose trophy slots are present in the 2017 client DAT. The supplement
+`hero-reference-trophies-v1.json` translates 25 of those slots onto nine verified
+Legions creature variants. It supplies a 1.67% chance per listed beard, heart
+or tooth slot on Banderlings and 5% for the Debased Skeleton's jaw bone. Seven
+of these slots are directly attested in the 2017 DAT but missing from the guide.
+`tools/import_hero_trophies.py GUIDE_HTML REFERENCE_DAT_DIR LEGIONS_DAT_DIR OUTPUT`
+rebuilds the supplement using the carrier's level, AI superclass, loot profile,
+equipped template and the trophy's item signature. The server checks the Legions
+entity and item fingerprints before enabling each rule. Installed native slots
+take precedence. The differently equipped level 42 Banderling Raver is excluded.
 Each corpse rolls once, supports up to 32 items, and retains unclaimed items on
 close/reopen or a full backpack. Single pickup and Loot All use journaled grants;
 claimed inventory survives restart. Unclaimed corpses remain temporary.
@@ -567,8 +752,8 @@ from `AC2E/emulator`; the report lists five undecoded entity layouts withheld.
 `treasure-weapons.json` adds 69 observed weapon identities to generic treasure,
 with entity/qualities/physical/visual hashes checked against the mounted DAT.
 Native `ImplementType`, valid/preferred hand slots and `Usage_MinLevel` are
-preserved. Generic rolls exclude weapons above the creature's level; explicit
-observed bundles retain their historical eligibility. Overcharged Hive is withheld
+preserved. Generated and sampled equipment both respect the encounter's level,
+including level-one tutorial variants. Overcharged Hive is withheld
 from this pool because its additional `0x2d8` usage restriction is not implemented.
 All 69 defaults omit generated damage. The documented AC2E fallback is
 `(6 + 2 * treasure level)` with ±15% per-item variance; it is not the recovered
@@ -664,7 +849,12 @@ report. `prepare_content.py` requires that evidence and installed visual/cell
 compatibility before including them. The authoring script refuses to overwrite
 an existing policy version; changed reward/state semantics require a new version.
 
-Temporary obelisk buffs and a live journal countdown remain unfinished. The
+The ordered obelisks grant two-hour bonuses. Ruby grants Aunmauri's Speed
+(1.08 run velocity, secondary retail float stat 0x128 at 1.05), Sapphire
+grants Courage (+30 maximum health), and Emerald grants Vengeance (+5 damage).
+Returning to the Explorer grants Obelisk Ward (+6 armor for three hours).
+Each timer survives relog and restart, and the same blessing in another
+region refreshes it. Both DAT profiles supply their own effect WState IDs. The
 subsequent mining/crafting lesson is implemented below. See the
 [recovery notes](../../../Docs/ADMIN_CONTENT_RECOVERY.md#ringway-exploration-pack-v1-2026-11-01)
 for exact assumptions and `Network/test_exploration_quests.py` for the real UDP
@@ -680,11 +870,11 @@ health/vigor values use field 36, and periodic values use field 38 in this build
 Scalar values must not be interpreted as references to graph object zero.
 The server verifies the source hashes before admitting this profile.
 
-`skill-runtime.report.json` inventories all 1,927 catalog entries. Currently 538
-have executable core effects, including **235 racial profiles** (some already
+`skill-runtime.report.json` inventories all 1,927 catalog entries. Currently 580
+have executable core effects, including **236 racial profiles** (some already
 used by starter attacks), and nine shared passive masteries are implemented.
 These counts do not waive training, race, level, prerequisites or equipment
-requirements. The remaining entries include passives, 472 profiles needing
+requirements. The remaining entries include passives, 431 profiles needing
 specialized handlers and 29 recalls needing destination/entitlement handling.
 The existing bound-lifestone recall retains its separate implementation.
 
@@ -784,8 +974,8 @@ monster stats, aggression and corpse-aware spawner refill.
 
 `professions-v1.json` is generated by `tools/author_professions.py` using the
 bounded native WState decoder in `tools/craft_catalog.py`. It contains 26 skills,
-357 recipes (317 production/practice/potion, 20 refining, 15 surveying, four
-dyeing and one learned Arwic quest recipe), 847 item definitions, 14 workshop definitions, 56 mine definitions,
+364 recipes (317 production/practice/potion, 20 refining, 15 surveying, four
+dyeing and eight quest recipes), 855 item definitions, 14 workshop definitions, 56 mine definitions,
 90 survey maps, six gathering tools and 1,396 eligible butchery entity profiles.
 `professions-v1.audit.json` records the source WState SHA-256 fingerprints and
 each excluded recipe with its reason. Raw DATs and reference sources are untouched.
@@ -809,12 +999,17 @@ mutation handlers are excluded rather than silently spending their materials.
 - **Raise:** spends that profession's saved XP at the native cumulative-curve
   difference. The 22-hour learning cap and reset persist through reconnects,
   server restarts and journal compaction. Combat XP remains separate.
-- **Workshops:** manufacture/refine requires the matching native effect within
-  eight meters and the same visible scene. `workshops-content-v1.json` adds
-  ground-checked yards near Arwic, Cragstone and the observed Omishan refinery.
-  Eight new placements are in `workshops-world-v1.tsv`; their coordinates are
-  reconstructed, not recovered retail positions. The ordinary world preparation
-  pipeline requires a fresh source hash and collision report before admitting them.
+- **Workshops.** Cragstone, Cavendo, Ikeras, Hakata, Linvak Tukal and Ondekodo
+  each have crafting, refining and spellbinding facilities. Recipes require
+  the corresponding native workshop effect within eight meters in the same scene.
+  The Cavendo refinery retains its captured frame and model. The other 17 sites
+  use the guide's individual service locations. The building footprints were checked
+  against native ground and nearby NPCs. Archived photographs identify the models at
+  Cragstone Crafting, Cavendo Spellbinding and Ondekodo Spellbinding. The remaining
+  regional model assignments and uncaptured facings are inferred. Arwic keeps its
+  three supplemental stations, with Crafting moved clear of the weapon vendor.
+  Rebuild the source with `author_workshops.py` and validate it with
+  `population_authoring`. [AC2Hero workshop coordinates](http://ac2hero.e5i5o.com/workshops.html)
 - **Supply:** authored quartermasters offer 100-unit bundles of the basic and
   advanced raw materials. Purchases and refinery outputs merge into compatible
   stacks, including when the backpack is full. This deliberately permits crafting while broader
@@ -854,7 +1049,9 @@ This is not a complete retail crafting implementation. The following policies
 are intentionally explicit so later recovery can replace them:
 
 - Most enabled recipes are default grants; the Arwic sword requires its saved
-  quest entitlement. General discovery, account restrictions and most
+  quest entitlement, Nature garlands require the learned recipe, and Esper
+  weapons require an active Drudge Outcast Camp quest. General discovery,
+  account restrictions and most
   quest-specific recipes are not implemented. The existing
   Field Supplies/Potion Practice lessons still use their separate authored flow.
 - Manufacture XP is twice `(difficulty + 1)` when no native per-use curve survives;
@@ -872,14 +1069,52 @@ are intentionally explicit so later recovery can replace them:
   Old character-based wear records migrate on use. Mining critical results,
   timed gathering animations and crafted armor/weapon wear remain unfinished.
 - Butchery's original material tables are missing. Eligible arthropod families
-  yield chitin; other eligible families yield hide, at a reconstructed base of
-  five with ±15% variance. Bone and sinew currently come from supply stock/loot,
-  not a claimed retail butchery distribution.
-- Spellbinding practice and concrete component recipes work. Enchantment
-  extraction, totem application, harmonic stones and item binding require saved
-  enchantment/slot/durability state and compatible effect handlers. They are not
-  enabled. Major/minor extraction must destroy the source and transfer its actual
-  eligible enchantments; substituting an armor upgrade would be incorrect.
+  yield chitin, vermin yield Bone (Esper camp guide evidence), and other eligible
+  families yield hide, at a reconstructed base of five with ±15% variance.
+  Sinew still comes from supply stock/loot; this is not a recovered complete
+  retail butchery distribution.
+- Spellbinding Practice and component recipes work. AC2E also supports a
+  workshop infusion for crafted weapons and body armor. At a spellbinding workshop,
+  examine the equipment in your backpack and type `@bind`. A Good Luck Charm
+  adds three weapon damage or armor points. Use `@extract` at the workshop
+  to destroy the infused equipment and store its bonus in a Totem. Use the Totem
+  on an uninfused piece of the same category, or examine it and type `@transfer`.
+  Applying a totem consumes it and works away from the workshop. These are AC2E
+  infusions. Random retail enchantments and harmonic stones need separate handlers.
+- `@area on` shares half of an eligible direct heal or vigor restoration with
+  up to three other injured fellowship members within six meters of the target.
+  It applies only to the instant portion of a targeted support skill. `@area off`
+  restores single-target use, and relogging resets the setting.
+- Use a Pet Rock or type `@ward` to summon a stationary Healing Ward for 15
+  seconds at a cost of 20 vigor. It restores five health every three seconds to
+  its owner within six meters. Each player can have one ward. The ward disappears
+  if the owner loses the focus, leaves the area, dies or logs out. `@companion`
+  summons a hovering version using the same focus, cost and timer. It follows
+  its owner where geometry permits and shares the ward's one-summon limit.
+- `@cleave on` adds a bounded splash to eligible direct damage skills. A hit
+  can strike up to three additional visible creatures within four meters of the
+  primary target. Each additional target uses its own hit and armor check. The
+  caster pays once. Skills that apply a status, damage over time or vigor damage
+  keep their single-target behavior. `@cleave off` disables it, and relogging
+  resets the setting.
+
+Explosion, Earthquake and Volley apply their full strike to visible enemies around
+the selected target (10, 10 and 5 meters respectively). Each rolls separately.
+Explosion also applies the target's burn on a hit. AC2E limits each cast to 32
+additional creatures. The skill request carries a selected object ID.
+A trained Lugian Elementalist can cast Sand Fiend from the skill panel for one
+vigor with a 90-second reset. The fiend walks toward its owner's combat target
+and assists within melee reach. It persists until dismissed with `@dismiss`,
+its owner leaves or it loses its owner. It shares the ward slot. Pet damage
+uses five points per rank with the documented 50% variance. Combat timing, pursuit leash and hit rolls are
+AC2E rules. Pet self-buffs and attackable pet health are pending.
+
+Legions record `6f002775`, Enchantment Extraction, describes itself as a test
+recipe. It takes a magical weapon and a Trophy of Wrath. The audited major/minor
+recipe families and the native Generic Totem are separate records. AC2E uses
+the Generic Totem's asset identity for its transferable workshop bonus. `RecipeAdaptor` exposes client recipe fields, and `gmWeenieDesc`
+serializes summon ownership. These records do not supply the missing world
+server formulas for extraction, skill area shapes or native pet AI.
 - Active survey maps cannot be dropped or traded; survey jobs are owner-bound.
   Abandoning maps and specialist summoned mines
   need separate implementations.
@@ -966,3 +1201,478 @@ profile over UDP, actual new placements, topic cycling, admission restrictions,
 and preservation of the existing explorer quest action in an isolated store.
 `Network/test_npc_authoring.py` verifies shared quest starters and avoids binding
 a person named in an NPC's location as a second quest starter.
+
+### Nature's Ally material exchanges
+
+`nature-exchanges-v1.json` pins four guide-backed exchanges to native entity,
+visual, physical and quality records. The [Nature's Ally walkthrough](https://20oz.net/index.php/Nature's_Ally.html)
+specifies Rabbit Meat → Ancient Monouga Bone at Feral Pet Lasher, Scented Blossom
+→ Wasp Egg Cluster at Outcast Wasp Queen, eggs → Succulent Truffle at Digger
+'Dillo Mama, and a truffle → eight Anthracite Gems at Grutt Gourmand. All take
+one input item. Their existing production placements are reused.
+
+Normal NPC use gives authored instructions without spending anything. Select
+the NPC, then double-click the input in the backpack to send the existing native
+targeted-use request. This client binding is an AC2E implementation choice, not
+evidence that the original client's Give command used that wire message.
+`@talk` retains informational topic browsing. Visible recipient, four-metre
+distance, living player, peace stance, account ownership, exact item identity,
+appearance and a shared one-second interaction throttle are checked on the server.
+
+The transaction removes the submitted stack, returns any remainder under a fresh
+identity, and grants the reward in one durable inventory journal entry. It admits
+the complete outbound update before persisting. Insufficient backpack space fails
+without spending the input; a single-item trade can reuse the consumed item's
+slot even in a full bag. Repeated requests using consumed identities cannot duplicate rewards.
+Native Rabbit Meat and Anthracite Gem stack limits are ten; historical singleton
+loot with limit one remains accepted. Rewards use recovered native item visuals
+and transport metadata. Separate reward stacks are not automatically consolidated.
+
+The four trades and the Black Mother Earth path below do not complete Nature's
+Ally, award quest XP or its final items, or open Chaos Dungeon. No overall quest level gate
+or cooldown is imposed on these exchanges without evidence for that restriction.
+Guide instructions are paraphrased; retail NPC quotations have not been recovered.
+
+Regenerate from the repository root:
+
+```powershell
+python AC2E/emulator/tools/author_nature_exchanges.py "Asheron's Call 2 - Legions" Saved/current-native-templates.json Saved/ContentRecovery/wiki-content.json AC2E/emulator/content/nature-exchanges-v1.json
+```
+
+`nature_exchanges` unit tests cover amounts, stack remainders, singleton loot,
+full bags, wrong items/identities and replay rejection. The DAT-backed integration
+test verifies all fourteen NPC/object/item assets, eight item transport records,
+and the native Flower Garland recipe fingerprint, ingredient slots and cost.
+`Network/test_nature_exchanges.py` exercises the actual four world placements,
+network hand-ins, rejected uses and persistence through two server restarts.
+Its inputs are seeded offline in a disposable store; the separate gathering test
+below obtains Scented Blossom through world interactions. The existing all-NPC dialogue
+test continues to cover topic browsing and precedence of working quest actions.
+
+### Black Mother Earth blossoms and learned crafting
+
+The same guide and native profile now support the material path leading into
+the Wasp Queen / Digger Mama / Grutt Gourmand exchanges. Double-click one of the
+three existing `47002301` Flowering Bush placements to collect Withered Blossoms
+(`470022f3`). At the existing `4700230b` Shrine to Black Mother Earth in Ariaki
+River Basin (13.5N, 61.0E), select the shrine and double-click one blossom to learn
+`6f001fe4` **Flower Garland**. The native recipe has seven one-blossom ingredient
+slots, a 100-gold cost, no workshop requirement, and one `47002355` Garland of
+Flowers output. Offering that garland to the shrine yields one `470022f9`
+Scented Blossom. Normal shrine use gives instructions without consuming items.
+
+The guide specifies eight blossoms in total (one for learning and seven for
+crafting). It does not establish bush yield, resource-sharing semantics or
+regrowth time. AC2E reconstructs **four blossoms per harvest, with a five-minute
+cooldown per character per bush**. It reuses captured/prepared placements; this
+does not recover the guide's random-bush spawning distribution. There is no
+claimed retail level gate or overall Nature's Ally timer on this material path.
+Recipe knowledge persists; another blossom is not consumed after learning.
+
+`nature_gathering` plans the version-one `n1` journal transaction. Collection,
+cooldown, learning, all ingredient changes and the native crafting cost commit
+atomically after complete transport validation. Replay and journal compaction
+preserve the entitlement and cooldown. Recipe initialization and ingredient
+validation hide/reject the unlearned recipe. The native seven slots may share
+stack identities; the server reserves seven actual units across validated owned
+stacks before consuming anything. Removed stacks and remainders receive the
+same native inventory notifications as other material exchanges. Failed funds,
+capacity, range, ownership, stance, clock or replay checks leave inventory and
+quest state unchanged. No quest or profession XP is granted by these steps.
+
+`Network/test_nature_gathering.py` collects its inputs from actual bush placements,
+learns at the actual shrine, crafts, and continues through the three downstream
+NPCs to eight Anthracite Gems, with two server restarts. Only an isolated Idol
+encounter's health/gold are adjusted to supply the 100-gold test budget; quest
+items are never seeded. Unit tests additionally cover full backpacks, cooldown
+expiry, insufficient total quantity, insufficient gold, and journal compaction.
+The remaining Redberry/Spirit branches, summoned actors, dungeon progression,
+whole-quest timed state and final rewards remain incomplete.
+
+### Kehan windmill and the Esper referral
+
+This continues the starter route after the Arwic lesson:
+
+1. After returning the Arwic Mines Short Sword, speak again to the Overseer at
+   **44.0N, 6.1W** for **Find the Miller of Kehan**. Reach the Miller at
+   **42.5N, 11.2E** within 48 hours for 30 XP. The windmill task can also be
+   started directly at the Miller without this optional referral.
+2. The Miller gives **The Miller's Map** and starts the 24-hour windmill task.
+   Use the map for coordinates, travel south of Kehan to approximately
+   **40.4N, 11.9E**, and use it within the native 70-metre radius to reveal your
+   Stone Quarry. Craft a **Rock Hammer** under Skills → Craft → Starter Tools;
+   its current native recipe requires 13 Iron and a nearby crafting workshop.
+3. Select the quarry and use the Rock Hammer. The native mine permits three
+   harvests, with a base yield of 25 Stone and 15% variance. Tool wear and
+   deposit ownership use the existing gathering system.
+4. Return to the Miller, select her and double-click Stone in your bag. The
+   trade spends **one Stone**, preserves the rest of the stack and gives a
+   **Massive Gear**. Merely speaking does not spend materials. Hand-ins require
+   a living player in peace stance within four metres.
+5. At the **Windmill near 47.0N, 11.5E**, select the gear receiver named
+   Windmill and use the Massive Gear. Return to the Miller for **200 XP and
+   one Lost Wish Glyph**, then follow **Find the Esper Reaches Warder** to
+   the existing Esper Warder at **37.5N, 19.9W** in Millstone.
+
+`windmill-v1.json` pins the native map, gear and glyph quality records, the fixed
+map destination, recovered journal fields and retained wiki references. The
+server uses authored guidance for the current controls. The existing Miller
+and Warder placements are retained. `windmill-world-v1.tsv` adds one missing
+`GearWindmillKehan` receiver at the guide's coarse windmill location, grounded
+against the native terrain/collision. Its position is reconstructed, not a
+captured retail coordinate; the report and manifest hashes are checked by
+`Network/prepare_content.py` before inclusion.
+
+The `w1` durable transaction records quest phases, survey ownership, all item
+changes and XP together. Quarry charges and tool wear use the profession
+journal. Reconnects and compaction preserve both. Expired tasks replace their
+old map/gear and survey jobs; lost maps or gears can be recovered from the
+Miller without duplicating a live deposit or resetting the original deadline.
+Full backpacks, wrong items, invalid ownership and repeated consumed identities
+fail before anything is spent. The windmill repeats 20 hours after completion;
+the Miller referral can repeat after another Arwic completion and its own
+20-hour cooldown. Visiting the Esper Warder completes the referral without XP.
+
+The guide overview awards 200 XP, while its transcript says 150; this version
+uses the overview. An older Miller Quest page says zero XP, while Find the
+Miller of Kehan says 30; this version uses the latter. These conflicts are
+recorded in the manifest. Coordinate guidance replaces the retail hot/cold
+survey messages. The Miller grants Renewed Focus for three hours. In both
+installed DATs, its stat modifier references maximum vigor (0x40108) and
+its magnitude table (field 36) contains +40. The guides give +10.
+The repaired windmill animation and the Lost Wish/Esper vault chains
+remain incomplete. Esper's weapon lesson is implemented below.
+Receiving a glyph does not implement its vault progression.
+
+Regenerate the pinned manifest with
+`python AC2E/emulator/tools/author_windmill.py`, then regenerate the placement
+and report with the `population_authoring` example using `windmill-v1.json`.
+The authoring tool requires the retained native-template export and wiki cache.
+Unit tests cover quest ordering, expiration, referral repeats, partial stacks,
+full bags and duplicate rewards. Store tests cover journal replay/compaction;
+the DAT test checks all three item assets, quarry definition and fixed site.
+`Network/test_windmill.py` crafts its tool and obtains its quest materials
+through real UDP interactions, checks the three production actor identities,
+and traverses the entire windmill/Esper route across three server restarts.
+
+
+### Warder introductions after Esper
+
+`warder-referrals-v1.json` implements three conversations using native quest/NPC
+identities and cached guide evidence:
+
+- **Find a Warder in Cragstone** (`400000cf`): after Drudge Outcast Camp, speak
+  to Esper Warder again, then the Warder of Cragstone at **32.8N, 12.7W**.
+  Acceptance requires level 3; the Cragstone gateway requires level 6.
+- **Find the Warder Corporal** (`400000d1`): speak to the Warder of Cragstone,
+  then the Corporal near Rithwic at **23.9N, 4.3E**. Direct acceptance works.
+- **Find the Warder Scout** (`400000cc`): speak to the Corporal, then the Scout
+  near Molwirth at **14.0N, 0.6E** within **48 hours**, for **30 XP**.
+
+The first two have no recovered deadline or XP reward. All three repeat after
+20 hours; an expired Scout referral can be accepted again at the Corporal.
+Completion and the next eligible introduction happen in one conversation.
+`wr1` journals the transition and reward atomically; repeated interactions and
+server restarts cannot duplicate rewards. Existing NPC placements are reused.
+Regenerate with `python AC2E/emulator/tools/author_warder_referrals.py`.
+
+The Notebook and **Seek the Warder Captain** continuation is implemented in its
+own profile below. **Seek Dantry the Warder** remains excluded because its Potion
+Raid prerequisite is not implemented. NPC information pages are not evidence
+that those tasks are playable.
+
+### Esper Warder and Drudge Outcast Camp
+
+After the Kehan referral, speak to the **Esper Warder in Millstone at
+37.5N, 19.9W**. The same conversation completes the referral and begins the
+24-hour **Drudge Outcast Camp Quest**. Direct acceptance also works.
+
+1. Use a Hunting Knife on defeated vermin to gather **25 Bone**. Craft a
+   **Drudge Cadre Slayer** weapon under **Skills → Craft → Quest Recipes**.
+   No crafting rank or workshop is required. These native weapons do 22 base
+   damage, require level 6 to equip, and retain their racial restrictions.
+2. Travel via the Southwest Esper ringway outpost, then follow the road east
+   to the island southeast of Millstone. Defeat a **Drudge Outcast Cadre**.
+   The special weapon triples direct weapon-bearing hits on Cadres; periodic
+   burns and attacks on other monsters do not receive the bonus. Using the
+   special weapon is optional for completing the quest.
+3. Open your defeated Cadre's loot, collect its **Drudge Cadre Bone**, then
+   return to the Warder. Select him and use the bone, or speak with him while
+   carrying it. Receive **320 XP and an Esper Glyph**. Repeat after 20 hours.
+
+`esper-camp-v1.json` pins native items, original journal text, guide provenance,
+Slayer/Sound Heart effect graphs and the three captured camp rows in block
+`67AA`. Existing independent point spawners are reused; no invented extra
+Cadres are added. Native stats retain level 10, 285 health/vigor, 30m perception,
+60m homesick range and loot profile 954. The retained creature guide says level
+8; native DAT values take precedence. Respawn timing remains AC2E policy.
+
+`e1` transactions atomically commit quest state, material consumption, crafted
+items and rewards. Crafting combines Bone stacks and preserves leftovers.
+Quest recipes are available only during an active run and removed on completion;
+server validation rejects stale UI requests. The guaranteed bone is restricted
+to an eligible corpse owner, deduplicated against observed drops, cannot be
+traded, and advances the quest only after successful pickup. Full bags and
+invalid hand-ins do not consume inputs. Expired runs require a new bone;
+restarts retain deadlines and cannot duplicate rewards.
+
+All six recovered weapon recipes are exposed while active because the original
+three-recipes-per-race assignment is not recovered. This is a documented UI
+approximation; the native six outputs and equip restrictions are used. The
+**Sound Heart reward remains unimplemented**: its retained graph contains a
+10,800-second duration row, stat `0x40107`, and a final value row of 40, but the
+server does not yet apply timed maximum-health modifiers. The separate Esper
+Vault chain is also unfinished; receiving its glyph does not complete it.
+
+Regenerate with `python AC2E/emulator/tools/author_esper_camp.py` and
+`author_professions.py`. `Network/test_esper_camp.py` checks production placement
+counts and the full UDP path, actual vermin butchery, recipe restrictions,
+material conservation, combat/loot, wrong hand-ins, and three server restarts.
+Rust tests cover native assets, six recipe inputs/outputs, full bags, expiration,
+replay/compaction, actual Slayer combat and camp respawn lifecycle.
+
+### The Warder Scout's Notebook and Seek the Warder Captain
+
+At **level 10**, speak to the **Warder Scout near Molwirth, 14.0N, 0.6E** to
+accept the task. Completing the prior introductions is optional. If Find the
+Warder Scout is active, this conversation completes that referral as well.
+
+1. Defeat the **Drudge Slinker Bandit** at the camp near **15.5N, 1.7W**.
+2. Open the corpse and take **The Warder Scout's Notebook**. Killing the Bandit
+   and collecting the notebook are separate native journal stages. If its corpse
+   expires, another Bandit can supply the notebook during the same active task.
+3. Return within **24 hours**. Select the Scout and use the notebook, or speak
+   to him while carrying it. Make room for three rewards: **Emblem of Order**,
+   **Mad Crone Glyph** and **Prosper Glyph**, plus **800 XP**. Hand-in needs two
+   free backpack slots in addition to the space occupied by the notebook.
+4. The hand-in starts **Seek the Warder Captain**. Enter the **Warder's Hideout
+   at 20.6N, 14.0E**, stay left through the Lasher caves and climb the circular
+   ramp. Speak to the Captain within **48 hours** for **2,500 XP**.
+
+Both tasks repeat after 20 hours. Speak to the Scout to restart an expired
+Notebook task or renew an expired Captain introduction. Deadlines and rewards
+persist across restarts. `wn1` journals whole transactions, and `qk3` advances
+the kill stage without changing earlier kill-record replay semantics. Full bags
+do not consume quest inputs or award partial rewards. Old notebooks are removed
+when restarting an expired attempt; old corpse drops cannot satisfy a new one.
+Notebook drops require an active eligible owner, ignore generic captured copies,
+and cannot be traded or dropped. No fellowship-shared quest credit is claimed.
+
+`warder-notebook-v1.json` pins native assets, original localized journal text,
+cached guide evidence and three existing recovered placements. The native Bandit
+records include death effect `Eff_AdvanceQuestWarderScoutPhase2` and loot profile
+949; the notebook has acquire effect `Eff_AdvanceQuestWarderScoutPhase3`.
+The guide's Scout at 25.0N, 3.8E and Bandit at 28.1N, 3.9E conflict with retained
+placements. This implementation preserves those placements and gives directions
+to the live actors; it does not claim the differing sources describe one layout.
+Existing Bandit spawners are reused; respawn cadence remains authored AC2E policy.
+
+Regenerate with `python AC2E/emulator/tools/author_warder_notebook.py`, using the
+retained native-template export and wiki cache. Rust tests cover native asset
+validation, level/phase gates, deadlines, full bags, duplicate hand-ins, old corpse
+eligibility and durable replay/compaction. `Network/test_warder_notebook.py` checks
+the production actor rows and the full conversation/combat/loot/hand-in route
+through native UDP messages across four server restarts.
+
+**Drudge Potion Raid, Seek Dantry and the separate Mad Crone/Prosper vault chains
+remain unfinished.** Receiving their glyphs does not implement those chains.
+
+## Native spell presentation
+
+`skill-presentation.json` recovers 906 cosmetic profiles from the installed
+Legions skill hook graphs. `import_skill_presentation.py` retains the attacker
+cast FX (one-based hook value 19, enabled by value 20 bit `0x40`), release FX
+(21, bit `0x2000`), and missile entity (7), then resolves the entity's visual.
+The existing skill-effects import supplies target FX and gameplay. Source skill
+and missile records are SHA-256 pinned and validated at server startup. Multiple
+distinct cues in one skill are rejected instead of silently picking one; the
+current extraction has no rejected records. Regenerate with:
+
+```powershell
+python AC2E/emulator/tools/import_skill_presentation.py --game-data "Asheron's Call 2 - Legions" --output AC2E/emulator/content/skill-presentation.json
+```
+
+Named offensive skills now publish their own caster FX at cast start, release
+FX after the existing windup, and native missiles before target impact. Support
+and self effects release with their committed result. A recipient application
+cue is queued even for HoTs or buffs without an instant heal; recipient visual
+stamps remain owned by that recipient. Periodic damage no longer causes fresh
+racial impact effects on every tick. These records do not grant skills or make
+unsupported summons, area attacks, or other gameplay executable. Unconverted
+7230 servers retain their existing presentation; Legions identities are not
+applied to that build. The 350 ms windup and 22 m/s projectile timing remain
+authored server policy, not a claim of recovered retail timing.
+
+Flame Bolt (`59`) uses fire cast `81000281`, release `410004A9`, and mesh missile
+`47000D04` / `1F000B85`. Its appearance is a native material/mesh effect, whereas
+Fireball (`58`, `47000306` / `1F000189`) has a particle trail. Flame Bolt's legacy
+target key `41000241` has no references in the installed FX tables, visuals,
+appearance tables, or FX scripts. It remains unresolved rather than receiving
+an invented replacement; the cast and missile are now visible. Ease Suffering
+uses caster `810001D0`, release `410004A8`, and recipient `41000033`.
+
+A follow-up reference scan across all 235 currently executable Human, Lugian,
+and Tumerok core profiles found no unreferenced cast cues. Remaining unreferenced
+keys are the Death's Grasp release (`8100005D`), Heart Rend / Soul Rend impact
+(`4100030E`), and the shared Flame Bolt / Pyroclastic Flow impact (`41000241`).
+Asset references alone do not prove rendering; the representative particle
+checks below verify actual playback separately.
+
+Verification: importer flag/graph/entity tests; server cast/release/flight/impact
+and burn regression tests; `Network/test_active_skills.py` and
+`Network/test_support_skills.py` against disposable real UDP worlds; and
+`AC2.Data.NamedSpellParticles` in Unreal. The client test isolates 21 cues on
+Human, Lugian, and Tumerok bodies, verifies actual particle counts and expiry,
+and checks Fireball particles plus Flame Bolt geometry/materials. Existing
+combat, animation FX, and projectile script tests also pass. This is automated
+simulation/render-data verification, not a side-by-side retail playthrough.
+
+### Osteth vault creatures, glyphs and Prosper dungeon travel
+
+The Arwic and Esper vault recovery pack publishes 28 actors in 27 room spawners:
+14 Arwic Drudge Outcasts, 13 Esper Drudge Outcasts and one Esper Drudge Keeper.
+Each row in `vault-world-v1.json` retains its capture identity, original entity,
+room, position, scale and orientation. The generator resolves the corresponding
+Legions template and requires reachable native ground with clearance before it
+publishes the row. Eight source positions failed these checks. Spawner membership
+follows captured room occupancy; the observed headcounts are a reconstruction.
+
+Arwic, Esper and Lost Wish glyphs can drop from their documented Vermin variants
+inside the corresponding outdoor Ringway. The 10% drop chance is emulator tuning.
+Explicit operator loot overrides and quest item awards retain their own rules.
+Sources: [Arwic](https://20oz.net/index.php/Arwic_Vault.html),
+[Esper](https://20oz.net/index.php/Esper_Vault.html) and
+[Lost Wish](https://20oz.net/index.php/Lost_Wish_Vault.html).
+
+Fiery Crypt and Illuminated Drudge Cave have working entrance and exit routes.
+Both exterior entrances and interior exits use recorded portal positions. The
+Fiery Crypt entrance appears in two January 2017 captures and the Illuminated
+Drudge Cave entrance in five. All four destinations come from named Pyreal
+telepads 681/682 and 126/125. The region guide records a level-10 entrance for Illuminated Drudge Cave.
+Fiery Crypt uses an unrestricted entrance because the regional guide gives no
+entry level and the walkthrough sends level-18 players there. These routes provide
+travel; individual dungeon quests and encounters require their own data.
+Sources: [Prosper Marches](https://20oz.net/index.php/Prosper_Marches.html)
+and [Illuminated Drudge Cave](https://20oz.net/index.php/Illuminated_Drudge_Cave.html).
+
+Player-dropped ground items expire after 15 minutes (emulator tuning). The
+deadline survives restarts, and existing drops receive one full lifetime when
+their original save is first migrated. Corpses and authored world spawns use
+their own lifecycles.
+
+Illuminated Drudge Cave has 17 additional native combat spawns in 10 rooms.
+The January 2017 captures listed in `illuminated-cave-v1.json` independently
+record these creatures at the same coordinates. Installed templates match by
+name and loot-profile ID. Combat and AI properties for the Illuminated Drudge
+come from its installed DAT inheritance. Grounded creatures use the local
+floor. The boss, Mystic and three Cabalists retain their captured hover height.
+Four candidates failed clearance or spacing checks. Room group capacities
+reflect simultaneous placements. The regeneration schedule is emulator tuning.
+The cave walkthrough places the manuscript on the ground behind the boss.
+It is excluded from the boss's treasure table.
+[The Illuminated Manuscript](https://20oz.net/index.php/The_Illuminated_Manuscript.html)
+
+The [loot catalog](#loot-and-idle-ai) uses captured local and species bundles
+to fill native generic slots, then uses the shared loot profile and reconstructed
+common pool. Native trophies have separate rolls.
+
+### Aerfalle's Generals
+
+Four singleton spawners place Baron Colier (31.2S, 56.8E), Lord Nuvillus
+(35.4S, 51.2E), General Dreyvon (28.9S, 61.3E) and General Sarocete
+(27.6S, 64.2E) at the guide's reported coordinates. Native land heights and
+creature clearance were checked for each spawn. Levels 56, 58, 60 and 62,
+health, collision dimensions, scale and corpse identities come from the DAT.
+Facing and the two-minute respawn interval are inferred.
+
+Each general carries their own quest key. The implementation awards one per
+corpse based on the walkthrough. The original key probabilities are unknown.
+Colier and Nuvillus also roll the DAT's independent 5% Skeleton Helm slot.
+The corpses require level 45. Each key requires its corresponding active quest
+objective, including during bulk looting. Foundry Gates and the Troop Status
+quest starter are still missing, so players cannot yet qualify for the keys
+through normal play. The authoring inputs and their hashes are in
+`foundry-generals-v1.json`, generated by `tools/author_foundry_generals.py`.
+[Aerfalle's Generals walkthrough and map coordinates](https://www.20oz.net/index.php/Aerfalle%27s_Generals.html)
+
+### Warder Hideout and guide-documented outdoor encounters
+
+The Warder Hideout entrance at 20.6N, 14.0E and both surface exits are in
+`warder-hideout-v1.json`. The guide floor plan, two 2017 captures and Pyreal
+telepads 136 and 137 establish the routes. Four spawners support five Lashers
+at positions with native floor contact and body clearance. The Warder Cache
+has its own access requirements and is outside these routes.
+[Hideout floor plan](http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Warder_Hideout.png)
+
+`hero-wilderness-camps-v2.json` places 59 creatures in 25 outdoor spawners
+in Omishan and Knorr. Each camp cites the guide behind its location and roster.
+Several Combat Archaeology digs and the Darkstone encounter now have guards.
+Exact spacing, unrecorded group sizes and the two-minute respawn are inferred.
+These placements alone do not implement the associated quest scripts.
+[Combat Archaeology](http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html) �
+[The Darkstone](http://ac2hero.e5i5o.com/quest/omishan_darkstone.html)
+
+Lupe in Hakata starts Shreth-Hide Leather. The Scarred Shreth Hunter near
+39.2N, 68.1E drops the quest rawhide for eligible characters. Lupe takes the
+hide and 100 Tallow, and Gallus in Whitebay accepts the tanned leather for
+120,000 XP, 1,250 gold and 600 quest points. Shreth sharing the Hunter's native butchery profile can
+yield Hide or Tallow. The guide identifies both materials. Their relative odds
+are inferred. [Quest walkthrough](http://ac2hero.e5i5o.com/quest/omishan_shrethhideleather.html) �
+[Butchery traits](http://ac2hero.e5i5o.com/traits.html)
+
+In the Aerie, Jasper Urleg, Temakhe and Bertrand Jas offer three repeatable
+hunts. Together with the existing fourth hunt, they unlock Otonku's Aerie
+Report for delivery to Maekarn in Fort Strathelar. The encounter IDs, quest
+timers, reward calculations and source pages are in `hunting-content-v5.json`.
+[Journey to Fort Strathelar](http://ac2hero.e5i5o.com/quest/knorr_journeytofortstrathelar.html)
+
+### Cragstone Excavation
+
+The exterior entrance and both return portals use frames recorded in two
+January 2017 sessions. Their destinations come from Pyreal telepads 674-676.
+Twenty-six room spawners reproduce 44 observed inhabitants, including the
+Breeder of Pestilence. Twelve floor positions needed an adjustment of at most
+one metre horizontally in the same room. The source frames and adjusted
+positions are retained in the placement catalog and report.
+[Cragstone Excavation floor plan](http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Cragstone_Excavation.png)
+
+In the captured corpses, Slinkers carried Jagged Seal Fragments (6 of 15),
+Prowlers carried Sharp fragments (4 of 16), and Raiders carried Small fragments
+(3 of 15). These observations determine the emulator's provisional chances
+inside the Excavation. For Shear Beetle Flesh the 2017 DAT supplies the 100%
+trophy rate. The Order Cache and sealed library remain separate content gaps.
+[Cragstone Excavation walkthrough](http://ac2hero.e5i5o.com/quest/osteth_cragstoneexcavation.html)
+
+### Omishan forts, temples and trackers
+
+Four Sclavus forts have their guide-listed preceptors and guards. The four
+talisman pickups and their matching temple doors have separate capture records
+in `hero-wilderness-camps-v2.json`. Their quest phase restrictions still
+need a server implementation. The location recorded while looting the boss
+identifies the chamber, but only the player's position was transmitted.
+[The Sclavus Hierophant's Cabals](http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html)
+
+The Warder Tracker involved in Temple Search can be found in Zu at
+16.1N, 73.3E. The shrines to Mother Audetanga, Blue Mother Heaven and Brother
+Tanae are placed near their guide coordinates. AC2E also places the Frostbound
+One near 3.0S, 37.9W. These actors currently provide information. Three other
+shrine candidates and the Totem of Vakentu lack a verified footprint within
+ten metres of their guide points.
+[Temple Search](http://ac2hero.e5i5o.com/quest/omishan_templesearch.html) /
+[Icefire](http://ac2hero.e5i5o.com/quest/linvak_icefire.html)
+
+### The Ossuary
+
+The exterior entrance and interior exit match four January 2017 captures.
+Pyreal telepads 1027 and 1028 supply the destinations. The exterior return
+uses the player's first stationary ground position after the recorded airborne
+arrival, 4.4 metres from that arrival. Sixteen dungeon spawners provide ten
+Revenant Legionaries, six Revenant Prefects and Ossein, Digger of Graves.
+Fifteen other recorded positions failed the installed DAT's body clearance
+checks. Outside, one Servant of the Bones can appear at three possible homes
+94 to 146 metres from the entrance. The guide documents the encounter and its
+quest. The three exact positions and two-minute refill are AC2E reconstructions.
+The Gurog Captain's exact native variant and the Trove encounter are
+still unresolved.
+[Kill Ossein](http://ac2hero.e5i5o.com/quest/linvak_killossein.html) /
+[Ossuary floor plan](http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Ossuary.png)

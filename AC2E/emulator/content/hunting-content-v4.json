@@ -1,0 +1,126 @@
+{
+  "version": 4,
+  "policy": "Guide XP, deadlines and resets. Shiela recommends level 5 without a hard minimum. Krestovmik's missing minimum is filled from the secondary wiki. Qualifying creatures carry the native Arwic death effect. Quest journal IDs are authored.",
+  "quests": [
+    {
+      "id": 1073806379,
+      "title": "Crush the Sandy Armoredillos",
+      "npc": 1191199468,
+      "npc_name": "Shiela Ondaran",
+      "targets": [
+        1191186373,
+        1191186374,
+        1191187062
+      ],
+      "goal": 5,
+      "level": 1,
+      "xp_basis_points": 0,
+      "xp_cap": 60,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 5 Sandy Armoredillos west of Arwic near 44.1N, 8.3W. Return to Shiela Ondaran in Arwic for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/osteth_crushthesandyarmoredillos.html",
+          "sha256": "f6cb0aab1d986ceb96cdff6c896aef33c627d00a453e2405c41af0a9268d3271"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuestArA_SandyArmoredillo",
+      "intended_level": 5
+    },
+    {
+      "id": 1073806380,
+      "title": "Destroy the Tanglefoot Vermin",
+      "npc": 1191199470,
+      "npc_name": "Grey Ondaros",
+      "targets": [
+        1191186305,
+        1191186306,
+        1191186561,
+        1191186562,
+        1191187151,
+        1191187152,
+        1191187153
+      ],
+      "goal": 5,
+      "level": 3,
+      "xp_basis_points": 0,
+      "xp_cap": 150,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 5 Tanglefoot Vermin north of Arwic near 45.6N, 6.2W. Return to Grey Ondaros in Arwic for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/osteth_destroythetanglefootvermin.html",
+          "sha256": "094530f22eab6f35c649072a85554ec72f067de0395b5e72edbac675ddb6749b"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Destroy_the_Tanglefoot_Vermin",
+          "sha256": "a73dc36776da4fd211bb702bc4164b8362c79556a271fa60531938d3e2641c86"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuestArB_TanglefootVermin"
+    },
+    {
+      "id": 1073806381,
+      "title": "Exterminate the Phyntos Wasps",
+      "npc": 1191199472,
+      "npc_name": "Krestovmik",
+      "targets": [
+        1191186332,
+        1191186333
+      ],
+      "goal": 5,
+      "level": 2,
+      "xp_basis_points": 0,
+      "xp_cap": 120,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 5 Green Phyntos Wasps in the ravine south of Arwic near 42.4N, 7.2W. Return to Krestovmik in Arwic for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/osteth_exterminatethephyntoswasps.html",
+          "sha256": "6d528a641e19430fe75dca54bfd745e749f560d3e4e254a311c463d70b79ca4f"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Exterminate_the_Green_Phyntos_Wasps",
+          "sha256": "9450f276345fadb7a25cb1463d7ede623fe5cec033d444d3dd2ad6916633dcaf"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuestArC_GreenWasp"
+    },
+    {
+      "id": 1073806382,
+      "title": "Put Down the Carrion Shreth",
+      "npc": 1191199466,
+      "npc_name": "Oriona",
+      "targets": [
+        1191186315,
+        1191188016,
+        1191188018
+      ],
+      "goal": 5,
+      "level": 3,
+      "xp_basis_points": 0,
+      "xp_cap": 150,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 25200,
+      "text": "Defeat 5 Carrion Shreth east of Arwic near 44.3N, 5.0W. Return to Oriona in Arwic for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/osteth_putdownthecarrionshreth.html",
+          "sha256": "082fa4b016f22c1b828488643c5d86c20d80d73f86fc00e18e351f108bdd31d6"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Put_Down_the_Carrion_Shreth",
+          "sha256": "e23752abc1b49aa2e1d1cc643973b57857c15e316e011f8b1a68ac47da560033"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuestArD_CarrionShreth"
+    }
+  ]
+}

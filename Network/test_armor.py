@@ -15,7 +15,7 @@ def main():
     log=(run/'server.log').open('w',encoding='utf-8')
     server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19350','--account','local',
         '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-        '--initialize-ui','true','--training-kit','false','--seconds','240'],
+        '--initialize-ui','true','--seconds','240'],
         env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1'),stdout=log,stderr=log,creationflags=0x08000000)
     peers=[];checks=[]
     try:
@@ -55,7 +55,30 @@ def main():
                     p.bag.remove(item)
                     assert until(p,start,'visual',lambda e:e['id']==p.id)['visual']==original
                     assert until(observer,obs,'visual',lambda e:e['id']==p.id)['visual']==original
-                checks.append({'race':race,'body':p.spawn['visual']['did'],'slots':slots})
+                # Retain the retired Shelter fixture's inventory assertions without
+                # relying on deterministic monster armor drops. Starter weapons
+                # exercise the same atomic equipment-slot replacement protocol.
+                equipped=None
+                for iid in p.bag[:2]:
+                    source=p.bag.index(iid);start=len(p.events)
+                    time.sleep(.2);p.send('equip',id=iid,location=0x40,slot=source)
+                    ack=until(p,start,'inventory_result',lambda e:e['id']==iid)
+                    assert ack['status']==0 and ack['equipped']==0x40,ack
+                    p.bag.remove(iid)
+                    if equipped:
+                        old=until(p,start,'inventory_result',lambda e:e['id']==equipped)
+                        assert old['status']==0 and old['equipped']==0 and old['slot']==source,old
+                        p.bag.insert(source,equipped)
+                    equipped=iid
+                for source,destination in [(0,len(p.bag)),(len(p.bag)-1,0)]:
+                    iid=p.bag[source];start=len(p.events)
+                    time.sleep(.2);p.send('move_item',id=iid,**{'from':source,'to':destination,'quantity':1})
+                    ack=until(p,start,'inventory_result',lambda e:e['id']==iid)
+                    final=destination-int(source<destination)
+                    assert ack['status']==0 and ack['slot']==final,ack
+                    p.bag.pop(source);p.bag.insert(final,iid)
+                checks.append({'race':race,'body':p.spawn['visual']['did'],'slots':slots,
+                               'atomic_replacement':True,'dense_reorder':True})
             for p in pair:
                 start=len(p.events);p.send('logout',id=p.id);until(p,start,'selection')
                 p.send('delete',id=p.id);p.wait('deleted');p.close()

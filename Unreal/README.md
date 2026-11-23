@@ -1,9 +1,61 @@
 # AC2:Unreal — DAT client, controller and account frontend (0.11.0)
 
+[Download the Windows installer and see the update guide](https://thwargle.github.io/ac2e/).
+
 Native Unreal Engine 5.8 client foundation for Asheron's Call 2. The active project
 is `AC2Unreal.uproject`; it has no ACEClient dependency. It supports offline exploration
 and native multiplayer through AC2E or Pyrealium. See [network setup](../Network/README.md)
 and the [AC2E server project](../AC2E/AC2E-README.md) for capabilities and limits.
+
+The login screen supports saved AC2E/Icefire servers, accounts per server, and
+optional passwords protected by Windows Credential Manager. Each server has its
+own DAT folder; connecting with another set reloads all DAT-backed assets before
+login. Original and Icefire data can coexist. Icefire's first-connect DAT updates
+are installed into separate verified snapshots; the frontend reloads and retries
+login automatically, and the server profile remembers the updated folder. See [profiles and data versions](../Network/README.md#saved-servers-and-accounts).
+
+The default graphics path is DX12/SM6 with virtual shadow maps. Legacy cascaded
+shadows failed at Dereth's native coordinates despite working near UE's origin;
+short contact shadows were the only visible result. VSM restores full cast
+shadows following the native sun/moon direction, including off-screen casters.
+CPU-animated meshes invalidate cached shadow pages when their vertices move.
+`-Dx11` remains a diagnostic fallback and does not provide this shadow fix.
+`-AC2EnvironmentSmoke -AC2OutdoorShadowSmoke -AC2Block=8eb6 -AC2Radius=1`
+captures morning/evening views at Lost Wish and compares a caster enabled/disabled
+before and after camera movement. Profile automation uses an isolated
+`-AC2ProfilesSmoke -AC2LoginProfiles=<absolute path>/test-profiles.json` and verifies
+both directions of an actual DAT reload; it requires both installations.
+
+Tumerok Shelter uses the native animated bridges' and towers' separate physics
+meshes, retained in group space. The earlier added spiral stair is no longer needed
+and has been removed.
+The movement safety guard also accepts the walking capsule's floor contact across
+native floor seams, preventing the reported invisible backtracking wall.
+`AC2.Data.TumerokPassageWalking` drives both sexes and size extremes through the
+reported passage and back, checking actual movement and the runtime safety guard,
+and walks the reported native ramp in both directions at both size extremes.
+`AC2.Data.StarterClearance` checks forward and reverse routes in all three racial
+Shelters against native collision. `AC2.Data.TumerokHeldWeapons` checks recovered
+drums/javelins and both sexes at height/build extremes. Held weapons follow the
+animated socket without inheriting body scale. `AC2.Data.HeldWeaponsFollowRunning`
+checks the actual engine tick order during running; local attachments update after
+the character's animation and movement. Verified native javelin clips
+hide the held item after release and restore it on recovery or cancellation;
+`AC2.Render.TumerokJavelin` captures the windup, release, recovery and running offscreen.
+
+Material template version 20 routes world opaque/cutout/grass lighting through
+UE's shadowed direct-light pass, retaining DAT texture/color stages, native ambient
+fill and authored finish parameters. Native cell lights become movable point
+lights on the dungeon lighting channel with stable shadow casting and whole-light
+distance fades, removing the camera-dependent nearest-eight shadow switches.
+World albedo normalizes native MODULATE2X/4X stages that consume DIFFUSE, so their
+light amplification cannot clip texture detail before the shadowed lighting pass.
+Sunlight uses the outdoor channel. UI previews retain native vertex lighting and
+the original stage operations.
+`AC2.Render.NativeMaterialFinish` checks preview color fidelity and measures both
+sun and point-light shadows, including amplified diffuse-stage texture cases.
+`-AC2EnvironmentSmoke -AC2LightingSmoke` captures the
+reported native ramp, the dungeon bridge, and outdoor scenery.
 
 To play on your local server, start `start-ac2e.bat`, then run
 `Launch-AC2.ps1 -Online -Server 127.0.0.1 -Port 9000 -Account local`.
@@ -12,6 +64,30 @@ Character selection/creation stays opaque until the chosen character and its des
 are ready; the world, sky and default avatar are not created behind the initial login page.
 The server stores network characters separately from offline profiles. The controls
 below describe offline mode; network targeting, attacks, item use and chat route to the server.
+
+**Auto Target** in Options → Game uses retail's native text and defaults to on.
+An incoming harmful skill selects its attacker only when nothing is selected;
+misses count, while healing does not. Existing targets and selected corpses stay
+selected. Apply changes the behavior and saves the native character option;
+Revert and confirmed Defaults use the same settings flow. Selection does not
+automatically enter combat. When the selected object disappears or becomes
+unselectable, Auto Target picks the nearest eligible living monster within
+75 metres outdoors or 50 indoors. Native XY range, vertical distance penalty
+and unsigned-ID tie ordering are preserved. NPCs, players, pets and known
+corpses are excluded by the current PvE filter. Targeted attack cancellation
+keeps combat stance; selecting alone does not begin repeat attacks. Native
+head/eye look-at, last-target commands and full PK/faction filters remain gaps.
+
+Options → Game saves supported character preferences to the server: damage text
+and third-party range, radar categories/coordinates, shortcut lock, number labels
+instant bar scrolling and auto targeting. **Shortcut Bar Height** offers the
+native one-to-five-row dropdown: choose a value and press Apply. Revert restores the applied value;
+confirmed Defaults applies one row. Dragging the grip updates the selector and
+saves the height immediately, preserving unrelated pending edits. Login
+restores each character's profile without changing pending edits on ordinary
+refreshes. Native flags not exposed in this UI are retained. Client graphics,
+audio, chat fonts and other unmapped settings remain local; a character without
+saved options uses the local defaults until an explicit preference change.
 
 For crafting, open Skills → Craft and use **All professions** to choose a discipline.
 Select a recipe, adjust its level with **−/+**, and fill its ingredients from your
@@ -41,8 +117,10 @@ Offline corpses live through their decoded clip; AC2E retains starter corpses fo
 3.5–5.5 seconds (the native clips last up to 4.375 seconds), with a 12-second fallback
 for other profiles. These are presentation lifetimes, not retail corpse/loot rules.
 Startup particle emitters are separate from appearance FX overrides. Cast_Attack uses
-the native hand emitters, and racial impacts resolve their DAT banks. Native sound,
-decal/streak rendering and complete elemental skill-effect scripting remain unfinished.
+the native hand emitters, and racial impacts resolve their DAT banks. Weapon swing
+cues start and stop ribbons on their authored holding locations. The blade model
+supplies the ribbon edges, texture, sampling interval and fade. Some native sounds,
+decals and elemental skill scripts still lack presentation support.
 
 ## Run
 
@@ -53,7 +131,8 @@ own `Saved/Logs/AC2Play-*.log`; use a separate server account per player. Close 
 game/editor windows before rebuilding to apply code changes.
 Windows PowerShell 5.1 is supported. Defaults are block **5667**,
 radius **2** (25 detailed blocks), and noon. The launcher prepares twelve project-owned
-shader templates when absent or outdated. DATs are read in place and never modified or bundled.
+shader templates when absent or outdated. DAT renderers read in place; original archives are never modified or bundled.
+Icefire updates create separate snapshots as described above.
 
 The default data directory is `Asheron's Call 2 - Legions/` under the repository root.
 Required: `portal.dat`, `cell_1.dat`, `local_English.dat` (native UI and item names).
@@ -71,41 +150,35 @@ the newer 0930 decompile is a comparison source, not evidence of matching DAT su
 
 ## Controls
 
-- WASD / mouse: move and look. Shift: faster. Space: jump.
-- Tab: third-person / first-person camera. F: walk / fly. Q/E: vertical flight.
-- Deep water enables buoyancy and native swimming animation; Q/E adjusts depth and holding Space swims up.
-- T: cycle local NPC target. 1: strike within 3.5 metres. Walls block strikes.
-- 2: play the selected native particle system. 3: cycle native weather days.
-- R: spawn the next test creature on a clear outdoor or interior floor (maximum 12).
-  Cycles Drudge, Shreth, Reedshark, Beetle and Banderling. F2 shows the next species.
-- M: native world/detail map. F1: help and diagnostics.
+- W/S move forward and back, A/D strafe, and the arrow keys move or turn. Hold Shift to walk. Space jumps.
+- Drag with the left mouse button to orbit freely. Releasing it while running brings the camera back behind the moving character. Drag with the right button to steer. Hold both buttons to move forward.
+- Tab switches the camera view. F toggles flight where available. Q/E adjust height in flight or deep water. Holding Space swims up.
+- T selects a target, E uses it, and Z switches combat stance. The number keys activate the current shortcut bar.
+- M opens the world map, I opens inventory, C opens the character sheet, and Enter opens chat.
 - Map: click the world map or wheel up to zoom; drag or click edge arrows to pan
   (Shift uses a smaller step). Right-click, wheel down, or the detail back button returns
   to the world map. Click your marker or check **Lock to Player** to follow your position.
 - Click detail-map landmarks to display their native description and coordinates.
   The five continent buttons open draggable native difficulty maps.
 - The radar stays in the upper-right corner, rotates with your character, and shows
-  nearby actors. With Alt/cursor enabled, hover for names or click to select a target.
+  nearby actors. Hover for names or click to select a target.
   Its small blue button toggles the coordinate readout.
-- Alt: toggle the UI cursor; Escape closes an open panel, or opens the native Options window.
-  Its Core page provides Leave World and Quit. The other native pages expose camera,
+- Escape closes an open panel or opens Options. In **Core → Key Bindings**, select an action, press the new key or chord, then choose **Save**. The editor also supports clearing a binding and restoring defaults.
+  The Core page also provides Leave World and Quit. The other native pages expose camera,
   mouse, display/quality, vital numbers and chat font settings, with Apply/Revert/Default
   and draggable sliders. Applied values persist in Unreal's GameUserSettings.ini.
 - Home or `/recall`: request server lifestone recall (resurrection when dead).
   Bind by targeting a nearby lifestone and pressing 2. Server distance, combat and
   cooldown checks apply. Offline recall returns to the session start and restores vitals.
-- F2: world/weather panel (time, native sky day, rain overrides, travel).
-- F3: native FX browser. Previous/Next selects an effect; Play or 2 runs it.
-- I: inventory/equipment. C: character statistics. F4: character selection.
+- F4 returns to character selection.
 - Enter: open/submit local chat. Escape cancels entry and restores movement.
   Up/Down recalls sent messages and restores the unsent draft; mouse wheel over chat
   or Page Up/Down while typing scrolls the log. Commands: `/say`, `/s`, `/me`, `/emote`,
-  `/help`, `/loc`, `/clear`. Chat is local; server channels report unavailable.
+  `/help`, `/loc`, `/clear`. Connected sessions also support tells and server chat.
 - Character selection/creation captures keyboard/mouse input. Escape from creation
   returns to selection; Escape from selection disconnects and returns to sign-in.
 - With the cursor active, native toolbar buttons open inventory, examination, map
-  and help. The first two shortcut slots invoke a local strike and particle preview.
-  Local spawn/weather/FX controls remain on R/F2/F3. Chat records actions and combat notices.
+  and help. Shortcut keys activate the actions assigned to their slots.
   Click either vital meter to toggle its numeric value.
 
 Tilde opens the console:
@@ -150,10 +223,12 @@ axis). It uses 20/40 metre samples, native material-derived vertex colours, slop
 normals and skirts. It is a coarse horizon pass, not a second full terrain atlas.
 Retained detail tiles are hidden once the matching distant mesh covers them.
 
-Water uses native `CWaterDesc` height/type maps and surface material textures,
-scrolling UVs and depth-faded shores. Deep-water travel starts at the surface.
-Buoyancy uses Unreal movement; retail water physics, reflections, waves, below-water
-materials and complete underwater lighting are unfinished.
+Water uses the native `CWaterDesc` height and type maps. The shoreline mask
+controls how much of the riverbed shows through. A mirrored camera captures
+sky, terrain and scenery at the nearest visible lake elevation. The retail
+bump texture distorts this reflection, and two scrolling foam samples animate
+along the bank. A submerged camera sees the DAT underside material. Buoyancy
+uses Unreal movement, and underwater lighting remains approximate.
 
 Interior cells render their native meshes and static contents with triangle
 collision. Cell travel selects a floor triangle and checks player capsule clearance,
@@ -166,10 +241,13 @@ Native sky setups, layer ordering, alpha/additive textures, celestial transforms
 and day/night keys are retained. Sky layers are projected beyond the world while
 preserving angular size, fixing the camera-following red glow over terrain.
 Native day definitions, rain/wind keys and fog colours now drive weather previews.
-The directional light uses `CDayDesc::CalcLightVector` (heading clockwise from north,
-elevation above the horizon, including the sweep past zenith), with the same sampled
-day key driving direct/ambient colours and intensity. Ambient fill uses a neutral upper
-hemisphere and dim ground bounce instead of an equally bright sphere beneath the world.
+Near and distant terrain sample the same moving cloud-shadow texture in world
+coordinates. The night horizon uses the coverage of the DAT sky matte to blend
+the sky smoothly as the camera looks up.
+The directional light follows the visible sun or moon and blends back to the
+native day-key direction near the horizon. The sampled day key supplies direct
+and ambient colour and intensity. Terrain and object materials apply their
+authored ambient fill.
 Leaving the world destroys its directional light, skylight and fog, so selecting another
 character cannot accumulate lights. Foliage keeps its authored lighting normal on both
 sides of a card; frills use the native placement's upward normal at every vertex.

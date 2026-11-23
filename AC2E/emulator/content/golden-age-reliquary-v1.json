@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "sources": [
+    "http://ac2hero.e5i5o.com/quest/linvak_relicsofagoldenage.html",
+    "http://ac2hero.e5i5o.com/quest/linvak_killthemasterguroghenchman.html",
+    "Pyreal_DB_Insert_Telepad.sql / telepads 196, 197 (SHA256 c1caa67d0cf0f9ccad017b80f688a5a974bd7adc06c74ee9b2bfd6473543adcd)"
+  ],
+  "notes": [
+    "Public outer entrance and return only. The entrance CREATE is localized as Golden Age Reliquary (key E4B19379), the return as Exit to Surface from Reliquary (4B774160). The guide places the Medallion of Opening check at the separate Inner Sanctum gate. The Master Gurog Henchman is documented and captured in the public outer dungeon.",
+    "The return reuses the same CREATE already recovered in capture-spawns-upstream; retain its world object ID."
+  ],
+  "captures": {
+    "bdadea1b7648": {
+      "archive_sha256": "bdadea1b764898af20d9717153bea0e2d1cb745e3cc3098da8eb9f6f8d717154",
+      "path": "625113f2f9f74be5/pkt_2017-1-25_1485393895_log.pcap"
+    }
+  },
+  "templates": {
+    "1191187537": {
+      "name": "Portal",
+      "visual": 520094494
+    }
+  },
+  "validate_captured_bodies": true,
+  "camps": [],
+  "npcs": [],
+  "interiors": [],
+  "portals": [
+    {
+      "id": 9313715655951778048,
+      "capture_id": "405f660000000001",
+      "capture_entity": "47001154",
+      "captures": [
+        "bdadea1b7648"
+      ],
+      "message_sha256": "36cbf4e3c5da8bdb08afcad45d7eb21872eeac0ccad4e3e2ef25c9d87e9aaef4",
+      "entity": 1191187537,
+      "cell": 1600520220,
+      "position": [
+        62.903560638427734,
+        64.96241760253906,
+        129.21624755859375
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Golden Age Reliquary",
+      "destination_telepad": 196
+    },
+    {
+      "id": 9313680950393481035,
+      "capture_id": "400afc000000002d",
+      "capture_entity": "47001154",
+      "captures": [
+        "bdadea1b7648"
+      ],
+      "message_sha256": "a60fe6ff406290acd2752d071e7e26bc41df5c96d0203628375890c53a386ea2",
+      "entity": 1191187537,
+      "cell": 184287555,
+      "position": [
+        48.99825668334961,
+        89.18790435791016,
+        107.2113265991211
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Exit to Surface from Reliquary",
+      "destination_telepad": 197
+    }
+  ]
+}

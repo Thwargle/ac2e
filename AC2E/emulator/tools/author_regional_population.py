@@ -26,6 +26,20 @@ REGIONS = {
 }
 PEACEFUL = {0,14,23,24,25,27,28,29,30,31,32,35,37,38,45,48,55,56,59,60,61,79}
 
+# Meter offsets from the original block origin for inferred roaming groups
+# displaced by sourced placements. The Gladiator camp crosses the north edge
+# of 5379 to leave the Ossuary approach and its neighboring camps clear.
+REVIEWED_CAMP_CENTERS = {
+    0x4F7B: (28, 28),    # Frostbound One
+    0x5379: (156, 184),  # The Ossuary
+    0x5F66: (148, 24),   # Golden Age Reliquary
+    0x646F: (40, 70),    # Jellio at the Drudgerton entrance
+    0x9199: (88, 48),    # Warder Hideout
+    0x9584: (56, 76),    # Illuminated Drudge Cave
+    0x9780: (108, 76),   # Counselor of the New Drudge Republic
+    0xEC83: (156, 156),  # Shrine to Brother Tanae
+}
+
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -128,6 +142,9 @@ def author(templates_path,wiki_path,output):
             c=r['creatures'][(h>>32)%len(r['creatures'])]
             count=1 if c['elite'] else 2
             iid=0x8140c00000000000|(bx<<16)|(by<<8)
+            if (bx << 8 | by) in REVIEWED_CAMP_CENTERS:
+                x, y = REVIEWED_CAMP_CENTERS[bx << 8 | by]
+                p = [bx*8 + x/20, by*8 + y/20]
             camps.append({'id':iid,'land':p,'region':r['name'],'roster':[c['entity']]*count,
                           'capacity':count,'regeneration_ms':180000,'polygon':r['polygon']})
     entities=sorted({d for c in camps for d in c['roster']})

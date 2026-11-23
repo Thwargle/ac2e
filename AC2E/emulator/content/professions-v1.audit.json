@@ -831,36 +831,6 @@
       "reason": "quest entitlement required"
     },
     {
-      "id": 1862278927,
-      "name": "Drudge Cadre Slayer Bow",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862278928,
-      "name": "Drudge Cadre Slayer Chuck",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862278929,
-      "name": "Drudge Cadre Slayer Drum",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862278930,
-      "name": "Drudge Cadre Slayer Spear",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862278931,
-      "name": "Drudge Cadre Slayer Staff",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862278932,
-      "name": "Drudge Cadre Slayer Sword",
-      "reason": "quest entitlement required"
-    },
-    {
       "id": 1862278933,
       "name": "Fuse the Seal Fragments",
       "reason": "quest entitlement required"
@@ -1883,11 +1853,6 @@
     {
       "id": 1862279139,
       "name": "Reforge the Shattered Clawblade",
-      "reason": "quest entitlement required"
-    },
-    {
-      "id": 1862279140,
-      "name": "Flower Garland",
       "reason": "quest entitlement required"
     },
     {

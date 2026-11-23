@@ -1,0 +1,11 @@
+{
+  "existing_outdoor_sha256": "9d9b608b28579effd35500b919af911e3a0292e194f1b95ee6a9fc5bc83a5a76",
+  "groups": [],
+  "included": 2,
+  "inferred": false,
+  "manifest_sha256": "83be89c526ad261f03ef81a5698dc309fe434201087e94dd2bf8d140f918a793",
+  "native_ground_verified": true,
+  "rejected": [],
+  "source_sha256": "a8e7fc4a22b0c6dcf0728bb13e29055370cdf8df177875dbabec66a3574088a8",
+  "version": 1
+}

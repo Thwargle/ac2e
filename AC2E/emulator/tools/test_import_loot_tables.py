@@ -3,7 +3,7 @@ import json, tempfile, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from import_loot_tables import convert
+from import_loot_tables import convert, loot_area
 
 def template(name, visual, ai=None):
     return dict(name=name,visual=visual,ai=ai,role='monster' if ai else 'scripted',
@@ -14,7 +14,7 @@ class LootImportTests(unittest.TestCase):
         source={1:template('Beetle',101,'BeetleAI'),2:template('Dagger',102)}
         target={11:template('Beetle',201,'BeetleAI'),12:template('Dagger',202)}
         corpse=dict(source_iid='corpse',corpse=True,container=None,visual=101,
-                    name={'children':[{'key':1,'table':2}]},message_sha256='corpse-hash')
+                    name={'children':[{'key':1,'table':2}]},message_sha256='corpse-hash',position={'cell':0x1234002a})
         item=dict(source_iid='item',corpse=False,container='corpse',entity=2,visual=102,
                   quantity=1,message_sha256='item-hash')
         if mutate:mutate(source,target,item)
@@ -26,8 +26,9 @@ class LootImportTests(unittest.TestCase):
                 (audit/(sha+'.json')).write_text(json.dumps(dict(sha256=sha,objects=[corpse,item])))
             for label in ['reference','installed']:
                 d=root/label;d.mkdir()
-                for file in ['portal.dat','local_English.dat']:(d/file).write_bytes(b'synthetic test')
-            with patch('import_loot_tables.templates',templates),patch('import_loot_tables.localized_name',lambda *_:'Beetle'):
+                for file in ['portal.dat','local_English.dat','cell_1.dat']:(d/file).write_bytes(b'synthetic test')
+            cells=SimpleNamespace(read=lambda _:b'unchanged terrain',file=SimpleNamespace(close=lambda:None))
+            with patch('import_loot_tables.Archive',return_value=cells),patch('import_loot_tables.templates',templates),patch('import_loot_tables.localized_name',lambda *_:'Beetle'):
                 return convert(audit,root/'reference',root/'installed')
 
     def test_copied_capture_does_not_inflate_weight_and_uses_destination_visual(self):
@@ -35,6 +36,17 @@ class LootImportTests(unittest.TestCase):
         self.assertIn('0000000b\t411\t1\t0000000c',tables)
         self.assertIn('0000000c\t000000ca\tDagger',items)
         self.assertEqual(len(report['evidence']),1)
+        self.assertTrue(tables.rstrip().endswith('12340000:1'))
+        self.assertEqual(report['evidence'][0]['cell'],'1234002a')
+
+    def test_area_requires_matching_outdoor_terrain_or_matching_individual_room(self):
+        source={0x1234ffff:b'land',0x12340101:b'room1',0x12340102:b'room2'}
+        dest={0x1234ffff:b'land',0x12340101:b'rebuilt',0x12340102:b'room2'}
+        a,b=SimpleNamespace(read=source.__getitem__),SimpleNamespace(read=dest.__getitem__)
+        checks={}
+        for cell,area in [(0x12340015,0x12340000),(0x12340040,0x12340000),(0x12340102,0x12340102),
+                          (0x12340101,None),(0x87650041,None),(0x87650001,None),(0x1234ffff,None),(None,None)]:
+            self.assertEqual(loot_area(cell,a,b,checks),area)
 
     def test_ambiguous_item_or_wrong_capture_visual_withholds_whole_bundle(self):
         for mutate in [lambda s,t,i:t.update({13:dict(t[12])}),

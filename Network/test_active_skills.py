@@ -18,18 +18,20 @@ def main():
     content = prepare_test_content(directory)
     source = next(line.split('\t') for line in content.read_text().splitlines()
                   if '\t470007d1\t' in line)
+    # Keep the combat fixture independent of recovered starter population;
+    # overlap/unique-spawner suppression can otherwise remove its target.
+    content.write_text('pyrealium-world-v3\n')
     ids = [str(0x8140000000030500 + n) for n in range(2)]
     with content.open('a') as out:
-        for iid, x in zip(ids, [60.0, 62.0]):
+        for iid, (x, y) in zip(ids, [(58.0, 238.0), (60.0, 242.0)]):
             row = source[:]
             row[0], row[3] = f'{int(iid):016x}', '02990109'
-            row[4:7] = [str(x), '240.199', '-44.606205']
+            row[4:7] = [str(x), str(y), '-44.606205']
             out.write('\t'.join(row) + '\n')
     log = (directory / 'server.log').open('w', encoding='utf-8')
     process = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19520',
         '--account', 'local', '--data', str(directory / 'world'), '--game-data', str(DAT_DIRECTORY),
-        '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-        '--lifestones', 'false', '--portals', 'false', '--seconds', '100'],
+        '--content', str(content), '--initialize-ui', 'true', '--lifestones', 'false', '--portals', 'false', '--seconds', '100'],
         stdout=log, stderr=log, env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'),
         creationflags=0x08000000)
     peers = []
@@ -56,8 +58,11 @@ def main():
         time.sleep(.3)
         mark = len(hero.events)
         hero.send('skill', skill=0x59, target=ids[1])
+        requested = until(hero, mark, 'skill_requested', lambda e: e['skill'] == 0x59)
         until(hero, mark, 'chat', lambda e: 'requires a stave' in str(e))
-        until(hero, mark, 'skill_finished')
+        until(hero, mark, 'skill_finished', lambda e: e['request'] == requested['request'])
+        assert not any(e.get('event') == 'skills' and any(s.get('reset_started', -1) >= 0 for s in e['items'])
+                       for e in hero.events[mark:]), 'Rejected weapon check started a cooldown'
         staff = next(e for e in hero.events if e.get('event') == 'object'
                      and e.get('container') == hero.id and e.get('entity') == 0x470007e0)
         mark = len(hero.events)
@@ -71,8 +76,21 @@ def main():
         for attempt in range(5):
             mark, remote = len(hero.events), len(observer.events)
             hero.send('skill', skill=0x59, target=ids[1])
-            until(hero, mark, 'skill_finished')
-            until(observer, remote, 'behavior', lambda e: e['id'] == hero.id and e['behavior'] == 0x410000b6)
+            requested = until(hero, mark, 'skill_requested', lambda e: e['skill'] == 0x59)
+            reset = until(hero, mark, 'skills', lambda e: any(s['id'] == 0x59 and s.get('reset_started', -1) >= 0 for s in e['items']))
+            started = next(s['reset_started'] for s in reset['items'] if s['id'] == 0x59)
+            shared = until(hero, mark, 'quality', lambda e: e['table'] == 8 and e['key'] == 0x12f)
+            assert shared['value'] == started
+            story = until(hero, mark, 'story', lambda e: e['id'] == hero.id and e.get('request') == requested['request'])
+            assert story['skill'] == 0x59 and story['animated']
+            assert not any(e['event'] == 'skill_finished' and e['request'] == requested['request'] for e in hero.events[mark:])
+            remote_cast = until(observer, remote, 'behavior', lambda e: e['id'] == hero.id and e['behavior'] == 0x410000b6)
+            assert remote_cast['story_request'] == requested['request']
+            until(observer, remote, 'fx', lambda e: e['id'] == hero.id and e['fx'] == 0x81000281)
+            until(observer, remote, 'fx', lambda e: e['id'] == hero.id and e['fx'] == 0x410004a9)
+            projectile = until(observer, remote, 'object', lambda e: e.get('entity') == 0x47000d04)
+            missile = until(observer, remote, 'missile', lambda e: e['id'] == projectile['id'])
+            assert missile['target'] == ids[1] and any(abs(v) > .01 for v in missile['velocity']), missile
             until(observer, remote, 'fx', lambda e: e['id'] == ids[1] and e['fx'] == 0x41000241)
             try:
                 until(hero, mark, 'hit', lambda e: e['id'] == ids[1] and e['damage'] > 0, timeout=2)
@@ -84,9 +102,13 @@ def main():
         hits = [e for e in hero.events[mark:] if e.get('event') == 'hit' and e['id'] == ids[1]]
         assert len(hits) >= 3, hits  # one impact plus at least two burn ticks
         assert hits[0]['damage'] > 3 and all(hit['damage'] == 1 for hit in hits[1:]), hits
+        # Periodic damage must not replay either the fire impact or Mind Lash.
+        impacts = [e for e in observer.events[remote:] if e.get('event') == 'fx' and e['id'] == ids[1]]
+        assert [e['fx'] for e in impacts] == [0x41000241], impacts
         assert not any('not available' in str(e).lower() for e in hero.events[mark:]), hero.events[mark:]
-        result = {'native_flame_bolt_story_and_fx': True, 'burn_ticks': len(hits) - 1,
-                  'trained_skill_and_weapon_checks': True, 'player_target_protected': True}
+        result = {'native_flame_bolt_story_and_fx': True, 'cast_release_and_projectile': True, 'no_repeated_burn_impact': True, 'burn_ticks': len(hits) - 1,
+                  'trained_skill_and_weapon_checks': True, 'player_target_protected': True, 'native_cooldown_timestamp': True,
+                  'accepted_and_rejected_request_correlation': True}
         (directory / 'result.json').write_text(json.dumps(result, indent=2))
         print(json.dumps(result)); print(directory)
     finally:

@@ -1,0 +1,11 @@
+pyrealium-creature-combat-v3
+# Health, natural damage and variance, armor, death XP, level, attack/defense
+# skill levels, AI perception/homesick radii and damage type from portal.dat
+# entity records (inherited parents merged). interval_ms is natural weapon time
+# when present, otherwise 0. Radii of 0 mean the record had none.
+# Gold and attack range are not these fields.
+# max_vigor is GameplayStatistics_MaxVigor, not the natural weapon vigor cost; empty means absent.
+# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor
+47003a3c	21600	505	0	163	208000	48	0.175	1069	784	30.0	60.0	3	21600
+47004319	1650	181	0	26	2900	34	0.175	660	484	30.0	60.0	3	1650
+4700431e	2150	300	0	28	13000	41	0.175	828	607	40.0	60.0	1	2150

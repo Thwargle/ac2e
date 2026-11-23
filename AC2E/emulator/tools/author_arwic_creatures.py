@@ -15,10 +15,10 @@ from import_creature_ai import export
 from import_creature_combat import SKILL_TYPES, SKILL_LEVELS, ATTACK_SKILLS, DEFENSE_SKILLS, interval_ms
 
 
-def recover(directory, destination):
+def recover(directory, destination, *, entity_id=0x470015ac, pack="arwic-mines", name="Outcast"):
     profile = ContentProfile(directory)
     templates, properties, hashes = {}, {}, {}
-    did = 0x470015ac
+    did = entity_id
     try:
         while did >> 24 == 0x47:
             if f'{did:08X}' in templates:
@@ -45,18 +45,18 @@ def recover(directory, destination):
                   rating(ATTACK_SKILLS), rating(DEFENSE_SKILLS), floating(0x4100017a),
                   floating(0x41000178), number(0x410002f9), number(0x41000170)]
         combat = ('pyrealium-creature-combat-v3\n'
-                  '# Native inherited Outcast fields. Absent weapon time stays 0 (runtime default).\n'
+                  f'# Native inherited {name} fields. Absent weapon time stays 0 (runtime default).\n'
                   '# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor\n'
-                  '470015ac\t' + '\t'.join(map(str, fields)) + '\n')
-        ai = export({'templates': templates}, {0x470015ac})
-        outputs = {'arwic-mines-creature-combat-v1.tsv': combat, 'arwic-mines-creature-ai-v1.tsv': ai}
+                  f'{entity_id:08x}\t' + '\t'.join(map(str, fields)) + '\n')
+        ai = export({'templates': templates}, {entity_id})
+        outputs = {f'{pack}-creature-combat-v1.tsv': combat, f'{pack}-creature-ai-v1.tsv': ai}
         for filename, text in outputs.items():
             (destination / filename).write_text(text, encoding='utf-8', newline='\n')
-        audit = {'entity': '470015ac', 'source': 'installed portal.dat', 'source_sha256': hashes,
+        audit = {'entity': f'{entity_id:08x}', 'source': 'installed portal.dat', 'source_sha256': hashes,
                  'properties': {f'{key:08x}': value for key, value in sorted(properties.items())},
                  'output_sha256': {name: hashlib.sha256(text.encode()).hexdigest() for name, text in outputs.items()},
                  'policy': 'Native fields only. Existing AC2E hostility, attack timing and collision scheduling apply; no absent wandering is invented.'}
-        (destination / 'arwic-mines-creatures-v1.audit.json').write_text(json.dumps(audit, indent=2) + '\n', encoding='utf-8')
+        (destination / f'{pack}-creatures-v1.audit.json').write_text(json.dumps(audit, indent=2) + '\n', encoding='utf-8')
         print(combat, ai)
     finally:
         profile.close()
@@ -66,5 +66,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
     parser.add_argument('destination', type=Path)
+    parser.add_argument('--illuminated-cave', action='store_true', help='Recover the Illuminated Drudge boss')
     args = parser.parse_args()
-    recover(args.directory, args.destination)
+    options = dict(entity_id=0x470015f2, pack='illuminated-cave', name='Illuminated Drudge') if args.illuminated_cave else {}
+    recover(args.directory, args.destination, **options)

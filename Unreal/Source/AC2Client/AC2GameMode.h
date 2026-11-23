@@ -12,14 +12,18 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
+#include "AC2KeyBindings.h"
 #include "AC2GameMode.generated.h"
 
 UCLASS(Config = Engine)
 class AAC2GameMode : public AGameModeBase
 {
     GENERATED_BODY()
+    friend class FAC2TumerokPassageTest;
+    friend class FAC2HeldRunningTest;
   public:
     AAC2GameMode();
+    virtual void InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage) override;
     virtual void BeginPlay() override;
     virtual void Tick(float DeltaTime) override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
@@ -51,16 +55,26 @@ class AAC2GameMode : public AGameModeBase
     void UIAction(FName Action);
     bool PlaceCharacter();
     bool InWorld() const { return !FrontEnd; }
-    bool WantsPortalSpace() const {return OfflineEntering || NetworkTravel || bTeleport || PendingCell || bRevealing || (Network && (Network->Phase==TEXT("entering") || Network->NeedsPlacement));}
+    bool WantsPortalSpace() const
+    {
+        return OfflineEntering || NetworkTravel || bTeleport || PendingCell || bRevealing ||
+               (Network && (Network->Phase == TEXT("entering") || Network->NeedsPlacement ||
+                            Network->PortalSpaceRequested || (WaitingForExitAnimation && Network->PlayingStoryScene())));
+    }
     bool CellVisible(uint32 Cell) const { return Stream && Stream->CellVisible(Cell); }
     uint32 SoundTerrain(const FVector& Position) const {return Stream?Stream->SoundTerrain(Position):0;}
     bool WaterAt(const FVector& Position,double& Height) const {return Stream && Stream->WaterAt(Position,Height);}
     bool EnvironmentStats(uint32 Block, FAC2AssetStats& Stats) const { return Stream && Stream->BlockStats(Block,Stats); }
+    FAC2PreviewLighting ParticleLightingAt(const FVector& Position) const;
     bool OpenWorld();
     void LeaveWorld();
     void ShowLogin(const FString& Message=FString());
     void SignOut();
     void Connect(const FAC2ConnectionSettings& Settings);
+    // In-memory form defaults only. Never retain a password or login ticket here.
+    FAC2ConnectionSettings LastLogin;
+    FString LastAccountEndpoint;
+    bool HasLastLogin=false;
     void Offline();
     bool EnterOfflineCharacter();
     void Recall();
@@ -88,9 +102,25 @@ class AAC2GameMode : public AGameModeBase
 #if WITH_DEV_AUTOMATION_TESTS
     friend class FAC2PortalArrivalTest;
     friend class FAC2LiveExaminationTest;
+    friend class FAC2ItemShortcutsTest;
+    friend class FAC2TextShortcutsTest;
+    friend class FAC2AliasesTest;
+    friend class FAC2ShortcutSyncTest;
+    friend class FAC2GameOptionsSyncTest;
+    friend class FAC2AutoTargetTest;
+    friend class FAC2SkillEquipmentTest;
+    friend class FAC2RecipeShortcutsTest;
+    friend class FAC2ConcurrentWindowsTest;
+    friend class FAC2ShortcutKeysTest;
+    friend class FAC2AnimationContinuityTest;
+    friend class FAC2NetworkPresentationTest;
+    friend class FAC2GeneralChatTest;
+    friend class FAC2FriendsTest;
+    friend class FAC2InventoryTransferTest;
 #endif
     FAC2ScenePresentationBarrier ArrivalRender;
     bool bRevealing=false;
+    bool WaitingForExitAnimation=false;
     void UpdateEnvironment(float Delta);
     bool SceneReadyToReveal();
     TUniquePtr<FAC2Audio> Audio;
@@ -116,6 +146,7 @@ class AAC2GameMode : public AGameModeBase
     uint32 InitialBlock = 0;
     bool CharacterUIStarted = false, bUISmoke = false;
     bool NetworkTravel = false;
+    bool OfflineDeparture = false;
     int32 UIStage = 0;
     float UITime = 0;
     void UISmokeTick(float DeltaTime);
@@ -132,6 +163,8 @@ class AAC2GameMode : public AGameModeBase
     TWeakObjectPtr<AActor> EnvironmentCamera, EnvironmentProp;
     void EnvironmentSmokeTick(float DeltaTime);
     void PositionViewer(APlayerController *PC);
+    void BeginOfflineTravel();
+    bool HasGroundSupport(const class AAC2Explorer* Player, double& Height) const;
     void CompleteTravel(const FVector &Position);
     void SmokeTick(float DeltaTime);
     void FinishSmoke(bool Success, const FString &Message);
@@ -151,6 +184,10 @@ class AAC2PlayerController : public APlayerController
     UFUNCTION(Exec) void AC2Spawn(const FString &Visual);
     UFUNCTION(Exec) void AC2Recall();
     virtual void SetupInputComponent() override;
+    const FAC2KeyBindings& GameplayKeys() const { return Keys; }
+    void ApplyGameplayKeys(const FAC2KeyBindings& NewKeys);
+    void DispatchPointerKey(FKey Key, const FModifierKeysState& Mods, float Amount = 1);
+    bool WalkKeyDown() const;
     void Map();
     void Select();
     void SelectUnderCursor();
@@ -174,6 +211,10 @@ class AAC2PlayerController : public APlayerController
     // Camera capture lasts only for the held-button gesture.
     bool CameraSteersPlayer=false, MouseForward=false, FreeOrbit=false;
   private:
+    FAC2KeyBindings Keys;
+    TWeakObjectPtr<UInputComponent> BoundKeyComponent;
+    int32 FirstGameplayKey = 0, NumGameplayKeys = 0;
+    void DispatchGameplayKey(const FAC2KeyBinding& Binding, bool Pressed, float Amount = 1);
     TOptional<FIntPoint> SavedPointer;
 };
 UCLASS()

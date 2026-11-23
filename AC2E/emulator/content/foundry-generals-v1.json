@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "source": "https://www.20oz.net/index.php/Aerfalle%27s_Generals.html",
+  "policy": "One general at each reported map point. The exact frame and two-minute respawn are inferred. Corpse generator identities are native; the guide identifies their individual keys. The retail key probabilities are unavailable.",
+  "validate_camp_bodies": true,
+  "templates": {
+    "1191196939": {
+      "name": "Baron Colier",
+      "visual": 520100353
+    },
+    "1191197642": {
+      "name": "Lord Nuvillus",
+      "visual": 520100374
+    },
+    "1191197554": {
+      "name": "General Dreyvon",
+      "visual": 520100354
+    },
+    "1191197555": {
+      "name": "General Sarocete",
+      "visual": 520100355
+    }
+  },
+  "camps": [
+    {
+      "id": 9313704613658034176,
+      "capacity": 1,
+      "roster": [
+        1191196939
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0750000476837158,
+      "land": [
+        1599.36,
+        701.76
+      ]
+    },
+    {
+      "id": 9313704613658034192,
+      "capacity": 1,
+      "roster": [
+        1191197642
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.149999976158142,
+      "land": [
+        1542.24,
+        658.92
+      ]
+    },
+    {
+      "id": 9313704613658034208,
+      "capacity": 1,
+      "roster": [
+        1191197554
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0750000476837158,
+      "land": [
+        1645.26,
+        725.22
+      ]
+    },
+    {
+      "id": 9313704613658034224,
+      "capacity": 1,
+      "roster": [
+        1191197555
+      ],
+      "rotation": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "scale": 1.0750000476837158,
+      "land": [
+        1674.84,
+        738.48
+      ]
+    }
+  ],
+  "npcs": [],
+  "quest_keys": [
+    {
+      "entity": 1191196939,
+      "corpse": 1191197552,
+      "generator": 2044,
+      "definition": 1191196931,
+      "visual": 520098004,
+      "sources": {
+        "4700390b": "9e0d4551ad13a635",
+        "47003978": "b4040fb7e6df56d6",
+        "47003b70": "961bbd9e05852728",
+        "47003903": "7f2d085f03784a4b"
+      },
+      "corpse_min_level": 45,
+      "take_quest": 2147483925,
+      "take_status": 268435456
+    },
+    {
+      "entity": 1191197642,
+      "corpse": 1191197641,
+      "generator": 2047,
+      "definition": 1191196932,
+      "visual": 520098004,
+      "sources": {
+        "47003bca": "4239719b1248ba7b",
+        "4700397a": "830f259973f2e1db",
+        "47003bc9": "751802d90c00ee2c",
+        "47003904": "db3aaef1f2e4e95b"
+      },
+      "corpse_min_level": 45,
+      "take_quest": 2147483926,
+      "take_status": 268435456
+    },
+    {
+      "entity": 1191197554,
+      "corpse": 1191196929,
+      "generator": 2045,
+      "definition": 1191196933,
+      "visual": 520098004,
+      "sources": {
+        "47003b72": "536340e7a598cb65",
+        "4700398a": "fa045e36f5eecabb",
+        "47003901": "384f2e01dd7d31c7",
+        "47003905": "8b7df4494407e147"
+      },
+      "corpse_min_level": 45,
+      "take_quest": 2147483927,
+      "take_status": 268435456
+    },
+    {
+      "entity": 1191197555,
+      "corpse": 1191196930,
+      "generator": 2046,
+      "definition": 1191196934,
+      "visual": 520098004,
+      "sources": {
+        "47003b73": "5e25aad5c3cc5d66",
+        "4700398d": "ef9f8a7d7cbf2338",
+        "47003902": "515506520b8e1b7c",
+        "47003906": "ff187d2e95348b37"
+      },
+      "corpse_min_level": 45,
+      "take_quest": 2147483928,
+      "take_status": 268435456
+    }
+  ]
+}

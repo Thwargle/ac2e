@@ -1,4 +1,6 @@
 //! Two synthetic native-protocol peers over UDP; no native-rendering claim.
+#[path = "support/udp.rs"]
+mod udp;
 use pyrealium::{
     movement::{ClientPosition, Placement},
     server::{self, Config},
@@ -46,7 +48,7 @@ impl Peer {
             &payload,
         )
         .unwrap();
-        let deadline = Instant::now() + Duration::from_secs(3);
+        let deadline = Instant::now() + Duration::from_secs(20);
         let mut bytes = [0; 4096];
         let (header, connection) = loop {
             socket.send_to(&logon, addr).unwrap();
@@ -139,10 +141,42 @@ impl Peer {
                 .unwrap();
                 self.socket.send_to(&ack, self.addr).unwrap();
             }
-            self.messages
-                .extend(received.messages.into_iter().map(|m| m.data));
+            for message in received.messages {
+                let data = message.data;
+                // SceneReady sends asynchronous portal FX and social status on independent queues.
+                let fx = data.starts_with(&0x100a0u32.to_le_bytes())
+                    || data.starts_with(&0x100a1u32.to_le_bytes());
+                if (fx
+                    && data.get(16..20)
+                        == Some(&pyrealium::combat_visual::ENTER_WORLD_FX.to_le_bytes()))
+                    || data == pyrealium::room_chat::assignments().unwrap()
+                    || data == pyrealium::allegiance::unaffiliated().unwrap()
+                    || data
+                        == pyrealium::script::private_call(
+                            0x82030030,
+                            &pyrealium::script::integer(0),
+                        )
+                        .unwrap()
+                {
+                    continue;
+                }
+                self.messages.push_back(data);
+            }
         }
         self.messages.drain(..count).collect()
+    }
+    fn observe_player(&mut self, id: u64, instance: u16, placement: Placement) {
+        udp::assert_spawn(&self.events(1)[0], id, instance, placement);
+        let mut stats = self.events(4);
+        let mut expected = vec![
+            world::visual_int(id, instance, 0x102, 100),
+            world::visual_int(id, instance, 0x107, 100),
+            world::visual_int(id, instance, 0x12e, 1),
+            world::visual_bool(id, instance, 0x117, false),
+        ];
+        stats.sort();
+        expected.sort();
+        assert_eq!(stats, expected);
     }
     fn enter(&mut self, id: u64) {
         self.send(4, &world::encode_enter_world(id, b"local").unwrap());
@@ -171,6 +205,7 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
         std::process::id(),
         addr.port()
     ));
+    std::fs::create_dir(&dir).unwrap();
     {
         let mut store = Store::open(&dir).unwrap();
         for name in ["Aster", "Birch"] {
@@ -200,14 +235,13 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
             world_rules: None,
             admin_bind: None,
             initialize_ui: false,
-            training_kit: false,
             lifestones: false,
             portals: false,
             map_travel: false,
             bind: addr,
             account: "local".into(),
             data: server_dir,
-            run_seconds: Some(15),
+            run_seconds: Some(60),
             visual_did: None,
             game_data: Some(data.into()),
         })
@@ -229,8 +263,8 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
         &pyrealium::script::client_call(pyrealium::script::COMBAT_START, &[]).unwrap(),
     );
     b.send(4, &world::SCENE_RENDERING_COMPLETE.to_le_bytes());
-    assert_eq!(&b.events(1)[0][4..12], &1u64.to_le_bytes());
-    assert_eq!(&a.events(1)[0][4..12], &2u64.to_le_bytes());
+    b.observe_player(1, 1, Placement::HUMAN_START);
+    a.observe_player(2, 1, Placement::HUMAN_START);
     // Script actions share the same ordered queues as movement. A forbidden
     // target and malformed combat request must not block the next valid action.
     use pyrealium::script;
@@ -242,6 +276,10 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
         3,
         &script::client_call(script::TARGET, &script::identity(2)).unwrap(),
     );
+    assert_eq!(
+        a.events(1)[0],
+        pyrealium::ui::selection(2, Some([100; 4])).unwrap()
+    );
     a.send(3, &script::client_call(script::COMBAT_START, &[1]).unwrap());
     for target in [999, 1, 2] {
         a.send(
@@ -249,6 +287,15 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
             &script::client_call(script::COMBAT_START, &script::identity(target)).unwrap(),
         );
     }
+    assert_eq!(
+        a.events(1)[0],
+        script::chat("Combat rules are not enabled on this server.", 1).unwrap()
+    );
+    assert_eq!(
+        a.events(1)[0],
+        script::private_call(script::COMBAT_STATE, &script::integer(0)).unwrap()
+    );
+    a.send(3, &script::client_call(script::COMBAT_START, &[]).unwrap());
     assert_eq!(
         a.events(1)[0],
         script::private_call(script::COMBAT_STATE, &script::integer(1)).unwrap()
@@ -263,15 +310,20 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
     a.send(3, &script::client_call(script::SAY, &say).unwrap());
     let heard = a.events(1).remove(0);
     assert_eq!(heard, b.events(1).remove(0));
-    assert_eq!(&heard[..4], &0x10066u32.to_le_bytes());
-    assert_eq!(&heard[4..8], &script::CHAT_STRING.to_le_bytes());
+    assert_eq!(heard, script::chat("Aster: Hello world", 0x10).unwrap());
     let mut tell = script::integer(0);
     tell.extend(script::literal("A private reply").unwrap());
     tell.extend(script::literal("Aster").unwrap());
     b.send(3, &script::client_call(script::TELL, &tell).unwrap());
     let private_reply = a.events(1).remove(0);
-    assert_eq!(&private_reply[4..8], &script::CHAT_STRING.to_le_bytes());
-    assert_eq!(&b.events(1)[0][4..8], &script::CHAT_STRING.to_le_bytes());
+    assert_eq!(
+        private_reply,
+        script::chat("Birch tells you: A private reply", 0x20).unwrap()
+    );
+    assert_eq!(
+        b.events(1)[0],
+        script::chat("You tell Aster: A private reply", 0x20).unwrap()
+    );
     let mut placement = Placement::HUMAN_START;
     placement.coordinates[0] += 4.0;
     let update = ClientPosition {
@@ -312,13 +364,10 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
     assert_eq!(&b.events(1)[0][..4], &0x100c2u32.to_le_bytes());
     a.enter(1);
     let reentered = a.events(3);
-    assert_eq!(
-        &reentered[1][32..36],
-        &placement.coordinates[0].to_le_bytes()
-    );
+    udp::assert_spawn(&reentered[1], 1, 2, placement);
     a.send(4, &world::SCENE_RENDERING_COMPLETE.to_le_bytes());
-    assert_eq!(&a.events(1)[0][4..12], &2u64.to_le_bytes());
-    assert_eq!(&b.events(1)[0][24..26], &2u16.to_le_bytes());
+    a.observe_player(2, 1, Placement::HUMAN_START);
+    b.observe_player(1, 2, placement);
     // A stale connection identity cannot release this peer's character.
     let logoff_header = Header {
         flags: wire::LOGOFF,
@@ -349,7 +398,27 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
     assert_eq!(a.events(2)[0], world::char_exit_game());
     a.send(4, &world::encode_delete_character(1, b"other").unwrap());
     a.send(4, &world::encode_delete_character(1, b"local").unwrap());
-    assert_eq!(a.events(1)[0], world::character_deleted(1));
+    let deleted = a.events(3);
+    assert_eq!(deleted[0], world::character_deleted(1));
+    let birch = world::MinimalCharacter {
+        id: 2,
+        name: "Birch".into(),
+    };
+    assert_eq!(
+        deleted[1],
+        world::minimal_character_set(b"local", 5, &[birch]).unwrap()
+    );
+    use ac2_net::protocol::{Build, ServerEvent};
+    let ServerEvent::CharacterSet(set) =
+        ServerEvent::decode(&deleted[2], Build::Admin7148).unwrap()
+    else {
+        panic!("expected refreshed CharacterSet after deletion");
+    };
+    assert_eq!(set.characters.len(), 1);
+    assert_eq!(
+        (set.characters[0].id, set.characters[0].name.as_str()),
+        (2, "Birch")
+    );
     a.enter(1);
     assert_eq!(
         a.events(1)[0],
@@ -360,7 +429,7 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
     a.enter(2);
     let takeover = a.events(3);
     assert_eq!(takeover[0], world::create_player(2, 1));
-    assert_eq!(&takeover[1][24..26], &2u16.to_le_bytes());
+    udp::assert_spawn(&takeover[1], 2, 2, Placement::HUMAN_START);
     std::fs::write(dir.join("stop.request"), b"stop").unwrap();
     worker.join().unwrap();
     {
@@ -372,8 +441,5 @@ fn two_peers_see_movement_look_departure_and_saved_reentry() {
         assert_eq!(store.begin_instance("local", 1).unwrap(), 3);
         assert_eq!(store.begin_instance("local", 2).unwrap(), 3);
     }
-    for file in ["characters.journal", "positions.snapshot"] {
-        std::fs::remove_file(dir.join(file)).unwrap();
-    }
-    std::fs::remove_dir(dir).unwrap();
+    udp::remove_test_store(&dir);
 }

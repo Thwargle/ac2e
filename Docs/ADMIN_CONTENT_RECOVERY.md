@@ -189,10 +189,12 @@ the distance check now permits nearby interaction across outdoor cell and
 landblock boundaries. Preserve this policy version after release so historical
 journal replay retains its original meaning.
 
-**Remaining gaps:** the Aunmauri/Obelisk Ward temporary buff rewards are not
-implemented. The subsequent Arwic Mines chain is described below.
-The journal describes the deadline; a live native countdown/expiry notification
-is not yet provided. This pass does not activate other unsupported NPC scripts.
+Ordered Ruby, Sapphire and Emerald visits grant Aunmauri's Speed, Courage and
+Vengeance for two hours each. Returning to the Explorer grants Obelisk Ward
+(+6 natural armor for three hours). The Legions DAT uses WStates
+`6f000259` through `6f00025c` and 7230 uses `6f001df7` through
+`6f001dfa`. Each blessing uses its own wall-clock expiry. The subsequent Arwic Mines chain is described below.
+The native journal exposes the deadline, remaining time and repeat cooldown.
 
 ## Arwic Mines lesson v1 (2026-11-01)
 
@@ -773,7 +775,7 @@ quantities are independently checked: one Mucor Mushroom and 100 Tallow.
 The meaning of field 36 is not inferred from this byte difference.
 
 Recipe grants, stock prices and cooldowns remain AC2E policy. The subsequent
-profession implementation adds 26 saved skill records, 357 supported DAT-backed recipes,
+profession implementation adds 26 saved skill records, 364 supported DAT-backed recipes,
 advancement, refining, dyeing, surveying and gathering. Its native sources,
 reconstructed formulas, workshop evidence and remaining spellbinding/discovery
 gaps are documented in [profession coverage](../AC2E/emulator/content/README.md#profession-crafting-and-gathering).
@@ -843,3 +845,182 @@ The [content documentation](../AC2E/emulator/content/README.md#wiki-npc-conversa
 describes regeneration and validation. Full quest flows, service-specific effects,
 missing native identities and unresolved interior/event placements remain work
 to be implemented; conversation coverage alone does not establish retail parity.
+
+### Nature's Ally exchanges — 2026-11-02
+
+The [live walkthrough](https://20oz.net/index.php/Nature's_Ally.html), retained wiki
+article and native item/NPC records support four concrete material exchanges:
+Feral Pet Lasher takes one Rabbit Meat for one Ancient Monouga Bone; Outcast
+Wasp Queen takes one Scented Blossom for one Wasp Egg Cluster; Digger 'Dillo Mama
+takes one egg cluster for one Succulent Truffle; Grutt Gourmand takes one truffle
+for eight Anthracite Gems. The existing four world actors are reused, with no
+additional duplicate NPCs or guessed spawners.
+
+These exchanges are now server actions with atomic, replay-safe inventory updates,
+native item metadata, stack remainder handling and existing-singleton-loot
+compatibility. Ordinary NPC use explains the trade without consuming items.
+The client sends targeted backpack use when the matching recipient is selected;
+`@talk` remains informational. The precise trade quantities come from the guide,
+native appearance and stack limits from DAT records, and dialogue/interface
+wording is authored. This is not a recovery of retail NPC script bytecode or the
+original Give protocol.
+
+The manifest records the retained wiki and template-export hashes plus native
+quality fingerprints. Runtime startup rejects changed assets. Unit tests cover
+inventory admission failures; the native-DAT test validates transport; the UDP
+acceptance test verifies all four existing placements, trade chaining, character
+ownership, range/stance/throttle guards and restart persistence in a disposable
+store. The latter seeds its starting ingredients offline.
+
+The subsequent Black Mother Earth pass implements Withered Blossom collection,
+the learned Flower Garland recipe and the shrine exchange for Scented Blossom.
+Native recipe `6f001fe4` confirms seven distinct ingredient ordinals (one blossom
+each), a 100-gold cost, no workshop, and the Garland of Flowers output. The guide
+establishes offering one extra blossom to learn, then offering the finished
+garland. The existing three bush placements and single shrine are reused.
+
+Bush yield (four), per-character resource sharing and five-minute regrowth are
+documented reconstructions, not recovered retail policy or random spawn tables.
+The new `n1` transaction persists recipe knowledge, per-bush cooldown, consumed
+ingredients, partial-stack remainders, cost and output atomically. The client can
+fill the seven recipe slots from shared stacks; the server checks the total to
+prevent counting one blossom multiple times. Login registry and live unlock
+notifications both honor the saved entitlement. The real-UDP acceptance test
+`Network/test_nature_gathering.py` obtains all eight blossoms through world use,
+continues the crafted Scented Blossom through the three NPC trades into eight
+gems, and checks rejection/persistence across two restarts. Store tests cover
+journal compaction, exact cost and uncharged failures.
+
+Remaining Nature's Ally gaps include the other material/recipe branches, later
+summoned actors and dungeon transitions, timed quest state, and final reward
+delivery. These material paths must not be counted as a completed quest.
+
+The Arwic lesson regression also exposed a native single-item loot decode gap:
+`InvMoveDesc` repeats its source cell at fields 1 and 39, but the server required
+both to be zero. It now accepts matching indices 0–31, preserving the strict
+descriptor, player, container and item checks. A quest hammer after other loot
+is claimable without first removing those items. Codec tests cover first/middle/
+last cells, out-of-range indices and conflicting copies; the Arwic UDP lesson
+tests the actual quest reward pickup and subsequent crafting/turn-in.
+
+### Kehan starter progression — 2026-11-02
+
+The starter route now connects the existing Arwic Mines lesson to **Find the
+Miller of Kehan** (`400000c2`), **Kehan Windmill Quest** (`400000c7`) and **Find
+the Esper Reaches Warder** (`400000cb`). The existing Miller (`470015c4`) and
+Esper Warder (`470015c2`) placements are reused. A single missing windmill gear
+receiver (`470015ce`, native package `GearWindmillKehan`) is reconstructed near
+the guide's 47.0N, 11.5E coordinate and checked against native ground/collision.
+No additional copies of either NPC are added.
+
+The [windmill guide](https://www.20oz.net/index.php/Kehan_Windmill_Quest.html)
+describes the map → Stone → Massive Gear → windmill → Miller sequence, its
+24-hour limit, 20-hour repeat, Lost Wish Glyph and 200-XP overview reward. Its
+transcript instead says 150 XP; this implementation explicitly chooses 200.
+The [Miller referral](https://www.20oz.net/index.php/Find_the_Miller_of_Kehan.html)
+supplies a 48-hour deadline and 30 XP; an older Miller Quest page says zero.
+The versioned manifest retains these discrepancies and all source hashes.
+
+The native Miller's Map (`47002fa8`) supplies its exact required location and
+70-metre use radius. It creates an owned Stone Quarry (`47002c6b`), whose DAT
+fields specify three uses, 25 Stone per use and 15% variance. The player's
+crafted Rock Hammer uses ordinary harvesting, wear and persistent charges.
+The explicit one-Stone hand-in returns the stack remainder and Massive Gear
+(`470015b0`); installing it advances the native four-phase journal. Returning
+to the Miller grants Lost Wish Glyph (`470010a0`) and the Esper referral.
+The glyph's identity was resolved through `Glyph_Lostwish`, rather than by
+guessing from the generic `%Region% Glyph` template name.
+
+`windmill-v1.json` retains recovered journal text and immutable item quality
+fingerprints; runtime instructions are authored for our current item-use UI.
+`w1` transactions commit quest state, survey ownership, items and XP together.
+They reject invalid order, expired tasks, missing/foreign inputs and capacity
+failures. Repeated requests cannot duplicate payout. Expired/lost quest-item
+recovery, 20-hour repeats and referral reuse after another Arwic completion
+are explicit server policy. The client routes Stone and Massive Gear to the
+selected appropriate recipient; the server independently validates the target.
+
+The native-DAT integration test checks the three reward/input assets, quarry
+definition and the fixed site's dry walkable ground. Unit/store tests cover
+timer boundaries, full inventories, replay and compaction. The real-UDP
+`Network/test_windmill.py` verifies the production actor identities and whole
+sequence, including actual tool crafting/harvesting, rejected range/combat/
+wrong-item uses and three restarts with no duplicate reward. The Arwic lesson
+regression checks the new outgoing referral.
+
+The Miller grants Renewed Focus on completion. Both installed DAT graphs
+add 40 maximum vigor for 10,800 seconds (Legions 6f00022a, 7230
+6f001b1f). AC2Hero and AC2Wiki report +10. The repaired windmill
+animation, hot/cold map messaging and the vault chains remain unfinished.
+The Esper lesson is implemented below.
+
+
+### Esper camp continuation
+
+The starter route now reaches the Esper Warder's Drudge Outcast Camp quest.
+The native `QuestDrudgeCampEsper` journal (`400000d0`), six `6f001f0f..14`
+recipes, six `470015b2..b7` weapons and quest bone `470015b8` are wired to
+NPC conversations, crafting, owned corpse loot and an atomic hand-in. All
+recipes require 25 Bone, with no manufacture rank. Vermin butchery now yields
+Bone, matching the guide's prerequisite; quantity remains the documented
+five ±15% gathering policy. The Warder does not give free materials.
+
+The three existing captured Cadres in `67AA` are independent respawning actors,
+with native combat/AI fields. No new camp location was guessed. The server
+retains native level 10 despite a guide listing level 8. Slayer's triple direct
+weapon damage is reconstructed from the walkthrough; it excludes periodic
+damage. Weapon stats, minimum level and race constraints come from native
+assets. All six recipes are exposed during the quest; the historical per-race
+three-recipe assignment remains unresolved.
+
+`esper-camp-v1.json` preserves source hashes, journal fields, placements and the
+native Slayer (`70001e33`) / Sound Heart (`70001e34`) graphs. Sound Heart has a
+10800 duration row, modified stat `40107`, and final value row 40. Its timed
+maximum-health handler remains unimplemented, so only the confirmed 320 XP and
+Esper Glyph are awarded. The vault chain remains separate and unfinished.
+
+The immutable `e1` journal policy saves quest phases, owned items and XP in one
+record. Deadline/repeat rules are 24h/20h. Native observed loot is deduplicated
+against the eligible quest bone; other players cannot take or trade that bone.
+Tests cover all six recipes, native assets, camp respawns, direct-vs-periodic
+combat, expired quests, full backpacks and journal compaction. The full UDP
+acceptance includes real butchery and corpse looting, item hand-in, recipe
+removal and three restarts. The previous Kehan route also passes against the
+new Warder handler.
+
+### Scout's Notebook and Captain continuation
+
+The archived Notebook walkthrough and native `QuestWarderScout` (`400000c4`)
+records support a level-10, 24-hour recovery task. The Bandit (`470015be`) carries
+death effect `Eff_AdvanceQuestWarderScoutPhase2`, loot profile 949, and native
+level 12/350 health/350 vigor. Notebook `470015b1` carries the acquire effect
+`Eff_AdvanceQuestWarderScoutPhase3`. The manifest preserves these records and the
+original localized phase text. The server implements separate kill, pickup and
+return stages, with one owned quest drop per active attempt.
+
+The archived guide identifies 800 XP and three rewards: Emblem of Order
+(`4700156d`), Mad Crone Glyph (`470010b9`) and Prosper Glyph (`470010a2`). Native
+localized names, quality fingerprints, visuals and physical records validate all
+four input/output assets. Successful hand-in begins `Seek the Warder Captain`
+(`400000c5`), with its recovered 48-hour deadline and 2,500 XP reward. Both repeats
+use the guide's 20-hour interval. Potion Raid and the Dantry continuation remain
+unimplemented.
+
+`warder-notebook-v1.json` pins wiki source hashes and the existing Scout, Bandit
+and interior Captain placement rows. Older guide/journal coordinates disagree
+with the translated placements. Current guidance points to the retained Scout
+near 14.0N, 0.6E and Bandit camp near 15.5N, 1.7W; the Captain is inside the hideout
+at 20.6N, 14.0E. No captures were moved and no duplicate quest actors were added.
+The runtime policy is reconstructed from these sources; retail server scripts,
+respawn cadence and fellowship-shared credit were not recovered.
+
+`wn1` commits inputs, rewards and journal changes together. `qk3` extends kill
+progress without changing old kill-record replay. Full backpacks retain the
+notebook, expired attempts reject old corpse loot, and repeated hand-ins cannot
+repeat a payout. Tests cover DAT assets, expiration, inventory capacity and
+restart/compaction. Native UDP acceptance traverses all stages and both NPCs,
+checks production placement rows, and restarts the disposable server four times.
+The earlier Esper/camp/referral UDP route also passes with the new Scout handler.
+The production encounter test separately verifies native Bandit stats and
+respawning at its retained anchor; the Scout and Captain are excluded from
+combat actors. The client routes inventory notebook use to the selected Scout.

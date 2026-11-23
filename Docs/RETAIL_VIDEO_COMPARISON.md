@@ -205,3 +205,179 @@ Remaining fidelity limits include authored programmable pixel shaders and
 generated texture coordinates, full multipass composition, terrain layer masks,
 and the separate water/terrain physical-light fallback. Those are not established
 as retail-equivalent by the fixed-function checks above.
+
+## Water, shoreline and submerged-camera review (2026-11-13)
+
+This pass investigates the reported foam seams and underwater view around
+47.4N, 12.6E (8FBC), using the local retail/admin decompiles and both installed
+DAT profiles. The user's retail reference shows the bank texture continuing
+below the surface; that must survive the water compositor. A screenshot alone
+cannot establish the reflection/transmission coefficients, so the coefficients
+below come from the recovered draw calls and material stages.
+
+Recovered behavior:
+
+- `LScapeTerrainMesh::UpdateNearWater` builds sixteen 40 m quads per block,
+  each with 0..1 base UVs. `WaterType::m_nTileWidth` is not a texture divisor.
+- `GenerateShore` intersects the terrain with the water plane, joins the
+  resulting contour, averages its endpoint normals, and extends a ribbon
+  12 m times the vertical normal component. The inner edge retreats 5 cm.
+  Along-shore coordinates use accumulated distance; the two foam layers share
+  a per-contour phase between 0 and 0.8. Their motion remains independent.
+- `DrawShore(false)` writes the transmission texture's alpha times 0.5. Base water and
+  the reflection pass use destination alpha / inverse destination alpha.
+  Consequently, riverbed color contributes to the final surface even away
+  from the immediate bank.
+- Both profiles use shore material `31000362`. Its first two stages sample the
+  same wave image, followed by a clamped mask. In Legions the wave, mask and
+  transmission texture IDs are `40000791`, `40000792` and `40000793`.
+  In Icefire the corresponding IDs are `4000080A`, `4000080B` and `4000080C`.
+  The alpha chain is signed-add followed by multiply-by-two. The foam has its own white diffuse lighting.
+- Above-water `3100002D` and below-water `3100002E` have opposite culling.
+  The below-water instance overrides the template texture with `40000056`,
+  a blue ripple image. `40000771` is the template's UV checker, not water.
+  The authored underside has diffuse alpha 1 and no animated UV modifier.
+- `LScape::CalcWaterLight` interpolates `WaterLighting` keys using camera depth.
+  Their combine modes affect ambient/direct colors and brightness and fog;
+  moving the camera out of the water restores the ordinary daylight keys.
+
+Changes made:
+
+- Resolve connected shore contours from the DAT beyond the streaming window,
+  then cache/bin their segments. Loading a new center block no longer restarts
+  the wave phase or changes the normals at that window's edge. Cache identity
+  separates DAT paths, header revisions and landscape height tables.
+- Clip the joined ribbons to their owning block and remove folded overlap.
+  Subtract their footprint from open water so every surface pixel is composed
+  once. Previously, overlapping coplanar SceneColor composites could overwrite
+  foam and reveal rectangular/triangular seams. Degenerate clipping polygons
+  are discarded to prevent unbounded subdivision.
+- Preserve phase while removing only whole UV repeats, keeping half-float UVs
+  precise even on long coastlines. Foam phase and static shoreline-mask UVs
+  are separate channels; the mask clamps across the shore and wraps along it.
+- Composite riverbed, water, sky and foam in native display RGB before
+  converting to the Unreal linear framebuffer. The GPU oracle checks actual
+  transmission of a two-color riverbed rather than judging a reflective-looking
+  screenshot. The scene-depth contact term only softens the final 2 cm edge.
+- Render a separate underside across both near and distant water. Face gating
+  prevents above-water foam/reflection from appearing on the underside.
+  Use the instance's native texture and lighting and compute fog per pixel
+  rather than interpolating it across 40 m water quads.
+- Parse the variable-length water lighting keys, including weighted combine
+  operands, and select them from the actual camera location/depth. Reuse
+  underside material instances when the distant terrain rebuilds.
+
+Validation: both Development targets build. Seven focused automation tests
+pass with each DAT profile: `AC2.Data.NativeShoreMask`,
+`AC2.Data.NativeWaterContinuity`, `AC2.Data.RepairedShoreline74A9`,
+`AC2.Rendering.WaterBlend`, `AC2.Data.NativeMaterialFinish`,
+`AC2.Render.NativeMaterialFinish` and `AC2.Data.AppearanceOpacity`.
+The water GPU test covers sixteen composition/culling cases. Geometry checks
+verify block area coverage without doubled/missing area, bounded vertex counts,
+phase agreement across real shared edges, and equivalent near/far positions.
+The offline water-distance smoke captures the reported bank, a streamed block
+transition, shallow riverbed and two submerged views while checking animated UVs.
+The final run passed with 545 water tiles in two batches after moving from 8FBC
+to 8EBC. Captures use the editor play path used by `Launch-AC2.ps1`. A direct
+launch of the uncooked standalone executable stopped during plugin loading
+(`PlatformCrypto` module missing); standalone runtime/package validation is
+therefore not established by the successful game-target build.
+Generated material template version: 34.
+
+Limits: this is not a claim of complete retail water parity. The reflection
+source is currently a crossfaded sky capture, and its distortion approximates
+the native generated bump/reflection pass. The exponential fog limitation
+recorded here was superseded by material revision46; see
+[Native fog review](NATIVE_FOG_REVIEW.md) for the radial linear implementation,
+verification, and the remaining vertex-interpolation/sky-compositing limits.
+The geometry partition removes overlap seams, but unusually folded banks and closed
+contour phase joins still need broader visual comparison. Validation used local
+data and offscreen rendering, not a live Icefire session or a matched retail
+camera/time capture.
+
+### Shore motion and surface weight (2026-11-14)
+
+The Legions `GenerateShore` and Admin `RenderDeviceD3D::SetupState` paths agree
+with shore material `31000362`. The material translates two wave layers at
++0.15 and +0.10 V per second. V increases from the bank toward open water,
+so both crests travel toward the bank. U follows the accumulated bank length
+with a ten-metre repeat. Across sharp bends, sampling these coordinates by
+distance to the closest point caused visible pinching. Version 38 draws the
+original pair of affine triangles per segment as a separate foam pass, clipped
+to landblock boundaries. At the reported 8FBB bank, the waterward edges
+of two concave segments cross before reaching their 12 m slope-scaled width.
+Their outer triangles had the opposite winding and drew back over the wave.
+The Unreal mesh stops those edges at their intersection, shares the endpoint
+limit with adjacent segments and interpolates the narrowing strip. This is
+a geometry correction for folded quads. Straight banks retain the DAT width,
+UV scale and scroll rates. The renderer suppresses waves on closed loops under 20 m.
+The water transmission mask still covers those loops.
+
+The above-surface base pass now takes its blend weight directly from half of
+the shoreline mask alpha. The previous extra diffuse-alpha multiplication
+reduced the weight from 0.5 to 0.4 at full mask coverage. The sky reflection
+is still an approximation, so overall perceived opacity also depends on view
+angle, lighting, and the visible riverbed.
+
+### Surface tint, submerged sky and precipitation (2026-11-14)
+
+Legions `LScapeRender` constructs a bump stage for the reflected scene. The
+stage offsets the reflection sample by up to 0.04. Version 39 removes the
+extra blue ripple color that Unreal painted over the riverbed for ordinary
+lake material `3100002D`. Its ripples still perturb the reflected sky. Other
+liquid materials keep their authored color. The sky-only reflection and its
+angle-dependent weight are approximations of retail's reflected scene.
+
+The reverse face now uses the `3100002E` texture and its authored alpha.
+The previous refraction cone projected a disk of sky into the submerged
+view. `LScapeSky::Draw` also checks the sky object's water-only flag against
+the viewer's environment. Unreal now applies that test to each sky object.
+`WorldRender::Draw` requires an outdoor viewer above the water and rain
+volume above 0.4. Precipitation now follows the active camera, clears its
+airborne drops and splashes upon submersion, and resumes after resurfacing.
+Falling drops over water stop at the water surface.
+
+Five automated checks passed on each local DAT profile (Legions and Icefire),
+including the GPU transmission/underside test and the material selection for
+the real river. An offscreen game run at 8FBB crossed into 8EBB with 540
+water tiles. With rain forced on, the active camera recorded precipitation
+above the surface, zero airborne drops underwater, and rain again after
+resurfacing. Upward and horizontal underwater captures showed the authored
+ripple underside throughout the view.
+
+### Reflected scenery, ripple coordinates and shoreline timing (2026-11-16)
+
+In the [retail footage at 38:43](https://www.youtube.com/watch?v=_emUJwVgGk4&t=2323s),
+the far bank and trees appear upside down across the stream and the bed is still visible.
+The Legions `WorldRender::RenderReflectionMap` mirrors the camera about the water
+plane, clips the scene and renders sky, landscape and outdoor objects.
+`LScapeTerrainMesh::DrawWater` samples this image in projected screen coordinates
+and composites it with destination alpha. Version 41 captures the visible lake
+plane at reduced resolution and blends it with the scene behind the surface.
+When separate lake elevations are visible, the closest visible elevation gets
+the reflected view. Water at the other elevations continues to transmit the bed.
+
+`CreateLocalMemBumpMap` constructs a 256 by 256 signed two-channel field from
+a damped radial wave and two diagonal wave trains. Its signed RG displacement
+is applied at 0.04 screen scale using the native scrolling UV transform.
+The shoreline draw retains its two overlapping mask scrolls. Retail assigns a
+random phase between 0 and 0.8 to each locally assembled strip. The streamed
+mesh uses stable local phases with continuous interpolation across tile joins.
+
+The Unreal capture reserves a margin outside the viewport for the signed ripple
+offset. The projected lookup uses the same margin so near-edge samples still
+see the reflected scene. Partial shoreline crests use the retail display-RGB
+blend before conversion to the linear framebuffer.
+
+### Ordinary lakes and Icefire shoreline assets
+
+`DrawWaterMesh` draws the two animated, lit base stages of ordinary lake material
+`3100002D` over the riverbed. `DrawWater` then blends the projected reflection
+over that result. Version 43 restores the base pass even when a reflection is
+unavailable for the current water plane. The underside uses its own material.
+
+The shoreline wave and transmission materials come from entries `40000017` and
+`40000024` in the active archive's `40000002` data-ID table. Their texture stages
+resolve to identical image data across the two profiles. Hard-coding Legions'
+wave texture ID selected opaque brown artwork on Icefire and exposed the shape
+of the entire shore ribbon at 44.5 N, 12.1 E.

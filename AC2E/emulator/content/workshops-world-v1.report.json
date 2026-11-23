@@ -1,11 +1,11 @@
 {
-  "existing_outdoor_sha256": "7f3c8b957ad3c81c3378812a5274c7ceb5d62a5cdaacef237a046cf64a3377ee",
+  "existing_outdoor_sha256": "b53e412fa6fb18cae90563c07b97629a727ccc1c0ed682ce5d7cbf53362f506b",
   "groups": [],
-  "included": 8,
+  "included": 20,
   "inferred": true,
-  "manifest_sha256": "27b62fbe1f2cf2ffec447f9b635a6383592319c4b429a78167f15de26aaa9fbe",
+  "manifest_sha256": "f6f33054bbde2dff965099ec6301f7ac477938904924b9af49a318dd93bbb387",
   "native_ground_verified": true,
   "rejected": [],
-  "source_sha256": "9df39e32a79ce2ce37f88ac9d1223fc315ffadf84a9c4c2c7908150e0647b1f6",
+  "source_sha256": "6239026d560e61224ba4b58ea8d832a4edc9bcdc5609fcc25834f53033b1e154",
   "version": 1
 }

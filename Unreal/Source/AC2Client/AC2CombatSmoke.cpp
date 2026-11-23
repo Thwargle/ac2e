@@ -127,8 +127,8 @@ bool SAC2GameUI::SmokeWorldTarget(const FString& Id,FString& Error,FKey Button,b
     App.RoutePointerMoveEvent(Path,FPointerEvent(0,Absolute,Absolute,None,FKey(),0,FModifierKeysState()),false);
     NextHover=0;UpdateHover(GetCachedGeometry(),FPlatformTime::Seconds());
     const auto Spec=CursorAt(Absolute);
-    if(!CenterAim && (HoverObject!=Id || Spec.Image!=0x4100751e || Spec.Hotspot!=FIntPoint(11,11)))
-    {Error=TEXT("World hover did not resolve the native usage cursor and hotspot");return false;}
+    if(!CenterAim && (HoverObject!=Id || Spec.Image!=0x41000870 || Spec.Hotspot!=FIntPoint::ZeroValue))
+    {Error=TEXT("World hover did not retain the native default pointer");return false;}
     if(DoubleClick)App.RoutePointerDoubleClickEvent(Path,FPointerEvent(0,Absolute,Absolute,Down,Button,0,FModifierKeysState()));
     else App.RoutePointerDownEvent(Path,FPointerEvent(0,Absolute,Absolute,Down,Button,0,FModifierKeysState()));
     App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,None,Button,0,FModifierKeysState()));

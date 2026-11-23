@@ -74,7 +74,7 @@ projectiles, pathfinding, collision/line of sight or corpse/item looting.
 Use the existing game-data/account/bind/data options with:
 
 ```powershell
---content training --initialize-ui true --encounters content/development-encounters.tsv
+--content world --initialize-ui true --encounters content/development-encounters.tsv
 ```
 
 The training pack places one explicitly authored development Idol near the
@@ -279,41 +279,28 @@ and string/break node pattern; their build identity remains unverified. Matching
 7148 recovered serializers govern the emitted layout. This was compiled only;
 no tests, native game launch or running-server replacement were performed.
 
-## Explicit development training preset
+## Removed development training mode
 
-`serve-training --game-data PATH` enables the initialized HUD, bundled `training`
-world and encounter profiles, and `--training-kit true`. The normal `serve`
-command keeps that grant disabled. `--encounters training` also selects the
-embedded development rules without a working-directory dependency; an explicit
-encounter file remains supported. The preset accepts the normal account/bind/data
-options and optional content/encounter overrides.
+The development training mode has been removed. `serve --game-data PATH`
+starts normal gameplay; `serve-training` and `--training-kit` are no longer accepted.
+Login grants only the racial starter equipment and basic skills, without the
+extra supply pack, training-only attack grant, or automatic practice-quest enrollment.
+Shelter Drudges give needed quest tools/glyphs and otherwise use normal corpse
+loot, rather than automatic equipment/potion gifts. Crafting, vendors, travel,
+and optional NPC quests remain available. Historical training grant records
+still replay so existing characters retain their earned and already-granted items.
 
-The kit is a single quantity-one hand item, definition `47000f1e`, physical
-`4700035b`, visual `1f000056`, under an explicit development grant policy. DAT
-validation requires those backing records, their supported physical-definition
-prefix, and the imported valid/preferred/primary hand locations. No original
-starter entitlement, ability grant, economy or item balance is inferred.
-
-At world entry, the kit uses one free bag slot for an eligible human character.
-One checksummed/fsynced `t1` journal record records the grant and the persistent
-once-per-character marker atomically. Replay repeats profile, global item-ID,
-space and inventory validation. Reconnect, deletion/restoration and consuming
-the item cannot repeat the grant. A full bag defers a first grant without blocking
-world entry. Older journals default the marker to false; journals containing
-`t1` require this reader and its immutable kit definition.
-
-The kit definition is included in startup metadata and examination-name caches
-before it can be granted. The owned item enters the normal inventory bootstrap,
-sorting, hand-equipment and examination paths. This change was compile checked
-only; no grants were executed against existing player data and no tests or native
-client checks were run.
+The immutable `t1`/`t2` weapon, `t3` supply-pack and `k4` skill-grant readers are
+retained only for historical journal replay and compaction. New sessions cannot
+write those grant records. Racial starter equipment (`t4`) and basic skills (`k5`)
+remain normal gameplay. The legacy weapon definition also remains usable by
+existing inventory items and the merchant catalog.
 
 ## Development lifestone binding and return
 
 `--lifestones true` requires the initialized 7148 HUD and enables explicit local
-binding/return rules. `serve-training` enables it and includes an authored nearby
-lifestone using the existing DAT-backed definition/visual. Ordinary `serve` keeps
-it disabled. This is not original level/hero/kingdom eligibility or cast timing.
+binding/return rules. `serve --game-data PATH` enables it by default. Bundled
+content includes nearby lifestones using DAT-backed definitions and visuals. This is not original level/hero/kingdom eligibility or cast timing.
 
 The captured object-use profile can bind to an active, visible same-cell lifestone
 definition `470007de` within four meters. The character must be alive and out of
@@ -323,14 +310,12 @@ native `82160021` success reply and chat confirmation. The reply uses package
 `245`, a localized use hint, and native Position `5a`, following retained binding
 captures. A one-second interaction cooldown bounds repeated binding writes.
 
-`@recall` provides development instant return while alive and out of combat, with
-a five-second cooldown. The native Resurrect button restores vitals and returns
+`@recall` and the Recall skill start the same ten-second cast while alive, bound
+and out of combat. The native Resurrect button restores vitals and returns
 to a saved binding when this mode is enabled. Unbound characters retain in-place
 recovery. Destination cells must exist in the configured world. World/cell checks,
 outgoing queue admission and native position encoding complete before persistence.
-The native Recall request now uses the same instant development path, as
-described below. Portal-space presentation, animations, original cast timing
-and death penalties are not implemented by this command.
+The Recall sequence and the caster's saved destination are described below.
 
 Forced movement increments a checked native force-position stamp, preserves the
 avatar lifetime, and uses the neutral `7f7f7f` motion vector. Old-stamp movement is
@@ -353,9 +338,8 @@ cannot read these new journal events/snapshots.
 Retained evidence includes `binding.to.lifestone.1.elog`,
 `binding.to.lifestone.2.elog` and `recalling.to.lifestone.elog`. Native position
 packing follows `0069be20`; position reception is recovered at `004ed470`.
-The new gameplay/restore path is compile checked only. No automated tests, native
-client checks, existing player-data mutations or running-server replacement were
-performed.
+The local three-client UDP test in `Network/test_recall.py` exercises the live
+recall and visibility paths using an isolated character store.
 
 ## Table-backed skill advancement
 
@@ -396,7 +380,7 @@ referenced `6f001ef5` table prefix. That is static format/data evidence; native
 advancement UI and full original semantics remain unverified. No tests or native
 client checks were run, and no existing character XP was changed.
 
-## Native development Recall skill
+## Lifestone Recall
 
 The captured `8204000b` skill-use profile consists of tagged use flags `8`, a
 skill ID and a target IID (28 argument bytes, no trailing data). The dispatcher
@@ -415,15 +399,20 @@ cannot bypass the separate Recall grant path.
 
 The binder receives a native skill update before the use-success reply. UI_Load
 restores the grant with the skill hash; the existing hotbar accepts a skill
-shortcut. Successful native Recall and `@recall` share the persisted destination,
-life/combat/cooldown checks, forced-position correction and skill/combat UI reset.
-The server cooldown remains five seconds; original cast/cooldown presentation,
-portal-space transitions and animation are not reproduced. The original starter
-grant rules are not inferred from this explicit development policy.
+shortcut. Both the skill and `@recall` enter Magic mode and charge for eight
+seconds. The server then starts Enter_World FX, stops Magic_Charge1, plays
+Magic_LS_Recall1 for nearby players and sends the caster's private storyboard.
+Two seconds later it moves the player to their saved binding. The tagged skill
+request receives its completion callback. Entering combat or moving away
+interrupts the cast. A new observer sees the active charge or glow in the
+native CreateObject physics descriptor. The first accepted movement after
+arrival ends the glow.
 
 `recalling.to.lifestone.elog` contains the tagged Recall request and native skill
-update. This integration is compile checked only, with no automated tests, native
-client checks or changes to existing player data.
+update. The recovered Pyreal `Player.LifestoneRecall` provides the sequence and
+timing. The installed character template and body motion tables define the
+held charge and the two release animations. Rust tests cover both entry points,
+reopened bindings, cancellation, timing and native snapshot decoding.
 
 ## Bounded progression-journal compaction
 
@@ -471,9 +460,9 @@ routes and one explicitly authored training-gateway source, using telepad 1473's
 human bootcamp-exit destination. Four original entries remain unresolved.
 Source snapshot and telepad SHA256 provenance are retained with the route data.
 
-`--portals true` requires the initialized 7148 HUD and opts into instant
-development portal travel. `serve-training` enables it, merges the 247 base world
-placements with its three authored starter objects, and includes the gateway.
+`--portals true` requires the initialized 7148 HUD and enables object portal
+travel. `serve --game-data PATH` enables it by default. Bundled world
+content includes starter gateways; explicit content manifests remain supported.
 Only routes whose source object is loaded are enabled. Startup checks source
 identity, definition, cell and coordinates against the loaded content and reads
 every used destination's backing cell. The source cannot be replaced with an
@@ -486,6 +475,16 @@ with a readable destination-unavailable message. The captured portal-success
 profile uses `82160021`, package `245`, authoritative destination Position `5a`
 and server-computed interaction distance. The destination correction and combat
 reset follow in the owner's ordered queue after prevalidated admission.
+
+Four retail captures show the server locking the traveler’s movement and
+opening portal space before the avatar plays Portal_Use and Enter_World and
+the portal plays Activate. AC2E broadcasts those three effects, then transfers
+the traveler after 1.5 seconds. The owner receives ExitPortalSpace before the
+stamped position. A player who first sees the traveler during transit receives
+the active Enter_World effect. The traveler’s SceneRenderingComplete
+acknowledgment at the destination unlocks movement and stops Enter_World for
+everyone in view. The Menhir Glyph uses the same presentation and is consumed
+with the quest update when the transfer succeeds.
 
 A single `p2` journal transaction durably relocates the character without changing
 its binding, XP, inventory or vitals. Replay validates a living owner and bounded

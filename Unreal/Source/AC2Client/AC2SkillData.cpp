@@ -15,7 +15,7 @@ bool Root(FAC2AssetReader& R,uint32 Id,TArray<uint32>& Fields,int32& References)
 }
 bool FAC2SkillData::Open(const FString& Directory)
 {
-    Records.Reset();Panels.Reset();Cache.Reset();PanelCache.Reset();Curves.Reset();
+    Records.Reset();Panels.Reset();Cache.Reset();PanelCache.Reset();Curves.Reset();MissileCache.Reset();
     FString Error;TArray<uint8> Bytes;
     if(!Portal.Open(Directory/TEXT("portal.dat"),1,Error) || !Local.Open(Directory/TEXT("local_English.dat"),3,Error) ||
         !Portal.Read(0x700016e2,Bytes,Error))return false;
@@ -117,6 +117,12 @@ const FAC2SkillInfo& FAC2SkillData::Get(uint32 Id)
     Info.Race=Fields[2];Info.Icon=Fields[21]>>24==0x41?Fields[21]:0;
     Info.Level=FMath::Max(1u,Fields[3]);Info.Credits=Fields[20];Info.Cap=Fields[17];Info.Curve=Fields[15];Info.Kind=Fields[23];
     if(Fields.Num()>30)Info.Weapons=Fields[30];
+    if(Fields.Num()>34){float Reset;FMemory::Memcpy(&Reset,&Fields[34],4);
+        if(FMath::IsFinite(Reset) && Reset>=0 && Reset<=86400)Info.ResetSeconds=Reset;}
+    if(Fields.Num()>49){Info.LeftWeapons=Fields[49];Info.HasImplements=true;}
+    // Native IsSkillHarmful -> SkillData 022c004a reads field 70, bit 0x400.
+    // A damage amount is not equivalent: harmful debuffs and misses still count.
+    if(Fields.Num()>70)Info.Harmful=(Fields[70]&0x400)!=0;
     uint32 Last=FMath::Max(Fields[19],Fields[22]);
     for(int32 Index:{4,6})if(Fields[Index]!=MAX_uint32)Last=FMath::Max(Last,Fields[Index]);
     if(Last>=uint32(Refs) || Last>128)return Info;
@@ -157,12 +163,151 @@ const FAC2SkillInfo& FAC2SkillData::Get(uint32 Id)
     return Info;
 }
 
+TOptional<FAC2SkillMissile> FAC2SkillData::Missile(uint32 Id,uint32 AttackHook)
+{
+    if(!MissileCache.Contains(Id))
+    {
+        auto& Out=MissileCache.Add(Id);FString Error;TArray<uint8> Bytes;
+        const uint32 Did=Records.FindRef(Id);
+        if(!Did || !Portal.Read(Did,Bytes,Error))return {};
+        FAC2AssetReader R(Bytes);TArray<uint32> Fields;int32 Refs=0;
+        if(!Root(R,Did,Fields,Refs) || Fields.Num()<=65 || Fields[0]!=Id)return {};
+        // Packed-reference objects have unique stream markers. Reject ambiguous
+        // graphs, then require an RArray and the native attack-hook classes.
+        TArray<uint32> Words;Words.SetNum(Bytes.Num()/4);
+        FMemory::Memcpy(Words.GetData(),Bytes.GetData(),Words.Num()*4);
+        TArray<int32> Objects;
+        for(int32 I=3+Refs;I<Words.Num();++I)
+            if(Words[I]==0x5c000100 || Words[I]==0x44000100 || Words[I]==0x24000100)Objects.Add(I);
+        if(Objects.Num()!=Refs)return {};
+        auto List=[&](uint32 Ref,uint32 Type,TArray<uint32>& Items){
+            if(!Objects.IsValidIndex(Ref))return false;const int32 Start=Objects[Ref];
+            if(!Words.IsValidIndex(Start+3) || Words[Start]!=0x44000100)return false;
+            const uint32 Actual=Words[Start+2];
+            if(Type?Actual!=Type:(Actual!=0x01bf0000 && Actual!=0x16e40000 && Actual!=0x16e50000))return false;
+            const uint32 N=Words[Start+3]&0xffffff;
+            if(N>4096 || Start+4+N>uint32(Words.Num()))return false;
+            Items.Append(Words.GetData()+Start+4,N);return true;
+        };
+        TArray<uint32> Hooks;
+        if(!List(Fields[65],0xffff0061,Hooks))return {};
+        TArray<FAC2SkillMissile> Parsed;
+        for(uint32 Ref:Hooks){
+            TArray<uint32> Hook;if(!List(Ref,0,Hook) || Hook.Num()<24)return {};
+            FAC2SkillMissile M;M.Entity=Hook[6];M.Holding=Hook[17];
+            M.Clone=(Hook[19]&0x100)!=0;M.Thrown=(Hook[19]&0x80)!=0;
+            FMemory::Memcpy(&M.Speed,&Hook[23],4);
+            FMemory::Memcpy(&M.SourceHeight,&Hook[11],4);FMemory::Memcpy(&M.TargetHeight,&Hook[3],4);
+            uint32 Visual=M.Entity;TSet<uint32> Seen;
+            while(Visual>>24==0x47 && !Seen.Contains(Visual) && Seen.Num()<32){
+                Seen.Add(Visual);TArray<uint8> Entity;
+                if(!Portal.Read(Visual,Entity,Error))break;
+                FAC2AssetReader E(Entity);const uint32 Flags=E.Word();
+                if((Flags&~511u) || !(Flags&8))break;
+                if(Flags&1)E.Word();if(Flags&2)E.Word();if(Flags&4)E.Take(8);
+                Visual=E.Word();if(!E.Good)break;
+            }
+            if(Visual>>24==0x1f)M.Visual=Visual;
+            Parsed.Add(M);
+        }
+        Out=MoveTemp(Parsed);
+    }
+    // ActiveSkill::GetAttackHook delegates to gRArray::get (zero-based).
+    const auto& Entries=MissileCache[Id];
+    if(!Entries.IsValidIndex(AttackHook))return {};
+    const auto& M=Entries[AttackHook];
+    if((!M.Clone && M.Entity>>24!=0x47) || !FMath::IsFinite(M.Speed) || M.Speed<=0 || M.Speed>1000 ||
+        !FMath::IsFinite(M.SourceHeight) || !FMath::IsFinite(M.TargetHeight))return {};
+    return M;
+}
+TOptional<bool> FAC2SkillData::Holds(uint32 Required,TOptional<uint32> Implement)
+{
+    if(Required==MAX_uint32)return true;
+    if(!Implement.IsSet())return {};
+    return (Required&Implement.GetValue())!=0;
+}
+FString FAC2SkillData::ImplementName(uint32 Mask)
+{
+    // ImplementType enum 23000003, shared with the server's skill checks.
+    switch(Mask){
+    case MAX_uint32:return TEXT("Any equipment");
+    case 0xfffffffe:return TEXT("An item");
+    case 0x3fffee:return TEXT("A weapon");
+    case 0x80062:return TEXT("A one-handed weapon");
+    case 0x7ffffffe:return TEXT("An equipped implement");
+    case 0:return TEXT("No permitted implement");
+    }
+    static const struct {uint32 Bit;const TCHAR* Name;} Names[]={
+        {1,TEXT("Empty hand")},{2,TEXT("Sword")},{4,TEXT("Bow")},{8,TEXT("Drum")},
+        {0x10,TEXT("Shield")},{0x20,TEXT("Axe")},{0x40,TEXT("Dagger")},{0x80,TEXT("Gunblade")},
+        {0x100,TEXT("Hammer")},{0x200,TEXT("Unarmed")},{0x400,TEXT("Two-handed sword")},
+        {0x800,TEXT("Alchemy kit")},{0x1000,TEXT("Boulder")},{0x2000,TEXT("Bee hive")},
+        {0x4000,TEXT("Turret construction kit")},{0x8000,TEXT("Spear")},
+        {0x10000,TEXT("Jailai")},{0x20000,TEXT("Flail")},{0x40000,TEXT("Stave")},
+        {0x80000,TEXT("Scythe")},{0x100000,TEXT("Hand weapon")},{0x200000,TEXT("Orb")},
+        {0x80000000,TEXT("Natural weapon")}};
+    TArray<FString> Parts;
+    for(const auto& N:Names)if(Mask&N.Bit){Parts.Add(N.Name);Mask&=~N.Bit;}
+    if(Mask)Parts.Add(FString::Printf(TEXT("Other implement (%08X)"),Mask));
+    return FString::Join(Parts,TEXT(" or "));
+}
+
 TArray<uint32> FAC2SkillData::All(uint32 Race)
 {
     TArray<uint32> Result;
-    for(const auto& E:Records){const auto& S=Get(E.Key);if(S.Valid && S.Race==Race && S.Credits>0)Result.Add(E.Key);}
+    for(const auto& E:Records){const auto& S=Get(E.Key);if(Supported(E.Key,Race) && S.Credits>0)Result.Add(E.Key);}
     Result.Sort([&](uint32 A,uint32 B){const auto& X=Get(A);const auto& Y=Get(B);return X.Level!=Y.Level?X.Level<Y.Level:A<B;});
     return Result;
+}
+bool FAC2SkillData::Supported(uint32 Id,uint32 Race)
+{
+    // Match skills.rs: only the nine common masteries are race-independent.
+    // Race zero also contains NPC, kingdom and other grants, not all-player skills.
+    const auto& I=Get(Id);
+    const bool Common=Id==3||Id==4||Id==5||Id==9||Id==10||Id==11||Id==14||Id==15||Id==16;
+    return I.Valid && (Race==1||Race==2||Race==4) && (I.Race==Race || (I.Race==0&&Common)) &&
+        I.Level<=50 && I.Kind!=4 && I.Kind!=0x44 && I.Kind!=0x45 && I.Kind!=0x51 && I.Kind!=0x71;
+}
+FAC2SkillActions FAC2SkillData::Actions(uint32 Id,const FAC2SkillContext& C,bool Untrainable)
+{
+    FAC2SkillActions A;
+    if(!Id || !Get(Id).Valid){A.Train=A.Raise=A.Untrain=A.Cancel=TEXT("Select a valid skill.");return A;}
+    if(C.Dead){A.Train=A.Raise=A.Untrain=A.Cancel=TEXT("You must be alive to change skills.");return A;}
+    const auto I=Get(Id);const bool Known=C.Known.Contains(Id);
+    auto Training=[&]()->FString {
+        if(Known)return TEXT("Already trained.");
+        if(!Supported(Id,C.Race))return TEXT("Training is unavailable for this character's server profile.");
+        if(!I.Credits)return TEXT("This skill is granted automatically; it cannot be purchased.");
+        if(C.Known.Num()>=128)return TEXT("The skill book is full.");
+        if(C.Level<I.Level)return FString::Printf(TEXT("Requires character level %u."),I.Level);
+        TArray<uint32> Required;I.Required.GetKeys(Required);Required.Sort();
+        for(uint32 Other:Required){const auto* X=C.Known.Find(Other);const uint32 Need=I.Required[Other];
+            if(!X || C.Untraining==Other || Rank(Other,*X)<int32(Need))return TEXT("Requires ")+Get(Other).Name+
+                (Need?FString::Printf(TEXT(" at rank %u."),Need):TEXT(" to be trained."));}
+        TArray<uint32> Learned;C.Known.GetKeys(Learned);Learned.Sort();
+        for(uint32 Other:Learned)if(I.Forbidden.Contains(Other)||Get(Other).Forbidden.Contains(Id))
+            return TEXT("Incompatible with ")+Get(Other).Name+TEXT(".");
+        if(C.Credits<int32(I.Credits))return FString::Printf(TEXT("Requires %u skill credits; you have %d."),I.Credits,C.Credits);
+        return {};
+    };
+    A.Train=Training();
+    if(!Known)A.Raise=A.Untrain=TEXT("Train this skill first.");
+    else {
+        if(C.Untraining==Id)A.Raise=TEXT("Cancel untraining before raising this skill.");
+        else if(!Supported(Id,C.Race))A.Raise=TEXT("Advancement is unavailable for this character's server profile.");
+        else if(const uint64 Cost=NextCost(Id,C.Known[Id]);!Cost)A.Raise=Rank(Id,C.Known[Id])>=int32(I.Cap)?TEXT("Maximum rank reached."):TEXT("Advancement data is unavailable.");
+        else if(C.AvailableXp<Cost)A.Raise=FString::Printf(TEXT("Requires %llu XP; you have %llu."),Cost,C.AvailableXp);
+        if(!I.Credits)A.Untrain=TEXT("Granted skills cannot be untrained.");
+        else if(!Untrainable)A.Untrain=TEXT("This skill is a permanent choice.");
+        else if(C.Untraining)A.Untrain=TEXT("Finish or cancel the current untraining first.");
+        else {
+            TArray<uint32> Learned;C.Known.GetKeys(Learned);Learned.Sort();
+            for(uint32 Other:Learned)if(Other!=Id&&Get(Other).Required.Contains(Id)){
+                A.Untrain=TEXT("Untrain ")+Get(Other).Name+TEXT(" first; it requires this skill.");break;}
+        }
+    }
+    if(C.Untraining!=Id)A.Cancel=TEXT("This skill is not being untrained.");
+    return A;
 }
 const TArray<uint64>& FAC2SkillData::Curve(uint32 Id)
 {

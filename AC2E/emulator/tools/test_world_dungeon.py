@@ -1,5 +1,7 @@
 """Native dungeon record, collision reuse and doorway assembly regressions."""
 import math
+import os
+from pathlib import Path
 import struct
 import unittest
 from unittest.mock import patch
@@ -34,6 +36,27 @@ def apply(editor,changes):
 
 
 class DungeonTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("AC2_TEST_GAME_DATA"), "retail cell archive required")
+    def test_quest_targets_and_return_routes_through_native_doorways(self):
+        from build_hero_interiors import connected_rooms
+
+        for dungeon, arrival, target, exit_cell in (
+            ("Water Temple", "b8800100", "b88001db", "b8800100"),
+            ("Crystal Caves", "07f70181", "07f7018a", "07f70182"),
+            ("Golden Age Reliquary", "0afc0144", "0afc0137", "0afc0143"),
+        ):
+            with self.subTest(dungeon=dungeon):
+                rooms = connected_rooms(Path(os.environ["AC2_TEST_GAME_DATA"]), [int(arrival, 16)])
+                visited = set()
+                pending = [arrival]
+                while pending:
+                    cell = pending.pop()
+                    if cell not in visited:
+                        visited.add(cell)
+                        pending.extend(rooms[cell][3])
+                self.assertIn(target, visited)
+                self.assertIn(exit_cell, visited)
+
     def test_native_tail_and_portal_stabs_roundtrip(self):
         source=room(tail=b'opaque entity and property bytes',flags=6,doors=2)
         source['portals'][0].update(flags=5,other_cell=0x101,other_index=1,stabs=[0x100,0x101,0x102])

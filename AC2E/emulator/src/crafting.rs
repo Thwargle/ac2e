@@ -8,7 +8,7 @@
 //! in professions.rs; the caller supplies server-owned recipe authorization.
 use crate::{
     dat::Dat,
-    inventory::{BAG_SLOTS, Inventory, Item, Location},
+    inventory::{BAG_SLOTS, Command, Inventory, Item, Location},
     inventory_request::Metadata,
     world::WorldError,
 };
@@ -126,11 +126,11 @@ pub fn skill_update(id:u32,book:&crate::professions::Book)->Result<Vec<u8>,World
 }
 pub fn learned_recipe(id:u32)->Result<Vec<u8>,WorldError>{crate::script::private_call(0x8206001b,&crate::script::integer(id))}
 pub fn initialization_book(authorized:bool,book:&crate::professions::Book)->Result<Vec<Vec<u8>>,WorldError>{
-    initialization_with_quests(authorized,book,&crate::arwic_mines::State::default())
+    initialization_with_quests(authorized,book,&crate::quests::Book::default())
 }
-pub fn initialization_with_quests(authorized:bool,book:&crate::professions::Book,quest:&crate::arwic_mines::State)->Result<Vec<Vec<u8>>,WorldError>{
+pub fn initialization_with_quests(authorized:bool,book:&crate::professions::Book,quest:&crate::quests::Book)->Result<Vec<Vec<u8>>,WorldError>{
     let skills:Vec<_>=crate::professions::catalog().skills.iter().filter(|_|authorized).collect();
-    let recipes:Vec<_>=crate::professions::catalog().recipes.iter().filter(|r|authorized&&quest.allowed(r.id)).collect();
+    let recipes:Vec<_>=crate::professions::catalog().recipes.iter().filter(|r|authorized&&quest.arwic.allowed(r.id)&&quest.nature.allowed(r.id)&&quest.esper.allowed(r.id,crate::recovered_quests::now())).collect();
     let mut objects=vec![PanelObject::interpreted(0x1d2,&[(u32::MAX,1),(0,3),(0,4),(0,0x83),(0,0xcd),(2,1),(3,1)])];
     let mut sh=vec![skills.len()as u32];for(i,s)in skills.iter().enumerate(){sh.extend([s.id,4+i as u32]);}
     let mut rh=vec![recipes.len()as u32];for(i,r)in recipes.iter().enumerate(){rh.extend([r.id,4+skills.len()as u32+i as u32]);}
@@ -199,11 +199,21 @@ fn canonical_ingredient(item: &Item, expected: u32) -> bool {
     profile(expected).is_some_and(|profile| {
         item.definition == expected
             && item.visual == profile.visual
-            && item.quantity == quantity(expected)
-            && item.stack_limit == quantity(expected)
+            && item.quantity > 0
+            && (expected == TALLOW || (item.quantity == 1 && item.stack_limit == 1))
             && item.equipment_mask == 0
             && matches!(item.location, Location::Bag(_))
     })
+}
+
+fn has_ingredient(inventory: &Inventory, expected: u32, selected: u64) -> bool {
+    let mut owned = false;
+    let mut total = 0u32;
+    for item in inventory.items().filter(|item| canonical_ingredient(item, expected)) {
+        owned |= item.id == selected;
+        total += u32::from(item.quantity);
+    }
+    owned && total >= u32::from(quantity(expected))
 }
 
 fn fingerprint(bytes: &[u8]) -> u64 {
@@ -394,9 +404,7 @@ impl ValidateRequest {
         };
         authorized
             && inventory.dense_bags()
-            && inventory
-                .items()
-                .any(|item| item.id == self.item && canonical_ingredient(item, *expected))
+            && has_ingredient(inventory, *expected, self.item)
     }
 }
 
@@ -437,16 +445,17 @@ impl ExecuteRequest {
             let item = r.iid_raw()?;
             if !(1..=MAX_INGREDIENTS as u32).contains(&ordinal)
                 || ingredients.insert(ordinal, item).is_some()
-                || !identities.insert(item)
             {
                 return Err(WorldError::InvalidValue);
             }
+            identities.insert(item);
         }
         r.expect(0)?; // Native ALHash has no interpreted HeapObject fields.
         let spinner = r.integer()?;
         let recipe = r.integer()?;
         r.finish()?;
-        if spinner > 1000 || recipe >> 24 != 0x6f || count>0&&!identities.contains(&primary) {
+        if spinner > 1000 || recipe >> 24 != 0x6f || count>0&&!identities.contains(&primary)
+            || (identities.len()!=count && recipe!=crate::nature_gathering::RECIPE) {
             return Err(WorldError::InvalidValue);
         }
         Ok(Self {
@@ -456,9 +465,8 @@ impl ExecuteRequest {
             recipe,
         })
     }
-    /// Exact whole-bundle subset: one Mucor and 100 Tallow, matching native
-    /// ingredient requirements. Partial-stack consumption remains unsupported.
-    pub fn require_inputs(
+    /// Resolve the selected owned ingredients and check total available quantities.
+    fn require_inputs(
         &self,
         inventory: &Inventory,
         authorized: bool,
@@ -477,10 +485,7 @@ impl ExecuteRequest {
                 .ingredients
                 .get(&(index as u32 + 1))
                 .ok_or(WorldError::InvalidValue)?;
-            if !inventory
-                .items()
-                .any(|item| item.id == id && canonical_ingredient(item, *expected))
-            {
+            if !has_ingredient(inventory, *expected, id) {
                 return Err(WorldError::InvalidValue);
             }
             result[index] = id;
@@ -489,6 +494,52 @@ impl ExecuteRequest {
             return Err(WorldError::InvalidValue);
         }
         Ok(result)
+    }
+
+    /// Build the entire potion exchange for one journal commit. Start with the
+    /// chosen Tallow stack, then draw any shortfall from other owned stacks.
+    /// A partial final stack is reissued through the existing item service.
+    pub(crate) fn potion_plan(&self, inventory: &Inventory, first: u64) -> io::Result<Vec<Command>> {
+        let [mushroom, tallow] = self.require_inputs(inventory, true)
+            .map_err(|_| io::Error::other("Crafting needs one Mucor Mushroom and 100 Tallow in your backpack."))?;
+        let mut commands = vec![Command::ConsumeDense { item: mushroom }];
+        let mut available: Vec<_> = inventory.items()
+            .filter(|item| canonical_ingredient(item, TALLOW))
+            .collect();
+        available.sort_unstable_by_key(|item| (item.id != tallow, item.id));
+        let mut needed = TALLOW_QUANTITY;
+        let mut remainder = None;
+        for item in available {
+            let spent = needed.min(item.quantity);
+            commands.push(Command::ConsumeStackDense { item: item.id, quantity: item.quantity });
+            needed -= spent;
+            if spent < item.quantity {
+                let mut left = item.clone();
+                left.quantity -= spent;
+                remainder = Some(left);
+            }
+            if needed == 0 {
+                break;
+            }
+        }
+        let mut bag = inventory.clone();
+        for command in &commands {
+            bag = bag.apply(command).map_err(io::Error::other)?;
+        }
+        let insert = |bag: &Inventory| bag.free_slot().ok_or_else(|| io::Error::other("Make space in your backpack."));
+        let mut output_id = first;
+        if let Some(mut left) = remainder {
+            left.id = first;
+            left.location = Location::Bag(insert(&bag)?);
+            let grant = Command::Grant(left);
+            bag = bag.apply(&grant).map_err(io::Error::other)?;
+            commands.push(grant);
+            output_id = first.checked_add(1).ok_or_else(|| io::Error::other("Item identity exhausted."))?;
+        }
+        let product = output(self.recipe, output_id, insert(&bag)?)
+            .ok_or_else(|| io::Error::other("That potion recipe is not enabled."))?;
+        commands.push(Command::Grant(product));
+        Ok(commands)
     }
 }
 
@@ -648,6 +699,61 @@ pub fn rank(skill: u32, crafting_xp: u64) -> Option<CraftRank> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_ingredient_wire_identity_is_only_allowed_for_garland() {
+        let iid=crate::inventory::ITEM_NAMESPACE+1;
+        let packet=|recipe,duplicate_ordinal| {
+            let mut bytes=crate::script::identity(iid);
+            for word in [5u32,1,1,0x44000100,0,0xffff0008,0x02000007] {bytes.extend(word.to_le_bytes());}
+            for ordinal in 1..=7u32 {
+                bytes.extend((if duplicate_ordinal {1u32} else {ordinal}).to_le_bytes());
+                bytes.extend(iid.to_le_bytes());
+            }
+            bytes.extend(0u32.to_le_bytes());
+            bytes.extend(crate::script::integer(0));bytes.extend(crate::script::integer(recipe));bytes
+        };
+        let request=ExecuteRequest::decode(&packet(crate::nature_gathering::RECIPE,false)).unwrap();
+        assert_eq!(request.ingredients.len(),7);
+        assert!(crate::nature_gathering::craft_action(&request).is_ok());
+        assert!(ExecuteRequest::decode(&packet(crate::nature_gathering::RECIPE,true)).is_err());
+        assert!(ExecuteRequest::decode(&packet(HEALTH_RECIPE,false)).is_err());
+    }
+
+    #[test]
+    fn potions_use_selected_tallow_first_and_return_the_exact_remainder() {
+        let first = crate::inventory::ITEM_NAMESPACE + 1;
+        let mushroom = item(MUCOR, first, 0).unwrap();
+        let mut unselected = tallow(first + 1, 1);
+        unselected.quantity = 70;
+        let mut selected = tallow(first + 2, 2);
+        selected.quantity = 45;
+        let mut only_selected = selected.clone();
+        only_selected.location = Location::Bag(1);
+        let bag = Inventory::default().apply(&Command::Grant(mushroom.clone())).unwrap()
+            .apply(&Command::Grant(only_selected)).unwrap();
+        let request = ExecuteRequest {
+            primary: first,
+            ingredients: BTreeMap::from([(1, first), (2, selected.id)]),
+            spinner: 0, recipe: HEALTH_RECIPE,
+        };
+        assert!(request.potion_plan(&bag, first + 3).is_err());
+        let bag = Inventory::default().apply(&Command::Grant(mushroom)).unwrap()
+            .apply(&Command::Grant(unselected.clone())).unwrap()
+            .apply(&Command::Grant(selected.clone())).unwrap();
+        let check = ValidateRequest { spinner: 0, item: selected.id, ordinal: 2, recipe: HEALTH_RECIPE };
+        assert!(check.allowed(&bag, true));
+        let commands = request.potion_plan(&bag, first + 3).unwrap();
+        assert!(matches!(&commands[1], Command::ConsumeStackDense { item, quantity: 45 } if *item == selected.id));
+        let (next, _) = crate::player_transaction::candidate(
+            &bag, &Default::default(), &commands, &[], Some(first + 3)
+        ).unwrap();
+        assert_eq!(next.items().map(|item| (item.id, item.definition, item.quantity)).collect::<Vec<_>>(),
+            [(first + 3, TALLOW, 15), (first + 4, HEALTH_OUTPUT, 1)]);
+        let mut missing_selection = request.clone();
+        missing_selection.ingredients.insert(2, first + 10);
+        assert!(missing_selection.potion_plan(&bag, first + 3).is_err());
+    }
 
     #[test]
     fn imported_crafting_curves_match_the_pyreal_dump() {

@@ -1,0 +1,7 @@
+ac2e-creature-ai-v1
+# Inherited Foundry general properties from portal.dat.
+# entity perception homesick wandering wander_range wander_probability friend_table free_attacking idle_only loot_profile loot_proof
+4700390b	30	60	0	20	0.200000003	69	-	-	2030	-
+47003bca	30	60	0	20	0.200000003	69	-	-	2030	-
+47003b72	30	60	0	20	0.200000003	69	-	-	2039	-
+47003b73	30	60	0	20	0.200000003	69	-	-	2038	-

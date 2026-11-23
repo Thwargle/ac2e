@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "sources": [
+    "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Crystal_Caves.png",
+    "http://ac2hero.e5i5o.com/quest/linvak_killcloudburst.html",
+    "Pyreal_DB_Insert_Telepad.sql / telepads 1019, 1020 (SHA256 c1caa67d0cf0f9ccad017b80f688a5a974bd7adc06c74ee9b2bfd6473543adcd)"
+  ],
+  "notes": [
+    "Both January 29 captures contain byte-identical CREATEs for each named gate. The portal visual matches the installed Legions portal. The named, active Pyreal telepads give the travel destinations. The exit telepad at (74.2411, 44.9161, 180.611) is 1.094 m above the installed terrain. Use its XY and heading with the underlying walkable floor at Z 179.51678. The guide gives no portal level requirement."
+  ],
+  "captures": {
+    "1eba8b33c12a": {
+      "archive_sha256": "1eba8b33c12a3a3e22ae664900f70121c6b0628bbd1626a15f67c98e2a173034",
+      "path": "351683a029468fbd/pkt_2017-1-29_1485680694_log.pcap"
+    },
+    "d15b49c66f7c": {
+      "archive_sha256": "d15b49c66f7cc248338d2fcd150ea7469025957b659b5653b79ec39fb918599d",
+      "path": "0a5b7f3e07863391/pkt_2017-1-29_1485705509_log.pcap"
+    }
+  },
+  "templates": {
+    "1191187537": {
+      "name": "Portal",
+      "visual": 520094494
+    }
+  },
+  "validate_captured_bodies": true,
+  "camps": [],
+  "npcs": [],
+  "interiors": [],
+  "portals": [
+    {
+      "id": 9313715642982990080,
+      "capture_id": "4058760000000001",
+      "capture_entity": "47001154",
+      "captures": [
+        "1eba8b33c12a",
+        "d15b49c66f7c"
+      ],
+      "message_sha256": "012d7a2d1b864db769c75b83df9ac28366b741ffc89c0a448510711cf81e71fe",
+      "entity": 1191187537,
+      "cell": 1484128282,
+      "position": [
+        78.88218688964844,
+        21.50303077697754,
+        172.97970581054688
+      ],
+      "rotation": [
+        0.8992912769317627,
+        0.0,
+        0.0,
+        0.43735018372535706
+      ],
+      "scale": null,
+      "name": "Crystal Caves",
+      "destination_telepad": 1019
+    },
+    {
+      "id": 9313715642982990081,
+      "capture_id": "4007f7000000002b",
+      "capture_entity": "47001154",
+      "captures": [
+        "1eba8b33c12a",
+        "d15b49c66f7c"
+      ],
+      "message_sha256": "55a02e6346744e0c423eb051a5e0ad22df9c0175811cbb54624774986819eccc",
+      "entity": 1191187537,
+      "cell": 133628290,
+      "position": [
+        -106.75579071044922,
+        -75.024169921875,
+        157.6990509033203
+      ],
+      "rotation": [
+        0.9998164176940918,
+        0.0,
+        0.0,
+        -0.01916009560227394
+      ],
+      "scale": null,
+      "name": "Exit from Crystal Caves",
+      "destination_telepad": 1020
+    }
+  ]
+}

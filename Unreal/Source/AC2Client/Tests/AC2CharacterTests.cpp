@@ -52,15 +52,46 @@ bool FAC2CharacterNativeTest::RunTest(const FString &)
     TestFalse(TEXT("native appearance labels localized"), Human.Labels[16].IsEmpty());
     TestEqual(TEXT("Human starter records"), C.Starters[1].Num(), 6);
     TestEqual(TEXT("Drudge starter records"), C.Starters[8].Num(), 3);
-    TestTrue(TEXT("native Empyrean weapon damage"), C.Items[0x47003858].HasDamage);
-    TestEqual(TEXT("native weapon damage value"), C.Items[0x47003858].Damage, 9);
-    TestTrue(TEXT("native item localization"), !C.Items[0x47003858].Name.Contains(TEXT("wsl_")));
-    TestEqual(TEXT("grammar suffix removed"), C.Items[0x47003858].Name, TEXT("Decrepit Short Sword"));
-    for(uint32 Id:{0x47001951u,0x47001952u,0x47001954u,0x4700195eu,0x4700195fu,0x47001960u,0x47001968u})
+    // Starter DIDs were reassigned between client profiles. Resolve the sword
+    // through this archive's Empyrean starter list, not a stock-only TMap key.
+    const FAC2ItemDefinition* Sword=nullptr;
+    if(const auto* Starters=C.Starters.Find(16))for(uint32 Id:*Starters)
+        if(const auto* Item=C.Items.Find(Id);Item && Item->Name==TEXT("Decrepit Short Sword"))Sword=Item;
+    if(TestNotNull(TEXT("native Empyrean starter sword"),Sword))
     {
-        C.LoadNetworkItem(Dir,Id);const auto* Armor=C.Items.Find(Id);
-        TestTrue(FString::Printf(TEXT("Additional armor %08X has native name, slot and defense"),Id),
-            Armor && !Armor->Name.IsEmpty() && Armor->Preferred && Armor->HasArmor && Armor->Armor>0);
+        TestTrue(TEXT("native Empyrean weapon damage"), Sword->HasDamage);
+        TestEqual(TEXT("native weapon damage value"), Sword->Damage, 9);
+        TestTrue(TEXT("native item localization"), !Sword->Name.Contains(TEXT("wsl_")));
+        TestEqual(TEXT("grammar suffix removed"), Sword->Name, TEXT("Decrepit Short Sword"));
+    }
+    // The scroll and armor families reuse template numbers in different archives.
+    // Identify each sample by its localized noun before validating equipment data.
+    static const struct {const TCHAR* Name;uint32 Stock,Icefire,Race,Slot;int32 Rating;} Samples[]={
+        {TEXT("Reinforced Boots"),0x47001951,0x4700086e,1,16,3},
+        {TEXT("Reinforced Greaves"),0x47001952,0x47000870,1,8,6},
+        {TEXT("Reinforced Jacket"),0x47001954,0x47000872,1,2,12},
+        {TEXT("Guardian Kilt"),0x4700195e,0x4700087c,2,8,6},
+        {TEXT("Guardian Pauldron"),0x4700195f,0x4700087d,2,2,12},
+        {TEXT("Guardian Sandals"),0x47001960,0x4700087e,2,16,3},
+        {TEXT("Reed Breastplate"),0x47001968,0x47000886,4,2,12}
+    };
+    for(const auto& Sample:Samples)
+    {
+        int32 Matches=0;
+        for(uint32 Id:{Sample.Stock,Sample.Icefire})
+        {
+            C.LoadNetworkItem(Dir,Id);
+            const auto* Item=C.Items.Find(Id);
+            if(!Item)continue;
+            if(Item->Name.EndsWith(TEXT(" Scroll")))
+                TestTrue(TEXT("Unwearable scroll has no armor or equipment slot"),
+                    !Item->HasArmor && Item->Preferred==0 && Item->Slots==0 && Item->Race==0);
+            if(Item->Name!=Sample.Name)continue;
+            ++Matches;
+            TestTrue(Sample.Name,Item->Race==Sample.Race && Item->Preferred==Sample.Slot &&
+                (Item->Slots&Sample.Slot)!=0 && Item->HasArmor && Item->Armor==Sample.Rating);
+        }
+        TestEqual(Sample.Name,Matches,1);
     }
     FAC2DatArchive Portal;
     TArray<uint8> Bytes;

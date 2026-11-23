@@ -206,7 +206,7 @@ creation and its mesh form one reversible transaction across both archives.
 Original archives are never replaced. Unchanged DATs are still required from
 the same installation; use the exported archives in a separate game-data copy.
 The updated server loads the sidecar for its selected content file with portal
-travel enabled; `serve-training` enables it. Keep routes beside their content.
+travel enabled; `serve --game-data PATH` enables it by default. Keep routes beside their content.
 The retained bundled portal routes remain available and cannot be overridden.
 
 Tests check generated room collision volumes and doorway holes independently,

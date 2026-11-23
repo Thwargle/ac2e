@@ -13,9 +13,11 @@ void UAC2CharacterMovement::CalcVelocity(float Dt,float Friction,bool Fluid,floa
         float Rate=(FMath::IsNearlyZero(Target)||V*Target<0)?Brake:Accel;
         return FMath::FInterpConstantTo(V,Target,Dt,FMath::Max(0.f,Rate)*100);
     };
-    Local.X=Approach(Local.X,Input.X*(Input.X<0?Native.Backward:Native.Forward)*100*Pace,
-        Input.X<0?Native.BackwardAccel:Native.ForwardAccel,Local.X<0?Native.BackwardBrake:Native.ForwardBrake);
-    Local.Y=Approach(Local.Y,Input.Y*Native.Strafe*100*Pace,Native.StrafeAccel,Native.StrafeBrake);
+    // Landing can call CalcVelocity before the actor's next Tick updates Native.
+    // Air values often have zero forward speed; using them here kills momentum.
+    Local.X=Approach(Local.X,Input.X*(Input.X<0?GroundNative.Backward:GroundNative.Forward)*100*Pace,
+        Input.X<0?GroundNative.BackwardAccel:GroundNative.ForwardAccel,Local.X<0?GroundNative.BackwardBrake:GroundNative.ForwardBrake);
+    Local.Y=Approach(Local.Y,Input.Y*GroundNative.Strafe*100*Pace,GroundNative.StrafeAccel,GroundNative.StrafeBrake);
     Local.Z=0;Velocity=Rotation.RotateVector(Local);
 }
 FVector UAC2CharacterMovement::NewFallVelocity(const FVector& Initial,const FVector& Gravity,float Dt) const

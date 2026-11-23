@@ -6,6 +6,7 @@ struct FAC2AssetReader;
 class FAC2DatArchive;
 FString AC2ReadPackedString(FAC2AssetReader &Reader, int32 Width = 1);
 FString AC2ReadUIString(FAC2DatArchive &Local, uint32 Table, uint32 Key, const FString *Argument = nullptr);
+FString AC2FormatUIString(FAC2DatArchive &Local, uint32 Table, uint32 Key, const TMap<uint32,FString>& Arguments);
 
 // Native CharGenMatrixData (70000390). These are data choices, not server-side character rules.
 struct FAC2AvatarChoice
@@ -39,6 +40,10 @@ struct FAC2ItemDefinition
 {
     uint32 Id = 0, Icon = 0, Slots = 0, Preferred = 0, Excludes = 0, Race = 0;
     uint32 NativeClass = 0;
+    // gmEntity::IsMultiItemUse reads IntStat 0x2D0, not a fixed item DID.
+    int32 UseTargets = 0;
+    // Native IntStats::ImplementType (0xFA0), not the entity script class.
+    TOptional<uint32> Implement;
     FString Name, Description;
     int32 Armor = 0, Damage = 0, MinLevel = 1;
     bool HasArmor = false, HasDamage = false;
@@ -75,7 +80,8 @@ struct FAC2CharacterProfile
     uint32 Race = 1, Sex = 4096;
     float Height = 1, Build = 1;
     TMap<uint32, int32> Appearance;
-    int32 Level = 1, Experience = 0;
+    int32 Level = 1;
+    int64 Experience = 0;
     // Local sandbox vitals, independent of the unimplemented retail server rules.
     float Health = 100, Vigor = 100;
     TArray<FAC2InventoryItem> Items;

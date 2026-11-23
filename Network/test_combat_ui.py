@@ -21,11 +21,13 @@ def main():
     with content.open('a') as fixture:
         fixture.write('8140000000030700\t4700157e\t1f000d75\t02990109\t58\t238\t-44.606205\t1\t0\t0\t0\t-\n')
     env = dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1')
-    # Give the UI/camera assertions time while native perception acquires us.
+    # The passive Idol only retaliates after a hit. Keep its damage harmless,
+    # but allow a reply before the player's ranged attacks kill it. A ten-second
+    # attack interval can no longer exercise retaliation after passive aggro was fixed.
     # Damage/cadence are isolated test balance, not production creature rules.
     rules=directory/'encounters.tsv'
     rules.write_text((ROOT/'AC2E/emulator/content/development-encounters.tsv').read_text().replace(
-        'npc\t470007d1\t60\t6\t1500', 'npc\t470007d1\t60\t1\t10000'))
+        'npc\t470007d1\t60\t6\t1500', 'npc\t470007d1\t60\t1\t1000'))
     if '--mouse' in os.sys.argv:
         env['AC2_MOUSE_SMOKE'] = '1'
     if '--gameplay' in os.sys.argv:
@@ -33,8 +35,7 @@ def main():
     log = (directory / 'server.log').open('w', encoding='utf-8')
     server = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19486',
         '--account', 'local', '--data', str(directory / 'world'), '--game-data', str(DAT_DIRECTORY),
-        '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-        '--lifestones', 'false', '--portals', 'false', '--encounters',str(rules),'--seconds', '180'],
+        '--content', str(content), '--initialize-ui', 'true', '--lifestones', 'false', '--portals', 'false', '--encounters',str(rules),'--seconds', '180'],
         env=env, stdout=log, stderr=log, creationflags=0x08000000)
     peer = None
     try:
@@ -62,7 +63,7 @@ def main():
         assert ('AC2 native empty corpse window passed' in client or
                 'AC2 native corpse loot window and item double-click passed' in client)
         if '--gameplay' in os.sys.argv:
-            assert all(f'AC2 inventory input step {step} passed' in client for step in range(14))
+            assert all(f'AC2 inventory input step {step} passed' in client for step in range(16))
             assert 'AC2 world props passed:' in client
             assert 'grounded NPCs=0' not in client
         if '--mouse' in os.sys.argv:
@@ -76,6 +77,7 @@ def main():
                 'mouse double-click replaces equipped weapons', 'native layered item icons and tooltip screenshot',
                 'all 78 backpack slots accessible', 'mouse drag sorts both directions without duplicate cells',
                 'drag survives rendered frames, adjacent-slot moves, world drop/pickup and capture loss',
+                'native pickup/putdown reaches precede item transfer in rendered frames',
                 'selection follows item identity across recreation and reordering']
         if '--mouse' in os.sys.argv:
             report['checks'] += ['DAT usage cursor and pixel hotspot', 'native server examination in the DAT panel',

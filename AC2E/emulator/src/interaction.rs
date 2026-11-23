@@ -9,6 +9,8 @@ use crate::{movement::Placement, script, world::WorldError};
 pub const USE_RESULT: u32 = 0x82160021;
 pub const NPC_SPEECH: u32 = 0x82050017;
 pub const LAYOUTS: [(usize, u32); 1] = [(0x245, 20)];
+// Named NPCs can have titles longer than the player-name limit.
+const MAX_NPC_NAME_UNITS: usize = 128;
 
 fn valid_id(id: u64) -> bool {
     id != 0 && id != u64::MAX
@@ -88,7 +90,7 @@ pub fn speech(speaker: u64, name: &str, text: &str) -> Result<Vec<u8>, WorldErro
     if !valid_id(speaker)
         || name.is_empty()
         || name.trim() != name
-        || name.encode_utf16().count() > 32
+        || name.encode_utf16().count() > MAX_NPC_NAME_UNITS
         || text.is_empty()
         || text.encode_utf16().count() > 512
         || name.chars().chain(text.chars()).any(char::is_control)
@@ -110,7 +112,7 @@ pub fn speech(speaker: u64, name: &str, text: &str) -> Result<Vec<u8>, WorldErro
 /// Capture: händler_gilden_schatzmeister_quitungs_kauf.elog, message SHA256
 /// 747db0458f7f42ced721512246d8aa14344dfbbb382ff11b31916e02b6d6ac3a.
 pub fn dialogue(speaker: &str, text: &str) -> Result<Vec<u8>, WorldError> {
-    if speaker.is_empty() || speaker.encode_utf16().count() > 32
+    if speaker.is_empty() || speaker.encode_utf16().count() > MAX_NPC_NAME_UNITS
         || text.is_empty() || text.encode_utf16().count() > 1024
         || speaker.chars().chain(text.chars()).any(char::is_control) {
         return Err(WorldError::InvalidValue);

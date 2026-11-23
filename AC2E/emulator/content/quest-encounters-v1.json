@@ -1,0 +1,522 @@
+{
+  "version": 1,
+  "sources": [
+    "http://ac2hero.e5i5o.com/quest/omishan_killchiefbenamu.html",
+    "http://ac2hero.e5i5o.com/quest/linvak_killcloudburst.html",
+    "http://ac2hero.e5i5o.com/quest/linvak_killthegurogconjurer.html",
+    "http://ac2hero.e5i5o.com/quest/linvak_killthemasterguroghenchman.html",
+    "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Water_Temple.png",
+    "http://ac2hero.e5i5o.com/quest/osteth_armoredillodoom.html",
+    "http://ac2hero.e5i5o.com/search/npcsearchf0d9.html",
+    "http://ac2hero.e5i5o.com/search/npcsearch8ed3.html",
+    "http://ac2hero.e5i5o.com/search/npcsearch2af4.html"
+  ],
+  "notes": [
+    "Each named quest actor is matched by its unique native name, kill effect and treasure profile across both builds. Placement uses recorded CREATE frames. A single witnessed outdoor frame per starter is used as a point spawner. The four Akeha guards were recorded with Chief Benamu. Retail refill timing is unknown.",
+    "The Grutt starter uses actor 8130000089075969 from the January 20 capture. The other recorded Brute, 813000008919d978 in 6261ca6fb7c7, overlaps an existing Armoredillo placement.",
+    "Water Temple rooms B8800198, 019B, 019D, 01DA and 01DB share their room origin, orientation and reciprocal doors in the installed and 2017 DATs. Validate the five captured actor poses on the native body spheres. Cloudburst's captured ledge fails native placement; 0.5 m west and 1.0 m north has a clear foot/head path to a walking patch in the same room.",
+    "The walkthrough and NPC index agree on three Armoredillo Doom Ancestor heads in Arwic, Kehan and Millstone (Esper). The walkthrough labels Kehan 12.9W, but Kehan and its NPC index entry are at 12.9E. Use the eastern index coordinate. The installed native head is 470013b6, visual 1f00031d. Arwic and Millstone fit at their guide anchors. At Kehan an 8 m east, 4 m north offset supports the head's foundation and player access within the reported coordinate precision.",
+    "Shurakhe and Furakhe retain their existing hunt placement identities. Their individual NPC index and hunt guide locations supersede earlier generic Jethric's Outpost offsets in the immutable hunt packs."
+  ],
+  "captures": {
+    "40abf772f559": {
+      "archive_sha256": "40abf772f5591bd20fb80a2f6bc2f843e059d2871e195cdd8ad8a5a32b65b128",
+      "path": "e2eca91beaa611d4/pkt_2017-1-27_1485557660_log.pcap"
+    },
+    "eebf67d8d1fe": {
+      "archive_sha256": "eebf67d8d1fe1a78ebdfad86f69beec64d33385b599eaba73bbcca1dcf739b27",
+      "path": "625113f2f9f74be5/pkt_2017-1-20_1484979989_log.pcap"
+    },
+    "6261ca6fb7c7": {
+      "archive_sha256": "6261ca6fb7c7aac5d565e8a7097c54ed9787c4488d669f8dce28021dbffbd2dc",
+      "path": "625113f2f9f74be5/pkt_2017-1-24_1485308826_log.pcap"
+    },
+    "d15b49c66f7c": {
+      "archive_sha256": "d15b49c66f7cc248338d2fcd150ea7469025957b659b5653b79ec39fb918599d",
+      "path": "0a5b7f3e07863391/pkt_2017-1-29_1485705509_log.pcap"
+    },
+    "137967623130": {
+      "archive_sha256": "137967623130c7beef4571c6a01bf7628ba2439f99e7f26a61d0b27b64b0676a",
+      "path": "c8b7c13acd22a822/pkt_2017-1-21_1485042774_log.pcap"
+    },
+    "344d09db2744": {
+      "archive_sha256": "344d09db2744c34c2f90f1ffc3734959be08028a2e758b044869286232cddc15",
+      "path": "4bbb26f8e948702d/pkt_2017-1-23_1485231840_log.pcap"
+    },
+    "bdadea1b7648": {
+      "archive_sha256": "bdadea1b764898af20d9717153bea0e2d1cb745e3cc3098da8eb9f6f8d717154",
+      "path": "625113f2f9f74be5/pkt_2017-1-25_1485393895_log.pcap"
+    },
+    "82e9d74adad6": {
+      "archive_sha256": "82e9d74adad685ac787e306b5e064d4f885f0e60da492a347547c3270bd7c40a",
+      "path": "625113f2f9f74be5/pkt_2017-1-20_1484948355_log.pcap"
+    }
+  },
+  "templates": {
+    "1191188159": {
+      "name": "Chief Benamu",
+      "visual": 520097273
+    },
+    "1191184534": {
+      "name": "Akeha Mimbu",
+      "visual": 520094891
+    },
+    "1191188161": {
+      "name": "Feyen Mimbu Snakehunter",
+      "visual": 520097272
+    },
+    "1191187984": {
+      "name": "Grutt Plaguebearer Brute",
+      "visual": 520097209
+    },
+    "1191188373": {
+      "name": "Cloudburst",
+      "visual": 520097661
+    },
+    "1191188378": {
+      "name": "Gurog Conjurer",
+      "visual": 520097373
+    },
+    "1191188376": {
+      "name": "Gurog Fawning Lackey",
+      "visual": 520097371
+    },
+    "1191188375": {
+      "name": "Master Gurog Henchman",
+      "visual": 520097370
+    },
+    "1191187382": {
+      "name": "Armoredillo Doom Ancestor",
+      "visual": 520094493
+    },
+    "1191198633": {
+      "name": "Shurakhe",
+      "visual": 520100770
+    },
+    "1191198631": {
+      "name": "Furakhe",
+      "visual": 520100769
+    }
+  },
+  "camps": [],
+  "npcs": [
+    {
+      "id": 9313698016588201995,
+      "entity": 1191187382,
+      "land": [
+        939.42,
+        1464.72
+      ],
+      "foundation_offset_m": [
+        0,
+        0
+      ],
+      "evidence": {
+        "town": "Arwic",
+        "coordinates": [
+          43.6,
+          -7.9
+        ],
+        "source": "http://ac2hero.e5i5o.com/quest/osteth_armoredillodoom.html"
+      }
+    },
+    {
+      "id": 9313698016588201996,
+      "entity": 1191187382,
+      "land": [
+        1151.58,
+        1450.44
+      ],
+      "foundation_offset_m": [
+        8,
+        4
+      ],
+      "evidence": {
+        "town": "Kehan",
+        "coordinates": [
+          42.2,
+          12.9
+        ],
+        "source": "http://ac2hero.e5i5o.com/search/npcsearchf0d9.html"
+      }
+    },
+    {
+      "id": 9313698016588201997,
+      "entity": 1191187382,
+      "land": [
+        881.28,
+        1435.14
+      ],
+      "foundation_offset_m": [
+        0,
+        0
+      ],
+      "evidence": {
+        "town": "Millstone",
+        "coordinates": [
+          40.7,
+          -13.6
+        ],
+        "source": "http://ac2hero.e5i5o.com/quest/osteth_armoredillodoom.html"
+      }
+    },
+    {
+      "id": 9313674928035217321,
+      "entity": 1191198633,
+      "land": [
+        1554.48,
+        685.44
+      ],
+      "evidence": {
+        "town": "Jethric's Outpost",
+        "coordinates": [
+          -32.8,
+          52.4
+        ],
+        "source": "http://ac2hero.e5i5o.com/search/npcsearch8ed3.html"
+      }
+    },
+    {
+      "id": 9313676027546845095,
+      "entity": 1191198631,
+      "land": [
+        1553.46,
+        684.42
+      ],
+      "evidence": {
+        "town": "Jethric's Outpost",
+        "coordinates": [
+          -32.9,
+          52.3
+        ],
+        "source": "http://ac2hero.e5i5o.com/search/npcsearch2af4.html"
+      }
+    }
+  ],
+  "validate_captured_bodies": true,
+  "allow_captured_floor_repair": true,
+  "interiors": [
+    {
+      "id": 9313698016588201984,
+      "capture_id": "8130000089268f52",
+      "capture_entity": "470027ac",
+      "captures": [
+        "40abf772f559"
+      ],
+      "entity": 1191188159,
+      "cell": 3095396827,
+      "position": [
+        -135.05831909179688,
+        129.42872619628906,
+        156.1588592529297
+      ],
+      "rotation": [
+        0.7942898869514465,
+        0.0,
+        0.0,
+        -0.6075389385223389
+      ],
+      "scale": 1,
+      "verify_native_platform": true
+    },
+    {
+      "id": 9313698016588201985,
+      "capture_id": "8130000089268f4a",
+      "capture_entity": "470027a2",
+      "captures": [
+        "40abf772f559"
+      ],
+      "entity": 1191184534,
+      "cell": 3095396760,
+      "position": [
+        -124.81021881103516,
+        138.25889587402344,
+        156.1141815185547
+      ],
+      "rotation": [
+        -0.006159864831715822,
+        0.0,
+        0.0,
+        0.9999810457229614
+      ],
+      "scale": 0.8999999761581421,
+      "verify_native_platform": true
+    },
+    {
+      "id": 9313698016588201986,
+      "capture_id": "8130000089268f49",
+      "capture_entity": "470027a2",
+      "captures": [
+        "40abf772f559"
+      ],
+      "entity": 1191184534,
+      "cell": 3095396763,
+      "position": [
+        -134.85000610351562,
+        138.40423583984375,
+        156.1141815185547
+      ],
+      "rotation": [
+        -0.006159864831715822,
+        0.0,
+        0.0,
+        0.9999810457229614
+      ],
+      "scale": 0.8999999761581421,
+      "verify_native_platform": true
+    },
+    {
+      "id": 9313698016588201987,
+      "capture_id": "8130000089268f4f",
+      "capture_entity": "470027a2",
+      "captures": [
+        "40abf772f559"
+      ],
+      "entity": 1191184534,
+      "cell": 3095396765,
+      "position": [
+        -125.3282470703125,
+        121.42381286621094,
+        156.1141815185547
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 0.8999999761581421,
+      "verify_native_platform": true
+    },
+    {
+      "id": 9313698016588201988,
+      "capture_id": "8130000089268f48",
+      "capture_entity": "470027a2",
+      "captures": [
+        "40abf772f559"
+      ],
+      "entity": 1191184534,
+      "cell": 3095396826,
+      "position": [
+        -135.25570678710938,
+        121.543212890625,
+        156.1141815185547
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 0.8999999761581421,
+      "verify_native_platform": true
+    },
+    {
+      "id": 9313698016588201989,
+      "capture_id": "81300000890812c1",
+      "capture_entity": "470027ae",
+      "captures": [
+        "eebf67d8d1fe"
+      ],
+      "entity": 1191188161,
+      "cell": 2996174899,
+      "position": [
+        131.10211181640625,
+        41.64388656616211,
+        75.92134857177734
+      ],
+      "rotation": [
+        0.9566044807434082,
+        0.0,
+        0.0,
+        0.291389524936676
+      ],
+      "scale": 1.0188028812408447,
+      "outdoor_capture": true
+    },
+    {
+      "id": 9313698016588201990,
+      "capture_id": "8130000089075969",
+      "capture_entity": "470025e2",
+      "captures": [
+        "82e9d74adad6"
+      ],
+      "entity": 1191187984,
+      "cell": 1957167126,
+      "position": [
+        46.35892105102539,
+        117.41738891601562,
+        112.6737289428711
+      ],
+      "rotation": [
+        0.7867448925971985,
+        0.0,
+        0.0,
+        -0.6172782182693481
+      ],
+      "scale": 1.0300536155700684,
+      "outdoor_capture": true
+    },
+    {
+      "id": 9313698016588201991,
+      "capture_id": "81300000892feff4",
+      "capture_entity": "47002446",
+      "captures": [
+        "d15b49c66f7c"
+      ],
+      "entity": 1191188373,
+      "cell": 133628298,
+      "position": [
+        175.2071533203125,
+        -7.252555847167969,
+        -8.018514633178711
+      ],
+      "rotation": [
+        0.6026347279548645,
+        0.0,
+        0.0,
+        0.798017144203186
+      ],
+      "scale": 1,
+      "reviewed_floor_offset_m": [
+        -0.5,
+        1.0
+      ]
+    },
+    {
+      "id": 9313698016588201992,
+      "capture_id": "81300000890c462e",
+      "capture_entity": "47002626",
+      "captures": [
+        "137967623130"
+      ],
+      "entity": 1191188378,
+      "cell": 133824874,
+      "position": [
+        -40.92277145385742,
+        -3.650040626525879,
+        1.0654635429382324
+      ],
+      "rotation": [
+        -0.2617928385734558,
+        0.0,
+        0.0,
+        0.9651240706443787
+      ],
+      "scale": 1
+    },
+    {
+      "id": 9313698016588201993,
+      "capture_id": "813000008915e41c",
+      "capture_entity": "4700264f",
+      "captures": [
+        "344d09db2744"
+      ],
+      "entity": 1191188376,
+      "cell": 1516109877,
+      "position": [
+        129.3888397216797,
+        96.6076889038086,
+        80.33745574951172
+      ],
+      "rotation": [
+        0.4709315896034241,
+        0.0,
+        0.0,
+        0.8821697235107422
+      ],
+      "scale": 1,
+      "outdoor_capture": true
+    },
+    {
+      "id": 9313698016588201994,
+      "capture_id": "81300000891db016",
+      "capture_entity": "4700264e",
+      "captures": [
+        "bdadea1b7648"
+      ],
+      "entity": 1191188375,
+      "cell": 184287543,
+      "position": [
+        5.0457940101623535,
+        138.01577758789062,
+        29.6787109375
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1
+    }
+  ],
+  "interior_groups": [
+    {
+      "id": 9313698016588201984,
+      "members": [
+        9313698016588201984
+      ]
+    },
+    {
+      "id": 9313698016588201985,
+      "members": [
+        9313698016588201985
+      ]
+    },
+    {
+      "id": 9313698016588201986,
+      "members": [
+        9313698016588201986
+      ]
+    },
+    {
+      "id": 9313698016588201987,
+      "members": [
+        9313698016588201987
+      ]
+    },
+    {
+      "id": 9313698016588201988,
+      "members": [
+        9313698016588201988
+      ]
+    },
+    {
+      "id": 9313698016588201989,
+      "members": [
+        9313698016588201989
+      ]
+    },
+    {
+      "id": 9313698016588201990,
+      "members": [
+        9313698016588201990
+      ]
+    },
+    {
+      "id": 9313698016588201991,
+      "members": [
+        9313698016588201991
+      ]
+    },
+    {
+      "id": 9313698016588201992,
+      "members": [
+        9313698016588201992
+      ]
+    },
+    {
+      "id": 9313698016588201993,
+      "members": [
+        9313698016588201993
+      ]
+    },
+    {
+      "id": 9313698016588201994,
+      "members": [
+        9313698016588201994
+      ]
+    }
+  ]
+}

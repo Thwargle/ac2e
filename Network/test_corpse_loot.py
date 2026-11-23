@@ -16,8 +16,7 @@ def main():
     rules=data/'encounters.tsv'
     rules.write_text('pyrealium-encounters-v1\nplayer\t100\t1\t1000\t30\nregen\t0\t0\t1000\nnpc\t470008bf\t10\t1\t3000\t3\t60000\t5\t1\n')
     args=[str(SERVER),'serve','--bind','127.0.0.1:19394','--account','local','--data',str(data/'world'),
-        '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--initialize-ui','true','--training-kit','false',
-        '--encounters',str(rules),'--seconds','120']
+        '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--initialize-ui','true','--encounters',str(rules),'--seconds','120']
     peers=[]
     def start():
         s=subprocess.Popen(args,env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='5'),stdout=log,stderr=log,creationflags=0x08000000)
@@ -99,7 +98,9 @@ def main():
                 assert not any('Loot transmuted for' in str(e) for e in a.events[mark:])
                 continue
             grant=until(a,mark,'object',lambda e:e.get('container')==a.id and e.get('entity')==item['entity'])
-            owned.append(grant['id']);until(a,mark,'chat',lambda e:'Loot collected' in str(e))
+            owned.append(grant['id'])
+            updated=until(a,mark,'container_state',lambda e:e['id']==mob['id'])
+            assert updated.get('items',[])==opened['items'][1:],updated
             until(a,mark,'combat',lambda e:e['enabled'])
             assert [e['enabled'] for e in a.events[mark:] if e.get('event')=='combat']==[False,True]
             if n==0 and len(opened['items'])>1:a.send('loot',id=mob['id'])

@@ -1,5 +1,6 @@
 # Move a stale marker aside only while holding an exclusive read/write handle.
-# Live or unverifiable owners are preserved. This also serializes two launchers
+# Live or unverifiable owners are preserved. A PID reused by a process born
+# after the marker was written cannot own that marker. This also serializes two launchers
 # trying to recover the same marker: neither can rename the other's fresh lock.
 function Restore-AC2EStaleLock([string]$Directory, [string]$Name) {
     $rootPath=[IO.Path]::GetFullPath($Directory).TrimEnd('\','/')
@@ -13,9 +14,19 @@ function Restore-AC2EStaleLock([string]$Directory, [string]$Name) {
         try {$marker=$reader.ReadToEnd().Trim()} finally {$reader.Dispose()}
         $ownerId=[uint32]0
         if(![uint32]::TryParse($marker,[ref]$ownerId) -or $ownerId -eq 0){return}
-        if(Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId" -ErrorAction Stop){return}
+        $owner=Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId" -ErrorAction Stop
+        $reason="exited process $ownerId"
+        if($owner){
+            # Do not infer ownership from an executable name, nor remove a lock
+            # just because its PID belongs to an unfamiliar program. Require
+            # positive evidence that the recorded process lifetime has ended.
+            # Read the timestamp while the marker is held against other writers.
+            $written=[IO.File]::GetLastWriteTimeUtc($path)
+            if(!$owner.CreationDate -or $owner.CreationDate.ToUniversalTime() -le $written.AddSeconds(2)){return}
+            $reason="reused PID $ownerId (current process started after the marker)"
+        }
         $archive=Join-Path $rootPath ($Name+'.stale-'+[Guid]::NewGuid().ToString('N'))
         [IO.File]::Move($path,$archive)
-        Write-Output "Recovered stale $Name from exited process $ownerId. Preserved marker: $archive"
+        Write-Output "Recovered stale $Name from $reason. Preserved marker: $archive"
     } finally {if($handle){$handle.Dispose()}}
 }

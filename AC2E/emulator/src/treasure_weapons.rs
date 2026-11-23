@@ -1,5 +1,5 @@
 //! Observed weapon identities; generated damage is explicitly AC2E policy.
-use crate::{dat::Dat, inventory::{Item, Location, Roll}, inventory_request::Metadata};
+use crate::{dat::Dat, inventory::{Item, Roll}, inventory_request::Metadata};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{collections::{BTreeMap, BTreeSet}, io, sync::OnceLock};
@@ -33,6 +33,11 @@ fn profiles() -> &'static BTreeMap<u32, Profile> {
 }
 pub fn profile(item: &Item) -> Option<&'static Profile> {
     profiles().get(&item.definition).filter(|p| p.visual == item.visual && p.mask == item.equipment_mask)
+}
+/// Fixed native damage must also fit the inferred encounter tier. Some items
+/// have a low use-level gate but powerful fixed stats; those are not starter loot.
+pub fn eligible_treasure(item: &Item, level: u16) -> bool {
+    profile(item).is_some_and(|p| p.minimum_level <= level && p.damage.is_none_or(|n| n <= 6 + level * 2))
 }
 pub fn compatible(dat: &mut Dat, metadata: &BTreeMap<u32, Option<Metadata>>) -> BTreeSet<u32> {
     let mut hashes = BTreeMap::new();
@@ -68,15 +73,11 @@ pub fn check_level(item: &Item, level: u16) -> io::Result<()> {
     }
     Ok(())
 }
-pub fn equipped_damage(inventory: &crate::inventory::Inventory) -> Option<u32> {
-    inventory.items().find(|i| i.location == Location::Equipped(0x40))
-        .filter(|i| valid_finish(i)).and_then(|i| i.roll).map(|r| u32::from(r.damage))
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inventory::{Command, Inventory, ITEM_NAMESPACE};
+    use crate::inventory::{Command, Inventory, Location, ITEM_NAMESPACE};
     fn weapon(definition: u32) -> Item {
         let p = &profiles()[&definition];
         Item { id: ITEM_NAMESPACE + 1, definition, visual: p.visual, equipment_mask: p.mask,
@@ -93,7 +94,7 @@ mod tests {
             let inventory = Inventory::default().apply(&Command::decode(&grant.encode()).unwrap()).unwrap();
             assert_eq!(inventory.items().next(), Some(&item));
             let equipped = inventory.apply(&Command::Wear {item:item.id, slot:0x40}).unwrap();
-            assert_eq!(equipped_damage(&equipped), Some(u32::from(item.roll.unwrap().damage)));
+            assert_eq!(crate::professions::weapon_damage(&equipped), Some(u32::from(item.roll.unwrap().damage)));
             assert!(crate::merchants::sale_value(&item).is_some());
             for bad in [Item {visual:0x1f000001,..item.clone()}, Item {equipment_mask:0x20,..item.clone()},
                 Item {roll:Some(Roll {armor:1,..item.roll.unwrap()}),..item.clone()}] {
@@ -107,5 +108,28 @@ mod tests {
         assert!(check_level(&item, 14).is_err()); assert!(check_level(&item, 15).is_ok());
         assert_eq!(item.roll.unwrap().level, 50);
         assert_eq!(profile(&item).unwrap().minimum_level, 15);
+    }
+    #[test]
+    fn recovered_tumerok_weapons_equip_and_select_their_combat_stance() {
+        for (definition, holding, category, mode) in [
+            (0x47000f02, 3, 2, crate::combat_visual::MAGIC), // Rain Drum
+            (0x47000f05, 3, 2, crate::combat_visual::MAGIC), // Fury Drum
+            (0x47000f2e, 4, 1, crate::combat_visual::MISSILE), // Spine Javelin
+        ] {
+            let item = weapon(definition);
+            let equipment = crate::inventory_request::Equipment {
+                valid: u32::from(item.equipment_mask), preferred: 0x40, primary: holding, secondary: 2,
+            };
+            assert_eq!(equipment.hand_slot(&item), Some(0x40));
+            let inventory = Inventory::default().apply(&Command::Grant(item.clone())).unwrap()
+                .apply(&Command::Wear { item: item.id, slot: 0x40 }).unwrap();
+            assert_eq!(crate::starter_gear::equipped_category(&inventory), category);
+            assert_eq!(crate::starter_gear::combat_mode(&inventory), mode);
+            let held = inventory.items().next().unwrap();
+            let wire = crate::world::create_hand_item(held, 7, 1, 2, holding).unwrap();
+            assert_eq!(crate::world::hand_parent(&wire).unwrap(), (7, 2));
+            assert_eq!(equipment.hand_slot(&Item { visual: 0x1f000001, ..item.clone() }), None);
+            assert_eq!(equipment.hand_slot(&Item { quantity: 2, ..item }), None);
+        }
     }
 }

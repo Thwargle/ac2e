@@ -177,6 +177,16 @@ fn process(stream: &mut Stream, bytes: &[u8], report: &mut Report) -> Result<(),
                         if xml.trailer.is_some() {
                             inc(&mut report.counts, "xml_with_opaque_trailer");
                         }
+                        let friend_message_ok = match xml.element.name.as_str() {
+                            "FriendAdd" | "FriendDelete" | "GetFriendsList" | "Flags" =>
+                                Some(ac2_gun_friends::Request::decode(&message.payload).is_ok()),
+                            "FriendAddRes" | "FriendDeleteRes" | "GetFriendsListRes" | "FStart" | "FriendStat" | "FlagsRes" =>
+                                Some(ac2_gun_friends::Event::decode(&message.payload).is_ok()),
+                            _ => None,
+                        };
+                        if let Some(valid) = friend_message_ok {
+                            inc(&mut report.counts, if valid { "friends_decoded" } else { "invalid_friends_message" });
+                        }
                         schema(&xml.element, report);
                     }
                     Err(_) => inc(&mut report.counts, "invalid_xml"),

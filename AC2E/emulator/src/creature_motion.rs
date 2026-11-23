@@ -2,7 +2,7 @@
 //! CMotionInterp uses MotionInterpDesc and the body's total Y scale for forward
 //! speed; acceleration scales only above unit size. No creature-name heuristics.
 use crate::dat::Dat;
-use ac2_assets::Ac2VisualDesc;
+use ac2_assets::{Ac2VisualDesc, Ac2SetupPhysics};
 use ac2_core::{DataId, QualifiedDataId};
 use ac2_db::ResourcePackedDecode;
 use ac2_world::Ac2MotionInterpDesc;
@@ -35,24 +35,34 @@ pub struct Profile {
     pub scale: f32,
     pub peace: Pace,
     pub combat: Pace,
+    pub radius: f32,
+    pub height: f32,
+    pub grounded: bool,
 }
 impl Default for Profile {
     // Compatibility for synthetic/no-DAT fixtures only. The live server loads
     // every combat actor from its actual visual before starting simulation.
     fn default() -> Self {
-        Self {descriptor:0,scale:1.,peace:Pace{speed:2.,acceleration:12.},combat:Pace{speed:2.,acceleration:12.}}
+        Self {descriptor:0,scale:1.,peace:Pace{speed:2.,acceleration:12.},combat:Pace{speed:2.,acceleration:12.},radius:0.35,height:2.,grounded:true}
     }
 }
 #[derive(Default)]
 pub struct Catalog {
     visuals: BTreeMap<u32, Ac2VisualDesc>,
     descriptors: BTreeMap<u32, Ac2MotionInterpDesc>,
+    setups: BTreeMap<u32, Ac2SetupPhysics>,
 }
 fn invalid(message:impl Into<String>)->io::Error {io::Error::new(io::ErrorKind::InvalidData,message.into())}
 impl Catalog {
     pub fn resolve(&mut self, dat:&mut Dat, visual:u32, instance_scale:f32)->io::Result<Option<Profile>> {
+        self.resolve_scaled(dat,visual,instance_scale,None)
+    }
+    /// An inline player VisualDesc replaces inherited scale, as it does on the
+    /// client; build and height must not multiply the parent's scale twice.
+    pub(crate) fn resolve_scaled(&mut self, dat:&mut Dat, visual:u32, instance_scale:f32,
+        inline_scale:Option<[f32;3]>)->io::Result<Option<Profile>> {
         let mut current=visual;
-        let (mut motion,mut scale)=(None,None);
+        let (mut motion,mut scale,mut setup)=(None,inline_scale,None);
         let mut seen=BTreeSet::new();
         while current!=0 {
             if current>>24!=0x1f || seen.len()>=16 || !seen.insert(current) {
@@ -65,12 +75,17 @@ impl Catalog {
             }
             let desc=&self.visuals[&current];
             motion=motion.or(desc.motion_interp);
-            scale=scale.or(desc.scale.map(|s|s.y));
+            scale=scale.or(desc.scale.map(|s|[s.x,s.y,s.z]));
+            setup=setup.or(desc.root_setup());
             current=desc.parent.map_or(0,|d|d.raw());
         }
         let Some(did)=motion else {return Ok(None)};
-        let total=scale.unwrap_or(1.)*instance_scale;
-        if !total.is_finite() || total<=0. {return Err(invalid("Invalid creature movement scale"));}
+        let scale=scale.unwrap_or([1.;3]);
+        let total=scale[1]*instance_scale;
+        if !instance_scale.is_finite() || instance_scale<=0. ||
+            scale.iter().any(|s|!s.is_finite() || *s<=0.) || !total.is_finite() {
+            return Err(invalid("Invalid creature movement scale"));
+        }
         if !self.descriptors.contains_key(&did.raw()) {
             let desc=Ac2MotionInterpDesc::decode_packed(QualifiedDataId::new(did,0),0,&dat.read(did.raw())?)
                 .map_err(|e|invalid(e.to_string()))?;
@@ -88,13 +103,49 @@ impl Catalog {
             }
             Ok(Pace{speed,acceleration})
         };
-        Ok(Some(Profile{descriptor:did.raw(),scale:total,peace:pace(crate::combat_visual::PEACE)?,combat:pace(0x41000012)?}))
+        let mut radius=0.35;let mut height=2.;
+        if let Some(setup)=setup {
+            if !self.setups.contains_key(&setup.raw()) {
+                let body=Ac2SetupPhysics::decode_packed(QualifiedDataId::new(setup,0),0,&dat.read(setup.raw())?)
+                    .map_err(|e|invalid(e.to_string()))?;
+                self.setups.insert(setup.raw(),body);
+            }
+            let body=&self.setups[&setup.raw()];
+            radius=body.radius*scale[0].max(scale[1])*instance_scale;
+            height=body.height*scale[2]*instance_scale;
+            if !radius.is_finite() || !height.is_finite() || radius<0. || height<0. {
+                return Err(invalid("Invalid native creature body size"));
+            }
+        }
+        let ground=desc.desired_motion_values(0x40000001,crate::combat_visual::PEACE,0,0x80000001,None);
+        Ok(Some(Profile{descriptor:did.raw(),scale:total,peace:pace(crate::combat_visual::PEACE)?,combat:pace(0x41000012)?,
+            radius:radius.max(0.1),height:height.max(0.2),grounded:ground.gravity && ground.hover_height.abs()<0.001}))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn player_inline_scale_replaces_inherited_scale_on_all_six_bodies() {
+        let Ok(dir)=std::env::var("AC2_TEST_GAME_DATA") else{return};
+        let mut dat=Dat::open(std::path::Path::new(&dir).join("portal.dat")).unwrap();
+        let mut catalog=Catalog::default();
+        let mut count=0;
+        for body in crate::appearance::bodies() {
+            let unit=catalog.resolve_scaled(&mut dat,body.visual,1.,Some([1.;3])).unwrap().unwrap();
+            let sized=catalog.resolve_scaled(&mut dat,body.visual,1.,Some([1.5,1.5,0.75])).unwrap().unwrap();
+            assert!(unit.radius>0.1 && unit.height>0.2);
+            assert!((sized.radius-unit.radius*1.5).abs()<0.0001);
+            assert!((sized.height-unit.height*0.75).abs()<0.0001);
+            assert!((sized.combat.speed-unit.combat.speed*1.5).abs()<0.0001);
+            for scale in [[f32::NAN,1.,1.],[1.,1.,-1.],[1.,1.,f32::INFINITY]] {
+                assert!(catalog.resolve_scaled(&mut dat,body.visual,1.,Some(scale)).is_err());
+            }
+            count+=1;
+        }
+        assert_eq!(count,6);
+    }
     #[test]
     fn acceleration_is_time_based_and_respects_stationary_profiles() {
         let p=Pace{speed:6.5,acceleration:12.};
@@ -115,6 +166,9 @@ mod tests {
             let p=catalog.resolve(&mut dat,visual,1.).unwrap().unwrap();
             assert!((p.combat.speed-speed).abs()<0.0001,"{visual:08x}: {p:?}");
             let half=catalog.resolve(&mut dat,visual,0.5).unwrap().unwrap();
+            assert!(p.radius>0.1 && p.height>0.2,"Native body dimensions: {p:?}");
+            assert!((half.radius-p.radius*0.5).abs()<0.001);
+            assert!((half.height-p.height*0.5).abs()<0.001);
             assert!((half.combat.speed-speed*0.5).abs()<0.0001);
             assert!(half.combat.acceleration>=12.,"small bodies retain native acceleration");
         }

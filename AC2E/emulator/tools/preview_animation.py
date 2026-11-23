@@ -85,7 +85,7 @@ def transform_matrix(offset, scale, quaternion):
             0., 0., 0., 1.)
 
 
-def decode_rig(data, did=None):
+def decode_rig(data, did=None, *, static_placement=False):
     reader = Reader(data)
     record = reader.read("I")
     if record >> 24 != 4 or did is not None and record != did:
@@ -117,14 +117,17 @@ def decode_rig(data, did=None):
                 raise AnimationFormatError("Invalid bind scale")
             transforms.append((tuple(values[:3]), tuple(values[3:6]), normalized(values[6:])))
         frames[key] = transforms
-    if 1 not in frames:
+    # Rigid outdoor setups draw their first authored placement. Animated
+    # characters additionally require the native bind frame for skinning.
+    rest_key = next(iter(frames), None) if static_placement else 1
+    if rest_key not in frames:
         raise AnimationFormatError("Setup has no native rest placement frame 1")
     global_bind = []
-    for parent, (offset, scale, quaternion) in zip(parents, frames[1]):
+    for parent, (offset, scale, quaternion) in zip(parents, frames[rest_key]):
         local = transform_matrix(offset, scale, quaternion)
         global_bind.append(local if parent == -1 else multiply(global_bind[parent], local))
     return dict(did=record, meshes=meshes, parents=parents, bone_types=types,
-                rest=frames[1], placement=frames.get(0,frames[1]),
+                rest=frames[rest_key], placement=frames.get(0,frames[rest_key]),
                 inverse_bind=[inverse_affine(value) for value in global_bind],
                 setup_prefix_bytes=reader.at, opaque_tail_bytes=len(data)-reader.at)
 

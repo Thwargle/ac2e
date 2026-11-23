@@ -38,7 +38,7 @@ impl State {
 #[derive(Clone)]
 struct Point { policy: Policy, state: State }
 #[derive(Clone)]
-struct Group { capacity:usize, members:Vec<u64> }
+struct Group { capacity:usize, members:Vec<u64>, roaming:bool }
 
 #[derive(Clone, Default)]
 pub struct Spawners {
@@ -70,22 +70,45 @@ impl Spawners {
     /// Explicit verified child roster only: capacity never creates coordinates
     /// or duplicates an actor. Several simultaneous children are supported.
     pub fn group(&mut self,id:u64,capacity:usize,members:Vec<u64>)->io::Result<()> {
-        self.insert_group(id,capacity,members.clone())?;
-        self.baseline.insert(id,Group{capacity,members});
+        self.register_group(id,capacity,members,false)
+    }
+    /// One encounter shared by several authored locations. Its living actor,
+    /// corpse and pending refill reserve the entire encounter across all homes.
+    pub fn roaming_group(&mut self,id:u64,members:Vec<u64>)->io::Result<()> {
+        self.register_group(id,1,members,true)
+    }
+    fn register_group(&mut self,id:u64,capacity:usize,members:Vec<u64>,roaming:bool)->io::Result<()> {
+        self.insert_group(id,capacity,members.clone(),roaming)?;
+        self.baseline.insert(id,Group{capacity,members,roaming});
         Ok(())
     }
-    fn insert_group(&mut self,id:u64,capacity:usize,members:Vec<u64>)->io::Result<()> {
+    fn insert_group(&mut self,id:u64,capacity:usize,members:Vec<u64>,roaming:bool)->io::Result<()> {
         let unique=members.iter().copied().collect::<std::collections::BTreeSet<_>>();
         if id==0 || id==u64::MAX || self.groups.contains_key(&id) || capacity==0 || capacity>members.len() || members.len()>64
             || unique.len()!=members.len() || members.iter().any(|id|!self.points.contains_key(id)||self.membership.contains_key(id)) {
             return Err(io::Error::other("invalid spawner group or child roster"));
         }
         for &member in &members{self.membership.insert(member,id);}
-        self.groups.insert(id,Group{capacity,members});Ok(())
+        self.groups.insert(id,Group{capacity,members,roaming});Ok(())
     }
     fn has_capacity(&self,id:u64)->bool {
         let Some(group)=self.membership.get(&id).and_then(|id|self.groups.get(id)) else{return true};
         group.members.iter().filter(|id|!matches!(self.points[id].state,State::Waiting{..})).count()<group.capacity
+    }
+    fn roaming_roster(&self,id:u64)->Option<&[u64]> {
+        self.membership.get(&id).and_then(|group|self.groups.get(group))
+            .filter(|group|group.roaming).map(|group|group.members.as_slice())
+    }
+    // Standby homes keep their original deadlines while another home is
+    // occupied. Restore their timers on removal, blocked admission or live edit.
+    fn wake_roaming(&mut self,id:u64,earliest:u64) {
+        let Some(members)=self.roaming_roster(id).map(<[u64]>::to_vec) else {return};
+        for member in members {
+            if let Some(Point{state:State::Waiting{due},..})=self.points.get_mut(&member) {
+                *due=(*due).max(earliest);
+                self.due.push(Reverse((*due,member)));
+            }
+        }
     }
     pub fn live(&self) -> usize {
         self.points.values().filter(|p| matches!(p.state, State::Live)).count()
@@ -119,11 +142,23 @@ impl Spawners {
         };
         point.state = State::Waiting { due };
         self.due.push(Reverse((due, id)));
+        self.wake_roaming(id,due);
     }
     pub fn spawned(&mut self, id: u64) -> bool {
         let Some(point) = self.points.get_mut(&id) else { return false };
         if !matches!(point.state, State::Spawning) { return false; }
         point.state = State::Live;
+        true
+    }
+    /// The authored anchor is temporarily occupied. Release the pending group
+    /// slot and retry without creating a lifetime or changing the home/timer policy.
+    pub fn defer_spawn(&mut self, id: u64, now: u64) -> bool {
+        let Some(point) = self.points.get_mut(&id) else { return false };
+        if !matches!(point.state, State::Spawning) { return false; }
+        let due = now.saturating_add(1000);
+        point.state = State::Waiting { due };
+        self.due.push(Reverse((due, id)));
+        self.wake_roaming(id,now);
         true
     }
     /// Live edit: a new point whose first child is due at `now`.
@@ -139,6 +174,7 @@ impl Spawners {
     /// Live edit: forget a point and its group membership. Stale heap entries are skipped.
     pub fn remove_point(&mut self, id: u64) {
         self.points.remove(&id);
+        self.wake_roaming(id,0);
         if let Some(group) = self.membership.remove(&id) {
             self.leave_group(group, id);
         }
@@ -164,14 +200,25 @@ impl Spawners {
         let owned=groups.iter().flat_map(|(_,_,m)|m.iter().copied()).collect::<std::collections::BTreeSet<_>>();
         for (&id,group) in &self.baseline {
             let members=group.members.iter().copied().filter(|m|self.points.contains_key(m)&&!owned.contains(m)).collect::<Vec<_>>();
-            if !members.is_empty(){next.insert_group(id,group.capacity.min(members.len()),members)?;}
+            if !members.is_empty(){next.insert_group(id,group.capacity.min(members.len()),members,group.roaming)?;}
         }
         for (id,capacity,members) in groups {
             if id==0 || id&tag!=0 || id|tag==u64::MAX || capacity==0 {
                 return Err(io::Error::other("invalid operator group identity or capacity"));
             }
             let members=members.into_iter().filter(|m|self.points.contains_key(m)).collect::<Vec<_>>();
-            if !members.is_empty(){next.insert_group(id|tag,capacity.min(members.len()),members)?;}
+            if !members.is_empty(){next.insert_group(id|tag,capacity.min(members.len()),members,false)?;}
+        }
+        // A baseline child can be detached or reattached by an operator. Wake
+        // parked deadlines only in rosters affected by this successful edit.
+        for (&id,group) in &self.groups {
+            if group.roaming && next.groups.get(&id).is_none_or(|g|!g.roaming || g.members!=group.members) {
+                for member in &group.members {
+                    if let Some(Point{state:State::Waiting{due},..})=self.points.get(member) {
+                        self.due.push(Reverse((*due,*member)));
+                    }
+                }
+            }
         }
         self.groups=next.groups;self.membership=next.membership;
         Ok(())
@@ -181,19 +228,31 @@ impl Spawners {
         while self.due.peek().is_some_and(|Reverse((due, _))| *due <= now) {
             let Reverse((due, id)) = self.due.pop().unwrap();
             if !self.points.contains_key(&id) { continue; } // Removed by a live edit.
-            let capacity=self.has_capacity(id);
-            let point = self.points.get_mut(&id).unwrap();
-            if point.state.deadline() != Some(due) { continue; } // Superseded corpse deadline.
-            match point.state {
+            let state=self.points[&id].state;
+            if state.deadline() != Some(due) { continue; } // Superseded corpse deadline.
+            match state {
                 State::Waiting { .. } => {
-                    if !capacity {
-                        let due=now.saturating_add(1000);point.state=State::Waiting{due};self.due.push(Reverse((due,id)));continue;
+                    if !self.has_capacity(id) {
+                        if self.roaming_roster(id).is_none() {
+                            let due=now.saturating_add(1000);
+                            self.points.get_mut(&id).unwrap().state=State::Waiting{due};
+                            self.due.push(Reverse((due,id)));
+                        }
+                        continue;
                     }
-                    point.state = State::Spawning;
-                    actions.push(Action::Spawn(id));
+                    let child=if let Some(members)=self.roaming_roster(id) {
+                        // Hash with fresh keys so the lowest IID or first row
+                        // does not win each time, including after server restart.
+                        use std::hash::{BuildHasher, RandomState};
+                        let choice=RandomState::new();
+                        members.iter().copied().filter(|m|matches!(self.points[m].state,State::Waiting{due} if due<=now))
+                            .min_by_key(|m|choice.hash_one(m)).unwrap()
+                    } else {id};
+                    self.points.get_mut(&child).unwrap().state=State::Spawning;
+                    actions.push(Action::Spawn(child));
                 }
                 State::Corpse { refill_at, .. } => {
-                    point.state = State::Removing { refill_at };
+                    self.points.get_mut(&id).unwrap().state = State::Removing { refill_at };
                     actions.push(Action::Remove(id));
                 }
                 _ => unreachable!(),
@@ -209,6 +268,67 @@ mod tests {
     fn population() -> Spawners {
         Spawners::new([(7, Policy { initial_delay_ms: 500, regeneration_ms: 3000 }),
             (8, Policy { initial_delay_ms: 0, regeneration_ms: 5000 })].into_iter()).unwrap()
+    }
+    #[test]
+    fn roaming_homes_share_admission_corpse_and_regeneration() {
+        let homes=[11,12,13];
+        let policy=Policy{initial_delay_ms:0,regeneration_ms:5000};
+        let mut sp=Spawners::new(homes.map(|id|(id,policy)).into_iter()).unwrap();
+        sp.roaming_group(20,homes.to_vec()).unwrap();
+        sp.initialize(0);
+        let mut tried=std::collections::BTreeSet::new();
+        let mut chosen=0;
+        for now in 0..3 {
+            let choices=sp.poll(now);
+            let [Action::Spawn(id)]=choices.as_slice() else {panic!("expected one home, got {choices:?}")};
+            chosen=*id;
+            assert!(tried.insert(chosen));
+            assert!(sp.poll(now).is_empty(),"pending placement reserves all homes");
+            if now<2 {assert!(sp.defer_spawn(chosen,now));}
+        }
+        assert!(sp.spawned(chosen));
+        assert!(sp.poll(2000).is_empty());
+        assert!(sp.died(chosen,2000,1000));
+        assert!(sp.poll(2999).is_empty());
+        assert_eq!(sp.poll(3000),vec![Action::Remove(chosen)]);
+        assert!(sp.poll(3500).is_empty(),"removal requires world acknowledgement");
+        sp.removed(chosen,3500);
+        assert!(sp.poll(6999).is_empty(),"standby homes must await the same refill");
+        assert!(matches!(sp.poll(7000).as_slice(),[Action::Spawn(id)] if homes.contains(id)));
+    }
+    #[test]
+    fn editing_a_roaming_group_wakes_its_parked_siblings() {
+        let homes=[11,12,13];
+        let policy=Policy{initial_delay_ms:0,regeneration_ms:5000};
+        let mut sp=Spawners::new(homes.map(|id|(id,policy)).into_iter()).unwrap();
+        sp.roaming_group(20,homes.to_vec()).unwrap();
+        sp.initialize(0);
+        let [Action::Spawn(id)]=sp.poll(0)[..] else {panic!()};
+        assert!(sp.spawned(id));
+        sp.replace_groups(1<<63,vec![(5,1,vec![id])]).unwrap();
+        let [Action::Spawn(other)]=sp.poll(1)[..] else {panic!()};
+        assert_ne!(id,other);
+        sp.remove_point(other);
+        let [Action::Spawn(third)]=sp.poll(2)[..] else {panic!()};
+        assert_ne!(id,third);
+        assert_ne!(other,third);
+        sp.replace_groups(1<<63,vec![]).unwrap();
+        assert!(sp.poll(5000).is_empty());
+    }
+    #[test]
+    fn occupied_anchor_retries_without_duplicating_or_holding_group_capacity() {
+        let mut p=population();p.group(10,1,vec![7,8]).unwrap();p.initialize(0);
+        assert_eq!(p.poll(0),vec![Action::Spawn(8)]);
+        assert!(p.defer_spawn(8,0));assert!(!p.defer_spawn(8,100));
+        assert_eq!(p.poll(500),vec![Action::Spawn(7)],"A blocked child releases group capacity");
+        assert!(p.spawned(7));assert!(!p.defer_spawn(7,500),"Live children cannot be postponed");
+        assert!(p.poll(1000).is_empty());
+        assert!(p.died(7,1000,0));assert_eq!(p.poll(1000),vec![Action::Remove(7)]);
+        assert!(!p.defer_spawn(7,1000),"Corpse removal is not a pending spawn");
+        p.removed(7,1000);
+        assert_eq!(p.poll(2000),vec![Action::Spawn(8)]);
+        assert!(p.spawned(8));assert!(!p.spawned(8));assert!(p.poll(5000).is_empty());
+        assert_eq!(p.policy(8).unwrap().regeneration_ms,5000);
     }
     #[test]
     fn overrides_preserve_and_restore_high_bit_native_groups() {

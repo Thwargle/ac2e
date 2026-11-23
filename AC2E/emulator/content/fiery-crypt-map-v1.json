@@ -1,0 +1,332 @@
+{
+  "version": 1,
+  "npcs": [],
+  "camps": [],
+  "validate_interior_bodies": true,
+  "templates": {
+    "1191188132": {
+      "name": "Sneer, Drudge Captain",
+      "visual": 520097263
+    },
+    "1191184518": {
+      "name": "Inferno Drudge Mystic",
+      "visual": 520094951
+    },
+    "1191184404": {
+      "name": "Inferno Drudge Cabalist",
+      "visual": 520094951
+    }
+  },
+  "interiors": [
+    {
+      "id": 9313685921975828480,
+      "entity": 1191188132,
+      "cell": 100401622,
+      "position": [
+        7.0,
+        -452.0,
+        -7.0
+      ],
+      "map_pixel": [
+        324,
+        537
+      ]
+    },
+    {
+      "id": 9313685921975828481,
+      "entity": 1191184518,
+      "cell": 100401446,
+      "position": [
+        0.0,
+        -162.0,
+        -17.0
+      ],
+      "map_pixel": [
+        187,
+        247
+      ]
+    },
+    {
+      "id": 9313685921975828482,
+      "entity": 1191184518,
+      "cell": 100401482,
+      "position": [
+        -10.0,
+        -273.0,
+        -17.0
+      ],
+      "map_pixel": [
+        177,
+        357
+      ]
+    },
+    {
+      "id": 9313685921975828483,
+      "entity": 1191184518,
+      "cell": 100401477,
+      "position": [
+        8.0,
+        -268.0,
+        -17.0
+      ],
+      "map_pixel": [
+        197,
+        357
+      ]
+    },
+    {
+      "id": 9313685921975828484,
+      "entity": 1191184518,
+      "cell": 100401491,
+      "position": [
+        0.0,
+        -282.0,
+        -17.0
+      ],
+      "map_pixel": [
+        187,
+        367
+      ]
+    },
+    {
+      "id": 9313685921975828485,
+      "entity": 1191184518,
+      "cell": 100401521,
+      "position": [
+        20.0,
+        -320.0,
+        -17.0
+      ],
+      "map_pixel": [
+        207,
+        407
+      ]
+    },
+    {
+      "id": 9313685921975828486,
+      "entity": 1191184518,
+      "cell": 100401526,
+      "position": [
+        -20.0,
+        -360.0,
+        -17.0
+      ],
+      "map_pixel": [
+        167,
+        447
+      ]
+    },
+    {
+      "id": 9313685921975828487,
+      "entity": 1191184518,
+      "cell": 100401627,
+      "position": [
+        0.0,
+        -368.0,
+        -7.0
+      ],
+      "map_pixel": [
+        317,
+        455
+      ]
+    },
+    {
+      "id": 9313685921975828492,
+      "entity": 1191184404,
+      "cell": 100401649,
+      "position": [
+        -19.0,
+        -452.0,
+        -7.0
+      ],
+      "map_pixel": [
+        297,
+        537
+      ]
+    },
+    {
+      "id": 9313685921975828493,
+      "entity": 1191184404,
+      "cell": 100401624,
+      "position": [
+        -10.0,
+        -452.0,
+        -7.0
+      ],
+      "map_pixel": [
+        307,
+        537
+      ]
+    },
+    {
+      "id": 9313685921975828494,
+      "entity": 1191184404,
+      "cell": 100401623,
+      "position": [
+        -1.0,
+        -452.0,
+        -7.0
+      ],
+      "map_pixel": [
+        317,
+        537
+      ]
+    },
+    {
+      "id": 9313685921975828495,
+      "entity": 1191184404,
+      "cell": 100401622,
+      "position": [
+        13.0,
+        -453.0,
+        -7.0
+      ],
+      "map_pixel": [
+        330,
+        538
+      ]
+    },
+    {
+      "id": 9313685921975828490,
+      "entity": 1191184518,
+      "cell": 100401767,
+      "position": [
+        -28.0,
+        -412.0,
+        -7.0
+      ],
+      "map_pixel": [
+        287,
+        497
+      ]
+    }
+  ],
+  "interior_groups": [
+    {
+      "id": 9313685921975828480,
+      "members": [
+        9313685921975828480
+      ]
+    },
+    {
+      "id": 9313685921975828481,
+      "members": [
+        9313685921975828481
+      ]
+    },
+    {
+      "id": 9313685921975828482,
+      "members": [
+        9313685921975828482
+      ]
+    },
+    {
+      "id": 9313685921975828483,
+      "members": [
+        9313685921975828483
+      ]
+    },
+    {
+      "id": 9313685921975828484,
+      "members": [
+        9313685921975828484
+      ]
+    },
+    {
+      "id": 9313685921975828485,
+      "members": [
+        9313685921975828485
+      ]
+    },
+    {
+      "id": 9313685921975828486,
+      "members": [
+        9313685921975828486
+      ]
+    },
+    {
+      "id": 9313685921975828487,
+      "members": [
+        9313685921975828487
+      ]
+    },
+    {
+      "id": 9313685921975828492,
+      "members": [
+        9313685921975828492
+      ]
+    },
+    {
+      "id": 9313685921975828493,
+      "members": [
+        9313685921975828493
+      ]
+    },
+    {
+      "id": 9313685921975828494,
+      "members": [
+        9313685921975828494
+      ]
+    },
+    {
+      "id": 9313685921975828495,
+      "members": [
+        9313685921975828495
+      ]
+    },
+    {
+      "id": 9313685921975828490,
+      "members": [
+        9313685921975828490
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "url": "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Fiery_Crypt.png",
+      "sha256": "b9e2e098ffb97591dd2aa9d433c3e4b9a0910e5a1441fdee14e15cfa4f2ebabf"
+    },
+    {
+      "url": "http://ac2hero.e5i5o.com/quest/osteth_killcaptainsneer.html",
+      "sha256": "b3ef5b117320c48a11edc186726de343192341e8c2670b1fa609ffc28419c488"
+    }
+  ],
+  "policy": "Only previously absent monster families and Captain Sneer. The guide marks the species and room. Positions and formation are reconstructed from the colored markers and verified against native walkable floors, collision, and other actors. The map gives an Inferno Drudge Cabalist at level 21; use its generic Inferno Drudge family variant. Facing and respawn intervals are inferred. Northern rooms align with the entrance at chart pixel 187,87, and the upper chamber has the same northing with centreline 317. The native levels under those map sections are -17 and -7 metres. Existing spawns retain priority.",
+  "withheld_map_markers": [
+    {
+      "map_pixel": [
+        157,
+        477
+      ],
+      "reason": "No free walkable footprint within 5 m on the marked floor."
+    },
+    {
+      "map_pixel": [
+        157,
+        497
+      ],
+      "reason": "No free walkable footprint within 5 m on the marked floor."
+    },
+    {
+      "map_pixel": [
+        357,
+        507
+      ],
+      "reason": "No free walkable footprint within 5 m on the marked floor."
+    },
+    {
+      "map_pixel": [
+        269,
+        607
+      ],
+      "reason": "Lower alcove could not be registered to a walkable room."
+    },
+    {
+      "map_pixel": [
+        365,
+        607
+      ],
+      "reason": "Lower alcove could not be registered to a walkable room."
+    }
+  ]
+}

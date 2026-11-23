@@ -4,6 +4,11 @@ The Rust server for the AC2 Unreal client, derived from Pyrealium. Start with
 [AC2E setup and hosting](AC2E-README.md) for local play, accounts, supported
 combat and persistence, and current limitations.
 
+The Character panel shows earned quest points. AC2E pays documented awards on
+completion and saves the total with the character. The [quest reward catalog](emulator/content/quest-point-rewards-v1.json)
+lists the evidence for each amount. The [world atlas](../Docs/Atlas/index.html)
+shows which guide quests have server scripts and which objectives still lack a verified route.
+
 From the repository root:
 
 ```powershell

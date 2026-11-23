@@ -21,8 +21,7 @@ def main():
     log = (data/'server.log').open('w')
     server = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19392',
         '--account', 'local', '--data', str(data/'world'), '--game-data', str(DAT_DIRECTORY),
-        '--content', str(content), '--encounters', str(rules), '--initialize-ui', 'true', '--training-kit', 'false',
-        '--test-map-travel', 'true', '--seconds', '90'],
+        '--content', str(content), '--encounters', str(rules), '--initialize-ui', 'true', '--test-map-travel', 'true', '--seconds', '90'],
         env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'), stdout=log, stderr=log,
         creationflags=0x08000000)
     p = Peer()

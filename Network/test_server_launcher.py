@@ -85,8 +85,8 @@ def main():
             ], cwd=directory, capture_output=True, text=True, timeout=15,
                 creationflags=subprocess.CREATE_NO_WINDOW)
             assert rebuild.returncode != 0 and 'before rebuilding' in rebuild.stderr, rebuild
-            # A recycled PID (here this Python process) must never be accepted
-            # as a server owner, nor authorize removal of the store's lock.
+            # A live PID alone must never authorize removal. Here the marker
+            # is newer than Python, so that process could still own the store.
             other_store = directory / 'unverified store'
             other_store.mkdir()
             other_lock = other_store / 'server.lock'
@@ -99,6 +99,27 @@ def main():
                 creationflags=subprocess.CREATE_NO_WINDOW)
             assert rejected.returncode != 0 and 'cannot be confirmed' in rejected.stderr, rejected
             assert other_lock.read_text().strip() == str(os.getpid())
+            # Once a marker demonstrably predates the current PID lifetime,
+            # it is stale even though Windows has reused that PID for Python.
+            # Exercise the shared recovery helper for both world and auth locks.
+            recovery = directory / 'recover.ps1'
+            recovery.write_text("param([string]$Helper,[string]$Directory,[string]$Name)\n"
+                                ". $Helper\nRestore-AC2EStaleLock $Directory $Name\n")
+            for name in ('server.lock', 'accounts.lock'):
+                recycled = other_store / name
+                recycled.write_text(str(os.getpid()) + '\n')
+                os.utime(recycled, (946684800, 946684800))
+                recovered = subprocess.run([
+                    'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                    '-File', str(recovery), str(ROOT/'AC2E/Recover-StaleLock.ps1'),
+                    str(other_store), name,
+                ], cwd=directory, capture_output=True, text=True, timeout=15,
+                    creationflags=subprocess.CREATE_NO_WINDOW)
+                assert recovered.returncode == 0 and 'reused PID' in recovered.stdout, recovered
+                assert not recycled.exists()
+                archived = list(other_store.glob(name + '.stale-*'))
+                assert len(archived) == 1 and archived[0].read_text().strip() == str(os.getpid())
+            assert lock.read_text() == lock_owner, 'Recovery disturbed the live world lock'
             # Use the same public launcher for graceful shutdown, from another cwd.
             subprocess.run([
                 'powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
@@ -193,7 +214,7 @@ def main():
             assert not lock.exists()
             assert web.poll() is None and account_lock.read_text()==account_owner, 'Reused account service was stopped'
             print('PASS: startup, native login, repeated start, live rebuild rejection, '
-                  'stale recovery, unverified lock preservation, matching account reuse, '
+                  'stale and reused-PID recovery, unverified lock preservation, matching account reuse, '
                   'configuration mismatch rejection, and graceful shutdown; log:', log_path)
         finally:
             if peer:

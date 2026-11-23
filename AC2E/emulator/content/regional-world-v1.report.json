@@ -20067,7 +20067,7 @@
   ],
   "included": 3495,
   "inferred": true,
-  "manifest_sha256": "dd2fb37338d868769ba63d60c36b30a1a5dd5d979dccbdd0b30582b95dcac662",
+  "manifest_sha256": "567566578d40315c7b0189a5f6c1c16575182fa3a6cb6b45180e6f2e79856563",
   "native_ground_verified": true,
   "newly_populated_outdoor_blocks": 1842,
   "outdoor_blocks_after": 3833,
@@ -22161,7 +22161,6 @@
       21116,
       21117,
       21118,
-      21369,
       21370,
       21371,
       21372,
@@ -27583,6 +27582,100 @@
       "slot": 0
     }
   ],
-  "source_sha256": "b8bf49277facb80f7bd1ceb18207ceb31657b3215789fef9150aa72442b23d3e",
+  "reviewed_groups": [
+    {
+      "existing_outdoor_sha256": "b3520d0882885e49b29774a67eb9712891bc009997392752903b22cbb2757e94",
+      "fixed_actor": "8140da004700088a",
+      "id": 9313655135644647424,
+      "members": [
+        "8140c00000978000",
+        "8140c00000978001"
+      ],
+      "reason": "The recovered Counselor of the New Drudge Republic occupies the original 80 m wilderness exclusion. Only this inferred Prosper Marches camp was regrounded with the regional_population generator and the updated exclusion world."
+    },
+    {
+      "existing_outdoor_sha256": "e0b70dda9a41fc841be1f796f8db85044bc8a8e4fda40abf93469faf5a26a309",
+      "fixed_actors": [
+        "8140d97000000102"
+      ],
+      "id": 9313655135644260608,
+      "members": [
+        "8140c00000919900"
+      ],
+      "reason": "Regrounded the inferred group within its original landblock against the merged outdoor population. The documented encounter retains its location; every roaming slot clears the 80 m exclusion."
+    },
+    {
+      "existing_outdoor_sha256": "9a966c465a8588b00a5bf8724cddd864fbde1f1ddfd20a9c13e60234622db8bc",
+      "fixed_actors": [
+        "8140da0047000855"
+      ],
+      "id": 9313655135639927552,
+      "members": [
+        "8140c000004f7b00",
+        "8140c000004f7b01"
+      ],
+      "reason": "Regrounded the inferred group within its documented region to preserve the 80 m exclusion around the sourced actor. All original group members passed the native ground and body checks."
+    },
+    {
+      "existing_outdoor_sha256": "9a966c465a8588b00a5bf8724cddd864fbde1f1ddfd20a9c13e60234622db8bc",
+      "fixed_actors": [
+        "8140f707fb000100"
+      ],
+      "id": 9313655135640189184,
+      "members": [
+        "8140c00000537900",
+        "8140c00000537901"
+      ],
+      "reason": "Regrounded the inferred group within its documented region to preserve the 80 m exclusion around the sourced actor. All original group members passed the native ground and body checks."
+    },
+    {
+      "existing_outdoor_sha256": "9a966c465a8588b00a5bf8724cddd864fbde1f1ddfd20a9c13e60234622db8bc",
+      "fixed_actors": [
+        "8140d60000001001"
+      ],
+      "id": 9313655135644517376,
+      "members": [
+        "8140c00000958400",
+        "8140c00000958401"
+      ],
+      "reason": "Regrounded the inferred group within its documented region to preserve the 80 m exclusion around the sourced actor. All original group members passed the native ground and body checks."
+    },
+    {
+      "existing_outdoor_sha256": "9a966c465a8588b00a5bf8724cddd864fbde1f1ddfd20a9c13e60234622db8bc",
+      "fixed_actors": [
+        "8140da0047002312"
+      ],
+      "id": 9313655135650218752,
+      "members": [
+        "8140c00000ec8300"
+      ],
+      "reason": "Regrounded the inferred group within its documented region to preserve the 80 m exclusion around the sourced actor. All original group members passed the native ground and body checks."
+    },
+    {
+      "existing_outdoor_sha256": "fff16303d3ca7963bb644cd4afa79237e6674bca986d8c7915aebf0dccfa93c7",
+      "fixed_actors": [
+        "8140f70afc000100"
+      ],
+      "id": 9313655135640970752,
+      "members": [
+        "8140c000005f6600",
+        "8140c000005f6601"
+      ],
+      "reason": "The captured Golden Age Reliquary portal lies inside the original inferred camp. Both Marauders were regrounded in Stoneshadow Plains and retain at least 80 m separation from other camps and the portal."
+    },
+    {
+      "existing_outdoor_sha256": "34bb08827b6e79a4d31141caa2edb53a032ae87a9dd15453167cc4b322598e4e",
+      "fixed_actors": [
+        "8140d00000002321"
+      ],
+      "id": 9313655135641300736,
+      "members": [
+        "8140c00000646f00",
+        "8140c00000646f01"
+      ],
+      "reason": "Both inferred Gurog Henchman homes were within 80 m of Jellio's captured placement at the southern entrance to Drudgerton. The two replacements retain their Thusik Delta spawner and pass native floor, walk-step, body and separation checks."
+    }
+  ],
+  "source_sha256": "aa5258230f53c1c110d2c63219fe7e7517b7f2b06f384e17fc23450939f94cef",
   "version": 1
 }

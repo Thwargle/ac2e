@@ -104,11 +104,18 @@ bool FAC2SkyTimeRenderTest::RunTest(const FString &)
     State->Image->InitCustomFormat(640,480,PF_B8G8R8A8,false); State->Image->UpdateResourceImmediate(true);
     State->Camera->TextureTarget=State->Image;
     const FString Output=FPaths::ProjectSavedDir()/TEXT("Screenshots/SkyClock"); IFileManager::Get().MakeDirectory(*Output,true);
-    for (int32 Hour : {6,12,18,23})
+    for (int32 Hour : {6,12,18,23,0})
     {
         ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this,World,State,Hour]() {
             const double ServerTime=State->Time.AtHour(2454,Hour);
             State->Sky->Update(FVector::ZeroVector, 1.f/15, ServerTime);
+            if (Hour == 0)
+            {
+                // Include the top of the clear night dome and the horizon in one exposure.
+                for (int32 I = 0; I < 32 && State->Sky->DayId() != 0x1a000002; ++I)
+                    State->Sky->SetWeather(I);
+                State->Camera->SetWorldRotation(FRotator(42,0,0));
+            }
             TestTrue(TEXT("Sky follows authoritative time even at low FPS"), FMath::IsNearlyEqual(State->Sky->Hour(),float(Hour),.00001f));
             const uint32 Day=State->Sky->DayId();
             State->Sky->Update(FVector::ZeroVector, 1.f/144, ServerTime);
@@ -191,12 +198,62 @@ bool FAC2SkyLightingTest::RunTest(const FString &)
             if (It->IsA<ADirectionalLight>() || It->IsA<ASkyLight>() || It->IsA<AExponentialHeightFog>()) ++Count;
         return Count;
     };
+    TMap<uint32,FVector> OrbCenters;
+    {
+        FAC2AssetLibrary Models;Models.Open(Directory,Error);
+        for(const auto& O:Day.Objects)
+        {
+            if(O.Graphic!=0x04000023 && O.Graphic!=0x040000b6)continue;
+            TestTrue(TEXT("Celestial role follows the native graphic, not its day-local key"),
+                Day.CelestialBody(O.Name)==(O.Graphic==0x04000023?EAC2CelestialBody::Sun:EAC2CelestialBody::Moon));
+            auto* Actor=World->SpawnActor<AActor>();auto* Root=NewObject<USceneComponent>(Actor);
+            Actor->SetRootComponent(Root);Root->RegisterComponent();
+            if(TestTrue(TEXT("Native celestial geometry loads"),Models.DrawSky(O.Graphic,Actor,Root)))
+                OrbCenters.Add(O.Graphic,Actor->GetComponentsBoundingBox(true).GetCenter());
+            Actor->Destroy();
+        }
+    }
     for (int32 Entry = 0; Entry < 2; ++Entry)
     {
         {
             FAC2SkyRenderer Sky;
             TestTrue(TEXT("Open world lighting"), Sky.Open(World, Directory, Error));
-            TestEqual(TEXT("One sun, ambient and fog"), CountEnvironment(), 3);
+            TestEqual(TEXT("One sun and ambient; native fog needs no exponential actor"), CountEnvironment(), 2);
+            // The skydome surrounds every arrival and must never become a floor.
+            FHitResult Ground;
+            TestFalse(TEXT("Sky permits ground queries through its interior"), World->SweepSingleByChannel(
+                Ground,FVector(0,0,1000000),FVector(0,0,-1000000),FQuat::Identity,ECC_Visibility,
+                FCollisionShape::MakeSphere(30)));
+            // Use the actual DAT mesh centers: these do not lie exactly on the
+            // nominal sky axis, and the native light keys have a different path.
+            for(int32 I=0;I<32 && Sky.DayId()!=Day.Id;++I)Sky.SetWeather(I);
+            TestEqual(TEXT("Test the decoded native weather"),Sky.DayId(),Day.Id);
+            int32 SunChecks=0,MoonChecks=0;
+            // Celestial schedules differ between DAT revisions. Sample the
+            // complete day so the moon assertion is not tied to stock hours.
+            for(int32 Quarter=0;Quarter<96;++Quarter)
+            {
+                const float Hour=Quarter*.25f;
+                Sky.SetHour(Hour);Sky.Update(FVector(2500,-1800,420),0);
+                TOptional<FVector> SunDirection,MoonDirection;
+                for(const auto& P:Day.Positions(Hour/24.f))if(P.Color.A>KINDA_SMALL_NUMBER)
+                    if(const auto* Center=OrbCenters.Find(P.Graphic))
+                {
+                    const FQuat Rotation=FQuat(FVector::YAxisVector,-FMath::DegreesToRadians(P.Pitch))*
+                        FQuat(FVector::UpVector,-FMath::DegreesToRadians(P.Heading));
+                    const FVector Direction=Rotation.RotateVector(*Center).GetSafeNormal();
+                    if(Direction.Z>.15){if(P.Graphic==0x04000023)SunDirection=Direction;else MoonDirection=Direction;}
+                }
+                const auto Source=SunDirection.IsSet()?SunDirection:MoonDirection;
+                if(!Source.IsSet())continue;
+                SunChecks+=SunDirection.IsSet();MoonChecks+=!SunDirection.IsSet();
+                TestTrue(TEXT("Material lighting faces the visible orb"),Sky.Lighting().LightDirection().Equals(-Source.GetValue(),.0001));
+                for(TActorIterator<ADirectionalLight> It(World);It;++It)
+                    TestTrue(TEXT("Cast shadow direction matches the visible orb"),It->GetActorForwardVector().Equals(-Source.GetValue(),.0001));
+                TestEqual(TEXT("Native brightness is preserved"),Sky.Lighting().Direct,Day.Sample(Hour/24.f).Direct);
+            }
+            TestTrue(TEXT("Sun alignment checked"),SunChecks>0);
+            TestTrue(TEXT("Moon alignment checked"),MoonChecks>0);
             for (TActorIterator<ASkyLight> It(World); It; ++It)
             {
                 const auto *Light = It->GetLightComponent();

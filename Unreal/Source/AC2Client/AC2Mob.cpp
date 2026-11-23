@@ -26,6 +26,7 @@ bool AAC2Mob::Initialize(const FString &D, uint32 V)
     VisualId = V;
     FString Error;
     Model = MakeUnique<FAC2AssetLibrary>();
+    Model->EnableCreatureIdleAudio();
     bool OK = Model->Open(D, Error) && Model->DrawModel(V, this, Body);
     if (OK)
     {
@@ -74,7 +75,16 @@ void AAC2Mob::Tick(float Dt)
     auto* PC=GetWorld()->GetFirstPlayerController();
     auto* Player=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
     if(Aggressive&&(!Player||Player->IsDead()))Aggressive=false;
-    if(Model)Model->SetAnimationState(AC2Motion::Ground,Aggressive?AC2Motion::Monster:AC2Motion::Peace);
+    if(Model)
+    {
+        const uint32 NativeMode=Aggressive?AC2Motion::Monster:AC2Motion::Peace;
+        Model->SetAnimationState(AC2Motion::Ground,NativeMode);
+        const auto Pace=Model->MotionData().Values(AC2Motion::Ground,NativeMode);
+        const float Scale=Model->LocomotionScale()*GetActorScale3D().Y;
+        GetCharacterMovement()->MaxWalkSpeed=Pace.Forward*Scale*100;
+        GetCharacterMovement()->MaxAcceleration=Pace.ForwardAccel*FMath::Max(1.f,Scale)*100;
+        GetCharacterMovement()->BrakingDecelerationWalking=Pace.ForwardBrake*FMath::Max(1.f,Scale)*100;
+    }
     if(Aggressive && Player && !Player->IsDead())
     {
         FVector Toward=Player->GetActorLocation()-GetActorLocation();
@@ -138,8 +148,8 @@ void AAC2Mob::Tick(float Dt)
     if (Model)
     {
         const FVector LocalVelocity =
-            Body->GetComponentTransform().InverseTransformVectorNoScale(GetVelocity());
-        Model->Animate(Time, GetVelocity().Size2D(), nullptr, &LocalVelocity);
+            Body->GetComponentTransform().InverseTransformVector(GetVelocity());
+        Model->Animate(Time, GetVelocity().Size2D(), &LocalVelocity);
     }
 }
 void AAC2Mob::EndPlay(const EEndPlayReason::Type Reason)

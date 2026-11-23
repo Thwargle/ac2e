@@ -1,8 +1,8 @@
 //! Narrow, game-thread-only ABI over the pinned AC2_Rusted SoundManager.
-//! The native DAT loader and WASAPI mixer run on their own threads; no retail audio is bundled.
+//! The native DAT loader runs on its own thread; Unreal pulls mixed PCM for its audio device.
 use ac2_audio::{
     AmbientData, AmbientSound, DatSounds, Emitter, PlaySoundData, SoundManager, SoundPreference,
-    SpeakerSink,
+    MixingSink, Channel,
 };
 use std::{
     collections::HashMap,
@@ -13,6 +13,7 @@ use std::{
 
 pub struct Audio {
     manager: SoundManager,
+    output: MixingSink,
     emitters: HashMap<u64, Emitter>,
     ambient: AmbientSound,
     now: f64,
@@ -42,7 +43,7 @@ fn guard<T: Default>(f: impl FnOnce() -> T) -> T {
 
 #[no_mangle]
 pub extern "C" fn ac2_audio_version() -> u32 {
-    1
+    2
 }
 
 #[no_mangle]
@@ -60,15 +61,16 @@ pub unsafe extern "C" fn ac2_audio_create(
         let Ok(dataset) = ac2_dat::DatDataset::open(ac2_dat::DatOpenOptions::new(directory)) else {
             return std::ptr::null_mut();
         };
-        let Ok(sink) = SpeakerSink::open() else {
-            return std::ptr::null_mut();
-        };
+        // Unreal owns the output device (including default-device changes).
+        // Keep native DAT mixing/attenuation, and pull stereo PCM through the
+        // ABI instead of opening a second, permanently pinned WASAPI stream.
+        let output = MixingSink::new(44100);
         let store = Arc::new(ac2_db::ResourceStore::new(dataset));
         // Small region metadata is read once at startup. Wave/music data stays on
         // SoundManager's loader thread; terrain points come from Unreal's block worker.
         let mut ambient = AmbientSound::default();
         ambient.set_data(AmbientData::load(&store, 0x10000000).ok().flatten());
-        let mut manager = SoundManager::new(Box::new(sink), Arc::new(DatSounds::new(store)));
+        let mut manager = SoundManager::new(Box::new(output.clone()), Arc::new(DatSounds::new(store)));
         if !gm.is_null() {
             if let Ok(path) = CStr::from_ptr(gm).to_str() {
                 let path = PathBuf::from(path);
@@ -79,10 +81,27 @@ pub unsafe extern "C" fn ac2_audio_create(
         }
         Box::into_raw(Box::new(Audio {
             manager,
+            output,
             emitters: HashMap::new(),
             ambient,
             now: 0.0,
         }))
+    })
+}
+
+/// Interleaved signed 16-bit stereo at 44100 Hz. Called by the owning game
+/// thread, never concurrently with tick/destroy; capped to a quarter second.
+#[no_mangle]
+pub unsafe extern "C" fn ac2_audio_render(audio: *mut Audio, samples: *mut i16, frames: u32) -> u32 {
+    guard(|| {
+        let Some(audio)=audio.as_mut() else {return 0};
+        if samples.is_null() || frames==0 || frames>11025 {return 0;}
+        let pcm=audio.output.render(frames as usize,2);
+        let out=std::slice::from_raw_parts_mut(samples,frames as usize*2);
+        for (dst,src) in out.iter_mut().zip(pcm) {
+            *dst=(src.clamp(-1.0,1.0)*32767.0).round() as i16;
+        }
+        frames
     })
 }
 
@@ -102,6 +121,19 @@ pub unsafe extern "C" fn ac2_audio_play(
     emitter: u64,
     volume: f32,
 ) -> u32 {
+    ac2_audio_play_on_channel(audio, sound, emitter, volume, 0)
+}
+
+/// Additive ABI 2 entry point. The caller selects the retail channel: UI sound
+/// defaults to Main; FXManager routes MusicInfo by its default-channel bit.
+#[no_mangle]
+pub unsafe extern "C" fn ac2_audio_play_on_channel(
+    audio: *mut Audio,
+    sound: u32,
+    emitter: u64,
+    volume: f32,
+    channel: u32,
+) -> u32 {
     guard(|| {
         let Some(audio) = audio.as_mut() else {
             return 0;
@@ -110,10 +142,28 @@ pub unsafe extern "C" fn ac2_audio_play(
             return 0;
         }
         let mut data = PlaySoundData::new(sound);
+        data.channel = match channel {
+            0 => Channel::Main,
+            1 => Channel::Music,
+            2 => Channel::Player,
+            3 => Channel::Ambient,
+            _ => return 0,
+        };
         data.volume = volume.clamp(0.0, 1.0);
         data.emitter = (emitter != 0).then_some(emitter);
         audio.manager.play(&data).unwrap_or(0)
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ac2_audio_context_volume(audio: *mut Audio, context: u32, volume: f32) {
+    guard(|| {
+        if let Some(audio) = audio.as_mut() {
+            if context != 0 && volume.is_finite() {
+                audio.manager.set_context_volume(context, volume.clamp(0.0, 1.0));
+            }
+        }
+    });
 }
 
 #[no_mangle]
@@ -153,7 +203,9 @@ pub unsafe extern "C" fn ac2_audio_tick(
         let Some(audio) = audio.as_mut() else {
             return;
         };
-        if !now.is_finite() || count > 4096 || (count != 0 && sources.is_null()) || axes.is_null() {
+        // Streaming includes authored scenery as well as actor components. A
+        // large loaded neighborhood must not freeze the entire mixer at 4097.
+        if !now.is_finite() || count > 65536 || (count != 0 && sources.is_null()) || axes.is_null() {
             return;
         }
         let axes = std::slice::from_raw_parts(axes, 9);
@@ -218,12 +270,11 @@ pub unsafe extern "C" fn ac2_audio_environment(
         if count > 4096 || (count != 0 && points.is_null()) {
             return;
         }
-        if count == 0 {
-            audio.ambient.clear(&mut audio.manager);
-            return;
-        }
         audio.ambient.change_cell_start();
-        for p in std::slice::from_raw_parts(points, count as usize) {
+        // An empty environment still uses the native fade-out/retirement path.
+        // A null pointer is legal for an empty C array, but not for a Rust slice.
+        let points = if count == 0 { &[] } else { std::slice::from_raw_parts(points, count as usize) };
+        for p in points {
             if [p.x, p.y, p.z].iter().all(|v| v.is_finite()) {
                 audio
                     .ambient
@@ -265,6 +316,99 @@ mod tests {
     use super::*;
     use ac2_audio::{LoadedSound, MixingSink, SoundSource};
     use std::time::Duration;
+    #[test]
+    fn pcm_abi_renders_native_sound_and_checks_buffer_limits() {
+        let Ok(dir)=std::env::var("AC2_DAT_DIR") else {return};
+        let dir=std::ffi::CString::new(dir).unwrap();
+        unsafe {
+            let engine=ac2_audio_create(dir.as_ptr(),std::ptr::null());
+            assert!(!engine.is_null());
+            assert_eq!(ac2_audio_version(),2);
+            let context=ac2_audio_play(engine,0x2a0000ee,0,1.0);
+            assert_ne!(context,0);
+            assert!((*engine).manager.wait_for_loads(Duration::from_secs(30)));
+            let mut pcm=vec![0i16;882+2];
+            pcm[882]=1234;pcm[883]=-1234;
+            let axes=[1.,0.,0.,0.,1.,0.,0.,0.,1.];
+            let scenery: Vec<_>=(0..8192).map(|id| Source {id:(1<<62)|id,x:0.,y:0.,z:1.}).collect();
+            ac2_audio_tick(engine,0.125,scenery.as_ptr(),scenery.len() as u32,axes.as_ptr());
+            assert_eq!((*engine).now,0.125,"A loaded scenery neighborhood still advances the mixer");
+            assert!(scenery.iter().all(|s|(*engine).emitters.contains_key(&s.id)));
+            let mut energy=0u64;
+            for n in 0..200 {
+                ac2_audio_tick(engine,0.125+n as f64/100.,std::ptr::null(),0,axes.as_ptr());
+                assert_eq!(ac2_audio_render(engine,pcm.as_mut_ptr(),441),441);
+                energy+=pcm[..882].iter().map(|x|i64::from(*x).pow(2) as u64).sum::<u64>();
+            }
+            assert!(energy>0,"Native pickup reaches the Unreal PCM boundary");
+            assert_eq!(&pcm[882..],&[1234,-1234],"No writes past the requested frames");
+            assert_eq!(ac2_audio_render(engine,pcm.as_mut_ptr(),11026),0);
+            assert_eq!(ac2_audio_render(engine,std::ptr::null_mut(),441),0);
+            assert_eq!(ac2_audio_render(std::ptr::null_mut(),pcm.as_mut_ptr(),441),0);
+            ac2_audio_destroy(engine);
+        }
+    }
+    #[test]
+    fn music_and_player_music_obey_independent_volume_controls() {
+        let Ok(dir) = std::env::var("AC2_DAT_DIR") else { return };
+        let directory=std::ffi::CString::new(dir).unwrap();
+        let axes=[1.,0.,0.,0.,1.,0.,0.,0.,1.];
+        // A looping native EncodedWave MusicInfo avoids synthesizer/instrument
+        // ambiguity. The same audio routed onto each channel must mute/unmute
+        // independently of the main Sound volume and the other music channel.
+        unsafe { for channel in [1,2] {
+            let engine=ac2_audio_create(directory.as_ptr(),std::ptr::null());
+            assert!(!engine.is_null());
+            for c in 0..4 {ac2_audio_volume(engine,c,0.0);}
+            assert_eq!(ac2_audio_play_on_channel(engine,0x2c00044a,0,1.,4),0);
+            let handle=ac2_audio_play_on_channel(engine,0x2c00044a,0,1.,channel);
+            assert_ne!(handle,0);
+            assert!((*engine).manager.wait_for_loads(Duration::from_secs(30)));
+            let mut pcm=[0i16;882];
+            let mut energy=[0u64;3];
+            for phase in 0..3 {
+                // Enabling the other music slider must not unmute this cue.
+                if phase==1 {ac2_audio_volume(engine,3-channel,1.0);}
+                if phase==2 {ac2_audio_volume(engine,channel,1.0);}
+                for frame in 0..200 {
+                    ac2_audio_tick(engine,(phase*200+frame) as f64/100.,std::ptr::null(),0,axes.as_ptr());
+                    assert_eq!(ac2_audio_render(engine,pcm.as_mut_ptr(),441),441);
+                    energy[phase]+=pcm.iter().map(|x|i64::from(*x).pow(2) as u64).sum::<u64>();
+                }
+            }
+            assert_eq!(energy[0],0,"initially muted channel {channel}");
+            assert_eq!(energy[1],0,"the other slider does not control channel {channel}");
+            assert!(energy[2]>0,"the correct slider restores channel {channel}");
+            ac2_audio_destroy(engine);
+        }}
+    }
+    #[test]
+    fn context_volume_changes_a_playing_loop_without_restarting_it() {
+        let Ok(dir) = std::env::var("AC2_DAT_DIR") else { return };
+        let dir=std::ffi::CString::new(dir).unwrap();
+        unsafe {
+            let engine=ac2_audio_create(dir.as_ptr(),std::ptr::null());
+            assert!(!engine.is_null());
+            let handle=ac2_audio_play(engine,0x2a000318,0,0.);
+            assert_ne!(handle,0);
+            assert!((*engine).manager.wait_for_loads(Duration::from_secs(30)));
+            let mut pcm=[0i16;882];let mut energy=[0u64;3];
+            let axes=[1.,0.,0.,0.,1.,0.,0.,0.,1.];
+            for phase in 0..3 {
+                if phase>0 {ac2_audio_context_volume(engine,handle,if phase==1 {1.} else {0.});}
+                // Non-finite requests must not corrupt the active voice.
+                ac2_audio_context_volume(engine,handle,f32::NAN);
+                for frame in 0..100 {
+                    ac2_audio_tick(engine,(phase*100+frame) as f64*0.01,std::ptr::null(),0,axes.as_ptr());
+                    ac2_audio_render(engine,pcm.as_mut_ptr(),441);
+                    energy[phase]+=pcm.iter().map(|x|i64::from(*x).pow(2) as u64).sum::<u64>();
+                }
+                assert!(!(*engine).manager.has_sound_finished(handle));
+            }
+            assert_eq!(energy[0],0);assert!(energy[1]>0);assert_eq!(energy[2],0);
+            ac2_audio_stop(engine,handle,0.);ac2_audio_destroy(engine);
+        }
+    }
     #[test]
     fn native_portal_loops_stop_and_exit_is_a_one_shot() {
         let Ok(dir) = std::env::var("AC2_DAT_DIR") else { return };

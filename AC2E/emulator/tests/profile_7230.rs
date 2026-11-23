@@ -15,7 +15,7 @@ fn native_7230_tables_validate_and_flame_bolt_is_executable() {
     let mut runtime = Runtime::load().unwrap();
     let cast = runtime.prepare(1, 0x59, Aim::Creature(2),
         (Hand::Implement(0x40000), Hand::Empty), &book, &state, 0).unwrap();
-    assert!(matches!(cast.outcome(), Outcome::Strike { cost: 32, bonus: 3, burn: Some(_), .. }));
+    assert!(matches!(cast.outcome(), Outcome::Strike { cost: 32, bonus: 3, burn, .. } if !burn.is_empty()));
     assert_eq!(cast.next().vigor, state.vigor, "strike cost is charged at impact");
     assert_ne!(cast.presentation().0, 0);
 }

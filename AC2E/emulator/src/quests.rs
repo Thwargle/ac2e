@@ -36,6 +36,7 @@ pub fn rewards(command: &Command) -> Vec<crate::progression::Command> {
 }
 const ICON: u32 = 0x4100034b;
 const UNDERWAY: u32 = 0x10000000;
+const FAILED: u32 = 0x20000000;
 const COMPLETED: u32 = 0x30000000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,10 +51,16 @@ pub struct Book {
     pub exploration: crate::exploration_quests::Book,
     pub hunting: crate::hunting_quests::Book,
     pub arwic: crate::arwic_mines::State,
+    pub windmill: crate::windmill::State,
+    pub esper: crate::esper_camp::State,
+    pub warder: crate::warder_referrals::Book,
+    pub notebook: crate::warder_notebook::State,
+    pub nature: crate::nature_gathering::State,
     training: Option<Progress>,
     supplies: Option<bool>,
     potion: u8, // 0 absent, 1 accepted, 2 crafted, 3 rewarded
     journey: u8, // 0 absent, 1 accepted, 2 bound, 3 travelled, 4 rewarded
+    pub(crate) quick_exit: u8, // 0 unread, 1 warning read, 2 skull confirmed
     shelter: u8, // ordered Shelter phases; see shelter::guidance
 }
 
@@ -71,6 +78,7 @@ pub enum Command {
     BoundLifestone,
     Travelled,
     ClaimJourney,
+    ReadExitWarning, ConfirmExitSkull, LeaveThroughQuickExit,
     ShelterGuard,
     ShelterLieutenant,
     ShelterSentry,
@@ -106,6 +114,9 @@ impl QuestError {
 impl Command {
     pub fn encode(&self) -> String {
         match self {
+            Self::ReadExitWarning => "shelter.warning".into(),
+            Self::ConfirmExitSkull => "shelter.skull".into(),
+            Self::LeaveThroughQuickExit => "shelter.exit".into(),
             Self::ShelterTool => "shelter.tool".into(),
             Self::ShelterGlyph => "shelter.glyph".into(),
             Self::ShelterAdvance => "shelter.advance".into(),
@@ -124,6 +135,9 @@ impl Command {
     }
     pub fn decode(text: &str) -> Result<Self, QuestError> {
         match text {
+            "shelter.warning" => Ok(Self::ReadExitWarning),
+            "shelter.skull" => Ok(Self::ConfirmExitSkull),
+            "shelter.exit" => Ok(Self::LeaveThroughQuickExit),
             "shelter.tool" => Ok(Self::ShelterTool),
             "shelter.glyph" => Ok(Self::ShelterGlyph),
             "shelter.advance" => Ok(Self::ShelterAdvance),
@@ -189,6 +203,10 @@ impl Book {
         }
         let mut next = self.clone();
         match command {
+            Command::ReadExitWarning if self.quick_exit == 0 => next.quick_exit = 1,
+            Command::ConfirmExitSkull if self.quick_exit == 1 => next.quick_exit = 2,
+            Command::LeaveThroughQuickExit if self.quick_exit == 2 && self.shelter < 7 => next.shelter = 7,
+            Command::ReadExitWarning | Command::ConfirmExitSkull | Command::LeaveThroughQuickExit => return Err(QuestError::NotReady),
             Command::ShelterTool | Command::ShelterGlyph | Command::ShelterAdvance | Command::ShelterComplete => {
                 let previous=match command {Command::ShelterTool=>3,Command::ShelterGlyph=>4,Command::ShelterAdvance=>5,_=>6};
                 if self.shelter!=previous {return Err(QuestError::NotReady);}
@@ -287,8 +305,9 @@ impl Book {
     }
     /// The gmQuestInfoList argument used by UI_Load for saved journal restoration.
     pub fn list_graph(&self) -> Result<Vec<u8>, WorldError> {
+        let now = crate::recovered_quests::now();
         let mut payload = Vec::new();
-        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0) + self.recovered.0.len() as u32 + self.exploration.0.len() as u32 + self.hunting.0.len() as u32 + u32::from(self.arwic.phase>0));
+        word(&mut payload, u32::from(self.training.is_some()) + u32::from(self.supplies.is_some()) + u32::from(self.potion != 0) + u32::from(self.journey != 0) + u32::from(self.shelter != 0) + self.recovered.0.len() as u32 + self.exploration.0.len() as u32 + self.hunting.0.len() as u32 + u32::from(self.arwic.phase>0) + self.windmill.entries().len() as u32 + self.esper.entries().len() as u32 + self.warder.0.len() as u32 + self.notebook.entries().len() as u32);
         if let Some(state) = self.training {
             payload.extend(info_payload(state, false)?);
         }
@@ -296,11 +315,34 @@ impl Book {
         if self.potion != 0 { payload.extend(self.lesson_payload(false, false)?); }
         if self.journey != 0 { payload.extend(self.lesson_payload(true, false)?); }
         if self.shelter != 0 { payload.extend(self.shelter_payload(false)?); }
-        for (id,state) in &self.recovered.0 { payload.extend(recovered_payload(*id,state,false)?); }
-        for (id,state) in &self.exploration.0 { payload.extend(exploration_payload(*id,state,false)?); }
-        for (id,state) in &self.hunting.0 { payload.extend(hunting_payload(*id,state,false)?); }
-        if self.arwic.phase>0 {payload.extend(arwic_payload(&self.arwic,false)?);}
+        self.visit_native_entries(now, |entry| {
+            payload.extend(entry.payload(now, false)?);
+            Ok(())
+        })?;
         Ok(native_graph(0xa1, &payload))
+    }
+
+    fn visit_native_entries(&self, now: u64, mut visit: impl FnMut(JournalEntry<'_>) -> Result<(), WorldError>) -> Result<(), WorldError> {
+        for (&id, state) in &self.recovered.0 { visit(recovered_entry(id, state)?)?; }
+        for (&id, state) in &self.exploration.0 { visit(exploration_entry(id, state)?)?; }
+        for (&id, state) in &self.hunting.0 { visit(hunting_entry(id, state)?)?; }
+        if self.arwic.phase > 0 { visit(arwic_entry(&self.arwic))?; }
+        for entry in self.windmill.entries().into_iter().chain(self.esper.entries()).chain(self.notebook.entries()) {
+            visit(windmill_entry(&entry))?;
+        }
+        for (&id, state) in &self.warder.0 { visit(warder_entry(id, state, now)?)?; }
+        Ok(())
+    }
+
+    /// A native taking rule requires the exact objective and its current journal status.
+    pub(crate) fn permits_quest_item(&self, requirement: Option<(u32, u32)>, now: u64) -> Result<bool, WorldError> {
+        let Some((id, status)) = requirement else { return Ok(true) };
+        let mut permitted = false;
+        self.visit_native_entries(now, |entry| {
+            if entry.id == id { permitted = entry.status(now) == status; }
+            Ok(())
+        })?;
+        Ok(permitted)
     }
 }
 
@@ -370,29 +412,34 @@ impl Book {
     /// on every kill grows traffic with journal history and can fill the GUN
     /// reliable queue. Login still sends the complete list_graph snapshot.
     pub fn updates_since(&self, previous:&Self) -> Result<Vec<Vec<u8>>, WorldError> {
+        let now = crate::recovered_quests::now();
         let mut events = Vec::new();
+        for entry in self.windmill.entries().into_iter().chain(self.esper.entries()).chain(self.notebook.entries()) {
+            if previous.windmill.entries().contains(&entry)||previous.esper.entries().contains(&entry)||previous.notebook.entries().contains(&entry){continue;}
+            events.push(windmill_entry(&entry).update(now)?);
+        }
         if self.arwic.phase>0 && self.arwic!=previous.arwic {
-            let mut args=script::integer(0);args.extend(native_graph(0xa0,&arwic_payload(&self.arwic,true)?));
-            args.extend(script::integer(if self.arwic.phase==5{COMPLETED}else{UNDERWAY}));
-            events.push(script::private_call(UPDATE,&args)?);
+            events.push(arwic_entry(&self.arwic).update(now)?);
+        }
+        for (id,state) in &self.warder.0 {
+            if previous.warder.0.get(id)!=Some(state) {
+                events.push(warder_entry(*id,state,now)?.update(now)?);
+            }
         }
         for (id,state) in &self.exploration.0 {
-            if previous.exploration.0.get(id)==Some(state) {continue;}
-            let mut args=script::integer(0);args.extend(native_graph(0xa0,&exploration_payload(*id,state,true)?));
-            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
-            events.push(script::private_call(UPDATE,&args)?);
+            if previous.exploration.0.get(id)!=Some(state) {
+                events.push(exploration_entry(*id,state)?.update(now)?);
+            }
         }
         for (id,state) in &self.hunting.0 {
-            if previous.hunting.0.get(id)==Some(state) {continue;}
-            let mut args=script::integer(0);args.extend(native_graph(0xa0,&hunting_payload(*id,state,true)?));
-            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
-            events.push(script::private_call(UPDATE,&args)?);
+            if previous.hunting.0.get(id)!=Some(state) {
+                events.push(hunting_entry(*id,state)?.update(now)?);
+            }
         }
         for (id,state) in &self.recovered.0 {
-            if previous.recovered.0.get(id)==Some(state) {continue;}
-            let mut args=script::integer(0);args.extend(native_graph(0xa0,&recovered_payload(*id,state,true)?));
-            args.extend(script::integer(if state.completed>0 {COMPLETED}else{UNDERWAY}));
-            events.push(script::private_call(UPDATE,&args)?);
+            if previous.recovered.0.get(id)!=Some(state) {
+                events.push(recovered_entry(*id,state)?.update(now)?);
+            }
         }
         if self.shelter != 0 && self.shelter!=previous.shelter {
             let mut args=script::integer(0);
@@ -510,53 +557,241 @@ pub fn is_training_portal(id: u64) -> bool {
 pub fn validate_practice_craft(book: &Book, bag: &crate::inventory::Inventory, items: &[crate::inventory::Command], changes: &[crate::progression::Command], first: u64) -> io::Result<Book> {
     use crate::inventory::Command as ItemCommand;
     let bad = || io::Error::other("Invalid Potion Practice craft transaction.");
-    let [ItemCommand::ConsumeDense { item: mushroom }, ItemCommand::ConsumeStackDense { item: tallow, quantity }, ItemCommand::Grant(output)] = items else { return Err(bad()); };
-    if *quantity != crate::crafting::TALLOW_QUANTITY || !changes.is_empty() { return Err(bad()); }
-    let recipe = match output.definition { crate::crafting::HEALTH_OUTPUT => crate::crafting::HEALTH_RECIPE, crate::crafting::VIGOR_OUTPUT => crate::crafting::VIGOR_RECIPE, _ => return Err(bad()) };
-    let request = crate::crafting::ExecuteRequest { primary: *mushroom, ingredients: std::collections::BTreeMap::from([(1, *mushroom), (2, *tallow)]), spinner: 0, recipe };
-    request.require_inputs(bag, true).map_err(|_| bad())?;
-    let candidate = bag.apply(&items[0]).and_then(|bag| bag.apply(&items[1])).map_err(|_| bad())?;
-    let expected = crate::crafting::output(recipe, first, candidate.free_slot().ok_or_else(bad)?).ok_or_else(bad)?;
-    if output != &expected { return Err(bad()); }
+    let [ItemCommand::ConsumeDense { item: mushroom }, ItemCommand::ConsumeStackDense { item: tallow, .. }, .., ItemCommand::Grant(output)] = items else {
+        return Err(bad());
+    };
+    if !changes.is_empty() { return Err(bad()); }
+    let recipe = match output.definition {
+        crate::crafting::HEALTH_OUTPUT => crate::crafting::HEALTH_RECIPE,
+        crate::crafting::VIGOR_OUTPUT => crate::crafting::VIGOR_RECIPE,
+        _ => return Err(bad()),
+    };
+    let request = crate::crafting::ExecuteRequest {
+        primary: *mushroom,
+        ingredients: std::collections::BTreeMap::from([(1, *mushroom), (2, *tallow)]),
+        spinner: 0,
+        recipe,
+    };
+    let expected = request.potion_plan(bag, first)?;
+    if !expected.iter().map(ItemCommand::encode).eq(items.iter().map(ItemCommand::encode)) {
+        return Err(bad());
+    }
     book.apply(&Command::CraftedPotion).map_err(io::Error::other)
 }
 
-fn arwic_payload(s:&crate::arwic_mines::State,fx:bool)->Result<Vec<u8>,WorldError> {
-    let c=crate::arwic_mines::content();let mut b=Vec::new();word(&mut b,crate::arwic_mines::QUEST);
-    b.extend(world::literal_name(&c.title)?);b.extend(world::literal_name(&c.summary)?);word(&mut b,ICON);
-    word(&mut b,if s.phase==5{COMPLETED}else{UNDERWAY});word(&mut b,if s.phase==5{0}else{s.phase});
-    b.extend(world::literal_name(&s.guidance())?);word(&mut b,1);b.extend((s.started as f64).to_le_bytes());
-    b.extend((if s.phase==5{s.completed as f64}else{-1.}).to_le_bytes());
-    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
-}
-fn exploration_payload(id:u32,state:&crate::exploration_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
-    let q=crate::exploration_quests::profile(id).ok_or(WorldError::InvalidValue)?;
-    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
-    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
-    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});
-    word(&mut b,if state.completed>0 {0}else{state.phase as u32});
-    b.extend(world::literal_name(&crate::exploration_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
-    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
-    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
+// gmQuestInfo sends the persisted timestamps and two *remaining durations*.
+// Both the login snapshot and a single-phase update use the same clock reading.
+struct JournalEntry<'a> {
+    id: u32,
+    title: &'a str,
+    description: &'a str,
+    guidance: std::borrow::Cow<'a, str>,
+    level: u32,
+    phase: u32,
+    started: u64,
+    completed: u64,
+    limit: u64,
+    repeat: u64,
 }
 
-fn hunting_payload(id:u32,state:&crate::hunting_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
-    let q=crate::hunting_quests::profile(id).ok_or(WorldError::InvalidValue)?;
-    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
-    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
-    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});
-    word(&mut b,if state.completed>0 {0}else{u32::from(state.count)+1});
-    b.extend(world::literal_name(&crate::hunting_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
-    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
-    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
+impl JournalEntry<'_> {
+    fn expires(&self) -> bool {
+        self.completed == 0 && self.limit > 0
+    }
+
+    fn status(&self, now: u64) -> u32 {
+        if self.completed > 0 {
+            COMPLETED
+        } else if self.expires() && now >= self.started.saturating_add(self.limit) {
+            FAILED
+        } else {
+            UNDERWAY
+        }
+    }
+
+    fn payload(&self, now: u64, fx: bool) -> Result<Vec<u8>, WorldError> {
+        let mut bytes = Vec::new();
+        word(&mut bytes, self.id);
+        bytes.extend(world::literal_name(self.title)?);
+        bytes.extend(world::literal_name(self.description)?);
+        word(&mut bytes, ICON);
+        word(&mut bytes, self.status(now));
+        word(&mut bytes, if self.completed > 0 { 0 } else { self.phase });
+        if let Some(points) = crate::quest_points::amount(self.id).filter(|_| self.completed > 0) {
+            bytes.extend(world::literal_name(&format!("{}\nQuest points earned: {points}.", self.guidance))?);
+        } else {
+            bytes.extend(world::literal_name(&self.guidance)?);
+        }
+        word(&mut bytes, self.level);
+        bytes.extend((self.started as f64).to_le_bytes());
+        bytes.extend((if self.completed > 0 { self.completed as f64 } else { -1.0 }).to_le_bytes());
+        word(&mut bytes, u32::from(self.expires()));
+        let remaining = if self.expires() { self.started.saturating_add(self.limit).saturating_sub(now) } else { 0 };
+        let retry = if self.completed > 0 && self.repeat > 0 { self.completed.saturating_add(self.repeat).saturating_sub(now) } else { 0 };
+        bytes.extend((remaining as f64).to_le_bytes());
+        bytes.extend((retry as f64).to_le_bytes());
+        word(&mut bytes, u32::from(fx));
+        Ok(bytes)
+    }
+
+    fn update(&self, now: u64) -> Result<Vec<u8>, WorldError> {
+        let mut args = script::integer(0);
+        args.extend(native_graph(0xa0, &self.payload(now, true)?));
+        args.extend(script::integer(self.status(now)));
+        script::private_call(UPDATE, &args)
+    }
 }
 
-fn recovered_payload(id:u32,state:&crate::recovered_quests::State,fx:bool)->Result<Vec<u8>,WorldError> {
-    let q=crate::recovered_quests::profiles().iter().find(|q|q.id==id).ok_or(WorldError::InvalidValue)?;
-    let mut b=Vec::new();word(&mut b,id);b.extend(world::literal_name(&q.title)?);
-    b.extend(world::literal_name(&q.text)?);word(&mut b,ICON);
-    word(&mut b,if state.completed>0 {COMPLETED}else{UNDERWAY});word(&mut b,u32::from(state.completed==0));
-    b.extend(world::literal_name(&crate::recovered_quests::Book::guidance(q,state))?);word(&mut b,u32::from(q.level));
-    b.extend((state.started as f64).to_le_bytes());b.extend((if state.completed>0{state.completed as f64}else{-1.}).to_le_bytes());
-    word(&mut b,0);b.extend(0f64.to_le_bytes());b.extend(0f64.to_le_bytes());word(&mut b,u32::from(fx));Ok(b)
+fn windmill_entry<'a>(e: &'a (u32,&str,String,u32,u64,u64,u64)) -> JournalEntry<'a> {
+    let (id, title, text, phase, started, completed, limit) = e;
+    let repeat = match *id {
+        crate::windmill::FIND_WARDER => 0,
+        crate::esper_camp::QUEST => crate::esper_camp::REPEAT,
+        crate::warder_notebook::QUEST | crate::warder_notebook::REFERRAL => crate::warder_notebook::REPEAT,
+        _ => crate::windmill::REPEAT,
+    };
+    JournalEntry {
+        id: *id, title, description: text, guidance: text.as_str().into(),
+        level: if matches!(*id, crate::warder_notebook::QUEST | crate::warder_notebook::REFERRAL) {10} else {1},
+        phase: *phase, started: *started, completed: *completed, limit: *limit, repeat,
+    }
+}
+
+fn warder_entry(id: u32, s: &crate::warder_referrals::State, now: u64) -> Result<JournalEntry<'static>, WorldError> {
+    let q = crate::warder_referrals::profiles().iter().find(|q| q.id == id).ok_or(WorldError::InvalidValue)?;
+    Ok(JournalEntry {
+        id, title: &q.title, description: &q.direction, guidance: s.guidance(q, now).into(),
+        level: q.level.into(), phase: 1, started: s.started, completed: s.completed, limit: q.limit, repeat: q.repeat,
+    })
+}
+
+fn arwic_entry(s: &crate::arwic_mines::State) -> JournalEntry<'static> {
+    let q = crate::arwic_mines::content();
+    JournalEntry {
+        id: crate::arwic_mines::QUEST, title: &q.title, description: &q.summary, guidance: s.guidance().into(),
+        level: 1, phase: s.phase, started: s.started, completed: s.completed, limit: 0, repeat: crate::arwic_mines::REPEAT,
+    }
+}
+
+fn exploration_entry(id: u32, s: &crate::exploration_quests::State) -> Result<JournalEntry<'static>, WorldError> {
+    let q = crate::exploration_quests::profile(id).ok_or(WorldError::InvalidValue)?;
+    Ok(JournalEntry {
+        id, title: &q.title, description: &q.text, guidance: crate::exploration_quests::Book::guidance(q, s).into(),
+        level: q.level.into(), phase: s.phase as u32, started: s.started, completed: s.completed,
+        limit: q.limit_seconds, repeat: q.repeat_seconds,
+    })
+}
+
+fn hunting_entry(id: u32, s: &crate::hunting_quests::State) -> Result<JournalEntry<'static>, WorldError> {
+    let q = crate::hunting_quests::profile(id).ok_or(WorldError::InvalidValue)?;
+    Ok(JournalEntry {
+        id, title: &q.title, description: &q.text, guidance: crate::hunting_quests::Book::guidance(q, s).into(),
+        level: q.intended_level.unwrap_or(q.level).into(), phase: u32::from(s.count) + 1, started: s.started, completed: s.completed,
+        limit: q.limit_seconds, repeat: q.repeat_seconds,
+    })
+}
+
+fn recovered_entry(id: u32, s: &crate::recovered_quests::State) -> Result<JournalEntry<'static>, WorldError> {
+    let q = crate::recovered_quests::state_profile(id, s).ok_or(WorldError::InvalidValue)?;
+    Ok(JournalEntry {
+        id, title: &q.title, description: &q.text, guidance: crate::recovered_quests::Book::guidance(q, s).into(),
+        level: q.intended_level.unwrap_or(q.level).into(),
+        phase: if matches!(id, crate::slavetaker::HEAD_QUEST | crate::slavetaker::SEEK) {u32::from((s.count + 1).min(q.goal))} else {1},
+        started: s.started, completed: s.completed,
+        limit: q.limit_seconds, repeat: q.repeat_seconds,
+    })
+}
+
+#[cfg(test)]
+mod journal_timer_tests {
+    use super::*;
+    use ac2_net::protocol::{GmQuestInfo, NativeObject, PackedEntry, PackValue, unpack_values};
+
+    #[test]
+    fn quest_item_taking_requires_the_exact_live_objective() {
+        let q = crate::exploration_quests::catalog().quests.iter().find(|q| q.title == "Lost Wish Obelisk Search").unwrap();
+        let mut book = Book::default();
+        assert!(book.permits_quest_item(None, 100).unwrap());
+        assert!(!book.permits_quest_item(Some((q.id, UNDERWAY)), 100).unwrap());
+        book.exploration.0.insert(q.id, crate::exploration_quests::State { started: 100, completed: 0, phase: 1 });
+        assert!(book.permits_quest_item(Some((q.id, UNDERWAY)), 100).unwrap());
+        assert!(!book.permits_quest_item(Some((q.id, UNDERWAY)), 100 + q.limit_seconds).unwrap());
+        assert!(!book.permits_quest_item(Some((0x80000115, UNDERWAY)), 100).unwrap());
+        book.exploration.0.get_mut(&q.id).unwrap().completed = 110;
+        assert!(!book.permits_quest_item(Some((q.id, UNDERWAY)), 111).unwrap());
+    }
+
+    fn decoded_update(entry: &JournalEntry, now: u64) -> GmQuestInfo {
+        let packet = entry.update(now).unwrap();
+        let args = unpack_values(&packet[12..]).unwrap();
+        let [PackValue::Int(0), PackValue::Reference(graph), PackValue::Int(reason)] = &args[..] else {
+            panic!("invalid quest update arguments");
+        };
+        let PackedEntry::Heap { object, .. } = &graph.entries[0] else { panic!("missing quest object") };
+        let Some(NativeObject::GmQuestInfo(info)) = &object.native else { panic!("wrong quest object") };
+        assert_eq!(*reason, info.status);
+        info.as_ref().clone()
+    }
+
+    #[test]
+    fn starter_hunt_wasp_bane_displays_its_intended_level_when_accepted_at_three() {
+        let q = crate::recovered_quests::use_profile(0x47000f43).unwrap();
+        let book = crate::recovered_quests::Book::default().accept(q.id, 3, 100).unwrap();
+        let entry = recovered_entry(q.id, &book.0[&q.id]).unwrap();
+        assert_eq!(entry.level, 6);
+        let info = decoded_update(&entry, 120);
+        assert_eq!(info.seconds_remaining, 10780.);
+    }
+
+    #[test]
+    fn timed_quest_uses_original_deadline_and_completed_retry() {
+        let q = crate::exploration_quests::catalog().quests.iter().find(|q| q.title == "Lost Wish Obelisk Search").unwrap();
+        let mut state = crate::exploration_quests::State { started: 100, completed: 0, phase: 1 };
+        let info = decoded_update(&exploration_entry(q.id, &state).unwrap(), 100);
+        assert!(info.expires);
+        assert_eq!((info.status, info.seconds_remaining, info.seconds_until_retry), (UNDERWAY, 86400., 0.));
+        state.phase = 2;
+        for (clock, status, remaining) in [(86499, UNDERWAY, 1.), (86500, FAILED, 0.), (90000, FAILED, 0.)] {
+            let info = decoded_update(&exploration_entry(q.id, &state).unwrap(), clock);
+            assert_eq!((info.bestowal, info.status, info.seconds_remaining), (100., status, remaining));
+        }
+        state.completed = 110;
+        let info = decoded_update(&exploration_entry(q.id, &state).unwrap(), 115);
+        assert!(!info.expires);
+        assert_eq!((info.status, info.done, info.seconds_remaining, info.seconds_until_retry), (COMPLETED, 110., 0., 71995.));
+    }
+
+    #[test]
+    fn slimelord_journal_preserves_the_limit_in_force_at_bestowal() {
+        use crate::recovered_quests::{Book as Hunts, HuntRules};
+        let id = 0x40000106;
+        let guardian = 0x47001688;
+        let hunts = Hunts::default();
+        let (previous, _) = hunts.kill_version(guardian, 36, 10, HuntRules::PublishedRewards);
+        let (current, _) = hunts.kill(guardian, 38, 10);
+        for (book, level, duration) in [(previous, 36, 3600_u64), (current, 38, 7200_u64)] {
+            let entry = recovered_entry(id, &book.0[&id]).unwrap();
+            assert_eq!(entry.level, level);
+            let info = decoded_update(&entry, 20);
+            assert_eq!((info.status, info.seconds_remaining), (UNDERWAY, (duration - 10) as f64));
+            let deadline = decoded_update(&entry, 10 + duration);
+            assert_eq!((deadline.status, deadline.seconds_remaining), (FAILED, 0.));
+        }
+    }
+
+    #[test]
+    fn every_hunting_and_recovered_profile_uses_its_gameplay_limit() {
+        let h = crate::hunting_quests::State { started: 10, ..Default::default() };
+        for q in crate::hunting_quests::profiles() {
+            let info = decoded_update(&hunting_entry(q.id, &h).unwrap(), 20);
+            assert_eq!((info.expires, info.seconds_remaining), (q.limit_seconds > 0, q.limit_seconds.saturating_sub(10) as f64), "{}", q.title);
+            assert_eq!(info.status, UNDERWAY);
+        }
+        let r = crate::recovered_quests::State { started: 10, ..Default::default() };
+        for q in crate::recovered_quests::profiles() {
+            let info = decoded_update(&recovered_entry(q.id, &r).unwrap(), 20);
+            assert_eq!(info.expires, q.limit_seconds > 0);
+            assert_eq!(info.seconds_remaining, q.limit_seconds.saturating_sub(10) as f64, "{}", q.title);
+        }
+    }
 }

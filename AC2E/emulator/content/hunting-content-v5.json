@@ -1,0 +1,120 @@
+{
+  "version": 5,
+  "policy": "Aerie KEF hunts and report delivery. Guide objectives, coordinates and percentage rewards; dedicated quest pages supply precise timers and hunt caps. Journal IDs are authored.",
+  "quests": [
+    {
+      "id": 1073806383,
+      "title": "Smash the Sandstone Colossi",
+      "npc": 1191198653,
+      "npc_name": "Jasper Urleg",
+      "targets": [
+        1191197322
+      ],
+      "goal": 20,
+      "level": 60,
+      "xp_basis_points": 200,
+      "xp_cap": 168042890,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 583200,
+      "text": "Defeat 20 Sandstone Colossi in the southwestern Ramparts, including the crater at 50.2S, 36.2E. Report to Jasper Urleg in the Aerie.",
+      "native_death_effect": "Eff_IncrementQuest_KQ4A_SandstoneColossus",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_smashthesandstonecolossi.html",
+          "sha256": "9b64dcfbc59340310bf45af68ddacd0049663818026038dec1d354d5750ef66b"
+        },
+        {
+          "url": "https://www.20oz.net/index.php/Smash_the_Sandstone_Colossi.html"
+        }
+      ]
+    },
+    {
+      "id": 1073806384,
+      "title": "Eliminate the Swarm Drone Nymphs",
+      "npc": 1191198656,
+      "npc_name": "Temakhe",
+      "targets": [
+        1191197396
+      ],
+      "goal": 20,
+      "level": 65,
+      "xp_basis_points": 200,
+      "xp_cap": 219731203,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 583200,
+      "text": "Defeat 20 Swarm Drone Nymphs in the southern and southwestern Ramparts. Report to Temakhe in the Aerie.",
+      "native_death_effect": "Eff_IncrementQuest_KQ4D_SwarmDroneNymph",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_eliminatetheswarmdronenymphs.html",
+          "sha256": "febccd43a2abe32a0dbc8c45420c4c4404b7589cd3af4ef766c9be4594c396c3"
+        },
+        {
+          "url": "https://www.20oz.net/index.php/Eliminate_the_Swarm_Drone_Nymphs.html"
+        }
+      ]
+    },
+    {
+      "id": 1073806385,
+      "title": "Exterminate the Swarm Harvesters",
+      "npc": 1191198693,
+      "npc_name": "Bertrand Jas",
+      "targets": [
+        1191197411
+      ],
+      "goal": 20,
+      "level": 65,
+      "xp_basis_points": 200,
+      "xp_cap": 250273847,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 583200,
+      "text": "Defeat 20 Swarm Harvesters in the southern and southwestern Ramparts. Report to Bertrand Jas in the Aerie.",
+      "native_death_effect": "Eff_IncrementQuest_KQ4E_SwarmHarvester",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheswarmharvesters.html",
+          "sha256": "dc43701b316049d24436f8c8663b9e7fc5fa6baa3c91f3edb6e82c836dd5ff30"
+        },
+        {
+          "url": "https://www.20oz.net/index.php/Exterminate_the_Swarm_Harvesters.html"
+        }
+      ]
+    }
+  ],
+  "referral": {
+    "id": 1073806850,
+    "title": "Journey to Fort Strathelar",
+    "level": 70,
+    "text": "Deliver the Aerie Report from Elite Legionary Otonku to Legionary Brigadier Maekarn in Fort Strathelar at 51.8S, 39.5E.",
+    "giver": 1191198954,
+    "recipient": 1191198957,
+    "item": 1191198956,
+    "prerequisites": [
+      1073806372,
+      1073806383,
+      1073806384,
+      1073806385
+    ],
+    "delivery": true,
+    "goal": 1,
+    "targets": [],
+    "kill_starters": [],
+    "use_starters": [],
+    "xp_basis_points": 100,
+    "xp": 0,
+    "repeat_seconds": 601200,
+    "limit_seconds": 601200,
+    "evidence": [
+      {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_journeytofortstrathelar.html",
+        "sha256": "c9d2b99f674190e79f0f7028a305a199a914281dd048f678e4e82c4e2b54a730"
+      },
+      {
+        "url": "https://www.20oz.net/index.php/Journey_to_Fort_Strathelar.html"
+      }
+    ]
+  }
+}

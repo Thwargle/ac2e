@@ -2,6 +2,7 @@
 use pyrealium::{content::Content, creature_ai, dat::Dat, encounters::{Encounters, Event},
     geometry::Geometry, loot::{Catalog, Loot}, scene::Scene, store::Store};
 use std::{collections::{BTreeMap, BTreeSet}, path::Path};
+#[path="support/placement_repairs.rs"] mod placement_repairs;
 
 fn outdoors(cell:u32)->bool {(1..=64).contains(&(cell&65535))}
 fn xy(cell:u32,p:[f32;3])->[f64;2] {
@@ -16,7 +17,7 @@ fn regional_wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
     let content=Content::load(&root.join("regional-world-v1.tsv"),Path::new(&data)).unwrap();
     let source:serde_json::Value=serde_json::from_str(include_str!("../content/regional-content-v1.json")).unwrap();
     let report:serde_json::Value=serde_json::from_str(include_str!("../content/regional-world-v1.report.json")).unwrap();
-    let encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let encounters=Encounters::load(Path::new("world"),&content).unwrap();
     let health=encounters.initial_health().collect::<BTreeMap<_,_>>();
     let ai=creature_ai::catalog().unwrap();
     let native=include_str!("../content/regional-creature-combat-v1.tsv").lines().filter(|l|l.starts_with("47"))
@@ -28,7 +29,18 @@ fn regional_wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
         .collect::<BTreeMap<_,_>>();
     let mut geometry=Geometry::open(Path::new(&data)).unwrap();
     let installed=root.join("../../data/world/legions-world.tsv");
+    // This pack's 80m authoring exclusion predates the bounded body repairs.
+    // Check the pinned original evidence here; placement_clearance separately
+    // validates every corrected position against the final live population.
+    let repairs:serde_json::Value=serde_json::from_str(include_str!("../content/placement-clearance-v1.json")).unwrap();
+    let reviewed:serde_json::Value=serde_json::from_str(include_str!("../content/placement-reviewed-v1.json")).unwrap();
+    let originals=repairs["repairs"].as_array().unwrap().iter().chain(reviewed["repairs"].as_array().unwrap())
+        .map(|r|(r["id"].as_str().unwrap(),r)).collect::<BTreeMap<_,_>>();
     let fixed=std::fs::read_to_string(installed).unwrap_or_default().lines().filter_map(|l| {
+        let l=if let Some(r)=originals.get(l.split('\t').next().unwrap_or_default()) {
+            assert_eq!(l,r["replacement"].as_str().unwrap(),"Installed repair changed without review");
+            r["original"].as_str().unwrap()
+        } else {l};
         let f=l.split('\t').collect::<Vec<_>>();
         if f.len()!=13 || f[0].starts_with("8140c00000") {return None;}
         let cell=u32::from_str_radix(f[3],16).ok()?;
@@ -40,8 +52,9 @@ fn regional_wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
         assert!(encounters.is_creature(object.id),"Missing combat role: {:?}",object.name);
         assert_eq!(health[&object.id],native[&object.entity].0);
         assert!(outdoors(object.placement.cell));
-        assert!(geometry.contact(object.placement),"Not on ground: {:x}",object.id);
-        assert!(geometry.dry_ground(object.placement),"Underwater: {:x}",object.id);
+        let effective=placement_repairs::effective(object.id,object.placement);
+        assert!(geometry.contact(effective),"Not on ground: {:x}",object.id);
+        assert!(geometry.dry_ground(effective),"Underwater: {:x}",object.id);
         assert!(!ai[&object.entity].loot_proof);
         let p=xy(object.placement.cell,object.placement.coordinates);
         assert!(fixed.iter().all(|old|distance(p,*old)>=79.999),"Encroaches on an existing actor: {:x}",object.id);
@@ -97,7 +110,7 @@ fn regional_groups_fill_once_and_refill_after_the_configured_delay() {
     let root=Path::new(env!("CARGO_MANIFEST_DIR")).join("content");
     let content=Content::load(&root.join("regional-world-v1.tsv"),Path::new(&data)).unwrap();
     let report:serde_json::Value=serde_json::from_str(include_str!("../content/regional-world-v1.report.json")).unwrap();
-    let mut encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let mut encounters=Encounters::load(Path::new("world"),&content).unwrap();
     assert_eq!(encounters.spawners().group_count(),report["groups"].as_array().unwrap().len());
     let total=content.objects().count();
     let first=content.objects().next().unwrap().id;

@@ -18,7 +18,7 @@ def main():
     def start():
         return subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19516','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--test-map-travel','true','--seconds','150'],
+            '--initialize-ui','true','--test-map-travel','true','--seconds','150'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
     def connect(create=False):
         p=Peer();peers.append(p);p.send('connect',host='127.0.0.1',port=19516,account='local');p.wait('characters')

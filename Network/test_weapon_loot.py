@@ -9,11 +9,12 @@ import subprocess
 import time
 import uuid
 from test_network import Peer, ROOT, SERVER, DAT_DIRECTORY
-from test_gameplay import until
+from test_gameplay import panel_text, until
 
 PORT = 19532
 BOSS, TARGET = [str(0x8140000000030E00+n) for n in range(2)]
 STAFF, NEST = 0x47000F0B, 0x470010DA
+LEGIONARY_TROPHY = 0x470039B8
 
 
 def main():
@@ -22,11 +23,11 @@ def main():
     content = run/'world.tsv'
     content.write_text('pyrealium-world-v4\n'+''.join(
         f'{int(iid):016x}\t{entity:08x}\t{visual:08x}\t02990109\t{x}\t240.199\t-44.606205\t1\t0\t0\t0\t-\t-\n'
-        for iid,entity,visual,x in [(BOSS,0x4700390b,0x1f001a01,60),
+        for iid,entity,visual,x in [(BOSS,0x47003b1b,0x1f001b56,60),
                                    (TARGET,0x470015ac,0x1f000036,62)]))
     encounters = run/'encounters.tsv'
     encounters.write_text('pyrealium-encounters-v1\nplayer\t20\t1\t1000\t3\nregen\t0\t0\t1000\n'
-                          'npc\t4700390b\t20\t1\t60000\t3\t300000\t1000\t0\n'
+                          'npc\t47003b1b\t20\t1\t60000\t3\t300000\t1000\t0\n'
                           'npc\t470015ac\t1000\t1\t60000\t3\t300000\t0\t0\n')
     peers, process = [], None
     with (run/'server.log').open('w', encoding='utf-8') as log:
@@ -34,9 +35,9 @@ def main():
             p = subprocess.Popen([str(SERVER),'serve','--bind',f'127.0.0.1:{PORT}',
                 '--account','local','--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),
                 '--content',str(content),'--encounters',str(encounters),'--initialize-ui','true',
-                '--training-kit','false','--lifestones','false','--portals','false','--seconds','120'],
+                '--lifestones','false','--portals','false','--seconds','120'],
                 stdout=log,stderr=log,creationflags=0x08000000,
-                env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='5'))
+                env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='2088'))
             time.sleep(1)
             assert p.poll() is None, (run/'server.log').read_text()
             return p
@@ -56,11 +57,11 @@ def main():
             time.sleep(.15)  # Server examination cooldown.
             mark=len(p.events);p.send('examine',id=iid)
             panel=until(p,mark,'examination',lambda e:e['id']==iid)
-            return [n.get('text',{}).get('literal') or '' for n in panel['nodes']]
+            return panel_text(panel).splitlines()
 
         try:
             process=start();hero,observer=login('Weapon Hunter'),login('Weapon Observer')
-            identity=hero.id
+            identity, observer_id = hero.id, observer.id
             until(hero,0,'object',lambda e:e['id']==BOSS)
             mark=len(hero.events);hero.send('attack',id=BOSS)
             until(hero,mark,'quality',lambda e:e['id']==BOSS and e['key']==0x102 and e['value']==0)
@@ -68,10 +69,15 @@ def main():
             mark=len(hero.events);hero.send('open_container',id=BOSS)
             opened=until(hero,mark,'container_state',lambda e:e['open'])
             drops=[until(hero,mark,'object',lambda e:e['id']==iid) for iid in opened['items']]
-            assert len(drops)==4,drops
+            ordinary=[item for item in drops if item['entity']!=LEGIONARY_TROPHY]
+            assert len(ordinary)==4 and len(drops)-len(ordinary)<=1,drops
             staff=next(e for e in drops if e['entity']==STAFF)
-            expected=['Weapon damage: 115','Treasure level: 56','Required level: 1']
-            before=inspect(hero,staff['id']);assert all(s in before for s in expected),before
+            before=inspect(hero,staff['id'])
+            damage=int(next(s.removeprefix('Weapon damage: ') for s in before if s.startswith('Weapon damage: ')))
+            assert 100 <= damage <= 136, before  # Level 56 base 118, +/-15% roll.
+            expected=[f'Weapon damage: {damage}','Weapon class: a stave','Treasure level: 56','Required level: 1']
+            assert all(s in before for s in expected),before
+            assert 'Double-click to pick up.' in before and 'Double-click to equip.' not in before,before
             mark=len(hero.events);hero.send('loot',id=BOSS)
             until(hero,mark,'container_state',lambda e:not e['open'])
             owned=[e for e in hero.events[mark:] if e.get('event')=='object' and e.get('container')==hero.id]
@@ -79,6 +85,7 @@ def main():
             staff=next(e for e in owned if e['entity']==STAFF)
             nest=next(e for e in owned if e['entity']==NEST)
             after=inspect(hero,staff['id']);assert all(s in after for s in expected),after
+            assert 'Double-click to equip.' in after and 'Double-click to pick up.' not in after,after
             # Level 56 describes the generated roll, not its native equip gate.
             # The staff requires 1; Stinging Nest requires 15 and must reject us.
             mark=len(hero.events);hero.send('use',item=nest['id'],target='0')
@@ -87,11 +94,14 @@ def main():
             mark,remote=len(hero.events),len(observer.events)
             hero.send('use',item=staff['id'],target='0')
             until(hero,mark,'inventory_result',lambda e:e['id']==staff['id'] and e['status']==0 and e['equipped']==0x40)
+            until(observer,remote,'object',lambda e:e['id']==staff['id'])
+            held=inspect(observer,staff['id'])
+            assert all(s in held for s in expected) and 'Equipped.' in held,held
             hero.send('skill_train',skill=0x59);time.sleep(.3)
             for attempt in range(5):
                 mark,remote=len(hero.events),len(observer.events)
                 hero.send('skill',skill=0x59,target=TARGET)
-                until(hero,mark,'skill_finished')
+                until(hero,mark,'story', lambda e: e.get('request') is not None)
                 try:
                     hit=until(hero,mark,'hit',lambda e:e['id']==TARGET and e['damage']>80,timeout=2)
                     break
@@ -111,9 +121,20 @@ def main():
             assert restored['entity']==STAFF,restored
             panel=inspect(hero,staff['id'])
             assert all(s in panel for s in expected) and 'Equipped in main hand.' in panel,panel
-            result=dict(weapon_drops=len(drops),damage=115,treasure_level=56,native_minimum_level=1,
+            observer = login(identity=observer_id)
+            until(observer, 0, 'object', lambda e: e['id'] == hero.id)
+            sword = until(hero, 0, 'object', lambda e: e['entity'] == 0x470007ee and e.get('container') == hero.id)
+            mark = len(observer.events)
+            observer.send('examine', id=sword['id'])
+            until(observer, mark, 'chat', lambda e: 'not available to examine' in str(e))
+            mark = len(observer.events)
+            hero.send('use', item=sword['id'], target='0')
+            until(observer, mark, 'object', lambda e: e['id'] == sword['id'] and e.get('parent') == hero.id)
+            starter_panel = inspect(observer, sword['id'])
+            assert 'Equipped.' in starter_panel and 'Equipment: Main hand, Off hand' in starter_panel, starter_panel
+            result=dict(private_bag_hidden=True, observer_saw_starter_equipment=True, weapon_drops=len(ordinary),damage=damage,treasure_level=56,native_minimum_level=1,
                         native_level_15_rejected=True,flame_bolt_damage=hit['damage'],
-                        periodic_damage=1,remote_spell_effect=True,stats_and_equipment_survive_restart=True)
+                        periodic_damage=1,remote_spell_effect=True,observer_saw_equipped_roll=True,stats_and_equipment_survive_restart=True)
             (run/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result));print(run)
         finally:
             for index,p in enumerate(peers):

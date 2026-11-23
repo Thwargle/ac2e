@@ -28,6 +28,111 @@
         "row_sha256": "0cd4a131725bf544c66d9f3606921a3362f9ba978c75d832806832d77836b716"
       },
       "reason": "Same named Arwic quest NPC in two capture snapshots. The older unverified observation uses a different subcell and elevation; retain the semantically mapped, native-ground-verified recovery. This does not establish uniqueness of other NPC templates."
+    },
+    {
+      "name": "Sneer, Drudge Captain",
+      "superseded": {
+        "source": "inferred-world-v1.tsv",
+        "id": "8140a02b9eaab85d",
+        "row_sha256": "7025062b07ac5d8104445ce385033d5bcc882bcd3ba61ee1d3f1c08960d8ffc5"
+      },
+      "retained": {
+        "source": "fiery-crypt-map-v1.tsv",
+        "id": "8140dc0000ed0000",
+        "row_sha256": "b6881a00de66908b0ace393b3adb0f14fcd9efb910d4cc12daf308190da32c4d"
+      },
+      "reason": "The quest starts with the soldier outside the Fiery Crypt. The guide's marked interior boss room and native floor replace the inferred outdoor boss spawn."
+    },
+    {
+      "name": "Shiela Ondaran",
+      "superseded": {
+        "source": "capture-spawns-audited.tsv",
+        "id": "8140841a181340b7",
+        "row_sha256": "7a75923b046eda055602cee0842d0f6b2f4d30db93d29db85e94364884fd4e9c"
+      },
+      "retained": {
+        "source": "recovered-population.tsv",
+        "id": "8140b551b320f961",
+        "row_sha256": "bb851173672ede3fee6602a224cbcf8d35bc485418c86d3c1c79f3942c8e2932"
+      },
+      "reason": "AC2Hero places this named Arwic hunt giver at 43.3 N, 6.1 W. The named, ground-verified recovery is within 25 m of the guide coordinate. The other capture of the same definition is over 140 m away.",
+      "source_url": "http://ac2hero.e5i5o.com/search/npcsearch1d50.html"
+    },
+    {
+      "name": "Grey Ondaros",
+      "superseded": {
+        "source": "capture-spawns-audited.tsv",
+        "id": "8140c0227175751d",
+        "row_sha256": "8bdaac02d819bbac6b6d1dd07b8bb4b518277629489c2a46c2252e717a916f39"
+      },
+      "retained": {
+        "source": "recovered-population.tsv",
+        "id": "8140b5da6c19c012",
+        "row_sha256": "273db3be2877190f5d69a23b8102acc8c15f5cc611cf75722c0c08fd2d9eba87"
+      },
+      "reason": "AC2Hero places this named Arwic hunt giver at 44.0 N, 6.6 W. The named, ground-verified recovery is within 25 m of the guide coordinate. The other capture of the same definition is over 140 m away.",
+      "source_url": "http://ac2hero.e5i5o.com/search/npcsearch6b48.html"
+    },
+    {
+      "name": "Endaraen Brightstar",
+      "superseded": {
+        "source": "hunting-world-v1.tsv",
+        "id": "8140d20047003fad",
+        "row_sha256": "9998d034ef710f7c37accad3b26ad3cbb9b41e872ae59c4ed1855dd70c9790e4"
+      },
+      "retained": {
+        "source": "recovered-population.tsv",
+        "id": "8140c5735893c03b",
+        "row_sha256": "3e6a508758c6054cc52ed35de955811edae074f473db78f6c367024bba0356b3"
+      },
+      "reason": "The hunt pack placed a second Endaraen at Jethrics Outpost. Both the start and return for Smash the Coral Golems are at 32.5 S, 51.9 E. The captured NPC with the same hunt definition is within 5 m of that location.",
+      "source_url": "http://ac2hero.e5i5o.com/quest/knorr_smashthecoralgolems.html"
+    },
+    {
+      "name": "Furs Turfna",
+      "superseded": {
+        "source": "world-observed-expanded.tsv",
+        "id": "814092a088ee59c0",
+        "row_sha256": "c03ae3804f73ea102cc0a0e9bf34fca1eb9bf82b1cf158c00cee018574f33152"
+      },
+      "retained": {
+        "source": "recovered-population.tsv",
+        "id": "8140c4ff5b636ce9",
+        "row_sha256": "e915eb4eb0c80d7fb8093d5b7be6bfb05ba428fb6dfdebf4f0b1a6733f5ecc73"
+      },
+      "reason": "Find My Idiot Son and the NPC index identify a single Cragstone vendor at 31.9 N, 11.8 W. The recovered capture maps to the installed seasonal seller definition and stands within 12 m of this point. The other observation is across town.",
+      "source_url": "http://ac2hero.e5i5o.com/quest/linvak_findmyidiotson.html"
+    },
+    {
+      "name": "Lost Wish Explorer",
+      "superseded": {
+        "source": "recovered-population.tsv",
+        "id": "8140f066a54a709a",
+        "row_sha256": "d35ffbd1d5e3a2943eacaae00e01decdcd970fbd6d6fc5e986851e8ba6fb53a9"
+      },
+      "retained": {
+        "source": "world-observed-expanded.tsv",
+        "id": "8140944ef4ef9534",
+        "row_sha256": "e479904c3a42da01b70e2ac7fdaca1c9161719732013de53b74068af46651ab4"
+      },
+      "reason": "The guide places the Explorer beside Kehan's northwest Ringway. Its historical Ringway coordinate is 42.9 N, 11.5 E; the installed quest text places it at 44.2 N, 11.3 E. Keep the observed Explorer at 44.0 N, 11.3 E next to the working Ringway from the same snapshot.",
+      "source_url": "http://ac2hero.e5i5o.com/quest/osteth_lostwishobelisksearch.html"
+    },
+    {
+      "name": "Naokim",
+      "superseded": {
+        "source": "recovered-population.tsv",
+        "id": "81408e776e1bb127",
+        "row_sha256": "91da3665dba1f1862545fbb632e7d8771c7574cf7391584dfad4bf5ff68715fb"
+      },
+      "retained": {
+        "source": "recovered-population.tsv",
+        "id": "8140893e5bc59585",
+        "row_sha256": "9fcb63475e4ae1e517a97f38d8bb9e1855987c98f087ef69c04affaac7134aed"
+      },
+      "reason": "The single Shadow Antechamber contact appears twice in one capture, as Naokim and its PostATL variant, 1.6 m apart. They use the same actor model and AC2E topics. Use the base contact in this room; keep both native definitions in the catalog.",
+      "source_url": "http://ac2hero.e5i5o.com/search/npcsearchabde.html",
+      "retire_post_atl_variant": true
     }
   ]
 }

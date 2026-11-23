@@ -26,8 +26,7 @@ def main():
     with (run / 'server.log').open('w') as log:
         server = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19380',
             '--account', 'local', '--data', str(run / 'world'), '--game-data', str(DAT_DIRECTORY),
-            '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-            '--portals', 'true', '--test-map-travel', 'true', '--seconds', '90'], env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'),
+            '--content', str(content), '--initialize-ui', 'true', '--portals', 'true', '--test-map-travel', 'true', '--seconds', '90'], env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'),
             stdout=log, stderr=log, creationflags=0x08000000)
         try:
             time.sleep(1)

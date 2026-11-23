@@ -11,6 +11,206 @@ from content_profile import ContentProfile, nearby_landmark, door_physical
 
 
 class ContentComparisonTest(unittest.TestCase):
+    def test_naokim_replacement_requires_both_phases_to_serve_identical_dialogue(self):
+        content = prepare_content.ROOT / 'AC2E/emulator/content'
+        rules = json.loads((content / 'placement-replacements.json').read_bytes())['replacements']
+        rule, = [rule for rule in rules if rule.get('retire_post_atl_variant')]
+        old_id, kept_id = [rule[key]['id'] for key in ('superseded', 'retained')]
+        source = 'recovered-population.tsv'
+        lines = [line for line in (content / source).read_text(encoding='utf-8').splitlines()
+                 if line.split('\t', 1)[0] in (old_id, kept_id)]
+        inputs = {(source, line.split('\t', 1)[0]): line for line in lines}
+        admitted = {iid: source for _, iid in inputs}
+        profiles = json.loads((content / 'npc-dialogue-v1.json').read_bytes())
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'placement-replacements.json').write_text(json.dumps({'schema': 1, 'replacements': [rule]}))
+            catalog = root / 'npc-dialogue-v1.json'
+            catalog.write_text(json.dumps(profiles))
+            result, removed, pending = prepare_content.apply_placement_replacements(root, lines, inputs, admitted)
+            self.assertEqual((result, removed, pending), ([inputs[source, kept_id]], [rule], []))
+            result, removed, pending = prepare_content.apply_placement_replacements(
+                root, lines, inputs, {old_id: source})
+            self.assertEqual((result, removed, len(pending)), (lines, [], 1))
+            old_entity = int(inputs[source, old_id].split('\t')[1], 16)
+            profile = next(p for p in profiles['profiles'] if p['entity'] == old_entity)
+            profile['topics'][0]['text'] += ' A later phase.'
+            catalog.write_text(json.dumps(profiles))
+            with self.assertRaisesRegex(ValueError, 'phase and dialogue'):
+                prepare_content.apply_placement_replacements(root, lines, inputs, admitted)
+
+    def test_officer_cameron_names_only_matching_anonymous_capture_placements(self):
+        directory = prepare_content.ROOT / "Asheron's Call 2 - Legions"
+        if not (directory / 'portal.dat').is_file():
+            self.skipTest('Local Legions portal DAT is unavailable')
+        content = prepare_content.ROOT / 'AC2E/emulator/content'
+        captured = (content / 'world-observed-expanded.tsv').read_text().splitlines()
+        originals = [line + '\t-' for line in captured if '\t47002e27\t' in line]
+        self.assertEqual({row.split('\t')[3] for row in originals}, {'6fa8000d', 'cf8c0015'})
+        other = [originals[0][:-1] + 'Existing name',
+                 originals[0].replace('1f001554', '1f001555'),
+                 originals[0].replace('47002e27', '470038b2')]
+        rows = [*originals, *other]
+        profile = ContentProfile(directory)
+        try:
+            with patch.object(prepare_content, 'entity', return_value={
+                'properties': {'40000019:41000189': 'NPCTable_Guard'}}):
+                self.assertEqual(prepare_content.apply_recovered_actor_names(profile, content, rows), 0)
+                self.assertEqual(rows, [*originals, *other])
+            self.assertEqual(prepare_content.apply_recovered_actor_names(profile, content, rows), 2)
+            self.assertEqual(rows, [*(row[:-1] + 'Officer Cameron' for row in originals), *other])
+            self.assertEqual(prepare_content.apply_recovered_actor_names(profile, content, rows), 0)
+        finally:
+            profile.close()
+
+    def test_portal_localization_only_names_matching_unnamed_placements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'local_English.dat').touch()
+            portal = dict(id='8140000000010001', entity='47001454', cell='6fa7001b',
+                          position=[65.0608, 55.4285, 79.9443], status='placed', name=[12, 34])
+            unresolved = dict(portal, id='8140000000010002', status='unresolved')
+            unknown_name = dict(portal, id='8140000000010003', name=[12, 56])
+            (root / 'portals.json').write_text(json.dumps({'portals': [portal, unresolved, unknown_name]}))
+            blank = '8140000000010001\t47001454\t1f000d09\t6fa7001b\t65.0608\t55.4285\t79.9443\t1\t0\t0\t0\t-\t-'
+            unchanged = [
+                blank[:-1] + 'Existing name',
+                blank.replace(portal['id'], '8140000000010004'),
+                blank.replace(portal['entity'], '47001455'),
+                blank.replace(portal['cell'], '6fa7001c'),
+                blank.replace('79.9443', '79.95'),
+                blank.replace('79.9443', 'nan'),
+                blank.rsplit('\t', 1)[0],
+                blank.replace(portal['id'], unresolved['id']),
+                blank.replace(portal['id'], unknown_name['id']),
+            ]
+            labeled = blank[:-1] + 'South Gateway to Rithwic'
+            rows = ['pyrealium-world-v4', blank, *unchanged]
+            with patch.object(prepare_content, 'Archive') as archive, \
+                 patch.object(prepare_content, 'localized_name', side_effect=['South Gateway to Rithwic', '-']) as lookup:
+                self.assertEqual(prepare_content.apply_portal_names(root, root, rows), 1)
+                self.assertEqual(rows, ['pyrealium-world-v4', labeled, *unchanged])
+                self.assertEqual([c.args[1] for c in lookup.call_args_list],
+                                 [{'table': 12, 'key': 34}, {'table': 12, 'key': 56}])
+                archive.assert_called_once_with(root / 'local_English.dat')
+                archive.return_value.file.close.assert_called_once()
+
+    def test_portal_localization_is_optional_without_either_source(self):
+        for present in ['portals.json', 'local_English.dat']:
+            with self.subTest(present=present), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / present).touch()
+                rows = ['pyrealium-world-v4']
+                with patch.object(prepare_content, 'Archive') as archive:
+                    self.assertEqual(prepare_content.apply_portal_names(root, root, rows), 0)
+                    archive.assert_not_called()
+                self.assertEqual(rows, ['pyrealium-world-v4'])
+
+    def test_installed_portal_localizations_match_observed_placements(self):
+        directory = prepare_content.ROOT / "Asheron's Call 2 - Legions"
+        if not (directory / 'local_English.dat').is_file():
+            self.skipTest('Local Legions language DAT is unavailable')
+        content = prepare_content.ROOT / 'AC2E/emulator/content'
+        captured = (content / 'world-observed-expanded.tsv').read_text(encoding='utf8').splitlines()[1:]
+        before = [line + '\t-' if len(line.split('\t')) == 12 else line for line in captured]
+        rows = before.copy()
+        count = prepare_content.apply_portal_names(directory, content, rows)
+        catalog = json.loads((content / 'portals.json').read_bytes())
+        expected = {p['id'] for p in catalog['portals'] if p['status'] == 'placed'}
+        changes = {}
+        for old, new in zip(before, rows, strict=True):
+            if old != new:
+                fields = new.split('\t')
+                self.assertEqual(old, '\t'.join([*fields[:-1], '-']))
+                changes[fields[0]] = fields[-1]
+        self.assertEqual(changes.keys(), expected)
+        self.assertEqual(count, len(expected))
+        self.assertEqual(changes['8140000000010001'], 'South Gateway to Rithwic')
+        self.assertEqual(changes['8140000000010002'], 'South Gateway to Molwirth')
+        self.assertEqual(prepare_content.apply_portal_names(directory, content, rows), 0)
+
+    def test_verified_platform_requires_unchanged_capture_and_unforced_native_support(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            before='8140000000000001\t47002760\t1f001384\t4da20027\t81\t124\t139.44342\t1\t0\t0\t0\t-\tConstruct'
+            iid=before.split('\t')[0]
+            (root/'placement-clearance-v1.json').write_text(json.dumps(
+                dict(schema=1,native_ground_verified=True,repairs=[],unresolved=[{'id':iid}])))
+            proof=dict(accepted=True,placement_result='Ok',placement_flags=0,physics_quanta=100,
+                all_samples_supported=True,max_displacement_m=0.,requested_cell='4da20027',
+                requested_position=[81.,124.,139.44342])
+            row=dict(id=iid,original=before,replacement=None,native_support=proof)
+            policy=dict(schema=1,native_ground_verified=True,reviewed=1,repairs=[],verified=[row],unresolved=[])
+            path=root/'placement-reviewed-v1.json'
+            path.write_text(json.dumps(policy))
+            rows,applied=prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            self.assertEqual(rows[-1],before);self.assertEqual(applied,[])
+            for field,value in [('accepted',False),('placement_result','NoCell'),('placement_flags',16),
+                ('placement_flags',64),('physics_quanta',1),('all_samples_supported',False),
+                ('max_displacement_m',1.),('max_displacement_m',float('nan')),('requested_cell','4da20028'),
+                ('requested_position',[81.,124.,140.]),('requested_position',[])]:
+                row['native_support']={**proof,field:value};path.write_text(json.dumps(policy))
+                with self.assertRaisesRegex(ValueError,'native sphere support'):
+                    prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            row['native_support']=proof;path.write_text(json.dumps(policy))
+            for changed in [before.replace('139.44342','139.5'),before.replace('1f001384','1f001385'),
+                            before.replace('\t-\tConstruct','\t0.8\tConstruct')]:
+                with self.assertRaisesRegex(ValueError,'Stale retained placement'):
+                    prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',changed])
+            row['replacement']=before;path.write_text(json.dumps(policy))
+            with self.assertRaisesRegex(ValueError,'Stale retained placement'):
+                prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+
+    def test_reviewed_clearance_requires_flagged_identity_bounded_same_block_and_native_route(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            before='8140000000000001\t47000001\t1f000001\t77b80001\t10\t10\t100\t1\t0\t0\t0\t1\tCreature'
+            iid=before.split('\t')[0]
+            base={'schema':1,'native_ground_verified':True,'repairs':[],'unresolved':[{'id':iid}]}
+            (root/'placement-clearance-v1.json').write_text(json.dumps(base))
+            after=before.replace('\t10\t10\t100\t','\t22\t10\t100\t').replace('77b80001','77b80009')
+            rule={'id':iid,'original':before,'replacement':after,'native_floor_route':True}
+            policy={'schema':1,'native_ground_verified':True,'reviewed':1,'repairs':[rule],'unresolved':[]}
+            path=root/'placement-reviewed-v1.json'
+            path.write_text(json.dumps(policy))
+            rows,applied=prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            self.assertEqual(rows[-1],after);self.assertEqual(len(applied),1)
+            for replacement in [after.replace('\t22\t10','\t31\t10'),after.replace('77b80009','78b80009'),
+                                after.replace('47000001','47000002')]:
+                rule['replacement']=replacement;path.write_text(json.dumps(policy))
+                with self.assertRaises(ValueError):prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            rule['replacement']=after;rule['native_floor_route']=False;path.write_text(json.dumps(policy))
+            with self.assertRaisesRegex(ValueError,'verified route'):
+                prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            rule['native_floor_route']=True;policy['unresolved']=[{'id':iid}];path.write_text(json.dumps(policy))
+            with self.assertRaisesRegex(ValueError,'exactly the initially flagged'):
+                prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            policy['repairs']=[];policy['unresolved']=[{'id':iid,'original':before,'replacement':None}]
+            path.write_text(json.dumps(policy))
+            rows,applied=prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            self.assertEqual(rows[-1],before);self.assertEqual(applied,[])
+            with self.assertRaisesRegex(ValueError,'Stale retained placement'):
+                prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',after])
+
+    def test_clearance_repairs_pin_rows_and_cannot_change_identity_or_dungeon_floor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            before='8140000000000001\t47000001\t1f000001\t77b80001\t10\t10\t100\t1\t0\t0\t0\t1\tCreature'
+            after=before.replace('\t10\t10\t100\t','\t11\t10\t100\t')
+            rule={'id':before.split('\t')[0],'original':before,'replacement':after}
+            policy={'schema':1,'native_ground_verified':True,'repairs':[rule]}
+            path=root/'placement-clearance-v1.json'
+            path.write_text(json.dumps(policy))
+            rows,applied=prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+            self.assertEqual(rows,['pyrealium-world-v4',after]);self.assertEqual(len(applied),1)
+            with self.assertRaisesRegex(ValueError,'Stale placement'):
+                prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before.replace('\t100\t','\t101\t')])
+            for replacement in [after.replace('47000001','47000002'),after.replace('\t1\tCreature','\t2\tCreature'),
+                                after.replace('77b80001','77b80100'),after.replace('\t11\t10','\t50\t10'),
+                                after.replace('\t100\t','\tnan\t')]:
+                policy['repairs'][0]['replacement']=replacement;path.write_text(json.dumps(policy))
+                with self.assertRaises(ValueError):prepare_content.apply_clearance_repairs(root,['pyrealium-world-v4',before])
+
     def test_evidence_hash_accepts_checkout_line_endings_without_accepting_edits(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'content.tsv'
@@ -60,6 +260,25 @@ class ContentComparisonTest(unittest.TestCase):
                 catalog.write_text('{"changed":true}')
                 with self.assertRaisesRegex(ValueError,'fresh native ground'):
                     prepare_content.prepare(root,output)
+
+    def test_starter_manifest_catalog_and_routes_must_match_the_reviewed_hashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            content,index,*_=self.replacement_fixture(root)
+            files={'manifest_sha256':content/'starter-world-v1.tsv',
+                   'source_sha256':content/'starter-areas-v1.json',
+                   'routes_sha256':content/'starter-routes-v1.tsv'}
+            for key,path in files.items():
+                path.write_text('{}' if key=='source_sha256' else 'pyrealium-world-v3\n')
+            evidence={key:hashlib.sha256(path.read_bytes()).hexdigest() for key,path in files.items()}
+            (content/'starter-world-v1.report.json').write_text(json.dumps(evidence))
+            with patch.object(prepare_content,'ROOT',root),patch.object(prepare_content,'asset_index',return_value=index),patch.object(prepare_content,'ContentProfile'):
+                prepare_content.prepare(root,root/'world.tsv')
+                for path in files.values():
+                    original=path.read_bytes();path.write_bytes(original+b'changed')
+                    with self.assertRaisesRegex(ValueError,'Starter catalog changed'):
+                        prepare_content.prepare(root,root/'world.tsv')
+                    path.write_bytes(original)
 
     def replacement_fixture(self, root):
         content = root / 'AC2E/emulator/content'

@@ -1,0 +1,363 @@
+{
+  "version": 1,
+  "policy": "Reconstructed server transitions, native quest/item IDs and kill/acquire stages. Level 10+, 24h deadline, 800 XP and three named rewards, 20h repeat. Completion starts Seek the Warder Captain (48h, 2500 XP). Preserve verified translated placements: Scout 14.0N 0.6E and Bandit 15.5N 1.7W. Older guide/journal coordinates (Scout 25.0N 3.8E, camp 28.1N 3.9E) conflict with these captures; live guidance uses retained positions. No fellowship-shared credit or Drudge Potion Raid is claimed. Respawn cadence remains authored, not recovered.",
+  "sources": [
+    {
+      "title": "The Warder Scout's Notebook",
+      "url": "http://ac2wiki.info/index.php/The_Warder_Scout%27s_Notebook",
+      "html_sha256": "64ec432ad790132f01ab32cd6df183e0455312fddb0a351fb8a22f796e76c150",
+      "facts": {
+        "Requirements": "Level 10+",
+        "Type": "Solo",
+        "Start Location": "Rithwic , Mad Crone Mountains",
+        "Quest Starter": "Warder Scout , 25.0N 3.8E",
+        "Time Limit": "24 hours",
+        "XP Reward": "800",
+        "Other Rewards": "Emblem of Order , Mad Crone Glyph , Prosper Glyph",
+        "Repeat Time": "20 hours",
+        "Related Quests": "Seek the Warder Captain"
+      }
+    },
+    {
+      "title": "Seek the Warder Captain",
+      "url": "http://ac2wiki.info/index.php/Seek_the_Warder_Captain",
+      "html_sha256": "ff29feefe2af9770ad38fa6a9a436b978709d689ee415e22e974e5341047534a",
+      "facts": {
+        "Requirements": "Level 10+",
+        "Type": "Solo",
+        "Start Location": "Rithwic , Mad Crone Mountains",
+        "Quest Starter": "Warder Scout",
+        "Time Limit": "48 hours",
+        "XP Reward": "2,500",
+        "Other Rewards": "",
+        "Repeat Time": "20 hours",
+        "Related Quests": "The Warder Scout's Notebook , Drudge Potion Raid"
+      }
+    },
+    {
+      "title": "Drudge Slinker Bandit",
+      "url": "http://ac2wiki.info/index.php/Drudge_Slinker_Bandit",
+      "html_sha256": "56da6e0ef980b9a2e3fbe6a2b699b367dbb12d69ac9c23dd9fb517624df8c7d6",
+      "facts": {}
+    }
+  ],
+  "fields": [
+    {
+      "quest": "400000c4",
+      "package": "QuestWarderScout",
+      "field": "name",
+      "table": "250016a8",
+      "key": "a8607cec",
+      "text_raw": "The Warder Scout's Notebook",
+      "records": [
+        {
+          "table": "250016a8",
+          "sha256": "e4d778b928210d14fe6b11cb589bce7e6fc80f3ff436973037346139b20dadbc",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250216a8",
+          "sha256": "162faa4f70270768a233c738c079518f2e4a0ac4199b07aae00bee71c925425b",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c4",
+      "package": "QuestWarderScout",
+      "field": "summary",
+      "table": "250016a8",
+      "key": "6c459364",
+      "text_raw": "\n\nThe poor Warder Scout has lost his notebook! Get it back from the mean nasty drudge who took it.\n\n",
+      "records": [
+        {
+          "table": "250016a8",
+          "sha256": "e4d778b928210d14fe6b11cb589bce7e6fc80f3ff436973037346139b20dadbc",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250416a8",
+          "sha256": "b48a0352296db83a50b0178bc854e60405d7c7ca6b825bdcd0f8827edac30173",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c4",
+      "package": "QuestWarderScout",
+      "field": "phases/1/journal",
+      "table": "250016a8",
+      "key": "2e5c1e52",
+      "text_raw": "Find and kill the Drudge Slinker Bandit who ambushed the Warder Scout at 28.1 N x 3.9 E.",
+      "records": [
+        {
+          "table": "250016a8",
+          "sha256": "e4d778b928210d14fe6b11cb589bce7e6fc80f3ff436973037346139b20dadbc",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250616a8",
+          "sha256": "257c8c8c6e3e66990e85aed518664a7e3e4d9f0dc18adfcdac0e772d30d432b4",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c4",
+      "package": "QuestWarderScout",
+      "field": "phases/2/journal",
+      "table": "250016a8",
+      "key": "2e5f1e52",
+      "text_raw": "Take the notebook from the dead Drudge Slinker Bandit.",
+      "records": [
+        {
+          "table": "250016a8",
+          "sha256": "e4d778b928210d14fe6b11cb589bce7e6fc80f3ff436973037346139b20dadbc",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250816a8",
+          "sha256": "05567116608f49d8ecc76a1b193031a7a426816c4aa85bfaf1cad400f51cc5cc",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c4",
+      "package": "QuestWarderScout",
+      "field": "phases/3/journal",
+      "table": "250016a8",
+      "key": "2e5e1e52",
+      "text_raw": "Bring the notebook back to the Warder Scout.",
+      "records": [
+        {
+          "table": "250016a8",
+          "sha256": "e4d778b928210d14fe6b11cb589bce7e6fc80f3ff436973037346139b20dadbc",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250a16a8",
+          "sha256": "ebe95db7726206f113415bacdacf58d1871bbdcec3f5fb42e4b4b35c042f6537",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c5",
+      "package": "QuestSeekWarderCaptain",
+      "field": "name",
+      "table": "250016a6",
+      "key": "a8607cec",
+      "text_raw": "Seek the Warder Captain",
+      "records": [
+        {
+          "table": "250016a6",
+          "sha256": "274908999a491fcc2ff1ae564613ef7c8d9a6b846a69e5d4ad2e074f89b6c1fe",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250216a6",
+          "sha256": "dafa21337cf342c99f3389d232cf7357270598902d66ef4283514f0008d67564",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c5",
+      "package": "QuestSeekWarderCaptain",
+      "field": "summary",
+      "table": "250016a6",
+      "key": "6c459364",
+      "text_raw": "\n\nSeek the Warder Captain.\n\n",
+      "records": [
+        {
+          "table": "250016a6",
+          "sha256": "274908999a491fcc2ff1ae564613ef7c8d9a6b846a69e5d4ad2e074f89b6c1fe",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250416a6",
+          "sha256": "938f09660974a77560720d8e77d0caf75912b48f67f8021431b62f49eb9ede91",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c5",
+      "package": "QuestSeekWarderCaptain",
+      "field": "phases/1/journal",
+      "table": "250016a6",
+      "key": "2e5c1e52",
+      "text_raw": "Seek out the Warder Captain in the Warder's Hideout at 20.6 N x 14 E.",
+      "records": [
+        {
+          "table": "250016a6",
+          "sha256": "274908999a491fcc2ff1ae564613ef7c8d9a6b846a69e5d4ad2e074f89b6c1fe",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250616a6",
+          "sha256": "49274b3bbb6f2c97213cf232fedc5e1908d09a905417c46f3d764345da32c00c",
+          "installed_record_identical": false
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": 1191187889,
+      "name": "Warder Scout's Notebook",
+      "visual": 520097190,
+      "physical": 1191187952,
+      "quality_hash": "46e07a0db89d477b",
+      "name_table": "250016ac"
+    },
+    {
+      "id": 1191187821,
+      "name": "Emblem of Order",
+      "visual": 520097184,
+      "physical": 1191187944,
+      "quality_hash": "e93cd98f2f0fac7a",
+      "name_table": "25001621"
+    },
+    {
+      "id": 1191186617,
+      "name": "Mad Crone Glyph",
+      "visual": 520094159,
+      "physical": 1191182954,
+      "quality_hash": "52b51810a815c160",
+      "name_table": "250011f1"
+    },
+    {
+      "id": 1191186594,
+      "name": "Prosper Glyph",
+      "visual": 520094159,
+      "physical": 1191182954,
+      "quality_hash": "46b1b9a82c2c199b",
+      "name_table": "250011f6"
+    }
+  ],
+  "placements": [
+    {
+      "row": "8140818cdbb50004\t470015c8\t1f000d92\t07f30127\t-414.320007\t-62.2799988\t-6.13838196\t0.378411114\t0\t0\t0.925637662\t-\tWarder Captain",
+      "sha256": "55f58268a3cb4da2a1d1825cd0811a6b586ce556c58efff09ee306cbe49baf7b"
+    },
+    {
+      "row": "814099950a00c9e0\t470015be\t1f000036\t7d930013\t50.2670746\t48.4564514\t124.513382\t1\t0\t0\t0\t-\tDrudge Slinker Bandit",
+      "sha256": "77381fde36e361bad8ff1de506c6cee6016b462b3f17c5c387ae4064c4d0dccd"
+    },
+    {
+      "row": "8140e58434e692af\t470015cc\t1f000d94\t80910014\t45.1590309\t72.2281265\t173.50499\t1\t0\t0\t0\t-\tWarder Scout",
+      "sha256": "7a031bb960e22bdbc1f277a519852c90f60116e4b8d5b0c31ede018665095a7e"
+    }
+  ],
+  "native_bandit": {
+    "name": "Drudge Slinker Bandit",
+    "visual": 520093750,
+    "base": 15591,
+    "props": {
+      "AI_Inventory1": "ClubCudgelDrudgeSlinker",
+      "AI_Inventory1Quantity": 1,
+      "AICombat_WieldImplements": 1,
+      "NPC_DeathLootProfile": 949,
+      "NPC_DeathEffect1": "Eff_IncrementQuestKanten2",
+      "NPC_DeathEffect1Stat": 1,
+      "NPC_DeathEffect2": "Eff_AdvanceQuestWarderScoutPhase2",
+      "NPC_DeathEffect2Stat": 1,
+      "NPC_StartingSkill1": 1,
+      "NPC_StartingSkill1Level": 222,
+      "NPC_StartingSkill2": 7,
+      "NPC_StartingSkill2Level": 222,
+      "NPC_StartingSkill3": 12,
+      "NPC_StartingSkill3Level": 222,
+      "NPC_StartingSkill4": 2,
+      "NPC_StartingSkill4Level": 155,
+      "NPC_StartingSkill5": 8,
+      "NPC_StartingSkill5Level": 155,
+      "NPC_StartingSkill6": 13,
+      "NPC_StartingSkill6Level": 155,
+      "NPC_StartingSkill7": 492,
+      "NPC_StartingSkill7Level": 1,
+      "NPC_StartingSkill7_IsBase": 1,
+      "NPC_StartingSkill8": 490,
+      "NPC_StartingSkill8Level": 1,
+      "NPC_StartingSkill8_IsBase": 1,
+      "NPC_StartingSkill9": 491,
+      "NPC_StartingSkill9Level": 1,
+      "NPC_StartingSkill9_IsBase": 1,
+      "NPC_StartingSkill10": 502,
+      "NPC_StartingSkill10Level": 1,
+      "NPC_StartingSkill10_IsBase": 1,
+      "NPC_StartingSkill11": 463,
+      "NPC_StartingSkill11Level": 1,
+      "Placeable": 1,
+      "Name": [
+        2824895724,
+        620762823
+      ],
+      "Description": [
+        1816499044,
+        620762823
+      ],
+      "PhysObj": 1191182535,
+      "Scale": 1065353216,
+      "AI_NPCTable": "NPCTable_DrudgeRobber",
+      "AICombat_NaturalDamage": 56,
+      "AICombat_NaturalVariance": 1056964608,
+      "NPC_ArmorLevel": 8,
+      "GameplayStatistics_Level": 12,
+      "GameplayStatistics_MaxHealth": 350,
+      "GameplayStatistics_MaxVigor": 350,
+      "GameplayStatistics_DeathExperience": "1f00000000000000",
+      "AI_AISuperClass": 6,
+      "AI_LoveTable": 6,
+      "AI_PerceptionRadius": 1106247680,
+      "NPC_TSysCoarseItemClass": 1073741867,
+      "NPC_TSysFineItemClass": 1073741878,
+      "ButcheryProfile": 1862281404,
+      "EnterWorldFX": 1090520500
+    },
+    "ai": "NPCTable_DrudgeRobber",
+    "role": "monster",
+    "signature": [
+      null,
+      null,
+      null,
+      null,
+      4
+    ]
+  },
+  "native_notebook": {
+    "name": "Warder Scout's Notebook",
+    "visual": 520097190,
+    "base": 4101,
+    "props": {
+      "Name": [
+        2824895724,
+        620762796
+      ],
+      "Description": [
+        1816499044,
+        620762796
+      ],
+      "Icon": 1090519883,
+      "PhysObj": 1191187952,
+      "Placeable": 1,
+      "Item_IsQuestItem": 1,
+      "Item_Value": 0,
+      "Item_AcquireEffect1": "Eff_AdvanceQuestWarderScoutPhase3",
+      "Item_AcquireEffect1Stat": 1,
+      "Item_UsagePermission": 3,
+      "Item_UsageAction": 34
+    },
+    "ai": null,
+    "role": "scripted",
+    "signature": [
+      null,
+      null,
+      null,
+      null,
+      4
+    ]
+  }
+}

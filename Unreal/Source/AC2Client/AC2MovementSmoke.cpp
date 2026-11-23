@@ -13,6 +13,16 @@ bool SAC2GameUI::SmokeMovementInput(int32 Step,FString& Error)
     if(!P)return Fail(TEXT("Missing movement pawn"));
     auto& App=FSlateApplication::Get();
     auto Key=[&](FKey K,bool Down){PC->InputKey(FInputKeyEventArgs(nullptr,FInputDeviceId::CreateFromInternalId(0),K,Down?IE_Pressed:IE_Released,1.f,false,FPlatformTime::Cycles64()));};
+    const FVector2D Pointer=App.GetCursorPos();
+    auto Orbit=[&](FKey Button){
+        const TSet<FKey> Held={Button};
+        CameraButtonDown(FPointerEvent(0,Pointer,Pointer,Held,Button,0,FModifierKeysState()));
+        CameraMouseMove(FPointerEvent(0,Pointer+FVector2D(450,0),Pointer,Held,EKeys::Invalid,0,FModifierKeysState()));
+    };
+    auto Release=[&](FKey Button){CameraButtonUp(FPointerEvent(0,Pointer,Pointer,TSet<FKey>(),Button,0,FModifierKeysState()));};
+    static double InitialYaw=0;
+    auto Turned=[&](){return FMath::Abs(FMath::FindDeltaAngleDegrees(InitialYaw,P->GetActorRotation().Yaw));};
+    auto OrbitAngle=[&](){return FMath::Abs(FMath::FindDeltaAngleDegrees(PC->GetControlRotation().Yaw,P->GetActorRotation().Yaw));};
     auto Mouse4=[&](){
         const auto Window=App.FindWidgetWindow(SharedThis(this));
         if(!Window)return false;
@@ -69,6 +79,27 @@ bool SAC2GameUI::SmokeMovementInput(int32 Step,FString& Error)
     case 11:
         if(P->IsAutoRunning())return Fail(TEXT("Death did not cancel autorun"));
         P->SetDead(false);PC->SetCursor(true);break;
+    case 12:
+        InitialYaw=P->GetActorRotation().Yaw;
+        PC->SetControlRotation(FRotator(0,InitialYaw,0));
+        Orbit(EKeys::LeftMouseButton);Key(EKeys::W,true);break;
+    case 13:
+        if (!PC->FreeOrbit || Turned()>1 || OrbitAngle()<30)
+            return Fail(TEXT("Running during left drag changed facing or lost the orbit"));
+        Release(EKeys::LeftMouseButton);break;
+    case 14:
+        if (PC->FreeOrbit || Turned()>1 || OrbitAngle()>10 ||
+            FVector::DotProduct(P->GetLastMovementInputVector().GetSafeNormal2D(),P->GetActorForwardVector())<.98)
+            return Fail(TEXT("Releasing left drag while running changed travel direction or prevented camera follow"));
+        Key(EKeys::W,false);
+        Orbit(EKeys::LeftMouseButton);Release(EKeys::LeftMouseButton);break;
+    case 15:
+        if (Turned()>1 || OrbitAngle()<30)return Fail(TEXT("A stationary left orbit changed the player heading or snapped back"));
+        PC->SetControlRotation(FRotator(0,InitialYaw,0));
+        Orbit(EKeys::RightMouseButton);break;
+    case 16:
+        if (!PC->CameraSteersPlayer || Turned()<30 || OrbitAngle()>2)return Fail(TEXT("Right drag did not steer the player"));
+        Release(EKeys::RightMouseButton);break;
     }
     UE_LOG(LogTemp,Display,TEXT("AC2 movement input step %d PASS"),Step);
     return true;

@@ -100,7 +100,23 @@ FIntRect FAC2NativeUI::Place(const FAC2UIElement &E, FIntRect R, FIntPoint Old, 
 void FAC2NativeUI::Begin(FIntPoint Viewport)
 {
     Display = Viewport;
+    DisplayedRootOffsets.Reset();
     Nodes.Reset();
+}
+FString FAC2NativeUI::Localized(const TCHAR* Key,const TMap<uint32,FString>& Arguments)
+{
+    if(!Arguments.IsEmpty())return AC2FormatUIString(Local,0x25000012,T(Key),Arguments);
+    return Localized(T(Key));
+}
+FString FAC2NativeUI::Localized(uint32 Key)
+{
+    const uint64 CacheKey=(uint64(0x25000012)<<32)|Key;
+    if(!Strings.Contains(CacheKey))Strings.Add(CacheKey,AC2ReadUIString(Local,0x25000012,Key));
+    return Strings[CacheKey];
+}
+const TCHAR* FAC2NativeUI::PanelRoot(const TCHAR* Field) const
+{
+    return Field;
 }
 bool FAC2NativeUI::Root(uint32 Id, const TCHAR *Name)
 {
@@ -112,6 +128,16 @@ bool FAC2NativeUI::Root(uint32 Id, const TCHAR *Name)
         {
             return Add(*L, I, INDEX_NONE, FIntPoint(L->Width, L->Height), 0);
         }
+    // Promote the legacy side-panel reference into its own window. Resolve
+    // its authored parent geometry once; user offsets then belong to this field.
+    for(int32 I=0;I<L->Controls.Num();++I)if(L->Controls[I].Id==T(Name)){
+        const auto& E=L->Controls[I];const auto* Parent=L->Controls.FindByPredicate([&](const auto& C){return C.Id==E.Parent;});if(!Parent)break;
+        const auto ParentRect=Place(*Parent,Original(*Parent,Parent->DefaultState),FIntPoint(L->Width,L->Height),Display);
+        auto Rect=Place(E,Original(E,E.DefaultState),Original(*Parent,Parent->DefaultState).Size()+FIntPoint(1,1),ParentRect.Size());
+        Rect+=ParentRect.Min;
+        return Add(*L,I,INDEX_NONE,FIntPoint(L->Width,L->Height),0,&Rect);
+    }
+
     return false;
 }
 bool FAC2NativeUI::Template(uint32 Id, const TCHAR *Name, FIntRect Rect, FIntRect Clip, uint32 ParentId)
@@ -161,6 +187,7 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
     }
     FAC2NativeNode N;
     N.Id = Ref.Id;
+    N.Window=ContentWindow?ContentWindow:Parent==INDEX_NONE?Ref.Id:Nodes[Parent].Window;
     N.Kind = Desc->Kind;
     N.Parent = Parent;
     N.State = States.Contains(Ref.Id) ? States[Ref.Id] : Inherited ? Inherited : Ref.DefaultState;
@@ -202,36 +229,106 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
     N.Z = OriginalZ(Ref, N.State);
     const FIntRect ParentBox =
         Parent == INDEX_NONE ? FIntRect(FIntPoint::ZeroValue, Display) : Nodes[Parent].Rect;
-    N.Rect = Override ? *Override : Place(Ref, Original(Ref, N.State), OldParent, ParentBox.Size());
+    if(Parent==INDEX_NONE)if(const auto* Minimum=WindowMinimums.Find(Ref.Id)){
+        N.Attributes.Add(T(TEXT("allow_resize")),1);
+        N.Attributes.Add(T(TEXT("min_width")),Minimum->X);N.Attributes.Add(T(TEXT("min_height")),Minimum->Y);
+        N.Attributes.Add(T(TEXT("max_width")),32768);N.Attributes.Add(T(TEXT("max_height")),32768);
+    }
+    auto Placement=Ref;
+    const bool SkillsWindow=N.Window==T(TEXT("SkillField"));
+    const bool QuestWindow=N.Window==T(TEXT("QuestField"));
+    const bool BottomTrim=(SkillsWindow && Ref.Id==0xb6645e9bu) || (QuestWindow && Ref.Id==0xb21c3f68u);
+    if(QuestWindow && (Ref.Id==0x85413ff5u || Ref.Id==0x87e7c1f5u ||
+        Ref.Id==0x6a170865u || Ref.Id==0x6bc945a5u || Ref.Id==0x5f75e612u)){
+        Placement.Anchors[2]=1;
+        Placement.Anchors[3]=1;
+        N.Attributes.Add(T(TEXT("max_width")),32768);
+        N.Attributes.Add(T(TEXT("max_height")),32768);
+    }
+    if(SkillsWindow && Ref.Id==T(TEXT("ModifyField"))){
+        Placement.Anchors[1]=2;
+        Placement.Anchors[2]=1;
+        Placement.Anchors[3]=1;
+    }
+    if((SkillsWindow || QuestWindow) && N.Attr(TEXT("referent"))==0xe104e194u)
+        Placement.Anchors[3]=2; // Header text stays in its authored caption band.
+    if(N.Window==T(TEXT("InventoryField"))){
+        // The old fixed inventory used stretch anchors even for the portrait
+        // and bag buttons. Only its bag grid should gain vertical space.
+        if(Ref.Id==0x27ed4815u)Placement.Anchors[3]=2;
+        if(Ref.Id==0x22d1bc45u) {Placement.Anchors[0]=2;Placement.Anchors[2]=1;}
+        if(Ref.Id==0x523d41c6u)Placement.Anchors[1]=2;
+        if(Ref.Id==0x4e54bdc7u || Ref.Id==0x89932192u || Ref.Id==0xefd62191u || Ref.Id==0xc71135eau){
+            Placement.Anchors[0]=2;Placement.Anchors[2]=1;Placement.Anchors[3]=2;
+        }
+    }
+    if(Ref.Id==T(TEXT("AutoPopulateButton")))Placement.Anchors[2]=2;
+    if(N.Window==0x0e036a6cu && (Ref.Id==0x82155597u || Ref.Id==0x9ba1f88fu || Ref.Id==0xbff888f4u)){
+        Placement.Anchors[0]=2;Placement.Anchors[2]=1;Placement.Anchors[3]=2;
+    }
+    N.Rect = Override ? *Override : Place(Placement, Original(Ref, N.State), OldParent, ParentBox.Size());
+    if(BottomTrim && Parent!=INDEX_NONE){
+        const int32 Height=Original(Ref,N.State).Height()+1;
+        N.Rect=FIntRect(0,ParentBox.Height()-Height,ParentBox.Width(),ParentBox.Height());
+        N.Attributes.Add(T(TEXT("max_width")),32768);
+    }
+    // These panels were capped to the fixed side bar in retail's XML. Once
+    // detached as independent windows their content must follow the frame,
+    // while tab buttons, icons and the 80-pixel footer retain native sizes.
+    if(N.Window==T(TEXT("SkillField")) && Parent!=INDEX_NONE){
+        const int32 W=ParentBox.Width(),H=ParentBox.Height();
+        if(Ref.Id==0x839fa006u)N.Rect=FIntRect(2,30,W-2,H-2);
+        if(Ref.Id==T(TEXT("CraftPage")) || Ref.Id==0xaf472f02u || Ref.Id==0x839fa006u){
+            N.Attributes.Add(T(TEXT("max_width")),32768);N.Attributes.Add(T(TEXT("max_height")),32768);
+        }
+        if(Nodes[Parent].Id==T(TEXT("CraftPage"))){
+            if(Ref.Id==0xe44235ffu)N.Rect=FIntRect(0,H-80,W,H);
+            if(Ref.Id==T(TEXT("RecipeList")))N.Rect=FIntRect(4,24,W-19,H-86);
+            if(Ref.Id==0x7a983523u)N.Rect=FIntRect(W-15,24,W,H-101);
+            if(Ref.Id==0x039837c7u)N.Rect=FIntRect(W-15,9,W,24);
+            if(Ref.Id==0xf87635e0u)N.Rect=FIntRect(W-15,H-101,W,H-86);
+            N.Attributes.Add(T(TEXT("max_width")),32768);N.Attributes.Add(T(TEXT("max_height")),32768);
+        }
+    }
+    // Resize the owning viewport before resolving anchored descendants. Fixed
+    // retail panels ignore saved sizes; only authored allow_resize roots use them.
+    if(Parent==INDEX_NONE && N.Attr(TEXT("allow_resize")))
+        if(const auto* Size=RootSizes.Find(Ref.Id))N.Rect.Max=N.Rect.Min+*Size;
+    if(Parent==INDEX_NONE && N.Attr(TEXT("allow_resize")) && N.Attr(TEXT("row_height")))
+        if(const auto* Rows=RootBottomRows.Find(Ref.Id))
+            N.Rect.Min.Y=N.Rect.Max.Y-(*Rows*int32(N.Attr(TEXT("row_height")))+int32(N.Attr(TEXT("border_size"))));
     for (auto Axis : {0, 1})
     {
         const TCHAR *MinName = Axis ? TEXT("min_height") : TEXT("min_width");
         const TCHAR *MaxName = Axis ? TEXT("max_height") : TEXT("max_width");
         int32 W = N.Rect.Max[Axis] - N.Rect.Min[Axis];
         W = FMath::Clamp(W, int32(N.Attr(MinName, 0)), int32(N.Attr(MaxName, 32768)));
+        // Saved detached sizes may come from a larger monitor. Clamp the size
+        // before laying out children, otherwise bottom-anchored actions remain
+        // below the viewport even though the window origin is clamped.
+        if(Parent==INDEX_NONE && WindowMinimums.Contains(Ref.Id))W=FMath::Min(W,FMath::Max(1,Display[Axis]));
         N.Rect.Max[Axis] = N.Rect.Min[Axis] + W;
     }
     if (!Override)
     {
         if (Parent != INDEX_NONE)
             N.Rect += ParentBox.Min;
-        else
+        else if(!WindowMinimums.Contains(Ref.Id))
         {
             FIntPoint Origin(FMath::Clamp(N.Rect.Min.X, 0, FMath::Max(0, Display.X - N.Rect.Width())),
                              FMath::Clamp(N.Rect.Min.Y, 0, FMath::Max(0, Display.Y - N.Rect.Height())));
             N.Rect += Origin - N.Rect.Min;
         }
     }
-    if (Parent==INDEX_NONE)
-        if (auto* Offset=RootOffsets.Find(Ref.Id))
+    if (Parent==INDEX_NONE && (RootOffsets.Contains(Ref.Id) || WindowMinimums.Contains(Ref.Id)))
         {
-            N.Rect+=*Offset;
+            const FIntPoint Offset=RootOffsets.FindRef(Ref.Id);
+            N.Rect+=Offset;
             const FIntPoint Origin(FMath::Clamp(N.Rect.Min.X,0,FMath::Max(0,Display.X-N.Rect.Width())),
                                   FMath::Clamp(N.Rect.Min.Y,0,FMath::Max(0,Display.Y-N.Rect.Height())));
-            // Saved offsets can lie far outside the current viewport. Retain
-            // the clamped offset so the next drag starts at the visible panel,
-            // without an invisible distance the mouse must first travel.
-            *Offset+=Origin-N.Rect.Min;
+            // Login can lay out at a provisional viewport before the actual window exists.
+            // Start a drag at the visible position without modifying the user's preference.
+            DisplayedRootOffsets.Add(Ref.Id,Offset+Origin-N.Rect.Min);
             N.Rect+=Origin-N.Rect.Min;
         }
     if (Parent != INDEX_NONE && Ref.Id == T(TEXT("widget")) && Nodes[Parent].Kind == T(TEXT("scrollbar")))
@@ -265,6 +362,20 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
         }
         if (Ref.Id == T(TEXT("right_fill")))
             N.Clip.Min.X = FMath::Max(N.Clip.Min.X, M.Rect.Min.X + FMath::RoundToInt(M.Rect.Width() * Value));
+        // Legions UIElement_Meter::UpdateLayout (005B5780). The shortcut
+        // recovery shade uses bottom_fill with move_fill, disappearing at 1.
+        if (Ref.Id == T(TEXT("top_fill")))
+        {
+            const int32 Height=FMath::RoundToInt(M.Rect.Height()*Value);
+            N.Clip.Max.Y=FMath::Min(N.Clip.Max.Y,M.Rect.Min.Y+Height);
+            if(M.Attr(TEXT("move_fill")))N.Rect+=FIntPoint(0,Height-M.Rect.Height());
+        }
+        if (Ref.Id == T(TEXT("bottom_fill")))
+        {
+            const int32 Height=FMath::RoundToInt(M.Rect.Height()*Value);
+            N.Clip.Min.Y=FMath::Max(N.Clip.Min.Y,M.Rect.Min.Y+Height);
+            if(M.Attr(TEXT("move_fill")))N.Rect+=FIntPoint(0,Height);
+        }
     }
     if (Empty(N.Clip))
         return true;
@@ -284,6 +395,18 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
         for (int32 I : Media->Media)
             if (L.Art.IsValidIndex(I))
                 N.Media.Add(L.Art[I]);
+    N.ResizableFrame=WindowMinimums.Contains(N.Window) && N.Kind==T(TEXT("field"));
+    if(N.Kind==T(TEXT("button")) && N.State!=T(TEXT("ghosted")) && !N.Attr(TEXT("ghosted")))
+    {
+        N.PressState=T(N.State==T(TEXT("highlight")) || N.State==T(TEXT("highlight_rollover")) ||
+            N.State==T(TEXT("highlight_pressed"))?TEXT("highlight_pressed"):TEXT("normal_pressed"));
+        if(!State(Ref,N.PressState) && !State(*Desc,N.PressState))N.PressState=T(TEXT("normal_pressed"));
+        for(const auto* E:{Desc,&Ref})if(const auto* S=State(*E,N.PressState);S && !S->Media.IsEmpty())
+        {
+            for(int32 I:S->Media)if(L.Art.IsValidIndex(I) && L.Art[I].Kind==5)N.PressSounds.Add(L.Art[I].Image);
+            break;
+        }
+    }
     if (const auto *Value = Text.Find(Ref.Id))
         N.Text = *Value;
     else if (N.Kind == T(TEXT("text")))
@@ -323,9 +446,52 @@ bool FAC2NativeUI::Add(const FAC2UILayout &L, int32 Index, int32 Parent, FIntPoi
                 }
     Children.StableSort(
         [&](const Child &A, const Child &B) { return L.Controls[A.Index].Z > L.Controls[B.Index].Z; });
-    for (const auto &C : Children)
+    for (const auto &C : Children) {
+        const int32 First=Nodes.Num();
         Add(L, C.Index, Here, Original(*C.Owner, Nodes[Here].State).Size() + FIntPoint(1, 1), C.State,
             nullptr, nullptr, Depth + 1);
+        if(!Nodes.IsValidIndex(First))continue;
+        const uint32 Referent=Nodes[First].Attr(TEXT("referent"));
+        if((Referent==4254656600u || Referent==4229490776u) && WindowMinimums.Contains(Nodes[Here].Window)){
+            // Header controls stay at native size. Some layouts incorrectly
+            // stretch them vertically when their formerly fixed parent grows.
+            const auto Authored=Original(L.Controls[C.Index],Nodes[First].State);
+            const auto Owner=Original(*C.Owner,Nodes[Here].State);
+            if(Authored.Min.Y<=10){
+                const FIntPoint Origin(Nodes[Here].Rect.Max.X-(Owner.Width()-Authored.Max.X)-17,
+                                       Nodes[Here].Rect.Min.Y+Authored.Min.Y);
+                const auto Shift=Origin-Nodes[First].Rect.Min;
+                for(int32 I=First;I<Nodes.Num();++I){Nodes[I].Rect+=Shift;Nodes[I].Clip+=Shift;}
+                Nodes[First].Rect=FIntRect(Origin,Origin+FIntPoint(17,17));
+                Nodes[First].Clip=Intersect(Nodes[First].Rect,Nodes[Here].Clip);
+            }
+        }
+    }
+    // Keep native title text inside the header's usable area. The DAT title
+    // templates span the entire frame, including the help/close controls;
+    // long localized titles otherwise paint over those controls in Slate.
+    int32 HeaderEnd=Nodes[Here].Rect.Max.X;
+    for(int32 I=Here+1;I<Nodes.Num();++I)if(Nodes[I].Parent==Here) {
+        const auto& C=Nodes[I];const uint32 RefId=C.Attr(TEXT("referent"));
+        if(RefId==4254656600u || RefId==4229490776u)
+            HeaderEnd=FMath::Min(HeaderEnd,C.Rect.Min.X-4);
+    }
+    if(HeaderEnd<Nodes[Here].Rect.Max.X)
+        for(int32 I=Here+1;I<Nodes.Num();++I)if(Nodes[I].Parent==Here) {
+            auto& C=Nodes[I];
+            if(C.Kind==T(TEXT("text")) && (C.Attr(TEXT("referent"))==0xe104e194u || C.Rect.Height()<=32) &&
+               C.Rect.Min.Y<=Nodes[Here].Rect.Min.Y+8) {
+                // Later DATs anchor the standard title template to the bottom
+                // as well. Its text still belongs in the 30-pixel caption,
+                // even when the resizable content below it becomes taller.
+                C.Rect.Max.Y=FMath::Min(C.Rect.Max.Y,C.Rect.Min.Y+30);
+                C.Clip.Max.Y=FMath::Min(C.Clip.Max.Y,C.Rect.Max.Y);
+                C.Clip.Min.X=FMath::Max(C.Clip.Min.X,Nodes[Here].Rect.Min.X+12);
+                C.Clip.Max.X=FMath::Min(C.Clip.Max.X,HeaderEnd);
+                C.Attributes.Add(T(TEXT("one_line")),1);
+                C.FitHeader=true;
+            }
+        }
     // The native chat background's nine tiles share their boundary texels.
     // Slate alpha-composites each tile separately; drawing those shared pixels
     // twice creates dark horizontal/vertical seams through the text area.
@@ -424,6 +590,19 @@ void FAC2NativeUI::LoadImage(uint32 Id, FAC2AssetLibrary &Assets)
     else
         ++MissingImages;
 }
+void FAC2NativeUI::Press(uint32 Id)
+{
+    if(Pressed==Id)return;
+    Pressed=Id;
+    const auto* N=Find(Id);
+    if(!N || !N->PressState)return;
+    // ResetMedia happens on the input event in retail. A click can begin and
+    // end between two paints, so frame polling alone loses its sound entirely.
+    if(auto* Audio=FAC2Audio::Get(AudioWorld.Get()))for(uint32 Sound:N->PressSounds)Audio->Play(Sound);
+    uint32 Root=N->Id;
+    for(int32 P=N->Parent;Nodes.IsValidIndex(P);P=Nodes[P].Parent)Root=HashCombineFast(Root,Nodes[P].Id);
+    AudioStates.Add((uint64(Root)<<32)|N->Id,N->PressState);
+}
 void FAC2NativeUI::Prepare(FAC2AssetLibrary &Assets, FAC2Fonts &Fonts)
 {
     auto* Audio=FAC2Audio::Get(AudioWorld.Get());
@@ -467,6 +646,23 @@ bool FAC2NativeUI::CursorAt(FVector2D Point,uint32& Image,FIntPoint& Hotspot) co
     }
     return false;
 }
+void FAC2NativeNode::SetTextColor(const FLinearColor& Color)
+{
+    const TCHAR* Names[]={TEXT("font_color_red"),TEXT("font_color_green"),TEXT("font_color_blue")};
+    for(int32 I=0;I<3;++I){uint32 Bits;const float Channel=Color.Component(I);FMemory::Memcpy(&Bits,&Channel,4);
+        Attributes.Add(FAC2UILayout::Token(Names[I]),Bits);}
+}
+FLinearColor FAC2NativeNode::TextColor(uint32 Palette) const
+{
+    // Retail UIElement_Text packs RGBAColor directly into 8-bit glyph colors.
+    // Those are display RGB, not linear lighting values. Slate expects linear
+    // tint and encodes it for display; feeding the DAT floats directly brightens
+    // cream, blue and orange a second time.
+    const FString Prefix=Palette?FString::Printf(TEXT("font_color%u_"),Palette):TEXT("font_color_");
+    auto Byte=[&](const TCHAR* Channel){return uint8(FMath::Clamp(Float(*(Prefix+Channel),1.f)*255.f,0.f,255.f));};
+    auto Color=FLinearColor::FromSRGBColor(FColor(Byte(TEXT("red")),Byte(TEXT("green")),Byte(TEXT("blue"))));
+    Color.A=Opacity;return Color;
+}
 int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSlateWindowElementList &Out,
                               int32 Layer, const FGeometry &G, FAC2Fonts &Fonts) const
 {
@@ -479,12 +675,19 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
     const int32 Width = N.Rect.Width() - Left - int32(N.Attr(TEXT("right_margin")));
     if (Width <= 0)
         return Layer;
-    auto Lines = Font->Lines(Value, N.Attr(TEXT("one_line")) ? 0 : Width);
+    FString Fitted=Value;
+    if(N.FitHeader) {
+        const int32 Available=FMath::Min(Width,N.Clip.Width());
+        if(Font->Width(Fitted)>Available) {
+            while(!Fitted.IsEmpty() && Font->Width(Fitted+TEXT("..."))>Available)Fitted.LeftChopInline(1);
+            Fitted+=TEXT("...");
+        }
+    }
+    auto Lines = Font->Lines(Fitted, N.Attr(TEXT("one_line")) ? 0 : Width);
     float Y = N.Rect.Min.Y + Top;
     if (N.Attr(TEXT("center_vertically")))
         Y = N.Rect.Min.Y + (N.Rect.Height() - Lines.Num() * int32(Font->Height)) / 2.f;
-    FLinearColor Color(N.Float(TEXT("font_color_red"), 1), N.Float(TEXT("font_color_green"), 1),
-                       N.Float(TEXT("font_color_blue"), 1), N.Opacity);
+    const FLinearColor Color=N.TextColor();
     PushClip(Out, G, N.Clip);
     for (const auto &Line : Lines)
     {
@@ -493,6 +696,10 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
             X += (Width - Font->Width(Line)) / 2;
         else if (N.Attr(TEXT("right_justify")))
             X += Width - Font->Width(Line);
+        if(N.FitHeader)
+            X=FMath::Clamp(X,float(N.Clip.Min.X),FMath::Max(float(N.Clip.Min.X),N.Clip.Max.X-Font->Width(Line)));
+        // DAT fonts are bitmap glyphs; half-pixel centering blurs the face and outline.
+        X=FMath::RoundToFloat(X);Y=FMath::RoundToFloat(Y);
         if (N.Attr(TEXT("font_outline")))
             for (FVector2D D : {FVector2D(-1, 0), FVector2D(1, 0), FVector2D(0, -1), FVector2D(0, 1)})
                 Font->Draw(Out, ++Layer, G, Line, FVector2D(X, Y) + D, FLinearColor(0,0,0,N.Opacity));
@@ -503,10 +710,11 @@ int32 FAC2NativeUI::PaintText(const FAC2NativeNode &N, const FString &Value, FSl
     return Layer;
 }
 int32 FAC2NativeUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometry &G, FAC2Fonts &Fonts,
-                          TFunction<int32(const FAC2NativeNode &, int32)> Content, int32 FirstNode, int32 EndNode) const
+                          TFunction<int32(const FAC2NativeNode &, int32)> Content, int32 FirstNode, int32 EndNode, uint32 Window) const
 {
     for (int32 Index : PaintOrder())
     {
+        if(Window && Nodes[Index].Window!=Window)continue;
         if(Index<FirstNode || Index>=EndNode)continue;
         const auto &N = Nodes[Index];
         PushClip(Out, G, N.Clip);
@@ -524,12 +732,14 @@ int32 FAC2NativeUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeom
                 const FVector2D Origin = FVector2D(N.Rect.Min + Chosen->Offset);
                 const bool Stretch = N.Attr(TEXT("size_image_to_owner")) != 0;
                 const FVector2D Step = Stretch ? FVector2D(N.Rect.Size()) : B->ImageSize;
-                if(N.ImageBorderX>0 && B->ImageSize.X>2*N.ImageBorderX)
+                const bool PanelFrame=N.ResizableFrame && B->ImageSize.X>=180 && B->ImageSize.Y>=24 && !Stretch;
+                const float BorderX=N.ImageBorderX>0?N.ImageBorderX:PanelFrame?32.f:0.f;
+                const float BorderY=N.ImageBorderY>0?N.ImageBorderY:PanelFrame?FMath::Min(30.f,B->ImageSize.Y*.25f):0.f;
+                if(BorderX>0 && B->ImageSize.X>2*BorderX)
                 {
                     FSlateBrush Frame=*B;
                     Frame.DrawAs=ESlateBrushDrawType::Box;
-                    const float Border=N.ImageBorderX/B->ImageSize.X;
-                    Frame.Margin=FMargin(Border,0,Border,0);
+                    Frame.Margin=FMargin(BorderX/B->ImageSize.X,BorderY/B->ImageSize.Y,BorderX/B->ImageSize.X,BorderY/B->ImageSize.Y);
                     FSlateDrawElement::MakeBox(Out,++Layer,
                         G.ToPaintGeometry(FVector2D(N.Rect.Size()),FSlateLayoutTransform(Origin)),
                         &Frame,ESlateDrawEffect::None,FLinearColor(1,1,1,N.Float(TEXT("alpha_value"),1)));

@@ -9,6 +9,7 @@ struct FAC2Wave
     float Phase = 0, PhaseSpeed = 0, Frequency = 0, FrequencySpeed = 0, Roughness = 0, RoughnessSpeed = 0;
     static FAC2Wave Read(FAC2AssetReader &R);
     float Value(float Time) const;
+    static float Perlin(double Position);
 };
 struct FAC2WaveVector
 {
@@ -31,6 +32,12 @@ struct FAC2Decal
     static FAC2Decal Read(FAC2AssetReader& R);
     static float Opacity(float Age,float Life);
 };
+struct FAC2RepulsorFX
+{
+    bool Enabled = false, Attractor = false;
+    float Acceleration = 0, Range = 0, Lifetime = 0, MinimumVelocity = 0;
+    static FAC2RepulsorFX Read(FAC2AssetReader& Reader);
+};
 struct FAC2ParticleKey
 {
     float Time = 0, X = 1, Y = 1, Mass = 1;
@@ -47,6 +54,7 @@ struct FAC2ParticleEmitter
     FAC2Wave Scale, ParticleScale, Life, Speed, Streak, MinSpread, MaxSpread, Snap;
     FAC2WaveVector Origin, Rotation, WorldRotation, Spin, Direction;
     TArray<FAC2ParticleKey> Keys;
+    float Opacity(float SystemAge, float FastForward) const;
     void Sample(float Age, float ScaleAtBirth, float &Width, float &Height, FLinearColor &Tint, float &Mass) const;
     const FAC2ParticleKey *ControllerAt(float Age, uint32 &Forces) const;
 };
@@ -57,6 +65,8 @@ struct FAC2ParticlePreset
     bool WorldSpace = false, ForceDraw = false;
     TArray<FAC2ParticleEmitter> Emitters;
     bool Decode(uint32 Id, TConstArrayView<uint8> Bytes);
+    // PSDesc::ApproximateLifetime: negative denotes an authored looping system.
+    float ApproximateLifetime() const;
     float RenderScale(float ObjectScale,float VisualParticleScale) const;
     void Sample(float Age, float &Width, float &Height, FLinearColor &Tint) const;
 };
@@ -69,4 +79,6 @@ struct FAC2ParticleSource
     FTransform Frame;
     float ParticleScale = 1;
     uint32 Cell = 0; // Owning interior, or zero for outdoor scenery.
+    bool Shared = false; // CPartArray's shared scenery representation.
+    FAC2RepulsorFX Repulsor;
 };

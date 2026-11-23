@@ -6,6 +6,12 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "ProceduralMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
+#include "Components/CapsuleComponent.h"
+#include "UObject/UObjectIterator.h"
 
 // Exercise the actual connected path at the two reported bare locations, then
 // their nearest southern block and the reported floating-grass slope. Never populate empty scenes.
@@ -56,6 +62,27 @@ void FAC2Network::FoliageSmokeTick()
                 {Finish(false,TEXT("Grass did not upload the native 1024x256 highres surface"));return;}
                 if(Stats.GrassGroundContacts==0 || Stats.GrassMaxRootGapAfter>.01)
                 {Finish(false,TEXT("Grass bases are not in contact with rendered terrain"));return;}
+                int32 Roots=0,Tips=0,InteractiveSections=0,CachedSections=0;
+                const FVector PlayerFeet=P->GetActorLocation()-FVector(0,0,P->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+                for(TObjectIterator<UProceduralMeshComponent> It;It;++It)if(It->GetWorld()==Mode->GetWorld() && It->IsRegistered() && !It->IsBeingDestroyed())
+                    for(int32 Section=0;Section<It->GetNumSections();++Section)
+                        if(auto* Mat=Cast<UMaterialInstanceDynamic>(It->GetMaterial(Section)))
+                            if(Mat->K2_GetScalarParameterValue(TEXT("AC2FoliageBend"))>.5f){
+                                auto* Collection=LoadObject<UMaterialParameterCollection>(nullptr,TEXT("/Game/AC2/Materials/AC2FoliageInteraction.AC2FoliageInteraction"));
+                                FLinearColor Position(0,0,0,0);
+                                if(Collection)Mode->GetWorld()->GetParameterCollectionInstance(Collection)->GetVectorParameterValue(TEXT("Position0"),Position);
+                                if(Position.A<=0 || FVector::Dist(PlayerFeet,FVector(Position.R,Position.G,Position.B))>2.)
+                                {Finish(false,FString::Printf(TEXT("Foliage interaction is not following the connected player: material=%s component=%s position=%s feet=%s"),
+                                    *Mat->GetName(),*It->GetPathName(),*Position.ToString(),*PlayerFeet.ToString()));return;}
+                                if(auto* Mesh=It->GetProcMeshSection(Section)){
+                                    ++InteractiveSections;
+                                    CachedSections+=It->ShadowCacheInvalidationBehavior==EShadowCacheInvalidationBehavior::Rigid;
+                                    for(const auto& V:Mesh->ProcVertexBuffer){Roots+=V.UV3.X<.001;Tips+=V.UV3.X>.5;}
+                                }
+                            }
+                if(!InteractiveSections || !Roots || !Tips || !CachedSections)
+                {Finish(false,TEXT("Rendered grass lacks anchored roots or movable tips"));return;}
+                UE_LOG(LogTemp,Display,TEXT("AC2 foliage interaction: sections=%d cached_shadows=%d anchored_roots=%d movable_tips=%d"),InteractiveSections,CachedSections,Roots,Tips);
                 UE_LOG(LogTemp,Display,TEXT("AC2 grass audit %04X: texture=%08X surface=%08X uploaded=%dx%d highres=%d contacts=%d max_root_gap_cm=%.3f->%.6f"),
                     Blocks[Index],Grass->Texture,Grass->Surface,Grass->UploadedSize.X,Grass->UploadedSize.Y,
                     Grass->HighResolution,Stats.GrassGroundContacts,Stats.GrassMaxRootGapBefore,Stats.GrassMaxRootGapAfter);

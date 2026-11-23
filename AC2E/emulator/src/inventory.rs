@@ -198,7 +198,7 @@ impl Inventory {
                     || item.quantity > item.stack_limit
                     || item.equipment_mask & !0x7ff != 0
                     || item.roll.is_some_and(|r|r.armor>1000||r.damage>1000||r.tint>1000||!(1..=150).contains(&r.level)
-                        ||item.quantity!=1||item.stack_limit!=1||if r.crafted { !crate::professions::valid_finish(item) }else if r.damage>0{!crate::treasure_weapons::valid_finish(item)}else{r.wear!=0||r.armor==0||crate::apparel::recovered_slot(item.definition,item.visual)!=Some(item.equipment_mask)})
+                        ||item.quantity!=1||item.stack_limit!=1||if r.crafted { !crate::professions::valid_finish(item) }else if item.definition == crate::totem::TOTEM {crate::totem::charge(item).is_none()}else if r.damage>0{!crate::treasure_weapons::valid_finish(item)}else{r.wear!=0||r.armor==0||crate::apparel::recovered_slot(item.definition,item.visual)!=Some(item.equipment_mask)})
                     || !matches!(item.location,Location::Bag(slot) if slot<BAG_SLOTS)
                 {
                     return Err(InventoryError::InvalidItem);

@@ -56,7 +56,7 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
         if(!H->CharacterUI->SmokeCreate(Error)){Finish(Error);return;}
         break;
     case 2: {
-        if(!InWorld()||bWaiting){ControllerNext=ControllerTime+.5f;return;}
+        if(!InWorld()||bWaiting||bRevealing||WaitingForExitAnimation){ControllerNext=ControllerTime+.5f;return;}
         if(P->IsHidden()||P->IsHeld()||!P->HasModel()||H->CharacterUI->IsOpen()) {Finish(TEXT("Entry did not restore character and input"));return;}
         if(!CheckEnvironment(1)){Finish(TEXT("Sky direction or light count incorrect on entry"));return;}
         if(IConsoleManager::Get().FindConsoleVariable(TEXT("r.AntiAliasingMethod"))->GetInt()!=1 ||
@@ -124,7 +124,7 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
     case 16:Capture(TEXT("AC2Controller-selection.png"));break;
     case 17:H->CharacterUI->SmokeEnter();break;
     case 18:
-        if(!InWorld()||bWaiting){ControllerNext=ControllerTime+.5f;return;}
+        if(!InWorld()||bWaiting||bRevealing||WaitingForExitAnimation){ControllerNext=ControllerTime+.5f;return;}
         if(!P->HasModel()||P->IsHidden()||P->IsHeld()){Finish(TEXT("Reentry failed"));return;}
         if(!CheckEnvironment(1)){Finish(TEXT("Reentry duplicated lighting"));return;}
         break;
@@ -161,7 +161,7 @@ void AAC2GameMode::ControllerSmokeTick(float Dt)
         Sky->SetHour(12);
         break;
     default:
-        if(ControllerStage<42)
+        if(ControllerStage<47)
         {
             if(!H->GameUI->SmokeMovementInput(ControllerStage-30,Error)){Finish(Error);return;}
             break;

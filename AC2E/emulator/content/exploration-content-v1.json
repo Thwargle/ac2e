@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "policy": "Reconstructed quest progression, XP and timers. Native text/IDs; guide rewards. Buff effects are not enabled.",
+  "policy": "Reconstructed quest progression, XP and timers. Native text/IDs; guide rewards. Ordered obelisk visits and the Explorer turn-in award timed blessings from the installed DAT profile.",
   "quests": [
     {
       "id": 1073741846,

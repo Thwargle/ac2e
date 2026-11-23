@@ -26,7 +26,15 @@ pub fn catalog()->io::Result<BTreeMap<u32,Profile>> {
         .chain(include_str!("../content/inferred-creature-ai-v1.tsv").lines().skip(1))
         .chain(include_str!("../content/regional-creature-ai-v1.tsv").lines().skip(1))
         .chain(include_str!("../content/wilderness-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/hero-wilderness-creature-ai-v2.tsv").lines().skip(1))
+        .chain(include_str!("../content/ac2hero-raid-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/ac2hero-bestiary-creature-ai-v1.tsv").lines().skip(1))
         .chain(include_str!("../content/arwic-mines-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/illuminated-cave-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/the-ossuary-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/quest-encounters-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/cragstone-excavation-creature-ai-v1.tsv").lines().skip(1))
+        .chain(include_str!("../content/foundry-creature-ai-v1.tsv").lines().skip(1))
         .filter(|l|!l.starts_with('#') && !l.is_empty()) {
         let f=line.split('\t').collect::<Vec<_>>();if f.len()!=11{return Err(bad());}
         let number=|i:usize|->io::Result<Option<f32>> {

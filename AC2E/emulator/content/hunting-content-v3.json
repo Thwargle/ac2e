@@ -1,0 +1,204 @@
+{
+  "version": 3,
+  "policy": "Use AC2Hero goals, minimums, seven-day deadlines and resets. Ivor and Savorlin grant their documented capped amounts; the per-level scaling is unknown. Native names and death effects distinguish same-name monsters. Key hunts grant the actual DAT key. Chest contents and lock bindings are unverified.",
+  "quests": [
+    {
+      "id": 1073806372,
+      "title": "Destroy the Sorrow Thralls",
+      "npc": 1191198654,
+      "npc_name": "Arlen Jenis",
+      "targets": [
+        1191197435
+      ],
+      "goal": 20,
+      "level": 60,
+      "xp_basis_points": 200,
+      "xp_cap": 168042895,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 20 Sorrow Thralls in the Knorr Ramparts. Return to Arlen Jenis for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_destroythesorrowthralls.html",
+          "sha256": "805a0fa727db23b018700b23958ba3177713556ad458cc59a150ebb5b78a8ec7"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Destroy_the_Sorrow_Thralls",
+          "sha256": "20160327c96dcd2eb0bd273a5dbbc1b0ce99e5cf91982d6263a879ade3efe5d1"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuest_KQ4B_SorrowThrall"
+    },
+    {
+      "id": 1073806373,
+      "title": "Exterminate the Iridescent Piercers",
+      "npc": 1191198569,
+      "npc_name": "Ivor Stronghand",
+      "targets": [
+        1191197427
+      ],
+      "goal": 10,
+      "level": 45,
+      "xp_basis_points": 0,
+      "xp_cap": 3900000,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 10 Iridescent Piercers north of Yaosenji. Return to Ivor Stronghand for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_exterminatetheiridescentpiercers.html",
+          "sha256": "37ff289e987de4f4a1b5172bd2c3146d1481e7d4f56eba1066b5a1395ab6db39"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Exterminate_the_Iridescent_Piercers",
+          "sha256": "676cf2dc292b7292b74d470bcb4d9bfe9418b68ea3b0c60a1b3fbf72c1ab4a80"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuest_KQ1H_IridescentPiercer"
+    },
+    {
+      "id": 1073806374,
+      "title": "Kill the Chromu Sclavus",
+      "npc": 1191198650,
+      "npc_name": "Yurikhe",
+      "targets": [
+        1191197437
+      ],
+      "goal": 15,
+      "level": 55,
+      "xp_basis_points": 200,
+      "xp_cap": 102639801,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 15 Chromu Sclavus in the southern Knorr Gardens. Return to Yurikhe for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_killthechromusclavus.html",
+          "sha256": "b97a6d83616d836ff155b34255423e29c9409a8f61d95a00aa2e8fa8a939117b"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Kill_the_Chromu_Sclavus",
+          "sha256": "ea9feca1478b7714ea73cf1dc3c755874fd7ca4cbe277ac2be6395c0824e4d41"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuest_KQ3C_ChromuSclavus"
+    },
+    {
+      "id": 1073806375,
+      "title": "Slay the Banderling Berserkers",
+      "npc": 1191198555,
+      "npc_name": "Gwynna Stronghand",
+      "targets": [
+        1191197244
+      ],
+      "goal": 10,
+      "level": 48,
+      "xp_basis_points": 0,
+      "xp_cap": 7287438,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 10 Banderling Berserkers in the Knorr Wilds. Return to Gwynna Stronghand for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingberserkers.html",
+          "sha256": "d2f6fd49051a40d66459b37ce544dad8f616c1c59fbfc8c376a532b531ce51db"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Slay_the_Banderling_Berserkers",
+          "sha256": "46888f127cc3e081084b3a05393c4eb90f06892c6515b9aeef98dd1d531ee1fa"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuest_KQ1J_BanderlingBerserker"
+    },
+    {
+      "id": 1073806376,
+      "title": "Slay the Banderling Maulers",
+      "npc": 1191198567,
+      "npc_name": "Savorlin Gahntar",
+      "targets": [
+        1191197250
+      ],
+      "goal": 10,
+      "level": 44,
+      "xp_basis_points": 0,
+      "xp_cap": 2800000,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat 10 Banderling Maulers east of Yaosenji. Return to Savorlin Gahntar for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingmaulers.html",
+          "sha256": "5d50cc89d8af9c2a9eb765f41c6ee6ca5bcf87568727c8e0ffa0610fa10afea8"
+        },
+        {
+          "url": "http://ac2wiki.info/index.php/Slay_the_Banderling_Maulers",
+          "sha256": "95580197cfb92fe4e8dc507fbbf70eab5e28784a8df36e885ba2d36c653dfc9b"
+        }
+      ],
+      "native_death_effect": "Eff_IncrementQuest_KQ1G_BanderlingMauler"
+    },
+    {
+      "id": 1073806377,
+      "title": "Remove the Iridescent Stinger",
+      "npc": 1191198728,
+      "npc_name": "Muriona",
+      "targets": [
+        1191199518
+      ],
+      "goal": 1,
+      "level": 41,
+      "xp_basis_points": 0,
+      "xp_cap": 300000,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat Iridescent Stinger near 33.9S, 32.8E. Return to Muriona for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_removetheiridescentstinger.html",
+          "sha256": "40d44d953246c622852ed9b76bb916d0f7327064cb3038e33780c7f914bfecc5"
+        }
+      ],
+      "native_death_effect": "Eff_AdvanceQuest_BM1D_IridescentStingerPhase2",
+      "key": {
+        "item": 1191198733,
+        "visual": 520098004,
+        "name": "Muriona's Key"
+      }
+    },
+    {
+      "id": 1073806378,
+      "title": "Tree Avenger",
+      "npc": 1191198722,
+      "npc_name": "Tiamary Graziel",
+      "targets": [
+        1191199513
+      ],
+      "goal": 1,
+      "level": 34,
+      "xp_basis_points": 0,
+      "xp_cap": 200000,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Defeat Cunning Tom near 31.4S, 37.6E. Return to Tiamary Graziel for your reward.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/knorr_treeavenger.html",
+          "sha256": "a7deff1b1c41ebd9217186633730bda93f5b96394cfb7cabe82458361f098ddd"
+        }
+      ],
+      "native_death_effect": "Eff_AdvanceQuest_BM1A_TreeAvengerPhase2",
+      "key": {
+        "item": 1191198721,
+        "visual": 520098004,
+        "name": "Tiamary's Key"
+      }
+    }
+  ]
+}

@@ -55,7 +55,7 @@ def main():
         game=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19282','--auth-data',str(auth),
             '--data',str(world),'--game-data',str(DAT_DIRECTORY),
             '--content',str(content),
-            '--training-kit','false','--lifestones','false','--portals','false','--seconds','90'],
+            '--lifestones','false','--portals','false','--seconds','90'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(.7)
         assert game.poll() is None

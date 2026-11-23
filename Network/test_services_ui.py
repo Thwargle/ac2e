@@ -15,7 +15,7 @@ def main():
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19386','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--encounters','none','--portals','false',
+            '--initialize-ui','true','--encounters','none','--portals','false',
             '--lifestones','false','--seconds','180'],env=env,stdout=log,stderr=log,creationflags=0x08000000)
         try:
             time.sleep(1);assert server.poll() is None,(run/'server.log').read_text()

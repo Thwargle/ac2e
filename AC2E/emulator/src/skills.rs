@@ -33,11 +33,15 @@ pub struct Trained {
     pub credits: u16,
     pub locked: bool,
     pub xp: u64,
+    /// Native SkillInfo last-use TIME bits. Session state, not journaled: the
+    /// authoritative ability timers also reset when the server restarts.
+    pub reset_started: Option<u64>,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Book {
     entries: BTreeMap<u32, Trained>,
     untraining: Option<(u32,u64)>, // skill and total XP at the last debit
+    shared_reset: Option<u64>,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Command {
@@ -224,8 +228,8 @@ impl Book {
     ) -> Result<Self, SkillError> {
         self.with_development_skill(LIFESTONE_RECALL, 0, state, race)
     }
-    /// Authored training entitlement, not a recovered original starter rule.
-    pub fn with_training_attack(&self, state: &Progression, race: u32) -> Result<Self, SkillError> {
+    /// Read-only compatibility for historical t2/k4 training-grant records.
+    pub(crate) fn with_training_attack(&self, state: &Progression, race: u32) -> Result<Self, SkillError> {
         if race != crate::appearance::HUMAN {
             return Err(SkillError::UnsupportedProfile);
         }
@@ -289,6 +293,7 @@ impl Book {
                 credits: 0,
                 locked: true,
                 xp: 0,
+                reset_started: None,
             },
         );
         Ok(next)
@@ -332,6 +337,15 @@ impl Book {
     pub fn get(&self, id: u32) -> Option<&Trained> {
         self.entries.get(&id)
     }
+    /// Called only after the ability runtime commits the accepted action.
+    pub fn record_use(&mut self, id: u32, started: f64) {
+        if !started.is_finite() || started < 0.0 { return; }
+        if let Some(entry) = self.entries.get_mut(&id) {
+            entry.reset_started = Some(started.to_bits());
+            self.shared_reset = entry.reset_started;
+        }
+    }
+    pub fn shared_reset(&self) -> Option<f64> { self.shared_reset.map(f64::from_bits) }
     pub fn untraining_id(&self)->u32 {self.untraining.map_or(0,|(id,_)|id)}
     pub fn usable(&self,id:u32)->bool {self.entries.contains_key(&id) && self.untraining_id()!=id}
     /// Recovered SkillManager::DebitUnTrainingSkill: new earned XP removes
@@ -430,6 +444,7 @@ impl Book {
                         credits: definition.credits,
                         locked: granting,
                         xp: 0,
+                        reset_started: None,
                     },
                 );
             }

@@ -7,7 +7,7 @@ fn translated_population_uses_native_combat_and_protects_services() {
     let root=Path::new(env!("CARGO_MANIFEST_DIR")).join("content");
     let content=Content::load(&root.join("recovered-population.tsv"),Path::new(&data)).unwrap();
     let proof:serde_json::Value=serde_json::from_str(&std::fs::read_to_string(root.join("recovered-population.report.json")).unwrap()).unwrap();
-    let encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let encounters=Encounters::load(Path::new("world"),&content).unwrap();
     let mut monsters=0;let mut protected=0;let mut vendors=0;
     for a in proof["actors"].as_array().unwrap() {
         let id=u64::from_str_radix(a["id"].as_str().unwrap(),16).unwrap();

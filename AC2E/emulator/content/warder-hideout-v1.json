@@ -1,0 +1,349 @@
+{
+  "version": 1,
+  "sources": [
+    "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Warder_Hideout.png",
+    "http://ac2hero.e5i5o.com/quest/osteth_seekthewardercaptain.html",
+    "http://ac2hero.e5i5o.com/quest/osteth_drudgepotionraid.html",
+    "Pyreal_DB_Insert_Telepad.sql, telepads 136 and 137"
+  ],
+  "notes": [
+    "January 2017 retail CREATE frames recur in both captures across respawns. Source IDs below identify observations in the first listed capture. The Lasher names match the guide and existing cross-build placements in the same dungeon.",
+    "The floor plan shows two surface exits. The separate Warder Cache requires the Captain\u2019s favor and is excluded here."
+  ],
+  "captures": {
+    "8ce46e4b9aab": {
+      "archive_sha256": "8ce46e4b9aabe325154647e23da38f46fbe6d45b29307d53e08a476d9bc8af30",
+      "path": "625113f2f9f74be5/pkt_2017-1-10_1484095101_log.pcap"
+    },
+    "9a8b8cc07179": {
+      "archive_sha256": "9a8b8cc07179fcc2aee7387429608140877af3c1606b37c18669c81874a60333",
+      "path": "625113f2f9f74be5/pkt_2017-1-18_1484774003_log.pcap"
+    }
+  },
+  "templates": {
+    "1191186559": {
+      "name": "Vengeful Lasher",
+      "visual": 520095269
+    },
+    "1191186558": {
+      "name": "Brutal Lasher",
+      "visual": 520094886
+    },
+    "1191186569": {
+      "name": "Relentless Lasher",
+      "visual": 520094886
+    },
+    "1191187537": {
+      "name": "Portal",
+      "visual": 520094494
+    }
+  },
+  "camps": [],
+  "npcs": [],
+  "validate_captured_bodies": true,
+  "interiors": [
+    {
+      "id": 9313683104461750272,
+      "capture_id": "8130000088dfee54",
+      "capture_entity": "47002734",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186559,
+      "cell": 133366032,
+      "position": [
+        -70.99079895019531,
+        -152.2173309326172,
+        -4.029637813568115
+      ],
+      "rotation": [
+        0.8690889477729797,
+        0.0,
+        0.0,
+        -0.4946558475494385
+      ],
+      "scale": null
+    },
+    {
+      "id": 9313683104461750273,
+      "capture_id": "8130000088dfee55",
+      "capture_entity": "47002729",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186558,
+      "cell": 133366036,
+      "position": [
+        -120.2728271484375,
+        -104.47212219238281,
+        -19.81972312927246
+      ],
+      "rotation": [
+        -0.14120613038539886,
+        0.0,
+        0.0,
+        0.9899802207946777
+      ],
+      "scale": 1.100000023841858
+    },
+    {
+      "id": 9313683104461750274,
+      "capture_id": "8130000088dfee57",
+      "capture_entity": "47002729",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186558,
+      "cell": 133366038,
+      "position": [
+        -159.7899932861328,
+        -60.220001220703125,
+        -21.00614356994629
+      ],
+      "rotation": [
+        0.6124201416969299,
+        0.0,
+        0.0,
+        -0.7905324697494507
+      ],
+      "scale": 1.100000023841858
+    },
+    {
+      "id": 9313683104461750275,
+      "capture_id": "8130000088dfee58",
+      "capture_entity": "47002729",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186558,
+      "cell": 133366038,
+      "position": [
+        -158.61000061035156,
+        -64.36000061035156,
+        -21.28994369506836
+      ],
+      "rotation": [
+        0.7942898869514465,
+        0.0,
+        0.0,
+        -0.6075389385223389
+      ],
+      "scale": 1.100000023841858
+    },
+    {
+      "id": 9313683104461750276,
+      "capture_id": "8130000088dfee5b",
+      "capture_entity": "47002731",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186569,
+      "cell": 133366041,
+      "position": [
+        -223.77999877929688,
+        -90.27999877929688,
+        -19.739898681640625
+      ],
+      "rotation": [
+        0.8690889477729797,
+        0.0,
+        0.0,
+        -0.4946558475494385
+      ],
+      "scale": 1.2000000476837158
+    },
+    {
+      "id": 9313683104461750277,
+      "capture_id": "8130000088dfee5a",
+      "capture_entity": "47002731",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186569,
+      "cell": 133366043,
+      "position": [
+        -240.72000122070312,
+        -35.619998931884766,
+        -20.059782028198242
+      ],
+      "rotation": [
+        -0.14120613038539886,
+        0.0,
+        0.0,
+        0.9899802207946777
+      ],
+      "scale": 1.2000000476837158
+    },
+    {
+      "id": 9313683104461750278,
+      "capture_id": "8130000088dfee5c",
+      "capture_entity": "47002731",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186569,
+      "cell": 133366048,
+      "position": [
+        -305.09979248046875,
+        -88.9854965209961,
+        -19.94182586669922
+      ],
+      "rotation": [
+        0.7942898869514465,
+        0.0,
+        0.0,
+        -0.6075389385223389
+      ],
+      "scale": 1.2000000476837158
+    },
+    {
+      "id": 9313683104461750279,
+      "capture_id": "8130000088dfee5d",
+      "capture_entity": "47002731",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191186569,
+      "cell": 133366048,
+      "position": [
+        -304.5519104003906,
+        -91.78711700439453,
+        -19.771209716796875
+      ],
+      "rotation": [
+        0.7136101126670837,
+        0.0,
+        0.0,
+        -0.7005430459976196
+      ],
+      "scale": 1.2000000476837158
+    }
+  ],
+  "interior_groups": [
+    {
+      "id": 9313683104461750272,
+      "members": [
+        9313683104461750272
+      ]
+    },
+    {
+      "id": 9313683104461750273,
+      "members": [
+        9313683104461750273
+      ]
+    },
+    {
+      "id": 9313683104461750274,
+      "members": [
+        9313683104461750274,
+        9313683104461750275
+      ],
+      "captured_together": true
+    },
+    {
+      "id": 9313683104461750276,
+      "members": [
+        9313683104461750276
+      ]
+    },
+    {
+      "id": 9313683104461750277,
+      "members": [
+        9313683104461750277
+      ]
+    },
+    {
+      "id": 9313683104461750278,
+      "members": [
+        9313683104461750278,
+        9313683104461750279
+      ],
+      "captured_together": true
+    }
+  ],
+  "portals": [
+    {
+      "id": 9313683104461750528,
+      "capture_id": "4007f30000000010",
+      "capture_entity": "47001154",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191187537,
+      "cell": 133366020,
+      "position": [
+        0.0,
+        82.0,
+        10.300000190734863
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Exit to Surface from the Warder Hideout",
+      "destination_telepad": 136
+    },
+    {
+      "id": 9313683104461750529,
+      "capture_id": "4007f30000000013",
+      "capture_entity": "47001154",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191187537,
+      "cell": 133366087,
+      "position": [
+        -468.0,
+        -37.0,
+        -8.079315185546875
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Exit to Surface from the Warder Hideout",
+      "destination_telepad": 136
+    },
+    {
+      "id": 9313683104461750530,
+      "capture_id": "4091990000000001",
+      "capture_entity": "47001154",
+      "captures": [
+        "8ce46e4b9aab",
+        "9a8b8cc07179"
+      ],
+      "entity": 1191187537,
+      "cell": 2442723359,
+      "position": [
+        62.0,
+        124.0,
+        152.1109619140625
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Warder Hideout",
+      "destination_telepad": 137
+    }
+  ]
+}

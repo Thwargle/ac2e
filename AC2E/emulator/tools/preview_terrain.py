@@ -83,7 +83,7 @@ def landscape_defs(data):
         raise TerrainFormatError("Invalid landscape cell-info fields")
     return dict(did=did, cell_side=side, cells=cells, pixels=pixels,
                 block_side=side*cells, vertex_side=cells*pixels+1,
-                heights=heights, terrain_bits=terrain_bits,
+                heights=heights, road_width=road_width, terrain_bits=terrain_bits,
                 scene_bits=scene_bits, encounter_bits=encounter_bits,
                 color_bits=color_bits, road_bits=road_bits, replace_bits=replace_bits)
 

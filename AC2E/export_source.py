@@ -15,6 +15,7 @@ SOURCE_NAMES = {'LICENSE', 'NOTICE', 'Cargo.lock', 'Caddyfile', '.gitignore', '.
 EXCLUDED_PARTS = {'target', 'dist', 'data', '__pycache__', '.git', 'source'}
 SUPPORT_FILES = ('Network/prepare_content.py', 'Network/content_profile.py',
                  'Network/Bridge/Cargo.toml', 'Network/Bridge/Cargo.lock',
+                 'Network/GunFriends/Cargo.toml', 'Network/GunFriends/Cargo.lock',
                  'Tools/AC2/dat_probe.py', 'Tools/AC2/population_probe.py',
                  'Docs/CAPTURE_REFERENCE_IMPORT.md')
 
@@ -48,11 +49,11 @@ def export(root):
             archive.write(path, name)
         for relative in SUPPORT_FILES:
             archive.write(root.parent / relative, relative)
-        # The optional capture audit tools use this native protocol adapter.
-        bridge=root.parent/'Network/Bridge/src'
-        for path in sorted(bridge.rglob('*.rs')):
-            if path.is_file() and not path.is_symlink():
-                archive.write(path,path.relative_to(root.parent).as_posix())
+        # Include the world/bridge GUN codec and the bridge used by capture tools.
+        for tree in ('Network/Bridge/src', 'Network/GunFriends/src'):
+            for path in sorted((root.parent / tree).rglob('*.rs')):
+                if path.is_file() and not path.is_symlink():
+                    archive.write(path, path.relative_to(root.parent).as_posix())
         # Native collision dependencies are pinned local source, not a binary SDK.
         # Preserve their workspace layout so the offered server rebuilds offline
         # from this tree after crates.io dependencies have been installed.

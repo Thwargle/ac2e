@@ -7,20 +7,21 @@
     "Native loot quantities/trophies and observed item pools are used; exact retail item weights and affix algorithms remain unrecovered."
   ],
   "summary": {
-    "world_placements": 12387,
+    "world_placements": 12755,
     "new_creatures": 2553,
     "new_groups": 1555,
     "hunting_expansion_placements": 8,
     "implemented_npc_hunts": 35,
+    "foundry_general_placements": 4,
     "new_outdoor_blocks": 1167,
     "new_native_types": 180,
     "native_combat_templates": 2024,
     "template_status_counts": {
-      "placed": 800,
+      "placed": 874,
+      "needs_habitat_or_encounter_evidence": 777,
       "alternate_template_of_placed_name": 172,
-      "needs_habitat_or_encounter_evidence": 849,
       "protected_or_non_hostile": 192,
-      "special_encounter_needs_lifecycle": 11
+      "special_encounter_needs_lifecycle": 9
     },
     "eligible_wiki_types": 563,
     "eligible_types_without_any_placement": []
@@ -682,7 +683,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f7c": 6,
-        "47001fcc": 0,
+        "47001fcc": 1,
         "47002031": 0
       },
       "source": "https://www.20oz.net/index.php/Dispatch_the_Anguish_Crones.html",
@@ -709,7 +710,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f8e": 8,
-        "47001ff0": 0,
+        "47001ff0": 1,
         "4700201a": 0,
         "4700201b": 0,
         "4700203c": 0
@@ -725,7 +726,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001ebb": 8,
-        "47001fef": 0,
+        "47001fef": 1,
         "4700203b": 0
       },
       "source": "https://www.20oz.net/index.php/Exterminate_the_Olthoi_Worker_Nymphs.html",
@@ -739,7 +740,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f49": 6,
-        "47001feb": 0,
+        "47001feb": 1,
         "47002018": 0,
         "4700203a": 0
       },
@@ -766,7 +767,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f8c": 4,
-        "47001fe9": 0,
+        "47001fe9": 1,
         "47002038": 3
       },
       "source": "https://www.20oz.net/index.php/Puncture_the_Lumna_Niffis.html",
@@ -780,7 +781,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f8d": 4,
-        "47001fea": 0,
+        "47001fea": 1,
         "47002039": 0
       },
       "source": "https://www.20oz.net/index.php/Puncture_the_Veinu_Niffis.html",
@@ -794,7 +795,7 @@
       "npc_placements": 1,
       "target_placements": {
         "47001f89": 12,
-        "47001fe6": 0,
+        "47001fe6": 1,
         "4700202b": 0,
         "47002048": 1
       },
@@ -897,7 +898,7 @@
       "npc_placements": 1,
       "target_placements": {
         "470007c9": 34,
-        "47000f92": 2,
+        "47000f92": 3,
         "47001016": 3
       },
       "source": "https://www.20oz.net/index.php/Eliminate_the_Ulu_Sclavus.html",
@@ -1626,9 +1627,9 @@
     },
     "470007a1": {
       "name": "Drudge Keeper",
-      "status": "alternate_template_of_placed_name",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -2026,7 +2027,7 @@
       "name": "Idol Spawn",
       "status": "placed",
       "role": "monster",
-      "placements": 41,
+      "placements": 36,
       "new_placements": 8,
       "wiki_regions": [
         "Ariaki River Basin",
@@ -2200,7 +2201,7 @@
       "name": "Inferno Drudge Cabalist",
       "status": "placed",
       "role": "monster",
-      "placements": 3,
+      "placements": 10,
       "new_placements": 3,
       "wiki_regions": [
         "Drudge Citadel",
@@ -2211,7 +2212,7 @@
       "name": "Inferno Gloom Drudge",
       "status": "placed",
       "role": "monster",
-      "placements": 32,
+      "placements": 36,
       "new_placements": 0,
       "wiki_regions": [
         "Drudge Citadel"
@@ -2221,7 +2222,7 @@
       "name": "Inferno Murk Drudge",
       "status": "placed",
       "role": "monster",
-      "placements": 19,
+      "placements": 20,
       "new_placements": 4,
       "wiki_regions": [
         "Drudge Citadel",
@@ -2423,7 +2424,7 @@
       "name": "Revenant Prefect",
       "status": "placed",
       "role": "monster",
-      "placements": 15,
+      "placements": 21,
       "new_placements": 4,
       "wiki_regions": [
         "Mount Malthabbor",
@@ -2622,7 +2623,7 @@
       "name": "Inferno Drudge Mystic",
       "status": "placed",
       "role": "monster",
-      "placements": 5,
+      "placements": 14,
       "new_placements": 0,
       "wiki_regions": [
         "Prosper Marches"
@@ -2632,7 +2633,7 @@
       "name": "Inferno Scowl Drudge",
       "status": "placed",
       "role": "monster",
-      "placements": 23,
+      "placements": 30,
       "new_placements": 3,
       "wiki_regions": [
         "Drudge Citadel",
@@ -2695,7 +2696,7 @@
       "name": "Akeha Mimbu",
       "status": "placed",
       "role": "monster",
-      "placements": 9,
+      "placements": 13,
       "new_placements": 0,
       "wiki_regions": [
         "Kydi Delta"
@@ -3086,7 +3087,7 @@
       "name": "Ulu Sclavus",
       "status": "placed",
       "role": "monster",
-      "placements": 2,
+      "placements": 3,
       "new_placements": 0,
       "wiki_regions": [
         "Ariaki River Basin",
@@ -3098,7 +3099,7 @@
       "name": "Aste Sclavus",
       "status": "placed",
       "role": "monster",
-      "placements": 26,
+      "placements": 27,
       "new_placements": 4,
       "wiki_regions": [
         "Kydi Delta"
@@ -3108,7 +3109,7 @@
       "name": "Essa Sclavus",
       "status": "placed",
       "role": "monster",
-      "placements": 38,
+      "placements": 39,
       "new_placements": 7,
       "wiki_regions": [
         "Ariaki River Basin",
@@ -3120,7 +3121,7 @@
       "name": "Sata Sclavus",
       "status": "placed",
       "role": "monster",
-      "placements": 28,
+      "placements": 29,
       "new_placements": 2,
       "wiki_regions": [
         "Ariaki River Basin",
@@ -3197,7 +3198,7 @@
       "name": "Green Phyntos Wasp",
       "status": "placed",
       "role": "monster",
-      "placements": 37,
+      "placements": 40,
       "new_placements": 7,
       "wiki_regions": [
         "Cobalt Sweeps",
@@ -3418,7 +3419,7 @@
       "name": "Blade Beetle",
       "status": "placed",
       "role": "monster",
-      "placements": 12,
+      "placements": 14,
       "new_placements": 2,
       "wiki_regions": [
         "Cobalt Sweeps"
@@ -3546,7 +3547,7 @@
       "name": "Shear Beetle",
       "status": "placed",
       "role": "monster",
-      "placements": 29,
+      "placements": 34,
       "new_placements": 2,
       "wiki_regions": [
         "Cobalt Sweeps",
@@ -3600,7 +3601,7 @@
       "name": "Sandy Armoredillo",
       "status": "placed",
       "role": "monster",
-      "placements": 60,
+      "placements": 65,
       "new_placements": 7,
       "wiki_regions": [
         "Arwic Outlands",
@@ -3937,9 +3938,9 @@
     },
     "4700102d": {
       "name": "Sephal Nefane",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 2,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -4271,9 +4272,9 @@
     },
     "4700104e": {
       "name": "Bominous Gigurath",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 3,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -4425,7 +4426,7 @@
       "name": "Revenant Legionary",
       "status": "placed",
       "role": "monster",
-      "placements": 42,
+      "placements": 52,
       "new_placements": 7,
       "wiki_regions": [
         "Nepeth Strata",
@@ -4802,7 +4803,7 @@
       "name": "Brutal Lasher",
       "status": "placed",
       "role": "monster",
-      "placements": 82,
+      "placements": 84,
       "new_placements": 0,
       "wiki_regions": [
         "Drudge Citadel"
@@ -4812,7 +4813,7 @@
       "name": "Vengeful Lasher",
       "status": "placed",
       "role": "monster",
-      "placements": 37,
+      "placements": 38,
       "new_placements": 0,
       "wiki_regions": [
         "Drudge Citadel",
@@ -4917,7 +4918,7 @@
       "name": "Relentless Lasher",
       "status": "placed",
       "role": "monster",
-      "placements": 50,
+      "placements": 52,
       "new_placements": 0,
       "wiki_regions": [
         "Prosper Marches"
@@ -5310,9 +5311,9 @@
     },
     "4700129d": {
       "name": "Gurog Emissary",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 2,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6059,7 +6060,7 @@
       "name": "Straw Drudge",
       "status": "protected_or_non_hostile",
       "role": "monster",
-      "placements": 27,
+      "placements": 30,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6188,7 +6189,7 @@
       "name": "Drudge Digger",
       "status": "placed",
       "role": "monster",
-      "placements": 1,
+      "placements": 6,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6196,7 +6197,7 @@
       "name": "Drudge Sentinel",
       "status": "placed",
       "role": "monster",
-      "placements": 1,
+      "placements": 10,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6212,9 +6213,9 @@
     },
     "470015bb": {
       "name": "Drudge Prowler",
-      "status": "alternate_template_of_placed_name",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 14,
       "new_placements": 0,
       "wiki_regions": [
         "Drudge Citadel"
@@ -6222,9 +6223,9 @@
     },
     "470015bc": {
       "name": "Drudge Slinker",
-      "status": "alternate_template_of_placed_name",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 8,
       "new_placements": 0,
       "wiki_regions": [
         "Mad Crone Mountains"
@@ -6274,9 +6275,9 @@
     },
     "470015d3": {
       "name": "Drudge Raider",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 14,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6292,9 +6293,9 @@
     },
     "470015f2": {
       "name": "Illuminated Drudge",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6410,17 +6411,17 @@
     },
     "4700160e": {
       "name": "Breeder of Pestilence",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001610": {
       "name": "Grutt Plaguebearer Brute",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -6886,7 +6887,7 @@
       "name": "Pectar, Training Master",
       "status": "placed",
       "role": "monster",
-      "placements": 5,
+      "placements": 3,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7082,25 +7083,25 @@
     },
     "470016bf": {
       "name": "Chief Benamu",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "470016c1": {
       "name": "Feyen Mimbu Snakehunter",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "470016c2": {
       "name": "Feyen Mimbu Swamprunner",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7519,49 +7520,49 @@
     },
     "47001758": {
       "name": "Aste Sclavus Gatekeeper",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001759": {
       "name": "Aste Sclavus Preceptor",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700175a": {
       "name": "Aste Sclavus Temple Guard",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700175b": {
       "name": "Essa Sclavus Gatekeeper",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700175c": {
       "name": "Essa Sclavus Preceptor",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700175d": {
       "name": "Essa Sclavus Temple Guard",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7591,25 +7592,25 @@
     },
     "47001761": {
       "name": "Sata Sclavus Gatekeeper",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001762": {
       "name": "Sata Sclavus Preceptor",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001763": {
       "name": "Sata Sclavus Temple Guard",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7617,7 +7618,7 @@
       "name": "Ulu Sclavus Gatekeeper",
       "status": "placed",
       "role": "monster",
-      "placements": 4,
+      "placements": 5,
       "new_placements": 0,
       "wiki_regions": [
         "Lumari Spill Isles"
@@ -7627,7 +7628,7 @@
       "name": "Ulu Sclavus Preceptor",
       "status": "placed",
       "role": "monster",
-      "placements": 4,
+      "placements": 5,
       "new_placements": 1,
       "wiki_regions": [
         "Lumari Spill Isles"
@@ -7637,7 +7638,7 @@
       "name": "Ulu Sclavus Temple Guard",
       "status": "placed",
       "role": "monster",
-      "placements": 6,
+      "placements": 7,
       "new_placements": 2,
       "wiki_regions": [
         "Lumari Spill Isles"
@@ -7679,9 +7680,9 @@
     },
     "47001795": {
       "name": "Cloudburst",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7697,25 +7698,25 @@
     },
     "47001797": {
       "name": "Master Gurog Henchman",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001798": {
       "name": "Gurog Fawning Lackey",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700179a": {
       "name": "Gurog Conjurer",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -7729,17 +7730,17 @@
     },
     "4700179e": {
       "name": "Ossein, Digger of Graves",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700179f": {
       "name": "Servant of the Bones",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 3,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -8422,7 +8423,7 @@
       "name": "Drudge Outcast",
       "status": "placed",
       "role": "monster",
-      "placements": 3,
+      "placements": 17,
       "new_placements": 0,
       "wiki_regions": [
         "Esper Reaches"
@@ -8430,9 +8431,9 @@
     },
     "47001b61": {
       "name": "Drudge Outcast",
-      "status": "alternate_template_of_placed_name",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 13,
       "new_placements": 0,
       "wiki_regions": [
         "Esper Reaches"
@@ -8859,9 +8860,9 @@
     },
     "47001c53": {
       "name": "Olthoi Grub",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -9498,7 +9499,7 @@
     },
     "47001ebd": {
       "name": "Olthoi Grub",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "alternate_template_of_placed_name",
       "role": "monster",
       "placements": 0,
       "new_placements": 0,
@@ -9720,9 +9721,9 @@
     },
     "47001f52": {
       "name": "Olthoi Harvester Grub",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10242,9 +10243,9 @@
     },
     "47001fae": {
       "name": "Maturing Olthoi Drone Grub",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10332,25 +10333,25 @@
     },
     "47001fcb": {
       "name": "Plated Dune Armoredillo",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fcc": {
       "name": "Wanton Anguish Crone",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fcd": {
       "name": "Indomitable Bone Golem",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10380,9 +10381,9 @@
     },
     "47001fd1": {
       "name": "Heimal Rime Golem",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10396,9 +10397,9 @@
     },
     "47001fd3": {
       "name": "Ravenous Bloodfeast Lasher",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10412,17 +10413,17 @@
     },
     "47001fe2": {
       "name": "Predatory Deranged Lasher",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fe3": {
       "name": "Wildly Frothing Mosswart",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10436,17 +10437,17 @@
     },
     "47001fe5": {
       "name": "Hallesin the Pilgrim",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fe6": {
       "name": "Tattered Mu-miyah Wayfarer",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10460,49 +10461,49 @@
     },
     "47001fe8": {
       "name": "Essorin the Wandering Nomad",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fe9": {
       "name": "Iridescent Lumna Niffis",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fea": {
       "name": "Lustrous Veinu Niffis",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001feb": {
       "name": "Untiring Olthoi Drone",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fec": {
       "name": "Milling Olthoi Gardener",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001fed": {
       "name": "Industrious Olthoi Harvester",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10518,17 +10519,17 @@
     },
     "47001fef": {
       "name": "Droning Olthoi Worker Nymph",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001ff0": {
       "name": "Jolted Shock Reaper",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10582,9 +10583,9 @@
     },
     "47001ff7": {
       "name": "Probing Effigy Spawn",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10598,17 +10599,17 @@
     },
     "47001ff9": {
       "name": "Glowering Monad Spawn",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001ffa": {
       "name": "Monitor Spawn Simulacre",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10622,17 +10623,17 @@
     },
     "47001ffd": {
       "name": "Diabolical Thornling Punisher",
-      "status": "special_encounter_needs_lifecycle",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47001ffe": {
       "name": "Merciless Thornling Torturer",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10656,7 +10657,7 @@
       "name": "Noxious Acid Spurt",
       "status": "placed",
       "role": "monster",
-      "placements": 1,
+      "placements": 2,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10670,9 +10671,9 @@
     },
     "47002003": {
       "name": "Twister",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10686,9 +10687,9 @@
     },
     "47002005": {
       "name": "Snow Brume",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -10702,17 +10703,17 @@
     },
     "47002007": {
       "name": "Pestilent Swamp Gas",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700200a": {
       "name": "Demonic Thornling Harasser",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -11424,9 +11425,9 @@
     },
     "470021c1": {
       "name": "Scarred Shreth Hunter",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -15550,7 +15551,7 @@
     },
     "47002fd5": {
       "name": "Sephal Nefane",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "alternate_template_of_placed_name",
       "role": "monster",
       "placements": 0,
       "new_placements": 0,
@@ -15582,7 +15583,7 @@
     },
     "47002fd9": {
       "name": "Olthoi Harvester Grub",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "alternate_template_of_placed_name",
       "role": "monster",
       "placements": 0,
       "new_placements": 0,
@@ -16312,25 +16313,25 @@
     },
     "4700390b": {
       "name": "Baron Colier",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47003a3b": {
       "name": "Banderling Bandit",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47003a3c": {
       "name": "Banderling Berserker",
-      "status": "alternate_template_of_placed_name",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 3,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -16364,7 +16365,7 @@
       "name": "Banderling Mangler",
       "status": "placed",
       "role": "monster",
-      "placements": 32,
+      "placements": 33,
       "new_placements": 32,
       "wiki_regions": [
         "Knorr Wilds"
@@ -16384,7 +16385,7 @@
       "name": "Banderling Mauler",
       "status": "placed",
       "role": "monster",
-      "placements": 28,
+      "placements": 29,
       "new_placements": 28,
       "wiki_regions": [
         "Knorr Wilds"
@@ -16766,7 +16767,7 @@
       "name": "Iron Colossus",
       "status": "placed",
       "role": "monster",
-      "placements": 7,
+      "placements": 8,
       "new_placements": 7,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -16884,7 +16885,7 @@
       "name": "Toxic Grievver",
       "status": "placed",
       "role": "monster",
-      "placements": 8,
+      "placements": 9,
       "new_placements": 8,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -16904,7 +16905,7 @@
       "name": "Virulent Grievver",
       "status": "placed",
       "role": "monster",
-      "placements": 10,
+      "placements": 11,
       "new_placements": 10,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -16934,7 +16935,7 @@
       "name": "Cunning Kallikan",
       "status": "placed",
       "role": "monster",
-      "placements": 9,
+      "placements": 12,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -17190,7 +17191,7 @@
       "name": "Mu-miyah Initiate",
       "status": "placed",
       "role": "monster",
-      "placements": 4,
+      "placements": 6,
       "new_placements": 3,
       "wiki_regions": [
         "Knorr Foundry"
@@ -17337,7 +17338,7 @@
       "name": "Swarm Drone Nymph",
       "status": "placed",
       "role": "monster",
-      "placements": 3,
+      "placements": 4,
       "new_placements": 2,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -17589,7 +17590,7 @@
       "name": "Ebon Worker",
       "status": "placed",
       "role": "monster",
-      "placements": 10,
+      "placements": 11,
       "new_placements": 10,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -17639,7 +17640,7 @@
       "name": "Iridescent Worker",
       "status": "placed",
       "role": "monster",
-      "placements": 19,
+      "placements": 22,
       "new_placements": 19,
       "wiki_regions": [
         "Knorr Wilds"
@@ -17705,7 +17706,7 @@
       "name": "Chromu Sclavus",
       "status": "placed",
       "role": "monster",
-      "placements": 10,
+      "placements": 13,
       "new_placements": 10,
       "wiki_regions": [
         "Knorr Gardens"
@@ -18037,9 +18038,9 @@
     },
     "47003b21": {
       "name": "Slithis Eye Stalk",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 9,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -18159,7 +18160,7 @@
       "name": "Laes Takeru",
       "status": "placed",
       "role": "monster",
-      "placements": 6,
+      "placements": 8,
       "new_placements": 6,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -18555,7 +18556,7 @@
       "name": "Plains Matron",
       "status": "placed",
       "role": "monster",
-      "placements": 6,
+      "placements": 7,
       "new_placements": 6,
       "wiki_regions": [
         "Knorr Ramparts"
@@ -18563,25 +18564,25 @@
     },
     "47003b69": {
       "name": "Irontooth",
-      "status": "special_encounter_needs_lifecycle",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47003b72": {
       "name": "General Dreyvon",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47003b73": {
       "name": "General Sarocete",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -18603,9 +18604,9 @@
     },
     "47003bca": {
       "name": "Lord Nuvillus",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -18953,7 +18954,7 @@
     },
     "47003c3a": {
       "name": "Zroth",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "alternate_template_of_placed_name",
       "role": "monster",
       "placements": 0,
       "new_placements": 0,
@@ -19149,7 +19150,7 @@
     },
     "47003e6a": {
       "name": "Spectre of Rashan Twoblades",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "alternate_template_of_placed_name",
       "role": "monster",
       "placements": 0,
       "new_placements": 0,
@@ -19425,9 +19426,9 @@
     },
     "47004319": {
       "name": "Cunning Tom",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
@@ -19441,49 +19442,49 @@
     },
     "4700431b": {
       "name": "Resuscitated Urkhad",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700431c": {
       "name": "Benshii Felsister",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700431d": {
       "name": "Bar Nobla",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700431e": {
       "name": "Iridescent Stinger",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "4700431f": {
       "name": "Chromast Chromu",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     },
     "47004320": {
       "name": "Uncle Finiel",
-      "status": "needs_habitat_or_encounter_evidence",
+      "status": "placed",
       "role": "monster",
-      "placements": 0,
+      "placements": 1,
       "new_placements": 0,
       "wiki_regions": []
     }
@@ -19504,7 +19505,7 @@
       "native_entities": [
         "470040a4"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/A_Fell_Plot",
       "html_sha256": "78c9009c216071116a947126e8eb590357e0fe053102c0ad74a128e22bfca903"
@@ -19515,7 +19516,7 @@
       "native_entities": [
         "470040a1"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/A_Grievous_Threat",
       "html_sha256": "38cae456fb9d63e734ae754c18b09713bf6f54c9814bcbafc90872e1b65e3eb7"
@@ -19671,7 +19672,7 @@
       "native_entities": [
         "470013b6"
       ],
-      "placements": 0,
+      "placements": 3,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Armoredillo_Doom",
       "html_sha256": "8d3e75d5caf71327d9ab3dc5a54bb63369827d68ab965eb618c253854cf87626"
@@ -20353,7 +20354,7 @@
       "native_entities": [
         "470042ee"
       ],
-      "placements": 2,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Destroy_the_Tanglefoot_Vermin",
       "html_sha256": "a73dc36776da4fd211bb702bc4164b8362c79556a271fa60531938d3e2641c86"
@@ -20604,7 +20605,7 @@
       "native_entities": [
         "47003fc0"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Eliminate_the_Swarm_Drone_Nymphs",
       "html_sha256": "fe2950ad0e7af31113ad45cffaa835cc38574da2dc25ad1bacfd571a05f56309"
@@ -20671,7 +20672,7 @@
       "native_entities": [
         "47003f6b"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Eradicate_the_Skyport_Controllers",
       "html_sha256": "3949889f10b7ba5824efdb73e79caf5d07cba030964c36c15c836d8f91eac7b6"
@@ -20780,7 +20781,7 @@
       "native_entities": [
         "47003fe5"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Exterminate_the_Swarm_Harvesters",
       "html_sha256": "0ec97b8801499e675343db85087951dbcde2f9c47f452f6f3c4411c404ba5e74"
@@ -20827,7 +20828,7 @@
       "native_entities": [
         "47003542"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Find_My_Idiot_Son!",
       "html_sha256": "f28f2646875158479ef9b8f58837de2f48a2f40beb09e5127b2f8f15e5f3f5ee"
@@ -21056,7 +21057,7 @@
       "native_entities": [
         "47002796"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Gurog_Civil_War",
       "html_sha256": "741daf3b0cbef89b5f69858daa2b8b904aabbebc6380d9860f2cbd48b3bafd93"
@@ -21127,7 +21128,7 @@
       "native_entities": [
         "47000855"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Icefire",
       "html_sha256": "8c71d5d360569f38d4bc26ff095626edbe01f28b6bb9354649231f90604d588f"
@@ -21357,7 +21358,7 @@
       "native_entities": [
         "470040f4"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Journey_to_the_Aerie",
       "html_sha256": "f1582a424f97f3cfe5e8ccdb0a2c89117f5888ec0e5662d52860d07503710a77"
@@ -21399,7 +21400,7 @@
       "native_entities": [
         "470016c2"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Kill_Chief_Benamu",
       "html_sha256": "8f2999570d980c89ea8626f4dc3fcc77bcae7bf546dad12da4da8ca51283f775"
@@ -21494,7 +21495,7 @@
       "native_entities": [
         "47003ccb"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Knorr_Mushroom_Hunt",
       "html_sha256": "eb4d7a2159f1792ec851efec8fb4c0d6d0c4116aabd4794f93166a830bb91b97"
@@ -21567,7 +21568,7 @@
       "native_entities": [
         "4700409e"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Lost_Ithkanda",
       "html_sha256": "27a121155b19152b3e40ee0ff8d64ebe2da78dd559adfc4728973c8157c595de"
@@ -22093,7 +22094,7 @@
         "47000894",
         "47003e6a"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Rashan%27s_Last_Word",
       "html_sha256": "598ea0633e8e839a465d78d5c581bb6e8ffd6b55f81f0f803a8381622ff38221"
@@ -22142,7 +22143,7 @@
       "native_entities": [
         "47004050"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Release_Uncle_Finiel",
       "html_sha256": "b7bb8eaee9f102ad82829459f4c6115660f22c74dc07f23bce4c41270f878cdf"
@@ -22198,7 +22199,7 @@
       "native_entities": [
         "4700157d"
       ],
-      "placements": 4,
+      "placements": 6,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Rescue_the_Shelter_Hold",
       "html_sha256": "175e4fd01d7ed6cfd6f28116c192f2a6f7030cfa07e5501c81709f341a4a8485"
@@ -22209,7 +22210,7 @@
       "native_entities": [
         "4700343c"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Retracing_the_Path",
       "html_sha256": "bf845134d0bd30502d5ec847f19d9fa1f709ad36e376e0a16052af5a87297177"
@@ -22559,7 +22560,7 @@
       "native_entities": [
         "47003f5b"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Slay_the_Banderling_Berserkers",
       "html_sha256": "46888f127cc3e081084b3a05393c4eb90f06892c6515b9aeef98dd1d531ee1fa"
@@ -22570,7 +22571,7 @@
       "native_entities": [
         "47003f67"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Slay_the_Banderling_Maulers",
       "html_sha256": "95580197cfb92fe4e8dc507fbbf70eab5e28784a8df36e885ba2d36c653dfc9b"
@@ -22686,7 +22687,7 @@
       "native_entities": [
         "47003fbd"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Smash_the_Sandstone_Colossi",
       "html_sha256": "b6c7ec903fcc82b90bc65a5d1ad975cbf905681ab90932c7d8e05addb81c885d"
@@ -22858,7 +22859,7 @@
       "native_entities": [
         "47004098"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Terminate_the_Swarm",
       "html_sha256": "f0f1e3da803272a68b651ea18bebbb7673086cdd19f5ac7326c49ec40a2886c0"
@@ -22954,7 +22955,7 @@
       "native_entities": [
         "4700343a"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/The_Path_into_Darkness",
       "html_sha256": "c66cc26906960f6b17c7e452e2bd21314206143d780fd4ffb0a8ed45a2096f96"
@@ -22965,7 +22966,7 @@
       "native_entities": [
         "4700343c"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/The_Path_into_Light",
       "html_sha256": "a34337a362ec7d898d0e82a455b5a71cf5a6041aa15f0ed92f630991cd6e00eb"
@@ -23041,7 +23042,7 @@
       "native_entities": [
         "4700088a"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/The_Slavetaker%27s_Head",
       "html_sha256": "f5db8d2b4457a60bd80c310f55ec00e7953a8af02afdb351f990da5693fccffa"
@@ -23139,7 +23140,7 @@
       "native_entities": [
         "47001ffd"
       ],
-      "placements": 0,
+      "placements": 1,
       "implemented_in_this_hunting_pack": false,
       "url": "http://ac2wiki.info/index.php/Thornling_Punisher_Raid",
       "html_sha256": "06ff358c24da0ab3865df3050bdd7af9db54b05342fb64c2a45589970ba209cd"
@@ -23418,11 +23419,29 @@
   "sources": {
     "current-native-templates.json": "19341ddd2ce92afdad1f883e35b164bca67cef308aaa24f7e29c41c91e8bb2ef",
     "wiki-content.json": "0775af937cad36cd792b7995355fadaf1b8a960fc01e6d42ecb292801b2e60f6",
-    "legions-world.tsv": "915dd13817a5b3752742622388dc1f3183a0edd80dc403078eef27f6ab34c51d",
-    "wilderness-content-v1.json": "c54c1ad1a45eb3e03b422b1ff04a9fa85b6b33b417e1b0004fcfe55346ceed8f",
-    "wilderness-world-v1.report.json": "4d7b74a9340a84a349d84b34b3fe4c8382e60ed477014072d53f2a850c41dd41",
+    "legions-world.tsv": "f82ed0f9ce62687e4656dd50b62ef716aabfda2b896a6b6b885f4beec40a2f5c",
+    "wilderness-content-v1.json": "81d262739b72c4b05264c0d4c8dbc7aca1d5322f999986a8f6f2170d9f0b2eb7",
+    "wilderness-world-v1.report.json": "3568dc6bea1a921ae30bdcf6010e6700a375a442fad3a6c2b61e540a393ef5e3",
     "hunting-content-v1.json": "ec87e97d64e2d8ed56409a5c7519a11fd74eb804c6b900f7bddbb31d2c7e851b",
     "hunting-content-v2.json": "2dbedbc20b31eb9c45f9f954f25b6121f5cec965cc2e7b6009edd95fc55160bb",
-    "hunting-world-v2.report.json": "bf7e8dcea6ca9cb7320a1d25956fba2514b671c8ce286d3bc21c88c0f71e67e3"
+    "hunting-world-v2.report.json": "bf7e8dcea6ca9cb7320a1d25956fba2514b671c8ce286d3bc21c88c0f71e67e3",
+    "foundry-generals-v1.json": "12b446994246a2daca101ff63fd3dd68a56d47dc32deb13bda7a1cb81c189672",
+    "foundry-generals-v1.report.json": "61832cbb9ed2b10c2a441a663d3335daec7efabd6df8609b03e5316fdd8ce85d",
+    "hunting-world-v2.tsv": "ee25ef5984e32b7cbf454b2f1c175909ce0bcd5bcd6d6d71add2ca29bfc695c6",
+    "workshops-world-v1.tsv": "f6f33054bbde2dff965099ec6301f7ac477938904924b9af49a318dd93bbb387",
+    "arwic-mines-world-v1.tsv": "c18553dafc4165f49bbc8a9d152f3e4d60a89c2b86ca57628ecc3f33b8a5ee31",
+    "vault-world-v1.tsv": "fcce60f43477fc7f3061c0d11fd2e8520a053e1be3d2275275f0a5b1e07107c6",
+    "illuminated-cave-v1.tsv": "fa558a72419dbab19acbec890c80ffbb441dfa19f0f3b257f4c15a5be4cfcf98",
+    "windmill-world-v1.tsv": "e80130e6030c68b8274f148913450bfe35452dd0f467af844bf28e4a630ef9f2",
+    "npc-world-v1.tsv": "baaad566eea3f01ddd6512c6ea6ab31b28f5fec927374ec2060602176eb2c16c",
+    "foundry-generals-v1.tsv": "a0a12db5903aacf0cb235942d27344a2fceb30661ae60122fb916f9a2b055875",
+    "warder-hideout-v1.tsv": "1db0aa52709135746bf9922c90e4e8e950bd4bb4cd260f1237f3b4beeb8f2e4f",
+    "ac2hero-raid-world-v1.tsv": "1226c524a900227d7359e154c96a2c632ee7a723b7eb85b39bfeb1c75fc31f54",
+    "fiery-crypt-map-v1.tsv": "70c9b3f62d52519c1cf2c421001acb8e9327ade42aa053c7641c79e2d910f9a4",
+    "ac2hero-settlements-v1.tsv": "ee819da66de131d04ebced706f3b6c65e1e1b1d0941e9efa0139cd49e40b5db2",
+    "hero-wilderness-camps-v2.tsv": "d34d082e7169efd8993296fd3d6c66aed73655196a9336e5fe8c4e17177d6b01",
+    "cragstone-excavation-v1.tsv": "4dd9eb051d491365deb4df145cba9affb5a4e6eaa5db073c158fc4b785b31b75",
+    "the-ossuary-v1.tsv": "fce3b7af575c81a6b49991f193f61ff880ae0241c19c72b73e36cca0677479e1",
+    "quest-encounters-v1.tsv": "270a2aa9953301eec6a47da290ccd3e90a96ee1f6cfac9e574e94630c040797d"
   }
 }

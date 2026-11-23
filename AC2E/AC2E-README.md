@@ -4,6 +4,37 @@ AC2E is this workspace's persistent multiplayer server project, derived from Pyr
 
 ## Running
 
+The development training mode has been removed. `serve --game-data PATH`
+starts normal gameplay; `serve-training` and `--training-kit` are no longer accepted.
+Login grants only the racial starter equipment and basic skills, without the
+extra supply pack, training-only attack grant, or automatic practice-quest enrollment.
+Shelter Drudges give needed quest tools/glyphs and otherwise use normal corpse
+loot, rather than automatic equipment/potion gifts. Crafting, vendors, travel,
+and optional NPC quests remain available. Historical training grant records
+still replay so existing characters retain their earned and already-granted items.
+
+The Unreal client now uses the existing native `UploadGameOptions` persistence
+path for damage-text, radar and hotbar display preferences, including bar height.
+Options remain owned by the selected character and replay from existing `o1`
+records. This client/bridge integration does not change the server journal format.
+
+Logout no longer fails when scene loading fills the reliable packet window.
+The server retains the exit and character-list response, stops gameplay for the
+departing character, and resumes sending as acknowledgments free capacity.
+The character list follows acknowledgment of world exit. Pending item animations,
+attacks, targeting and merchant state are cleared on departure; the existing
+timeout/retry policy still handles disconnected clients. No store migration is
+needed for this change.
+
+Hotbar preferences distinguish a never-saved bar from an intentionally empty
+bar. The first native edit writes an `h2` checkpoint containing the complete
+100-slot array, retaining untouched starter buttons; later edits use existing
+`h1` records. Both replay through restart and journal compaction. Existing `h1`
+journals remain readable. A fresh starter bar follows the client's tutorial
+order: melee, magic, missile. This preference storage grants no skill or item
+entitlements. Updated journals containing `h2` require this server version or
+newer; keep a store backup when testing an older binary.
+
 Game builds now use `target/game/release/ac2e.exe`; the account service keeps
 `target/release/ac2e.exe`. This lets a game build finish while standalone accounts
 are running. The build refreshes the account copy only when it is not in use;
@@ -52,6 +83,17 @@ Loot All and Transmute All temporarily enter peace and restore combat afterward,
 without restarting attacks on the corpse. Camera drags no longer clear selection
 on mouse-down.
 
+Switching targets cancels a queued skill and stops attacks on the previous
+target, including when the new target is out of range. Selecting the same
+target refreshes its status without turning a one-shot spell into auto-attack.
+Pickup/drop animations and corpse transmutation also complete any cancelled
+skill request, so the hotbar does not retain its pending marker.
+
+Animated healing and support spells accepted from peace mode now enter the
+equipped weapon's combat stance before their native cast story. Nearby players
+receive the same mode/story order. A rejected cast leaves stance unchanged,
+and support casting does not start attacks on the selected target.
+
 Run `start-ac2e.bat` from the workspace root, or `AC2E/Start-AC2E.ps1`. This uses the existing AC2E binary (building it if missing), prepares a compatible world placement file from the installed DATs, starts the account service on loopback HTTP 19400, and listens for game traffic on 127.0.0.1 UDP 9000 and 9001. Rust is needed for builds, not for starting an existing binary. After changing server source, run `start-ac2e.bat -Rebuild` or `Build-AC2E.ps1`. In another terminal run `Launch-AC2.ps1 -Online`. The client builds its native bridge if missing. Sign in with a new account name (1–32 letters, digits or underscores) and a password (12–128 characters). First login creates the account; subsequent logins verify the saved password. Account names are case-insensitive. The server owns character creation, progression and inventory.
 
 Parameters: `-Port`, `-Account`, `-DatDirectory`, `-DataDirectory`, `-Content`, `-Python`, `-SkipBuild`, `-Rebuild`. `-SkipBuild` also prevents the first build when no binary exists; it cannot be combined with `-Rebuild`. Defaults resolve relative to the project directory, regardless of the current working directory. Graceful shutdown: `Start-AC2E.ps1 -Stop`. Back up `data/world` with the server stopped. The store uses append-only journals with exclusive writer locks, validated replay, atomic transactions and persisted placements; it is not a MySQL schema. The CLI also exposes store inspection and compaction commands inherited from Pyrealium.
@@ -61,7 +103,8 @@ endpoint and exits successfully. It does not rebuild, rewrite the live content,
 or apply different settings to that server. Stop the server before rebuilding or
 changing its configuration. The launcher verifies the lock's process, executable,
 and data directory. A stale marker is archived only after obtaining exclusive
-read/write access and confirming its recorded process has exited. Live,
+read/write access and confirming its recorded process has exited, or that Windows
+reused its PID for a process created after the marker was written. Live,
 unreadable and unverifiable markers remain intact. Both world and account
 services use this recovery path.
 
@@ -125,25 +168,35 @@ reports the ordered per-character progress. After the introductions:
 3. Defeat a Drudge Sentinel for the Menhir Glyph. Select the gateway and use the
    glyph in the backpack while nearby. Its consumption and Vault placement are
    saved together. An unrelated or distant target cannot consume it.
-4. Speak to the Advance Scout in the Vault, then use the shard for the authored
-   completion step and 65 XP. The exit portal leads to the outdoor starter hub.
+4. Speak to the Advance Scout in the Vault, then use the Menhir Shard. After
+   activation it plays the Menhir history and takes the character through portal
+   space to their outdoor starter hub. The final transfer awards 65 XP once.
 
-These exchanges use versioned `s1` journal entries, recomputed from a canonical
-plan on replay. They preserve inventory, progression and travel across restart.
+Item exchanges use `s1` journal entries. The shard saves quest completion,
+its XP award and the destination together in an `sx2` entry. They preserve inventory, progression and travel across restart.
 Introductions retain the earlier `q5` records. Failed or repeated exchanges grant
 nothing. The glyph gateway can be reused after unlocking it, allowing return
 after death or recall without requiring another consumable glyph.
+Travel advances the native teleport counter, rather than the force-position
+correction counter, so clients enter portal space and load the destination.
+Old-room movement packets are rejected until the client acknowledges that counter.
+`Network/test_starters.py` completes all three quest chains, retries a portal
+through its cooldown, and checks teleport stamps and persistence after relogin.
+The Tumerok gateway uses the DAT pedestal center in cell `03FD0130`; its elevation
+comes from the cooked platform collision. The reported `/loc` identifies this
+pedestal, but its Z is the player's capsule center rather than ground height.
 
-Placement provenance matters: the Guard/Lieutenant mirror the observed 0298
-training instance; its corresponding cells match 0299 after the identity word.
-The Advance Scout at 03f40154 is an observed placement. The new Sentry, Scout,
-two Drudges, gateways and shard use explicitly authored coordinates in
-`training-world.tsv`, not recovered retail spawn locations. The shard currently
-uses the installed Master Osteth Menhir asset and an authored completion rule;
-the original Menhir history/cinematic has not been reconstructed. Scout potion
-items are real DAT definitions, but their reflect, regeneration and speed buffs
-are not yet executable. XP, deterministic drops and encounter timing are AC2E
-development policy. The separate three-Idol Training Grounds circuit remains.
+The [Human Shelter map](../Docs/HUMAN_SHELTER_MAP.png) shows the main dungeon
+and its Menhir Vault. Historical player captures and byte-identical native room
+records establish the Human officers, lesson stones, Straw Drudges, Drudge Diggers,
+Drudge Sentinels and portal locations. The warning stone and skull operate the
+optional early exit. The Human practice lifestones, idols and duplicate NPCs are
+available only in the legacy combat test fixture. Reconstructed positions for the
+other races are identified per actor in `starter-areas-v1.json`; the Tumerok
+Advance Scout in 03FD0154 was observed directly. The three racial
+`porting.from.shardroom` recordings identify the shard as entity `4700079A`,
+its position in each vault, the 19 frames of story `40000021`, and the
+departure effects. XP, quest drops and encounter timing use AC2E policy.
 
 Seven additional armor profiles are validated against the installed entity,
 qualities and physical records: Human 47001951/1952/1954, Lugian

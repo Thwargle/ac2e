@@ -13,9 +13,8 @@ public class AC2Client : ModuleRules
             "Core", "CoreUObject", "Engine", "InputCore", "ProceduralMeshComponent"
         });
         // DAT layout trees and bitmap fonts are presented with Slate; local profiles use versioned JSON.
-        PrivateDependencyModuleNames.AddRange(new[] { "ApplicationCore", "Json", "RenderCore", "RHI", "ImageWrapper", "Slate", "SlateCore" });
-        if(Target.Platform==UnrealTargetPlatform.Win64)PublicSystemLibraries.Add("winhttp.lib");
-        if (Target.bBuildEditor) PrivateDependencyModuleNames.Add("UnrealEd");
+        PrivateDependencyModuleNames.AddRange(new[] { "ApplicationCore", "Json", "RenderCore", "Renderer", "RHI", "ImageWrapper", "ImageCore", "Slate", "SlateCore" });
+        if(Target.Platform==UnrealTargetPlatform.Win64)PublicSystemLibraries.AddRange(new[] { "winhttp.lib", "advapi32.lib" });
+        if (Target.bBuildEditor) PrivateDependencyModuleNames.AddRange(new[] { "UnrealEd", "UMG" }); // Offscreen Slate regression captures.
     }
 }
-

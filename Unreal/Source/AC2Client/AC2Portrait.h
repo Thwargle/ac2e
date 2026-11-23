@@ -64,6 +64,7 @@ class AAC2Portrait : public AActor
     TArray<float> StageFloors;
     float Floor = 0;
     TArray<TUniquePtr<FAC2AssetLibrary>> LineupModels;
+    TArray<int32> SelectionModels; // Character indices exclude the carousel's pedestals.
     TArray<FBox> LineupBounds;
     int32 HoveredLineupAvatar=INDEX_NONE, SelectedLineupAvatar=INDEX_NONE;
     TArray<TWeakObjectPtr<USceneComponent>> Arms;

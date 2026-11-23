@@ -22,8 +22,7 @@ def main():
     log = (directory / 'server.log').open('w', encoding='utf-8')
     server = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19488',
         '--account', 'local', '--data', str(directory / 'world'), '--game-data', str(DAT_DIRECTORY),
-        '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-        '--lifestones', 'false', '--portals', 'false', '--test-map-travel', str(enabled).lower(),
+        '--content', str(content), '--initialize-ui', 'true', '--lifestones', 'false', '--portals', 'false', '--test-map-travel', str(enabled).lower(),
         '--seconds', '180'], env=env, stdout=log, stderr=log, creationflags=0x08000000)
     peers = []
     try:

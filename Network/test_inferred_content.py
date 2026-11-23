@@ -27,7 +27,7 @@ def main():
     def start():
         process=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19520','--account','local','--data',str(run/'world'),
             '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--encounters',str(rules),'--initialize-ui','true',
-            '--training-kit','false','--portals','false','--lifestones','false','--test-map-travel','true','--seconds','180'],
+            '--portals','false','--lifestones','false','--test-map-travel','true','--seconds','180'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(1);assert process.poll() is None,(run/'server.log').read_text();return process
     def connect(create=False):

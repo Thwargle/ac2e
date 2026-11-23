@@ -2,6 +2,7 @@
 #include "AC2CharacterMovement.h"
 #include "AC2Locomotion.h"
 #include "AC2GameMode.h"
+#include "AC2PortalSpace.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
@@ -42,26 +43,37 @@ AAC2Explorer::AAC2Explorer(const FObjectInitializer& ObjectInitializer)
     M->RotationRate = FRotator(0, 540, 0);
     UpdateSpeed();
 }
+void AAC2Explorer::CalcCamera(float DeltaTime,FMinimalViewInfo& OutResult)
+{
+    Super::CalcCamera(DeltaTime,OutResult);
+    if (ShardCameraSockets)
+    {
+        FVector Eye, Focus;
+        if (GetWorld()->GetTimeSeconds() >= ShardCameraUntil)
+            ShardCameraSockets = nullptr;
+        else if (ShardCameraSockets(Eye, Focus) && !Eye.Equals(Focus))
+        {
+            OutResult.Location = Eye;
+            OutResult.Rotation = (Focus - Eye).Rotation();
+        }
+    }
+    auto* PC=Cast<APlayerController>(GetController());
+    auto* HUD=PC?Cast<AAC2HUD>(PC->GetHUD()):nullptr;
+    if (HUD && HUD->PortalEffect)
+    {
+        const float Scale=HUD->PortalEffect->WorldFOVScale();
+        if(Scale!=1.f) OutResult.FOV=FMath::Clamp(OutResult.FOV*Scale,5.f,170.f);
+    }
+}
 void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
 {
     Super::SetupPlayerInputComponent(Input);
-    static bool Added = false;
-    if (!Added)
+    static bool AddedMouseAxes = false;
+    if (!AddedMouseAxes)
     {
-        Added = true;
-        for (auto Map : {FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::W, 1),
-                         FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::S, -1),
-                         FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::Up, 1),
-                         FInputAxisKeyMapping(TEXT("AC2Forward"), EKeys::Down, -1),
-                         FInputAxisKeyMapping(TEXT("AC2KeyboardTurn"), EKeys::Right, 1),
-                         FInputAxisKeyMapping(TEXT("AC2KeyboardTurn"), EKeys::Left, -1),
-                         FInputAxisKeyMapping(TEXT("AC2Right"), EKeys::D, 1),
-                         FInputAxisKeyMapping(TEXT("AC2Right"), EKeys::A, -1),
-                         FInputAxisKeyMapping(TEXT("AC2Up"), EKeys::E, 1),
-                         FInputAxisKeyMapping(TEXT("AC2Up"), EKeys::Q, -1),
-                         FInputAxisKeyMapping(TEXT("AC2Turn"), EKeys::MouseX, 1),
-                         FInputAxisKeyMapping(TEXT("AC2Look"), EKeys::MouseY, -1)})
-            UPlayerInput::AddEngineDefinedAxisMapping(Map);
+        AddedMouseAxes = true;
+        UPlayerInput::AddEngineDefinedAxisMapping(FInputAxisKeyMapping(TEXT("AC2Turn"), EKeys::MouseX, 1));
+        UPlayerInput::AddEngineDefinedAxisMapping(FInputAxisKeyMapping(TEXT("AC2Look"), EKeys::MouseY, -1));
     }
     Input->BindAxis(TEXT("AC2Forward"), this, &AAC2Explorer::Forward);
     Input->BindAxis(TEXT("AC2Right"), this, &AAC2Explorer::Right);
@@ -69,50 +81,40 @@ void AAC2Explorer::SetupPlayerInputComponent(UInputComponent *Input)
     Input->BindAxis(TEXT("AC2Turn"), this, &AAC2Explorer::Turn);
     Input->BindAxis(TEXT("AC2Look"), this, &AAC2Explorer::Look);
     Input->BindAxis(TEXT("AC2KeyboardTurn"), this, &AAC2Explorer::KeyboardTurn);
-    Input->BindKey(EKeys::MouseScrollUp,IE_Pressed,this,&AAC2Explorer::ZoomIn);
-    Input->BindKey(EKeys::MouseScrollDown,IE_Pressed,this,&AAC2Explorer::ZoomOut);
-    Input->BindKey(EKeys::Tab, IE_Pressed, this, &AAC2Explorer::ToggleView);
-    Input->BindKey(EKeys::F, IE_Pressed, this, &AAC2Explorer::ToggleFly);
-    for (const FKey Key : {EKeys::LeftShift, EKeys::RightShift})
-    {
-        Input->BindKey(Key, IE_Pressed, this, &AAC2Explorer::UpdateWalkModifier);
-        Input->BindKey(Key, IE_Released, this, &AAC2Explorer::UpdateWalkModifier);
-    }
-    Input->BindKey(EKeys::ThumbMouseButton, IE_Pressed, this, &AAC2Explorer::ToggleAutoRun);
-    Input->BindKey(EKeys::SpaceBar, IE_Pressed, this, &AAC2Explorer::StartJump);
-    Input->BindKey(EKeys::SpaceBar, IE_Released, this, &AAC2Explorer::EndJump);
 }
 void AAC2Explorer::Forward(float V)
 {
     const auto* PC=Cast<AAC2PlayerController>(Controller);
     if (!FMath::IsNearlyZero(V) || bHeld || !PC || PC->IsMoveInputIgnored()) StopAutoRun();
     if (bAutoRun || (PC && PC->MouseForward)) V=1;
-    // Camera orbit alone must not rotate the character or send a different network heading.
-    MovementSteersCamera=!FMath::IsNearlyZero(V);
-    GetCharacterMovement()->bUseControllerDesiredRotation=(PC && PC->CameraSteersPlayer) || (MovementSteersCamera && !(PC && PC->FreeOrbit));
+    ManualAxes.X=V;
+    GetCharacterMovement()->bUseControllerDesiredRotation=PC && PC->CameraSteersPlayer;
     if (!bHeld && Controller)
     {
-        FRotator R = PC && PC->FreeOrbit ? GetActorRotation() : GetControlRotation();
-        if (!bFly)
-            R.Pitch = 0;
+        const double Yaw = PC && PC->CameraSteersPlayer ? GetControlRotation().Yaw : GetActorRotation().Yaw;
+        const FRotator R(bFly ? GetControlRotation().Pitch : 0, Yaw, 0);
         AddMovementInput(R.Vector(), V);
     }
 }
 void AAC2Explorer::Right(float V)
 {
+    ManualAxes.Y=V;
     const auto* PC=Cast<AAC2PlayerController>(Controller);
-    const bool Orbit=PC && PC->FreeOrbit;
-    GetCharacterMovement()->bUseControllerDesiredRotation|=!Orbit && !FMath::IsNearlyZero(V);
     if (!bHeld && Controller)
-        AddMovementInput(FRotationMatrix(FRotator(0, Orbit?GetActorRotation().Yaw:GetControlRotation().Yaw, 0)).GetUnitAxis(EAxis::Y), V);
+    {
+        const double Yaw = PC && PC->CameraSteersPlayer ? GetControlRotation().Yaw : GetActorRotation().Yaw;
+        AddMovementInput(FRotationMatrix(FRotator(0,Yaw,0)).GetUnitAxis(EAxis::Y),V);
+    }
 }
 void AAC2Explorer::Up(float V)
 {
+    ManualAxes.Z=(bFly || bSwim)?V:0;
     if (!bHeld && (bFly || bSwim))
         AddMovementInput(FVector::UpVector, V);
 }
 void AAC2Explorer::Turn(float V)
 {
+    ManualMouseTurn=V;
     AddControllerYawInput(V*MouseSensitivity);
 }
 void AAC2Explorer::Look(float V)
@@ -121,16 +123,26 @@ void AAC2Explorer::Look(float V)
 }
 void AAC2Explorer::KeyboardTurn(float V)
 {
+    ManualKeyboardTurn=V;
     if(bHeld || bDead || FMath::IsNearlyZero(V) || !Controller || Controller->IsMoveInputIgnored())return;
-    auto R=Controller->GetControlRotation();
-    R.Yaw+=V*GetCharacterMovement()->RotationRate.Yaw*GetWorld()->GetDeltaSeconds();
-    Controller->SetControlRotation(R);
-    GetCharacterMovement()->bUseControllerDesiredRotation=true;
+    const auto* PC=Cast<AAC2PlayerController>(Controller);
+    const FRotator TurnDelta(0,V*GetCharacterMovement()->RotationRate.Yaw*GetWorld()->GetDeltaSeconds(),0);
+    if (!PC || !PC->CameraSteersPlayer)
+        AddActorWorldRotation(TurnDelta);
+    if (!PC || !PC->FreeOrbit)
+        Controller->SetControlRotation(Controller->GetControlRotation()+TurnDelta);
+}
+bool AAC2Explorer::HasManualMovementInput() const
+{
+    const auto* PC=Cast<AAC2PlayerController>(Controller);
+    return PC && !bHeld && !bDead && !PC->IsMoveInputIgnored() &&
+        (!ManualAxes.IsNearlyZero() || !FMath::IsNearlyZero(ManualKeyboardTurn) || bPressedJump ||
+         (PC->CameraSteersPlayer && !FMath::IsNearlyZero(ManualMouseTurn)));
 }
 void AAC2Explorer::UpdateWalkModifier()
 {
-    const auto* PC=Cast<APlayerController>(Controller);
-    SetRunning(!PC || (!PC->IsInputKeyDown(EKeys::LeftShift) && !PC->IsInputKeyDown(EKeys::RightShift)));
+    const auto* PC = Cast<AAC2PlayerController>(Controller);
+    SetRunning(!PC || !PC->WalkKeyDown());
 }
 void AAC2Explorer::ToggleAutoRun()
 {
@@ -167,6 +179,7 @@ void AAC2Explorer::UpdateSpeed()
         V->Jump*=JumpScale;
     }
     M->Native=Values;
+    M->GroundNative=Ground;
     M->Pace=bFast?1.f:.55f;
     M->MaxWalkSpeed=Ground.Forward*100*(bFast?1.f:.55f);
     M->MaxCustomMovementSpeed=Values.Forward*100;
@@ -190,9 +203,16 @@ void AAC2Explorer::SetFlying(bool Flying)
     if (!bHeld)
         GetCharacterMovement()->SetMovementMode(Flying?MOVE_Flying:bSwim?MOVE_Custom:MOVE_Walking,bSwim?1:0);
 }
+void AAC2Explorer::SetServerMovementLocked(bool Locked)
+{
+    if (bServerMovementLocked == Locked) return;
+    bServerMovementLocked = Locked;
+    SetHeld(bLocalHold);
+}
 void AAC2Explorer::SetHeld(bool Held)
 {
-    bHeld = Held || bDead;
+    bLocalHold = Held;
+    bHeld = bLocalHold || bServerMovementLocked || bDead;
     if (bHeld)
     {
         PendingJump=-1;
@@ -259,12 +279,25 @@ bool AAC2Explorer::ApplyAvatar(uint32 Physics, float Height, float Build, const 
 }
 void AAC2Explorer::EndPlay(const EEndPlayReason::Type Reason)
 {
+    CancelShardPresentation();
     Model.Reset();
     Super::EndPlay(Reason);
 }
 void AAC2Explorer::Tick(float Delta)
 {
     Super::Tick(Delta);
+    if (auto* PC=Cast<AAC2PlayerController>(Controller); PC && !bHeld && !bDead && !PC->IsMoveInputIgnored() &&
+        !PC->CameraSteersPlayer && !PC->FreeOrbit && (!FMath::IsNearlyZero(ManualAxes.X) || !FMath::IsNearlyZero(ManualAxes.Y)))
+    {
+        // Follow the runner after an orbit without rotating the pawn into the view.
+        FRotator View=PC->GetControlRotation();
+        const double Offset=FMath::FindDeltaAngleDegrees(View.Yaw,GetActorRotation().Yaw);
+        if (!FMath::IsNearlyZero(Offset))
+        {
+            View.Yaw+=Offset*(1.0-FMath::Exp(-4.0*Delta));
+            PC->SetControlRotation(View);
+        }
+    }
     AnimationTime += Delta;
     GroundTime=GetCharacterMovement()->IsMovingOnGround()?GroundTime+Delta:0;
     UpdateSpeed();
@@ -294,10 +327,19 @@ void AAC2Explorer::Tick(float Delta)
             else if((Height>5000 || (Height>1000 && GetVelocity().Z<-1900)) && !Model->BehaviorDuration(AC2Motion::Fall))PlayBehavior(AC2Motion::Fall,0,1,true);
         }
         const FVector LocalVelocity =
-            Body->GetComponentTransform().InverseTransformVectorNoScale(GetVelocity());
+            Body->GetComponentTransform().InverseTransformVector(GetVelocity());
         const uint32 Element=bSwim?AC2Motion::Water:bWade?AC2Motion::SeaFloor:GetCharacterMovement()->IsFalling()?AC2Motion::Air:AC2Motion::Ground;
         Model->SetAnimationState(Element,AC2Locomotion::AnimationMode(Element,bDead?AC2Motion::Dead:NativeMode));
-        Model->Animate(AnimationTime, GetVelocity().Size2D(), nullptr, &LocalVelocity);
+        const auto* Movement=GetCharacterMovement();
+        FVector AnimationLook=FVector::ZeroVector;
+        if(auto* Mode=GetWorld()->GetAuthGameMode<AAC2GameMode>();Mode && Mode->Network && !bDead)
+        {
+            AnimationLook=Mode->Network->PlayerLook(Delta);
+            Mode->Network->ReportPlayerLook(AnimationLook);
+        }
+        Model->SetAnimationEnvironment(Movement->IsMovingOnGround(),
+            Body->GetComponentTransform().InverseTransformVectorNoScale(Movement->CurrentFloor.HitResult.ImpactNormal),AnimationLook);
+        Model->Animate(AnimationTime, GetVelocity().Size2D(), &LocalVelocity);
     }
     if (bSwim && !bFly && !bHeld)
     {
@@ -358,6 +400,16 @@ bool AAC2Explorer::PlayBehavior(uint32 Behavior,uint32 Mode,float Rate,bool Hold
     return Model && Model->PlayBehavior(Behavior,AC2Locomotion::AnimationMode(bSwim?AC2Motion::Water:AC2Motion::Ground,NativeMode),Rate,Hold);
 }
 void AAC2Explorer::StopBehavior(uint32 Behavior){if(Model)Model->StopBehavior(Behavior);}
+void AAC2Explorer::ReleaseBehavior(uint32 Behavior){if(Model)Model->ReleaseBehavior(Behavior);}
+void AAC2Explorer::StopAnimationLayer(uint32 Layer){if(Model)Model->StopAnimationLayer(Layer);}
+bool AAC2Explorer::PlayPickup()
+{
+    // The inventory reach is authored in peace mode. Resolve that clip without
+    // changing the server-owned stance or the locomotion mode on completion.
+    return !bDead && !bSwim && Model && Model->PlayBehavior(AC2Motion::Pickup,AC2Motion::Peace);
+}
+uint64 AAC2Explorer::BehaviorInstance(uint32 Behavior) const{return Model?Model->BehaviorInstance(Behavior):0;}
+bool AAC2Explorer::CompletedHoldCycles(uint32 Behavior,uint32 Cycles) const{return Model && Model->CompletedHoldCycles(Behavior,Cycles);}
 void AAC2Explorer::SetNativeMode(uint32 Mode){NativeMode=Mode;}
 void AAC2Explorer::ResetMotionParameters()
 {
@@ -379,7 +431,7 @@ void AAC2Explorer::SetDead(bool Dead)
     bDead=Dead;
     if(Dead)PlayBehavior(AC2Motion::Death,AC2Motion::Dead,1,true);
     else {StopBehavior();NativeMode=AC2Motion::Peace;}
-    SetHeld(Dead);
+    SetHeld(bLocalHold);
 }
 void AAC2Explorer::Landed(const FHitResult& Hit)
 {

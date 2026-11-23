@@ -211,6 +211,7 @@ pub struct Motion {
     pub position_stamp: u16,
     pub last: Option<ClientPosition>,
     force_stamp: u16,
+    teleport_stamp: u16,
 }
 impl Motion {
     pub fn new(placement: Placement, instance: u16) -> Self {
@@ -221,10 +222,11 @@ impl Motion {
             position_stamp: 0,
             last: None,
             force_stamp: 0,
+            teleport_stamp: 0,
         }
     }
     pub fn accept(&mut self, update: ClientPosition) -> Result<(), WorldError> {
-        if update.stamps[..3] != [self.instance, 0, self.force_stamp]
+        if update.stamps[..3] != [self.instance, self.teleport_stamp, self.force_stamp]
             || self.last.is_some_and(|last| update.time <= last.time)
         {
             return Err(WorldError::InvalidValue);
@@ -237,18 +239,16 @@ impl Motion {
         self.last = Some(update);
         Ok(())
     }
-    /// Development instant relocation using the recovered forced-position
-    /// stamp. Prepare on a candidate before making durable world-state changes.
-    pub fn forced(&self, destination: Placement) -> Result<(Self, ClientPosition), WorldError> {
+    /// Travel changes the native teleport stamp, so the client loads the new
+    /// cell under portal space. A force-position correction only moves the body
+    /// and must not be used to enter a different dungeon/landblock.
+    pub fn teleported(&self, destination: Placement) -> Result<(Self, ClientPosition), WorldError> {
         if !destination.valid() {
             return Err(WorldError::InvalidValue);
         }
         let mut next = self.clone();
         next.fall = crate::falling::Fall::default();
-        next.force_stamp = self
-            .force_stamp
-            .checked_add(1)
-            .ok_or(WorldError::LimitExceeded)?;
+        next.teleport_stamp = self.teleport_stamp.wrapping_add(1);
         next.position_stamp = self.position_stamp.wrapping_add(1);
         next.placement = destination;
         let update = ClientPosition {
@@ -256,7 +256,7 @@ impl Motion {
             placement: destination,
             motion: (u32::from(destination.heading) << 24) | 0x007f7f7f,
             cancel_moveto: true,
-            stamps: [self.instance, 0, next.force_stamp, 0],
+            stamps: [self.instance, next.teleport_stamp, self.force_stamp, 0],
             jump_velocity: None,
         };
         update.validate()?;
@@ -267,6 +267,24 @@ impl Motion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn travel_uses_teleport_stamp_and_rejects_old_room_updates() {
+        let mut original=Motion::new(Placement::HUMAN_START,5);
+        let mut move_before=sample();move_before.stamps=[5,0,0,0];
+        original.accept(move_before).unwrap();
+        let destination=Placement {cell:0x03fd0154,coordinates:[176.,62.,15.32],heading:0};
+        let (mut arrived,travel)=original.teleported(destination).unwrap();
+        assert_eq!(travel.stamps,[5,1,0,0]);
+        let bytes=server_position(42,5,arrived.position_stamp,&travel).unwrap();
+        // Server PositionPack order: position, force-position, teleport.
+        assert_eq!(&bytes[bytes.len()-8..bytes.len()-2], &[2,0,0,0,1,0]);
+        move_before.time+=1.;
+        assert!(arrived.accept(move_before).is_err());
+        let mut ack=travel;ack.time+=2.;arrived.accept(ack).unwrap();
+        assert_eq!(arrived.placement,destination);
+        arrived.teleport_stamp=u16::MAX;
+        assert_eq!(arrived.teleported(destination).unwrap().1.stamps[1],0);
+    }
     #[test]
     fn distances_use_landblock_origins_and_keep_interior_spaces_separate() {
         let a = Placement { cell: 0x12340100, coordinates: [10.0, 20.0, -5.0], heading: 0 };

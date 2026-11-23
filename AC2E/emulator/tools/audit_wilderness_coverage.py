@@ -22,12 +22,16 @@ def build():
     rows = [s.split('\t') for s in world_path.read_text(encoding='utf8').splitlines() if len(s.split('\t'))==13]
     counts = Counter(int(r[1],16) for r in rows)
     added = Counter(int(r[1],16) for r in rows if int(r[0],16) & 0xffffffffff000000 == NAMESPACE)
-    # Report the original wilderness expansion against its earlier baseline,
-    # not against later guide camps which reuse three of its newly added types.
-    later_ids = {s.split('\t')[0] for s in (CONTENT/'hunting-world-v2.tsv').read_text().splitlines()
-                 if len(s.split('\t'))==13}
-    later = Counter(int(r[1],16) for r in rows if r[0] in later_ids)
-    baseline = counts-added-later
+    # Later packs reuse some of the templates first introduced by the wilderness pack.
+    later_packs = ('hunting-world-v2', 'workshops-world-v1', 'arwic-mines-world-v1', 'vault-world-v1',
+                   'illuminated-cave-v1', 'windmill-world-v1', 'npc-world-v1', 'foundry-generals-v1',
+                   'warder-hideout-v1', 'ac2hero-raid-world-v1', 'fiery-crypt-map-v1',
+                   'ac2hero-settlements-v1', 'hero-wilderness-camps-v2', 'cragstone-excavation-v1',
+                   'the-ossuary-v1', 'quest-encounters-v1')
+    later_ids = {pack: {f[0] for line in (CONTENT/f'{pack}.tsv').read_text().splitlines()
+                        if len(f := line.split('\t')) == 13} for pack in later_packs}
+    all_later_ids = set().union(*later_ids.values())
+    baseline = counts-added-Counter(int(r[1],16) for r in rows if r[0] in all_later_ids)
     protected = {int(s,16) for s in (CONTENT/'population-protected.txt').read_text().splitlines()
                  if len(s)==8 and all(c in '0123456789abcdefABCDEF' for c in s)}
     by_name = defaultdict(list)
@@ -86,7 +90,8 @@ def build():
         'Quest starter matching is exact normalized native-name matching; unmatched starters may be items or areas.',
         'Native loot quantities/trophies and observed item pools are used; exact retail item weights and affix algorithms remain unrecovered.'],
         summary=dict(world_placements=len(rows),new_creatures=sum(added.values()),new_groups=len(proof['groups']),
-            hunting_expansion_placements=sum(later.values()),implemented_npc_hunts=len(quest_records),
+            hunting_expansion_placements=sum(r[0] in later_ids['hunting-world-v2'] for r in rows),implemented_npc_hunts=len(quest_records),
+            foundry_general_placements=sum(r[0] in later_ids['foundry-generals-v1'] for r in rows),
             new_outdoor_blocks=proof['newly_populated_outdoor_blocks'],new_native_types=sum(not baseline[d] for d in added),
             native_combat_templates=len(combat),template_status_counts=dict(Counter(v['status'] for v in combat.values())),
             eligible_wiki_types=len({c['entity'] for r in source['regions'] for c in r['creatures']}),
@@ -95,7 +100,9 @@ def build():
         native_combat_templates=combat,wiki_quest_starters=starters,
         sources={p.name:digest(p) for p in [template_path,wiki_path,world_path,
             CONTENT/'wilderness-content-v1.json',CONTENT/'wilderness-world-v1.report.json',CONTENT/'hunting-content-v1.json',
-            CONTENT/'hunting-content-v2.json',CONTENT/'hunting-world-v2.report.json']})
+            CONTENT/'hunting-content-v2.json',CONTENT/'hunting-world-v2.report.json',
+            CONTENT/'foundry-generals-v1.json',CONTENT/'foundry-generals-v1.report.json',
+            *(CONTENT/f'{pack}.tsv' for pack in later_packs)]})
 
 
 if __name__=='__main__':

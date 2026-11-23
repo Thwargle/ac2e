@@ -134,6 +134,7 @@ void SAC2CharacterUI::Open(EScreen Next,const FString& InitialMessage)
     if (Portrait.IsValid() && Next!=EScreen::Create)
     {Portrait->SetActorTickEnabled(false);Portrait->Capture->bCaptureEveryFrame=false;}
     ShowSelectionOptions = false;
+    SelectionPointer = FVector2D(-1,-1);
     DeletePending.Empty();
     CreatorLayout.Hovered = CreatorLayout.Pressed = 0;
     if (Selection.IsValid()) { Selection->Destroy(); Selection.Reset(); }
@@ -242,7 +243,7 @@ void SAC2CharacterUI::Tick(const FGeometry& Geometry, double CurrentTime, float 
 FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
 {
     if (Screen==EScreen::Credits) {Screen=EScreen::Select;Refresh();return FReply::Handled();}
-    if (Event.GetKey() == EKeys::Escape)
+    if (IsCreation() && Event.GetKey() == EKeys::Escape)
     {
         if (Screen == EScreen::Select && (ShowSelectionOptions || !DeletePending.IsEmpty()))
         {ShowSelectionOptions=false; DeletePending.Empty(); Message.Empty(); Refresh(); return FReply::Handled();}
@@ -254,7 +255,7 @@ FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
             Mode->SignOut();
         return FReply::Handled();
     }
-    if (Screen == EScreen::Select && !ShowSelectionOptions)
+    if (Screen == EScreen::Select && !ShowSelectionOptions && DeletePending.IsEmpty())
     {
         if (Event.GetKey() == EKeys::Enter && DeletePending.IsEmpty()) { Enter(); return FReply::Handled(); }
         if (Event.GetKey() == EKeys::Left || Event.GetKey() == EKeys::Right || Event.GetKey() == EKeys::Up || Event.GetKey() == EKeys::Down)
@@ -267,12 +268,18 @@ FReply SAC2CharacterUI::OnKeyDown(const FGeometry &, const FKeyEvent &Event)
     }
     if (!IsCreation())
     {
-        if (Event.GetKey() == EKeys::I)
+        const auto* PC = Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
+        if (!PC) return FReply::Unhandled();
+        const FInputChord Chord(Event.GetKey(), Event.IsShiftDown(), Event.IsControlDown(), Event.IsAltDown(), Event.IsCommandDown());
+        auto Matches = [&](FName Id){ return PC->GameplayKeys().Rows.ContainsByPredicate([&](const auto& Row)
+            { return Row.Id == Id && Row.Chord == Chord; }); };
+        if (Matches(TEXT("Close"))) { Close(); return FReply::Handled(); }
+        if (Matches(TEXT("Inventory")))
         {
             Screen == EScreen::Inventory ? Close() : Open(EScreen::Inventory);
             return FReply::Handled();
         }
-        if (Event.GetKey() == EKeys::C)
+        if (Matches(TEXT("Character")))
         {
             Screen == EScreen::Stats ? Close() : Open(EScreen::Stats);
             return FReply::Handled();

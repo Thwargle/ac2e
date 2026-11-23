@@ -1,0 +1,1814 @@
+{
+  "version": 1,
+  "policy": "Captured anchors and reconstructed actors in the three supported racial Shelter instances. Native meshes are retained; the Tumerok descent stair is an explicitly documented AC2E geometry repair.",
+  "source": "https://www.20oz.net/index.php/Rescue_the_Shelter_Hold.html",
+  "areas": [
+    {
+      "race": 1,
+      "name": "Human",
+      "start": {
+        "cell": 43581705,
+        "position": [
+          59.060576999999974,
+          240.19899999999907,
+          -44.606205
+        ]
+      },
+      "actors": [
+        {
+          "id": "8140000000031020",
+          "role": "training-stone",
+          "entity": 1191187827,
+          "visual": 520094452,
+          "cell": 43581705,
+          "position": [
+            43.87440490722656,
+            240.1739044189453,
+            -44.20610046386719
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980109",
+            "object": "400298000000003b",
+            "message_sha256": "e849825a073a8ab53852cc1ce0b65cea4c526cc1c5e9ee53a2708d29bfe4f0f9"
+          }
+        },
+        {
+          "id": "8140000000031021",
+          "role": "training-stone",
+          "entity": 1191187828,
+          "visual": 520094452,
+          "cell": 43581696,
+          "position": [
+            19.952425003051758,
+            244.22833251953125,
+            -44.245460510253906
+          ],
+          "orientation": [
+            0.9205048084259033,
+            0.0,
+            0.0,
+            0.39073115587234497
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980100",
+            "object": "400298000000003c",
+            "message_sha256": "142833f1ce91072539eadb6b32c636b8f69b12b834cd383dc3f30e8f2ace363c"
+          }
+        },
+        {
+          "id": "8140000000030040",
+          "role": "guard",
+          "entity": 1191187837,
+          "visual": 520097140,
+          "cell": 43581705,
+          "position": [
+            52.159114837646484,
+            242.0343780517578,
+            -44.45087814331055
+          ],
+          "orientation": [
+            0.7071067690849304,
+            0.0,
+            0.0,
+            -0.7071067690849304
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980109",
+            "object": "8120000051b3db24",
+            "message_sha256": "2d13bd5e5cbbbb5382f288b4a6747064d305a1434d931b3649b47cf2581c6c01"
+          }
+        },
+        {
+          "id": "8140000000031022",
+          "role": "training-stone",
+          "entity": 1191187829,
+          "visual": 520094452,
+          "cell": 43581704,
+          "position": [
+            -10.284700393676758,
+            234.73500061035156,
+            -44.14550018310547
+          ],
+          "orientation": [
+            0.3746066093444824,
+            0.0,
+            0.0,
+            0.9271838665008545
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980108",
+            "object": "400298000000003d",
+            "message_sha256": "96cde53d0bfe7b3d48ae8fea2fc3b7761d8378a53ffe31d74b50a4f1661f282d"
+          }
+        },
+        {
+          "id": "8140000000030041",
+          "role": "lieutenant",
+          "entity": 1191187838,
+          "visual": 520097141,
+          "cell": 43581704,
+          "position": [
+            -13.498025894165039,
+            239.3400421142578,
+            -43.90989685058594
+          ],
+          "orientation": [
+            0.7071067690849304,
+            0.0,
+            0.0,
+            -0.7071067690849304
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980108",
+            "object": "8120000051b3db25",
+            "message_sha256": "17c8a2f799641b6ff24bdc592bb3bacb857b8092a2a609eabf114df13e849380"
+          }
+        },
+        {
+          "id": "8140000000031023",
+          "role": "training-stone",
+          "entity": 1191187830,
+          "visual": 520094452,
+          "cell": 43581729,
+          "position": [
+            -1.4170387983322144,
+            328.3849182128906,
+            -43.4026985168457
+          ],
+          "orientation": [
+            0.9222011566162109,
+            0.0,
+            0.0,
+            0.38671058416366577
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980121",
+            "object": "400298000000003f",
+            "message_sha256": "17041a965dc577f398531e70499763478d6f6200cdcb31ca86ce71339c0b182c"
+          }
+        },
+        {
+          "id": "8140000000031024",
+          "role": "training-stone",
+          "entity": 1191187831,
+          "visual": 520094452,
+          "cell": 43581700,
+          "position": [
+            4.682961940765381,
+            342.3851013183594,
+            -44.300594329833984
+          ],
+          "orientation": [
+            0.9255402684211731,
+            0.0,
+            0.0,
+            -0.37864911556243896
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980104",
+            "object": "4002980000000040",
+            "message_sha256": "ba5a69e8c595effaefe5ea0a1b8bbfe82e160d8e444c27c59145808571c17c62"
+          }
+        },
+        {
+          "id": "8140000000031025",
+          "role": "training-stone",
+          "entity": 1191187832,
+          "visual": 520094452,
+          "cell": 43581700,
+          "position": [
+            0.6892471340272823,
+            369.75530758890324,
+            -42.34471154749026
+          ],
+          "orientation": [
+            0.9733792543411255,
+            0.0,
+            0.0,
+            -0.22920046746730804
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room; adjusted to a clear native physics floor",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980104",
+            "object": "4002980000000043",
+            "message_sha256": "6c283f4c215cd216e5e6afa6a4ac6f792b5f51207f34cc32b7c2648a0d341b00"
+          }
+        },
+        {
+          "id": "8140000000031002",
+          "role": "sentry",
+          "entity": 1191187841,
+          "visual": 520097144,
+          "cell": 43581755,
+          "position": [
+            18.9555264,
+            388.262054,
+            -43.3029823
+          ],
+          "orientation": [
+            0.963493168,
+            0.0,
+            0.0,
+            0.267732888
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140b69569db83c0",
+            "entity": "47002e05",
+            "visual": "1f000efc",
+            "cell": "0298013b"
+          }
+        },
+        {
+          "id": "8140000000031003",
+          "role": "digger",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 43581754,
+          "position": [
+            32.904068,
+            410.275391,
+            -43.5492935
+          ],
+          "orientation": [
+            0.500000179,
+            0.0,
+            0.0,
+            0.866025269
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140c898908a39a0",
+            "entity": "470023b3",
+            "visual": "1f000036",
+            "cell": "0298013a"
+          },
+          "scale": 0.800000012
+        },
+        {
+          "id": "8140000000031004",
+          "role": "scout",
+          "entity": 1191187840,
+          "visual": 520097143,
+          "cell": 43581714,
+          "position": [
+            41.45364,
+            503.066284,
+            -45.45438
+          ],
+          "orientation": [
+            0.612420142,
+            0.0,
+            0.0,
+            -0.79053247
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140f942763f9d21",
+            "entity": "47002e03",
+            "visual": "1f000efb",
+            "cell": "02980112"
+          }
+        },
+        {
+          "id": "8140000000031005",
+          "role": "sentinel",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581764,
+          "position": [
+            83.8419495,
+            538.711304,
+            -46.7066116
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140be8517e612f3",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "02980144"
+          }
+        },
+        {
+          "id": "8140000000031007",
+          "role": "menhir-portal",
+          "entity": 1191184461,
+          "visual": 520094494,
+          "cell": 43581718,
+          "position": [
+            146.689011,
+            630.051758,
+            -29.8386917
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140d1380a2f6ab4",
+            "entity": "47001ce8",
+            "visual": "1f00031e",
+            "cell": "02980116"
+          }
+        },
+        {
+          "id": "8140000000031040",
+          "role": "straw-drudge",
+          "entity": 1191187375,
+          "visual": 520097013,
+          "cell": 43581729,
+          "position": [
+            -3.846198558807373,
+            337.50274658203125,
+            -44.70342254638672
+          ],
+          "orientation": [
+            0.7933533191680908,
+            0.0,
+            0.0,
+            -0.6087613701820374
+          ],
+          "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980121",
+            "object": "8120000051b3db1e",
+            "message_sha256": "1d1ebdd15e3eb6788defd6d878629167400c5b957e207d907793a79c04256582"
+          }
+        },
+        {
+          "id": "8140000000031041",
+          "role": "straw-drudge",
+          "entity": 1191187375,
+          "visual": 520097013,
+          "cell": 43581729,
+          "position": [
+            5.8796515464782715,
+            338.0324401855469,
+            -44.91318130493164
+          ],
+          "orientation": [
+            0.7071067690849304,
+            0.0,
+            0.0,
+            0.7071067690849304
+          ],
+          "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980121",
+            "object": "8120000051b3db23",
+            "message_sha256": "13486d6e57a80f0a61cf7e16513165b6626e4a6e827f447e949de1dc422324cf"
+          }
+        },
+        {
+          "id": "8140000000031042",
+          "role": "straw-drudge",
+          "entity": 1191187375,
+          "visual": 520097013,
+          "cell": 43581700,
+          "position": [
+            -4.674497127532959,
+            342.9035949707031,
+            -45.000267028808594
+          ],
+          "orientation": [
+            0.6087614297866821,
+            0.0,
+            0.0,
+            -0.7933533191680908
+          ],
+          "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "02980104",
+            "object": "8120000051b3db1d",
+            "message_sha256": "02aeab2d24a50debb8801984dd9a37b1914b1b68327306a5623de6d90e0664cd"
+          }
+        },
+        {
+          "id": "8140000000031070",
+          "role": "exit-warning",
+          "entity": 1191187887,
+          "visual": 520094452,
+          "cell": 43581726,
+          "position": [
+            95.34464263916016,
+            236.2895050048828,
+            -44.220001220703125
+          ],
+          "orientation": [
+            0.9659258127212524,
+            0.0,
+            0.0,
+            0.2588191330432892
+          ],
+          "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "0298011e",
+            "object": "400298000000005c",
+            "message_sha256": "71ea6c4afa474c61cf0abc4b32cc87defe1b7c6d82fe465eef6b334b3ddbca5f"
+          }
+        },
+        {
+          "id": "8140000000031071",
+          "role": "warning-skull",
+          "entity": 1191187846,
+          "visual": 520094108,
+          "cell": 43581726,
+          "position": [
+            97.71883392333984,
+            237.0712890625,
+            -43.596710205078125
+          ],
+          "orientation": [
+            0.9238795042037964,
+            0.0,
+            0.0,
+            0.38268354535102844
+          ],
+          "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_CahrCreateBtnClick_bis_LoginNoobZone_human_female.elog",
+            "cell": "0298011e",
+            "object": "400298000000005d",
+            "message_sha256": "37aef540e09838a2b23b61d629cd2f16d60fd4f9b00f5c4cffc58111ef121b00"
+          },
+          "approach": [
+            97.71883392333984,
+            237.0712890625,
+            -44.7981955188514
+          ]
+        },
+        {
+          "id": "8140000000031026",
+          "role": "training-stone",
+          "entity": 1191187833,
+          "visual": 520094452,
+          "cell": 43581706,
+          "position": [
+            -1.97835433,
+            389.437531,
+            -43.5265007
+          ],
+          "orientation": [
+            0.923879504,
+            0.0,
+            0.0,
+            0.382683545
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140fe98384113a8",
+            "entity": "47002e0f",
+            "visual": "1f0002f4",
+            "cell": "0298010a"
+          }
+        },
+        {
+          "id": "8140000000031027",
+          "role": "training-stone",
+          "entity": 1191187834,
+          "visual": 520094452,
+          "cell": 43581707,
+          "position": [
+            16.3762398,
+            410.594818,
+            -42.7556763
+          ],
+          "orientation": [
+            0.866025388,
+            0.0,
+            0.0,
+            0.50000006
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140b4662727f011",
+            "entity": "47002e10",
+            "visual": "1f0002f4",
+            "cell": "0298010b"
+          }
+        },
+        {
+          "id": "8140000000031028",
+          "role": "training-stone",
+          "entity": 1191187835,
+          "visual": 520094452,
+          "cell": 43581757,
+          "position": [
+            41.314518,
+            527.327698,
+            -44.634182
+          ],
+          "orientation": [
+            0.852403998,
+            0.0,
+            0.0,
+            -0.522883773
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140f651210a13e5",
+            "entity": "47002e11",
+            "visual": "1f0002f4",
+            "cell": "0298013d"
+          },
+          "approach": [
+            42.16352976765833,
+            526.7876248397911,
+            -45.158041677250324
+          ]
+        },
+        {
+          "id": "8140000000031072",
+          "role": "shortcut-portal",
+          "entity": 1191184461,
+          "visual": 520094494,
+          "cell": 43581728,
+          "position": [
+            101.0,
+            240.100006,
+            -43.5200005
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140c5b013da1c16",
+            "entity": "47001451",
+            "visual": "1f00031e",
+            "cell": "02980120"
+          }
+        },
+        {
+          "id": "8140000000031050",
+          "role": "digger-reinforcement",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 43581708,
+          "position": [
+            14.222764,
+            430.645386,
+            -43.0679131
+          ],
+          "orientation": [
+            0.794289887,
+            0.0,
+            0.0,
+            -0.607538939
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140de451a7c90fb",
+            "entity": "470023b3",
+            "visual": "1f000036",
+            "cell": "0298010c"
+          },
+          "scale": 0.800000012
+        },
+        {
+          "id": "8140000000031051",
+          "role": "digger-reinforcement",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 43581710,
+          "position": [
+            27.6801128,
+            439.666229,
+            -43.2858963
+          ],
+          "orientation": [
+            0.500000477,
+            0.0,
+            0.0,
+            0.86602515
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140aa0ef3af95da",
+            "entity": "470023b3",
+            "visual": "1f000036",
+            "cell": "0298010e"
+          },
+          "scale": 0.800000012
+        },
+        {
+          "id": "8140000000031052",
+          "role": "digger-reinforcement",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 43581756,
+          "position": [
+            50.9950409,
+            464.730621,
+            -46.75597
+          ],
+          "orientation": [
+            0.704925537,
+            0.0,
+            0.0,
+            0.709281266
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140ba1fdc14d337",
+            "entity": "470023b3",
+            "visual": "1f000036",
+            "cell": "0298013c"
+          },
+          "scale": 0.800000012
+        },
+        {
+          "id": "8140000000031060",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581764,
+          "position": [
+            66.635582,
+            539.147461,
+            -46.4588356
+          ],
+          "orientation": [
+            0.990831256,
+            0.0,
+            0.0,
+            0.135105073
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140e770a1b6cd0f",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "02980144"
+          }
+        },
+        {
+          "id": "8140000000031061",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581757,
+          "position": [
+            35.6306915,
+            542.638428,
+            -46.7066116
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "81408f6abb33021b",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "0298013d"
+          }
+        },
+        {
+          "id": "8140000000031062",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581759,
+          "position": [
+            20.0244217,
+            544.571533,
+            -46.7066116
+          ],
+          "orientation": [
+            0.869088948,
+            0.0,
+            0.0,
+            -0.494655848
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140f58a7d083aad",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "0298013f"
+          }
+        },
+        {
+          "id": "8140000000031063",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581763,
+          "position": [
+            111.680267,
+            549.139099,
+            -46.7066116
+          ],
+          "orientation": [
+            0.704925537,
+            0.0,
+            0.0,
+            0.709281266
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140941facb2a274",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "02980143"
+          }
+        },
+        {
+          "id": "8140000000031064",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581761,
+          "position": [
+            100.816544,
+            557.903931,
+            -46.7066116
+          ],
+          "orientation": [
+            0.128999352,
+            0.0,
+            0.0,
+            0.991644681
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140f81aa2bd9cff",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "02980141"
+          }
+        },
+        {
+          "id": "8140000000031065",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581758,
+          "position": [
+            41.608963,
+            559.904724,
+            -46.7066116
+          ],
+          "orientation": [
+            0.128999352,
+            0.0,
+            0.0,
+            0.991644681
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140a24462bd5a0e",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "0298013e"
+          }
+        },
+        {
+          "id": "8140000000031066",
+          "role": "sentinel-reinforcement",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 43581758,
+          "position": [
+            63.6409531,
+            560.845642,
+            -46.5590439
+          ],
+          "orientation": [
+            -0.00615986483,
+            0.0,
+            0.0,
+            0.999981046
+          ],
+          "evidence": "Captured Human Shelter transform mirrored to the byte-identical room. Entity and appearance use the installed DAT profile.",
+          "capture": {
+            "pack": "capture-spawns-upstream.tsv",
+            "row": "8140c58d2631dcfc",
+            "entity": "470023b4",
+            "visual": "1f000036",
+            "cell": "0298013e"
+          }
+        }
+      ],
+      "vault": {
+        "name": "Human Menhir",
+        "start": {
+          "cell": 43581773,
+          "position": [
+            1.148,
+            -7.587,
+            1.305
+          ]
+        },
+        "actors": [
+          {
+            "id": "814000000003100b",
+            "role": "shard",
+            "entity": 1191184282,
+            "visual": 520094492,
+            "cell": 43581773,
+            "position": [
+              0.981620193,
+              137.330002,
+              7.96162987
+            ],
+            "orientation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "evidence": "Menhir Shard from the retail Human porting.from.shardroom capture in cell 028d014d, mirrored to the matching Shelter instance."
+          },
+          {
+            "id": "814000000003100a",
+            "role": "advance",
+            "entity": 1191187839,
+            "visual": 520097142,
+            "cell": 43581773,
+            "position": [
+              -5.81446,
+              2.644367,
+              0.987689
+            ],
+            "orientation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "evidence": "native Menhir room; capture scout/travel anchors, reconstructed shard interaction proxy"
+          },
+          {
+            "id": "8140000000031029",
+            "role": "training-stone",
+            "entity": 1191187836,
+            "visual": 520094452,
+            "cell": 43581773,
+            "position": [
+              4.65933084487915,
+              7.320380210876465,
+              0.9783780574798584
+            ],
+            "orientation": [
+              0.9238795042037964,
+              0.0,
+              0.0,
+              0.38268354535102844
+            ],
+            "evidence": "Retail placement mirrored to the byte-identical Human Shelter room.",
+            "capture": {
+              "file": "dungeons.and.vaults/start.areas/human.porting.from.beginner.area.with.glyph.to.shardroom.elog",
+              "cell": "028d014d",
+              "object": "40028d000000005b",
+              "message_sha256": "4d57ceab2edbdac78d94a85484c389afb1d0324edf55a6589985c64ef042a78d"
+            }
+          }
+        ]
+      },
+      "overworld": {
+        "cell": 1958346760,
+        "position": [
+          5.11786,
+          154.12,
+          266.168
+        ]
+      }
+    },
+    {
+      "race": 4,
+      "name": "Tumerok",
+      "start": {
+        "cell": 66912531,
+        "position": [
+          -4.165520000000034,
+          -27.518999999999068,
+          -24.2035
+        ]
+      },
+      "actors": [
+        {
+          "id": "8140000000032020",
+          "role": "training-stone",
+          "entity": 1191187827,
+          "visual": 520094452,
+          "cell": 66912529,
+          "position": [
+            -7.558773517608643,
+            -5.233127117156982,
+            -24.934402465820312
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            8.636050097265979e-08
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Tummy_and_login_to_noobe.zone.elog",
+            "cell": "03f40111",
+            "object": "4003f4000000003d",
+            "message_sha256": "2584f7c50afca82fe5b1c0750bbb39229b5aa98471c0a0f6347166c8cbcab215"
+          }
+        },
+        {
+          "id": "8140000000032021",
+          "role": "training-stone",
+          "entity": 1191187828,
+          "visual": 520094452,
+          "cell": 66912529,
+          "position": [
+            0.08378669619560242,
+            2.1679229736328125,
+            -24.477670669555664
+          ],
+          "orientation": [
+            0.9238795042037964,
+            0.0,
+            0.0,
+            0.38268354535102844
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Tummy_and_login_to_noobe.zone.elog",
+            "cell": "03f40111",
+            "object": "4003f4000000003e",
+            "message_sha256": "60bc78a3e0b49dcc8791fa7cdcf323e4fc70638635b3b1ff6bd2b2a9e5ee2feb"
+          }
+        },
+        {
+          "id": "8140000000032022",
+          "role": "training-stone",
+          "entity": 1191187829,
+          "visual": 520094452,
+          "cell": 66912529,
+          "position": [
+            -4.742896556854248,
+            15.162032127380371,
+            -24.59825325012207
+          ],
+          "orientation": [
+            0.5000000596046448,
+            0.0,
+            0.0,
+            0.8660253882408142
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Tummy_and_login_to_noobe.zone.elog",
+            "cell": "03f40111",
+            "object": "4003f4000000003f",
+            "message_sha256": "410611ea37f23a911e69d5f6369aed9dd00723552a57f083c8461a605d95f46d"
+          }
+        },
+        {
+          "id": "8140000000032000",
+          "role": "guard",
+          "entity": 1191187837,
+          "visual": 520097140,
+          "cell": 66912529,
+          "position": [
+            -5.6503472328186035,
+            -19.096391677856445,
+            -24.509096145629883
+          ],
+          "orientation": [
+            4.371138828673793e-08,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Tummy_and_login_to_noobe.zone.elog",
+            "cell": "03f40111",
+            "object": "8120000051b3ec84",
+            "message_sha256": "c536cbc4dbe9f7f17f7ceb129dee1d4a6f12bda9b23c0a3d9ac224a8324901db"
+          }
+        },
+        {
+          "id": "8140000000032001",
+          "role": "lieutenant",
+          "entity": 1191187838,
+          "visual": 520097141,
+          "cell": 66912514,
+          "position": [
+            2.465113639831543,
+            26.25018310546875,
+            -24.523563385009766
+          ],
+          "orientation": [
+            0.3826834261417389,
+            0.0,
+            0.0,
+            0.9238795638084412
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Tummy_and_login_to_noobe.zone.elog",
+            "cell": "03f40102",
+            "object": "8120000051b3ec85",
+            "message_sha256": "afa502711290db5689749543ae9a81526b775427668fab4cb87c09b7c3931f5c"
+          }
+        },
+        {
+          "id": "8140000000032002",
+          "role": "sentry",
+          "entity": 1191187841,
+          "visual": 520097144,
+          "cell": 66912517,
+          "position": [
+            -44.188664968887245,
+            103.62866497466341,
+            -27.600000143051147
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000032003",
+          "role": "digger",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 66912523,
+          "position": [
+            -112.41146936726865,
+            104.10922916970682,
+            -27.7643553445103
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route; adjusted to a clear native physics floor"
+        },
+        {
+          "id": "8140000000032004",
+          "role": "scout",
+          "entity": 1191187840,
+          "visual": 520097143,
+          "cell": 66912565,
+          "position": [
+            -160.1216508404562,
+            198.0190654758131,
+            -49.706666707992554
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000032005",
+          "role": "sentinel",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 66912555,
+          "position": [
+            -312.1355087738354,
+            374.32676276859826,
+            -73.3499847650528
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000032007",
+          "role": "menhir-portal",
+          "entity": 1191184461,
+          "visual": 520094494,
+          "cell": 66912560,
+          "position": [
+            -370.2869873,
+            344.6480103,
+            -74.10738885
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "03FD0130 EntityDesc ordinal 0, pedestal 47000398 center (-370.2869873,344.6480103); cooked native platform floor z=-74.10738885. Player /loc 109.4,40824.5,-72.9 identifies this pedestal; /loc reports capsule center rather than feet. Replaces the old pre-teleport interaction-range endpoint."
+        },
+        {
+          "id": "8140000000030020",
+          "role": "service",
+          "entity": 1191188121,
+          "visual": 520097259,
+          "cell": 66912531,
+          "position": [
+            -2.66552,
+            -27.519,
+            -24.2035
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030021",
+          "role": "service",
+          "entity": 1191196452,
+          "visual": 520100161,
+          "cell": 66912531,
+          "position": [
+            -5.66552,
+            -27.519,
+            -24.2035
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030026",
+          "role": "service",
+          "entity": 1191184350,
+          "visual": 520093741,
+          "cell": 66912531,
+          "position": [
+            -4.16552,
+            -29.519,
+            -24.2035
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030028",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 66912531,
+          "position": [
+            -4.16552,
+            -31.519,
+            -24.2035
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030029",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 66912531,
+          "position": [
+            -1.66552,
+            -31.519,
+            -24.2035
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "814000000003002a",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 66912531,
+          "position": [
+            -6.1912884144721465,
+            -30.900449756858873,
+            -23.860635733875796
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        }
+      ],
+      "vault": {
+        "name": "Tumerok Menhir",
+        "start": {
+          "cell": 66912596,
+          "position": [
+            187.017,
+            51.14,
+            15.534
+          ]
+        },
+        "actors": [
+          {
+            "id": "814000000003200b",
+            "role": "shard",
+            "entity": 1191184282,
+            "visual": 520094492,
+            "cell": 66912596,
+            "position": [
+              186.851562,
+              196.057251,
+              22.1907558
+            ],
+            "orientation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "evidence": "Menhir Shard from the retail Tumerok porting.from.shardroom capture in cell 03f40154, mirrored to the matching Shelter instance."
+          },
+          {
+            "id": "814000000003200a",
+            "role": "advance",
+            "entity": 1191187839,
+            "visual": 520097142,
+            "cell": 66912596,
+            "position": [
+              179.730484,
+              62.94236,
+              15.121846
+            ],
+            "orientation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "evidence": "native Menhir room; capture scout/travel anchors, reconstructed shard interaction proxy"
+          }
+        ]
+      },
+      "overworld": {
+        "cell": 2377580580,
+        "position": [
+          90.925,
+          73.834,
+          97.074
+        ]
+      },
+      "recovery": [
+        {
+          "position": [
+            -345.3,
+            368.3,
+            -63.972985
+          ],
+          "cell": 66912562,
+          "name": "reported spiral-stair landing"
+        }
+      ]
+    },
+    {
+      "race": 2,
+      "name": "Lugian",
+      "start": {
+        "cell": 83689796,
+        "position": [
+          -14.013700000000027,
+          19.303999999999068,
+          -24.947807461413742
+        ]
+      },
+      "actors": [
+        {
+          "id": "8140000000033020",
+          "role": "training-stone",
+          "entity": 1191187827,
+          "visual": 520094452,
+          "cell": 83689758,
+          "position": [
+            3.0222034454345703,
+            24.203420639038086,
+            -24.634361267089844
+          ],
+          "orientation": [
+            0.9659258127212524,
+            0.0,
+            0.0,
+            0.2588191330432892
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f3011e",
+            "object": "4004f30000000039",
+            "message_sha256": "7007724c92bd00f7c2d1e8f9decb447e30a7a115b810f460d9747107a99d9e7e"
+          }
+        },
+        {
+          "id": "8140000000033021",
+          "role": "training-stone",
+          "entity": 1191187828,
+          "visual": 520094452,
+          "cell": 83689758,
+          "position": [
+            -2.072570562362671,
+            59.754730224609375,
+            -23.330005645751953
+          ],
+          "orientation": [
+            0.8660252690315247,
+            0.0,
+            0.0,
+            -0.5000002384185791
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f3011e",
+            "object": "4004f3000000003a",
+            "message_sha256": "f75ef1aae1e2a1d1d6d5d07cb310d6f74bc0a12be5b1a744dd662f54b5477eef"
+          }
+        },
+        {
+          "id": "8140000000033000",
+          "role": "guard",
+          "entity": 1191187837,
+          "visual": 520097140,
+          "cell": 83689796,
+          "position": [
+            -4.261158466339111,
+            19.428157806396484,
+            -24.909170150756836
+          ],
+          "orientation": [
+            0.6087614297866821,
+            0.0,
+            0.0,
+            0.7933533191680908
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f30144",
+            "object": "8120000051b3ece0",
+            "message_sha256": "8ad3564e387955a2bec4fecbf8a463dcb074dc3368f856474e9d43c4c80d939c"
+          }
+        },
+        {
+          "id": "8140000000033022",
+          "role": "training-stone",
+          "entity": 1191187829,
+          "visual": 520094452,
+          "cell": 83689757,
+          "position": [
+            3.427429437637329,
+            65.354736328125,
+            -22.83000373840332
+          ],
+          "orientation": [
+            -0.5,
+            0.0,
+            0.0,
+            0.8660253882408142
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f3011d",
+            "object": "4004f3000000003b",
+            "message_sha256": "9dae385ab8cfc9c8dda9d5db4b5242b6c7260ebf4c5146a4464daf26cfbfb628"
+          }
+        },
+        {
+          "id": "8140000000033001",
+          "role": "lieutenant",
+          "entity": 1191187838,
+          "visual": 520097141,
+          "cell": 83689757,
+          "position": [
+            -0.14136940240859985,
+            72.58815002441406,
+            -22.919591903686523
+          ],
+          "orientation": [
+            4.371138828673793e-08,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f3011d",
+            "object": "8120000051b3ece1",
+            "message_sha256": "616d76fa276deab7c2a4d4488328c9d8c0bb9155ada24c800fb301e365b8237a"
+          }
+        },
+        {
+          "id": "8140000000033023",
+          "role": "training-stone",
+          "entity": 1191187830,
+          "visual": 520094452,
+          "cell": 83689751,
+          "position": [
+            -44.344447334830186,
+            102.45802780024242,
+            -27.62017925126753
+          ],
+          "orientation": [
+            0.9351351261138916,
+            0.0,
+            0.0,
+            -0.35429131984710693
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room; adjusted to a clear native physics floor",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f30117",
+            "object": "4004f3000000003d",
+            "message_sha256": "9d8f2e08160513837d01b600dbaaac1d999cb95bd65f6b07110765e0c5639a1a"
+          }
+        },
+        {
+          "id": "8140000000033024",
+          "role": "training-stone",
+          "entity": 1191187831,
+          "visual": 520094452,
+          "cell": 83689751,
+          "position": [
+            -61.4272575378418,
+            99.07283782958984,
+            -29.422273635864258
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "capture anchor mirrored to the corresponding racial starter room",
+          "capture": {
+            "file": "player/Char create(char overview)/AC2_Char_Create_Lugi_and_login_to_noobe.zone.elog",
+            "cell": "04f30117",
+            "object": "4004f3000000003e",
+            "message_sha256": "32ed749d9c36888ccfeab8c693a1344ddeaa86cb1c7ac2f4874fc154da8962c1"
+          }
+        },
+        {
+          "id": "8140000000033002",
+          "role": "sentry",
+          "entity": 1191187841,
+          "visual": 520097144,
+          "cell": 83689749,
+          "position": [
+            -85.80866548087565,
+            104.97533057796304,
+            -30
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000033003",
+          "role": "digger",
+          "entity": 1191187851,
+          "visual": 520093750,
+          "cell": 83689728,
+          "position": [
+            -153.88199831632147,
+            103.72866501245183,
+            -7.698338203430176
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000033004",
+          "role": "scout",
+          "entity": 1191187840,
+          "visual": 520097143,
+          "cell": 83689745,
+          "position": [
+            -168.64669778287404,
+            197.388038457199,
+            -18.51836837557059
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000033005",
+          "role": "sentinel",
+          "entity": 1191187852,
+          "visual": 520093750,
+          "cell": 83689734,
+          "position": [
+            -168.80233478218986,
+            348.32867980124894,
+            -17.591500997543335
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "reconstructed along connected native route"
+        },
+        {
+          "id": "8140000000033007",
+          "role": "menhir-portal",
+          "entity": 1191184461,
+          "visual": 520094494,
+          "cell": 83689737,
+          "position": [
+            -167.84899999999993,
+            405.5120000000019,
+            -18.409
+          ],
+          "orientation": [
+            1,
+            0,
+            0,
+            0
+          ],
+          "evidence": "last player position before retail glyph teleport, mirrored instance; endpoint within interaction range, not exact portal center"
+        },
+        {
+          "id": "8140000000030023",
+          "role": "service",
+          "entity": 1191188121,
+          "visual": 520097259,
+          "cell": 83689758,
+          "position": [
+            -14.00000000000553,
+            21.99999999999069,
+            -24.42530139382425
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030024",
+          "role": "service",
+          "entity": 1191196452,
+          "visual": 520100161,
+          "cell": 83689796,
+          "position": [
+            -14,
+            16,
+            -24.493248466833453
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "8140000000030027",
+          "role": "service",
+          "entity": 1191184350,
+          "visual": 520093741,
+          "cell": 83689796,
+          "position": [
+            -17.0,
+            19.0,
+            -24.95
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "814000000003002b",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 83689796,
+          "position": [
+            -20.0,
+            19.0,
+            -24.95
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "814000000003002c",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 83689796,
+          "position": [
+            -20.0,
+            22.0,
+            -24.95
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        },
+        {
+          "id": "814000000003002d",
+          "role": "practice-target",
+          "entity": 1191184337,
+          "visual": 520094673,
+          "cell": 83689796,
+          "position": [
+            -19.396859536262564,
+            14.711116149141453,
+            -24.430533168140727
+          ],
+          "orientation": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "evidence": "Optional AC2E training services near racial start; reconstructed"
+        }
+      ],
+      "vault": {
+        "name": "Lugian Menhir",
+        "start": {
+          "cell": 83689798,
+          "position": [
+            33.75,
+            -66.035,
+            -0.999
+          ]
+        },
+        "actors": [
+          {
+            "id": "814000000003300b",
+            "role": "shard",
+            "entity": 1191184282,
+            "visual": 520094492,
+            "cell": 83689798,
+            "position": [
+              106.351898,
+              -191.453995,
+              5.65824699
+            ],
+            "orientation": [
+              -0.258819073,
+              0,
+              0,
+              0.965925813
+            ],
+            "evidence": "Menhir Shard from the retail Lugian porting.from.shardroom capture in cell 04f30146, mirrored to the matching Shelter instance."
+          },
+          {
+            "id": "814000000003300a",
+            "role": "advance",
+            "entity": 1191187839,
+            "visual": 520097142,
+            "cell": 83689798,
+            "position": [
+              44.034695,
+              -71.349022,
+              -1.275582
+            ],
+            "orientation": [
+              1,
+              0,
+              0,
+              0
+            ],
+            "evidence": "native Menhir room; capture scout/travel anchors, reconstructed shard interaction proxy"
+          }
+        ]
+      },
+      "overworld": {
+        "cell": 1824063540,
+        "position": [
+          128.779,
+          63.28,
+          145.176
+        ]
+      }
+    }
+  ],
+  "capture_archive": "Saved/PacketCorpus/extracted/896e60d43e617c38/Packets"
+}

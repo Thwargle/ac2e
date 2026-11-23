@@ -5,6 +5,7 @@
 #include "AC2DatArchive.h"
 #include "AC2Assets.h"
 #include "AC2CharacterData.h"
+#include "AC2VaultFixture.h"
 #include "AC2Portrait.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -13,6 +14,18 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2SupportCastStanceTest,"AC2.Data.SupportCastNativeStance",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAC2SupportCastStanceTest::RunTest(const FString&)
+{
+    FAC2DatArchive Portal;FString Error;TArray<uint8> Bytes;FAC2BehaviorData Behavior;
+    if(!TestTrue(TEXT("Portal"),Portal.Open(AC2::ResolveDatDirectory(TEXT(""))/TEXT("portal.dat"),1,Error)))return false;
+    if(!TestTrue(TEXT("Human native behavior table"),Portal.Read(0x44000001,Bytes,Error)&&Behavior.Decode(0x44000001,Bytes)))return false;
+    TestEqual(TEXT("Ease Suffering has no peace combo"),Behavior.Key(AC2Motion::Ground,AC2Motion::Peace,0x410000c2),0u);
+    for(const uint32 Mode:{0x4100000au,0x4100000fu,0x41000010u,0x41000011u})
+        TestTrue(*FString::Printf(TEXT("Native heal combo in weapon stance %08X"),Mode),Behavior.Key(AC2Motion::Ground,Mode,0x410000c2)!=0);
+    return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2MotionTest,"AC2.Data.NativeControllerTables",
     EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FAC2MotionTest::RunTest(const FString&)
@@ -58,7 +71,12 @@ bool FAC2MotionTest::RunTest(const FString&)
     FAC2AnimatorInput Unarmed;Unarmed.Mode=AC2Motion::Unarmed;
     auto UnarmedAttack=FAC2Animator::Load(Portal,0x03000014,0x8100005f);
     TestTrue(TEXT("Human unarmed graph branch"),UnarmedAttack&&UnarmedAttack->Period(Unarmed)>0);
-    TestTrue(TEXT("Idol behavior table"),Portal.Read(0x44000018,Bytes,Error)&&Behavior.Decode(0x44000018,Bytes));
+    // Both releases use this Idol body / animation map, but its visual names
+    // different native behavior tables (Legions 44000018, Icefire 44000015).
+    if(!TestTrue(TEXT("Idol visual with instance, motion and behavior fields"),Portal.Read(0x1f0003d1,Bytes,Error)
+        && Bytes.Num()>=16 && (AC2::U32(Bytes.GetData())&15)==13 && AC2::U32(Bytes.GetData()+4)==0x1f0003d1))return false;
+    const uint32 MonsterTable=AC2::U32(Bytes.GetData()+12);
+    if(!TestTrue(TEXT("Idol behavior table"),Portal.Read(MonsterTable,Bytes,Error)&&Behavior.Decode(MonsterTable,Bytes)))return false;
     auto IdolAttack=FAC2Animator::Load(Portal,0x03000072,Behavior.Key(AC2Motion::Ground,AC2Motion::Monster,AC2Motion::MeleeNormal));
     FAC2AnimatorInput Monster;Monster.Mode=AC2Motion::Monster;
     TestTrue(TEXT("Idol native melee graph"),IdolAttack&&IdolAttack->Period(Monster)>0);
@@ -89,11 +107,17 @@ bool FAC2AnimationFXTest::RunTest(const FString&)
 {
     FAC2DatArchive Portal;FString Error;TArray<uint8> Bytes;
     if(!TestTrue(TEXT("Portal"),Portal.Open(AC2::ResolveDatDirectory(TEXT(""))/TEXT("portal.dat"),1,Error)))return false;
-    FAC2Animation Clip;
-    TestTrue(TEXT("Native AnimInfo decoded"),Portal.Read(0x05000006,Bytes,Error)&&Clip.Decode(0x05000006,Bytes));
+    // Resolve the authored motion. Its identical keyframes occupy different
+    // archive records (05000006 in Legions, 0500114E in Icefire).
+    const auto Motion=FAC2Animator::Load(Portal,0x0300004f,0x80000006);
+    if(!TestTrue(TEXT("Native AnimInfo motion resolves"),Motion.IsValid()))return false;
+    const auto Clips=Motion->ActiveClips(FAC2AnimatorInput());
+    if(!TestEqual(TEXT("Native AnimInfo motion contains one clip"),Clips.Num(),1))return false;
+    const uint32 ClipId=Clips[0];FAC2Animation Clip;
+    if(!TestTrue(TEXT("Native AnimInfo decoded"),Portal.Read(ClipId,Bytes,Error)&&Clip.Decode(ClipId,Bytes)))return false;
     TestEqual(TEXT("Native effect count"),Clip.Effects.Num(),1);
     if(Clip.Effects.Num()==1){TestEqual(TEXT("Native effect key"),Clip.Effects[0].Id,0x81000057u);TestTrue(TEXT("Timed effect"),Clip.Effects[0].Phase>0 && Clip.Effects[0].Phase<1);}
-    Bytes.Pop();TestFalse(TEXT("Truncated AnimInfo rejected"),FAC2Animation().Decode(0x05000006,Bytes));
+    Bytes.Pop();TestFalse(TEXT("Truncated AnimInfo rejected"),FAC2Animation().Decode(ClipId,Bytes));
     FAC2BehaviorData Behavior;TestTrue(TEXT("Behavior table"),Portal.Read(0x44000001,Bytes,Error)&&Behavior.Decode(0x44000001,Bytes));
     FAC2AnimatorInput Input;Input.Mode=0x41000011;Input.Element=AC2Motion::Ground;
     const uint32 Key=Behavior.Key(Input.Element,Input.Mode,0x410000b9);
@@ -120,9 +144,35 @@ bool FAC2ProjectileTest::RunTest(const FString&)
             AC2Projectile::Facing(Direction).RotateVector(FVector::YAxisVector).Equals(Direction,.0001));
     FAC2DatArchive Portal;FString Error;TArray<uint8> Bytes;FAC2FXScript Script;
     if(!TestTrue(TEXT("Portal"),Portal.Open(AC2::ResolveDatDirectory(TEXT(""))/TEXT("portal.dat"),1,Error)))return false;
-    TestTrue(TEXT("Native composite hit script"),Portal.Read(0x5700000c,Bytes,Error)&&Script.Decode(0x5700000c,Bytes));
-    TestEqual(TEXT("Native script period"),Script.Period,1.f);TestEqual(TEXT("All three simultaneous effects kept"),Script.Effects.Num(),3);
+    if(!TestTrue(TEXT("Native composite hit script"),Portal.Read(0x5700000c,Bytes,Error)&&Script.Decode(0x5700000c,Bytes)))return false;
+    if(!Script.Effects.IsEmpty() && Script.Effects[0].Id==0x41000692)
+    {
+        TestEqual(TEXT("Icefire composite script period"),Script.Period,2.f);
+        TestEqual(TEXT("Icefire pre-roll effect at the start of playback"),Script.EffectsBetween(0,.01f).Num(),1);
+        if(TestEqual(TEXT("Both Icefire composite effects kept"),Script.Effects.Num(),2))
+            TestEqual(TEXT("Authored second Icefire effect"),Script.Effects[1].Id,0x41000693u);
+    }
+    else
+    {
+        TestEqual(TEXT("Legions composite script period"),Script.Period,1.f);
+        TestEqual(TEXT("All three simultaneous Legions effects kept"),Script.Effects.Num(),3);
+    }
     Bytes.Pop();TestFalse(TEXT("Truncated FX script rejected"),Script.Decode(0x5700000c,Bytes));
+    // Wire fields from Icefire 5700000C: pre-roll cue at -0.01, second at
+    // 0.05, period two seconds. Native GetTriggers treats the first as due.
+    Bytes.Reset();
+    auto Word=[&](uint32 W){Bytes.Append(reinterpret_cast<const uint8*>(&W),4);};
+    auto Float=[&](float F){Bytes.Append(reinterpret_cast<const uint8*>(&F),4);};
+    Word(0x5700000c);Word(2);
+    for(int32 I=0;I<2;++I){Word(0x41000692+I);Float(I==0?-.01f:.05f);Word(0);Float(1);Float(1);Float(0);Word(1);}
+    Word(0);Float(2);
+    if(TestTrue(TEXT("Pre-roll script decodes"),Script.Decode(0x5700000c,Bytes))) {
+        const auto Initial=Script.EffectsBetween(0,.01f),Next=Script.EffectsBetween(.01f,.05f);
+        if(TestEqual(TEXT("Pre-roll cue fires on first update"),Initial.Num(),1))TestEqual(TEXT("First cue"),Initial[0].Id,0x41000692u);
+        if(TestEqual(TEXT("Later cue retains its authored timing"),Next.Num(),1))TestEqual(TEXT("Second cue"),Next[0].Id,0x41000693u);
+        TestTrue(TEXT("No repeated cue after it has fired"),Script.EffectsBetween(.05f,1.f).IsEmpty());
+        TestTrue(TEXT("Paused clock does not duplicate a cue"),Script.EffectsBetween(0,0).IsEmpty());
+    }
     return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAC2LoopFXTest,"AC2.Data.LoopingAnimationEffectTiming",
@@ -203,19 +253,27 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             Model.Animate(MovementTime,400);
             TestEqual(TEXT("No duplicate gait effects on a stationary animation clock"),Model.Stats().AnimationEffectTriggers,AfterMoveFX);
             TestTrue(TEXT("Native attack begins"),Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee));
+            const uint64 AttackInstance=Model.BehaviorInstance(AC2Motion::Attack);
+            TestTrue(TEXT("Playing actions have a nonzero identity"),AttackInstance!=0);
             TestTrue(TEXT("Native hit begins on separate layer"),Model.PlayBehavior(AC2Motion::Hit));
             TestTrue(TEXT("Hit did not cancel the attack"),Model.BehaviorDuration(AC2Motion::Attack)>0 && Model.BehaviorDuration(AC2Motion::Hit)>0);
+            TestEqual(TEXT("Separate hit layer preserves attack identity"),Model.BehaviorInstance(AC2Motion::Attack),AttackInstance);
             float Time=MovementTime+.1f;Model.Animate(Time,0);
             TestFalse(TEXT("Combat changes actual rendered vertices"),Same(Rest,Snapshot()));
             for(int32 I=0;I<4;++I){Time+=.1f;Model.Animate(Time,0);}
             const auto BeforeStop=Snapshot();
             Model.StopBehavior(AC2Motion::Attack);Model.Animate(Time,0);
+            TestEqual(TEXT("Stopped action loses its identity"),Model.BehaviorInstance(AC2Motion::Attack),uint64(0));
             TestTrue(TEXT("Stopping an attack retains the outgoing pose at blend start"),Same(BeforeStop,Snapshot()));
             Time+=.2f;Model.Animate(Time,0);
             TestFalse(TEXT("Stopped attack blends back into the base pose"),Same(BeforeStop,Snapshot()));
             TestTrue(TEXT("Combat attachments stay on their animated sockets"),Model.AuditAttachments(Error));
+            Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee);const uint64 Replaced=Model.BehaviorInstance(AC2Motion::Attack);
+            Model.PlayBehavior(AC2Motion::Attack,AC2Motion::Melee);
+            TestTrue(TEXT("Replaying the same behavior creates a distinct action"),Model.BehaviorInstance(AC2Motion::Attack)!=Replaced);
             TestTrue(TEXT("Death resolves in native dead mode"),Model.PlayBehavior(AC2Motion::Death,AC2Motion::Dead));
             TestEqual(TEXT("Death cancels attacks"),Model.BehaviorDuration(AC2Motion::Attack),0.f);
+            TestEqual(TEXT("Death releases attack identity"),Model.BehaviorInstance(AC2Motion::Attack),uint64(0));
             TestTrue(TEXT("Ten-second native death/hold is retained"),Model.BehaviorDuration(AC2Motion::Death)>=10.f);
             for(int32 I=0;I<110;++I){Time+=.1f;Model.Animate(Time,0);}
             const auto Corpse=Snapshot();
@@ -251,6 +309,45 @@ bool FAC2CombatPoseTest::RunTest(const FString&)
             FAC2AssetLibrary::SetEffectChannel(0x40000001,4);
             TestTrue(TEXT("Native Normal blood channel resolves the death effect"),Model.PlayEffect(0x810002cf));
             Model.StopEffect(0x810002cf);
+        }
+        {
+            auto* Emerging=World->SpawnActor<AAC2Portrait>();
+            FAC2AssetLibrary Arrival;
+            if(TestTrue(TEXT("Arrival avatar has a native effect bank"),Arrival.Open(AC2::ResolveDatDirectory(TEXT("")),Error) &&
+                Arrival.DrawModel(0x1f000023,Emerging,Emerging->Body)))
+            {
+                TestTrue(TEXT("Enter_World resolves the native avatar effect"),Arrival.PlayEffect(0x41000010,1.f));
+                int32 Peak=0;
+                for(int32 I=0;I<60;++I){Arrival.Animate(I*.05f,0);Peak=FMath::Max(Peak,Arrival.EffectParticleCount());}
+                TestTrue(TEXT("Arrival produces visible avatar particles"),Peak>0);
+                Arrival.StopEffect(0x41000010);
+                for(int32 I=60;I<260;++I)Arrival.Animate(I*.05f,0);
+                TestEqual(TEXT("The stopped arrival effect drains"),Arrival.EffectParticleCount(),0);
+            }
+            Emerging->Destroy();
+        }
+        // Ordinary portal travel plays a different one-shot on each object.
+        // GenericVault's physical entity resolves its portal visual in either DAT.
+        for(const auto& Cue : {TPair<uint32,uint32>(0x1f000023,0x410004fa),
+                               TPair<uint32,uint32>(0x47000297,0x41000044)})
+        {
+            auto* Source=World->SpawnActor<AAC2Portrait>();
+            FAC2AssetLibrary Effect;
+            if(TestTrue(TEXT("Portal departure object loads"),Effect.Open(AC2::ResolveDatDirectory(TEXT("")),Error) &&
+                Effect.DrawModel(Cue.Key,Source,Source->Body)))
+            {
+                Effect.Animate(0,0);
+                const int32 Before=Effect.EffectParticleCount();
+                TestTrue(FString::Printf(TEXT("Departure effect %08X resolves on its own object"),Cue.Value),Effect.PlayEffect(Cue.Value));
+                int32 Peak=Before;
+                for(int32 Frame=1;Frame<=35;++Frame)
+                {
+                    Effect.Animate(Frame*.04f,0);
+                    Peak=FMath::Max(Peak,Effect.EffectParticleCount());
+                }
+                TestTrue(TEXT("Departure cue emits particles before the forced position"),Peak>Before);
+            }
+            Source->Destroy();
         }
         // These are the actual static projectile entities referenced by racial skill scripts.
         for(uint32 Visual:{0x1f000066u,0x1f000392u,0x1f000393u,0x1f0003ceu,0x1f0003cfu,0x1f0003d0u})
@@ -383,7 +480,8 @@ bool FAC2WorldPropTest::RunTest(const FString&)
         Actor->Destroy();
         FAC2AssetLibrary Shard;Shard.Open(AC2::ResolveDatDirectory(TEXT("")),Error);
         Actor=World->SpawnActor<AActor>();Root=NewObject<USceneComponent>(Actor);Actor->SetRootComponent(Root);Root->RegisterComponent();
-        TestTrue(TEXT("Vault shard native visual"),Shard.DrawModel(0x1f0012be,Actor,Root));
+        const auto Vault=AC2VaultFixture::Resolve(AC2::ResolveDatDirectory(TEXT("")),Catalog);
+        TestTrue(TEXT("Vault shard native visual"),Vault.Shard && Shard.DrawModel(Vault.Shard,Actor,Root));
         bool HasCrystalLayer=false;
         TInlineComponentArray<UProceduralMeshComponent*> CrystalMeshes(Actor);
         for(auto* Mesh:CrystalMeshes) for(int32 S=0;S<Mesh->GetNumSections();++S)

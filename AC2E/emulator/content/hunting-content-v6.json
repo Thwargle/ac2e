@@ -1,0 +1,29 @@
+{
+  "version": 6,
+  "policy": "Hakata NPC hunt. The guide supplies the offer, targets, turn-in, timers and rewards. AC2E assigns the journal ID.",
+  "quests": [
+    {
+      "id": 1073806386,
+      "title": "Thin the Boglurk Armoredillos",
+      "npc": 1191199482,
+      "npc_name": "Lily Patenkan",
+      "targets": [
+        1191186476
+      ],
+      "goal": 10,
+      "level": 35,
+      "xp_basis_points": 0,
+      "xp_cap": 340000,
+      "prerequisite": 0,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "text": "Lily needs the Boglurk Armoredillos cleared before her miners can work. Defeat ten, then return to Lily Patenkan in Hakata.",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/omishan_thintheboglurkarmoredillos.html",
+          "sha256": "0c0a9eb1e80991bdc49f7d119d16478d99bc472fb7ce6a00f1ff033b94f62158"
+        }
+      ]
+    }
+  ]
+}

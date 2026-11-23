@@ -31,6 +31,20 @@ SPECIAL = {'Shattered Golem', 'Pearly Lumna Niffis', 'Staring Floating Spore',
 # The first terrain audit rejected every Keerik candidate. Reserve more search
 # attempts inside its documented peninsula, without relaxing ground/separation.
 COVERAGE_ATTEMPTS = {'Burun Keerik': 12}
+# Local meters in the original blocks. These inferred camps need 80 m of
+# separation from the documented quest, trophy and named encounters.
+REVIEWED_CAMP_CENTERS = {
+    0xAD52: (122, 92), 0xB155: (67, 107), 0xAF57: (117, 157),
+    0xB752: (48, 120),   # Banderling Mauler, Mangler and Bandit
+    0xC659: (94, 159),   # Bar Nobla and his Mu-miyah Initiates
+    0xAD4A: (28, 56),    # Resuscitated Urkhad
+    0xB242: (136, 48),   # Ebon Worker and Swarm Drone Nymph
+    0xB647: (76, 88),    # Benshii Felsister
+    0xB849: (76, 140),   # Iron Colossus
+    0x9F4D: (92, 44),    # Irontooth and Plains Matron
+    0xCC38: (103, 68),   # Slithis Eye Stalk
+    0xEC83: (24, 68),    # Shrine to Brother Tanae
+}
 
 
 def compass(north, east):
@@ -228,6 +242,11 @@ def build():
                     capacity=2,regeneration_ms=180000,polygon=region['polygon']))
                 occupied.add(identity);covered.add(c['entity']);used[c['entity']]+=1
                 if used[c['entity']] >= minimum: break
+    for camp in camps:
+        block = (camp['id'] >> 8) & 0xffff
+        if block in REVIEWED_CAMP_CENTERS:
+            x, y = REVIEWED_CAMP_CENTERS[block]
+            camp['land'] = [(block >> 8)*8 + x/20, (block & 255)*8 + y/20]
     entities = sorted(covered)
     result = dict(version=1, namespace=NAMESPACE, policy='Inferred wiki wilderness expansion; not exact retail generators.',
         regions=regions, town_exclusions=towns, camps=camps, npcs=[], excluded=excluded,

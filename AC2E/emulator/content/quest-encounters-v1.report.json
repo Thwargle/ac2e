@@ -1,0 +1,356 @@
+{
+  "existing_outdoor_sha256": "e05ebbebb76a9e6698f201e99f88bb1c106a6e780e9ff03882ca7af3dd219986",
+  "floor_repairs": [
+    {
+      "captured": [
+        175.2071533203125,
+        -7.252555847167969,
+        -8.018514633178711
+      ],
+      "cell": 133628298,
+      "id": 9313698016588201991,
+      "placed": [
+        174.7071533203125,
+        -6.252555847167969,
+        -8.161262512207031
+      ]
+    },
+    {
+      "captured": [
+        -40.92277145385742,
+        -3.650040626525879,
+        1.0654635429382324
+      ],
+      "cell": 133824874,
+      "id": 9313698016588201992,
+      "placed": [
+        -41.17277145385742,
+        -3.650040626525879,
+        0.999997615814209
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "capacity": 1,
+      "id": 9313698016588201984,
+      "members": [
+        9313698016588201984
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201985,
+      "members": [
+        9313698016588201985
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201986,
+      "members": [
+        9313698016588201986
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201987,
+      "members": [
+        9313698016588201987
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201988,
+      "members": [
+        9313698016588201988
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201989,
+      "members": [
+        9313698016588201989
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201990,
+      "members": [
+        9313698016588201990
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201991,
+      "members": [
+        9313698016588201991
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201992,
+      "members": [
+        9313698016588201992
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201993,
+      "members": [
+        9313698016588201993
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313698016588201994,
+      "members": [
+        9313698016588201994
+      ]
+    }
+  ],
+  "included": 16,
+  "inferred": false,
+  "manifest_sha256": "830b7e6a36219527b5aa37a4baf69f4a87a8be96e491987a6dc49e9bba9accde",
+  "native_ground_verified": true,
+  "native_platforms": [
+    {
+      "id": 9313698016588201984,
+      "support": {
+        "accepted": true,
+        "all_samples_supported": true,
+        "max_displacement_m": 0.0,
+        "physics_quanta": 100,
+        "placed": {
+          "cell": "b88001db",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -135.05831909179688,
+            129.42872619628906,
+            156.1588592529297
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "placement_flags": 0,
+        "placement_result": "Ok",
+        "requested_cell": "b88001db",
+        "requested_position": [
+          -135.05831909179688,
+          129.42872619628906,
+          156.1588592529297
+        ],
+        "settled": {
+          "cell": "b88001db",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -135.05831909179688,
+            129.42872619628906,
+            156.1588592529297
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 9313698016588201985,
+      "support": {
+        "accepted": true,
+        "all_samples_supported": true,
+        "max_displacement_m": 0.0,
+        "physics_quanta": 100,
+        "placed": {
+          "cell": "b8800198",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -124.81021881103516,
+            138.25889587402344,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "placement_flags": 0,
+        "placement_result": "Ok",
+        "requested_cell": "b8800198",
+        "requested_position": [
+          -124.81021881103516,
+          138.25889587402344,
+          156.1141815185547
+        ],
+        "settled": {
+          "cell": "b8800198",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -124.81021881103516,
+            138.25889587402344,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 9313698016588201986,
+      "support": {
+        "accepted": true,
+        "all_samples_supported": true,
+        "max_displacement_m": 0.0,
+        "physics_quanta": 100,
+        "placed": {
+          "cell": "b880019b",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -134.85000610351562,
+            138.40423583984375,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "placement_flags": 0,
+        "placement_result": "Ok",
+        "requested_cell": "b880019b",
+        "requested_position": [
+          -134.85000610351562,
+          138.40423583984375,
+          156.1141815185547
+        ],
+        "settled": {
+          "cell": "b880019b",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -134.85000610351562,
+            138.40423583984375,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 9313698016588201987,
+      "support": {
+        "accepted": true,
+        "all_samples_supported": true,
+        "max_displacement_m": 0.0,
+        "physics_quanta": 100,
+        "placed": {
+          "cell": "b880019d",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -125.3282470703125,
+            121.42381286621094,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "placement_flags": 0,
+        "placement_result": "Ok",
+        "requested_cell": "b880019d",
+        "requested_position": [
+          -125.3282470703125,
+          121.42381286621094,
+          156.1141815185547
+        ],
+        "settled": {
+          "cell": "b880019d",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -125.3282470703125,
+            121.42381286621094,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    },
+    {
+      "id": 9313698016588201988,
+      "support": {
+        "accepted": true,
+        "all_samples_supported": true,
+        "max_displacement_m": 0.0,
+        "physics_quanta": 100,
+        "placed": {
+          "cell": "b88001da",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -135.25570678710938,
+            121.543212890625,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "placement_flags": 0,
+        "placement_result": "Ok",
+        "requested_cell": "b88001da",
+        "requested_position": [
+          -135.25570678710938,
+          121.543212890625,
+          156.1141815185547
+        ],
+        "settled": {
+          "cell": "b88001da",
+          "contact": true,
+          "on_walkable": true,
+          "position": [
+            -135.25570678710938,
+            121.543212890625,
+            156.1141815185547
+          ],
+          "velocity": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    }
+  ],
+  "rejected": [],
+  "source_sha256": "7c6c00229811cf4b31e466e4adcff84dc6047866ea08817d8cfd7780077d7ab7",
+  "version": 1
+}

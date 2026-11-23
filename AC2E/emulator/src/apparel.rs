@@ -25,7 +25,9 @@ fn profile(item:&Item,race:u32)->Option<&'static Profile> {
 }
 pub fn required_race(definition:u32)->Option<u32>{profiles().find(|p|p.definition==definition).map(|p|p.race)}
 pub fn recovered_slot(definition:u32,visual:u32)->Option<u16>{profiles().find(|p|p.definition==definition && p.visual==visual).map(|p|p.slot)}
-pub fn slot(item:&Item,race:u32)->Option<u16> {profile(item,race).map(|p|p.slot)}
+pub fn slot(item:&Item,race:u32)->Option<u16> {
+    profile(item,race).map(|p|p.slot).or_else(||crate::slavetaker::earring_slot(item))
+}
 pub fn tradable(item:&Item)->bool {
     (PROFILES.iter().any(|p|p.definition==item.definition)||RECOVERED_TRADABLE.contains(&item.definition))
         && [1,2,4,8,16].iter().any(|race|profile(item,*race).is_some())
@@ -38,10 +40,6 @@ pub fn armor(inventory:&Inventory,race:u32)->u32 {
     inventory.items().filter_map(|i|profile(i,race).filter(|p|i.location==Location::Equipped(p.slot)).map(|p|i.roll.map_or(p.armor.unwrap_or(0),|r|u32::from(r.armor)))).sum()
 }
 pub fn item_armor(definition:u32)->Option<u32>{profiles().find(|p|p.definition==definition).and_then(|p|p.armor)}
-pub fn drop(inventory:&Inventory,race:u32,id:u64,slot:u16)->Option<Item> {
-    let p=PROFILES.iter().find(|p|p.race==race && !inventory.items().any(|i|i.definition==p.definition))?;
-    Some(Item{roll: None, id,definition:p.definition,visual:p.visual,quantity:1,stack_limit:1,equipment_mask:p.slot,location:Location::Bag(slot)})
-}
 
 #[cfg(test)] mod tests {
     use super::*;

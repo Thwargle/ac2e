@@ -47,7 +47,7 @@ def main():
             '--gun-bind', 'off', '--account', 'local', '--data', str(run / 'store'),
             '--game-data', str(DAT_DIRECTORY), '--content', str(content),
             '--content-overlay', str(overlay), '--admin-bind', '127.0.0.1:19529',
-            '--initialize-ui', 'true', '--training-kit', 'false', '--encounters', 'training',
+            '--initialize-ui', 'true', '--encounters', 'world',
             '--lifestones', 'false', '--portals', 'false', '--seconds', '150'],
             env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'), stdout=log, stderr=log,
             creationflags=0x08000000)

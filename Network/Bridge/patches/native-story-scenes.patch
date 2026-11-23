@@ -1,0 +1,84 @@
+diff --git a/crates/ac2-net/src/protocol/native/gm.rs b/crates/ac2-net/src/protocol/native/gm.rs
+index 4f7f229..87c3214 100644
+--- a/crates/ac2-net/src/protocol/native/gm.rs
++++ b/crates/ac2-net/src/protocol/native/gm.rs
+@@ -112,11 +112,17 @@ pub struct GmSceneInfo {
+ }
+ 
+ impl GmSceneInfo {
++    /// gmSceneInfoList is a PList of individually serialized scenes.
++    pub(super) fn read_list(r: &mut Reader<'_>) -> Result<Vec<Self>, ProtocolError> {
++        let n = count(r, 32)?;
++        (0..n).map(|_| Self::read(r)).collect()
++    }
++
+     pub(super) fn read(r: &mut Reader<'_>) -> Result<Self, ProtocolError> {
+         let id = r.u32()?;
+         let name = StringInfo::read(r)?;
+         let (act_id, scene_num, is_hidden, is_playable) = (r.u32()?, r.u32()?, r.u32()?, r.u32()?);
+-        let n = count(r, 4)?;
++        let n = count(r, 40)?;
+         Ok(Self {
+             id,
+             name,
+diff --git a/crates/ac2-net/src/protocol/native/mod.rs b/crates/ac2-net/src/protocol/native/mod.rs
+index 1b9dc61..0c2b2e9 100644
+--- a/crates/ac2-net/src/protocol/native/mod.rs
++++ b/crates/ac2-net/src/protocol/native/mod.rs
+@@ -74,6 +74,7 @@ pub mod ntype {
+     pub const GM_QUEST_INFO_LIST: u32 = 0xA1;
+     pub const GM_RACE_SEX_INFO: u32 = 0xA2;
+     pub const GM_SCENE_INFO: u32 = 0xA3;
++    pub const GM_SCENE_INFO_LIST: u32 = 0xA4;
+     pub const SELECTION_INFO: u32 = 0xAB;
+     pub const SHORTCUT_INFO: u32 = 0xAC;
+     pub const SKILL_UI_NODE: u32 = 0xAE;
+@@ -106,6 +107,7 @@ pub enum NativeObject {
+     GameplayOptionsProfile(Box<GameplayOptionsProfile>),
+     GmRaceSexInfo(GmRaceSexInfo),
+     GmSceneInfo(Box<GmSceneInfo>),
++    GmSceneInfoList(Vec<GmSceneInfo>),
+     ShortcutInfo(ShortcutInfo),
+     SkillUiNode(Box<SkillUiNode>),
+     EffectUiNode(Box<EffectUiNode>),
+@@ -139,6 +141,7 @@ impl NativeObject {
+             Self::GameplayOptionsProfile(_) => ntype::GAMEPLAY_OPTIONS_PROFILE,
+             Self::GmRaceSexInfo(_) => ntype::GM_RACE_SEX_INFO,
+             Self::GmSceneInfo(_) => ntype::GM_SCENE_INFO,
++            Self::GmSceneInfoList(_) => ntype::GM_SCENE_INFO_LIST,
+             Self::ShortcutInfo(_) => ntype::SHORTCUT_INFO,
+             Self::SkillUiNode(_) => ntype::SKILL_UI_NODE,
+             Self::EffectUiNode(_) => ntype::EFFECT_UI_NODE,
+@@ -174,6 +177,7 @@ impl NativeObject {
+             }
+             ntype::GM_RACE_SEX_INFO => Self::GmRaceSexInfo(GmRaceSexInfo::read(r)?),
+             ntype::GM_SCENE_INFO => Self::GmSceneInfo(Box::new(GmSceneInfo::read(r)?)),
++            ntype::GM_SCENE_INFO_LIST => Self::GmSceneInfoList(GmSceneInfo::read_list(r)?),
+             ntype::SHORTCUT_INFO => Self::ShortcutInfo(ShortcutInfo::read(r)?),
+             ntype::SKILL_UI_NODE => Self::SkillUiNode(Box::new(SkillUiNode::read(r)?)),
+             ntype::EFFECT_UI_NODE => Self::EffectUiNode(Box::new(EffectUiNode::read(r)?)),
+@@ -212,6 +216,12 @@ impl NativeObject {
+             Self::GameplayOptionsProfile(profile) => profile.write(w),
+             Self::GmRaceSexInfo(info) => info.write(w),
+             Self::GmSceneInfo(info) => info.write(w),
++            Self::GmSceneInfoList(scenes) => {
++                w.u32(scenes.len() as u32);
++                for scene in scenes {
++                    scene.write(w);
++                }
++            }
+             Self::ShortcutInfo(shortcut) => shortcut.write(w),
+             Self::SkillUiNode(node) => node.write(w),
+             Self::EffectUiNode(node) => node.write(w),
+diff --git a/crates/ac2-script/src/real_data_tests.rs b/crates/ac2-script/src/real_data_tests.rs
+index 5d35b3f..b4cf4e8 100644
+--- a/crates/ac2-script/src/real_data_tests.rs
++++ b/crates/ac2-script/src/real_data_tests.rs
+@@ -133,6 +133,7 @@ fn wire_name(native: &ac2_net::protocol::NativeObject) -> &'static str {
+         W::GameplayOptionsProfile(_) => "GameplayOptionsProfile (wire)",
+         W::GmRaceSexInfo(_) => "gmRaceSexInfo (wire)",
+         W::GmSceneInfo(_) => "gmSceneInfo (wire)",
++        W::GmSceneInfoList(_) => "gmSceneInfoList (wire)",
+         W::SkillUiNode(_) => "SkillUINode (wire)",
+         W::ShortcutInfo(_) => "ShortcutInfo (wire)",
+         W::UiSaveLocations(_) => "UISaveLocations (wire)",

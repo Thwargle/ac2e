@@ -1,5 +1,7 @@
 #include "AC2FarTerrain.h"
 #include "AC2WorldGrid.h"
+#include "AC2NativeMaterial.h"
+#include "AC2WaterReflection.h"
 #include "Engine/World.h"
 #include "ProceduralMeshComponent.h"
 #include "Async/Async.h"
@@ -20,7 +22,10 @@ struct FAC2FarTerrain::FImpl
         TArray<FColor> Colors;
         TArray<FColor> Pixels;
         TArray<TArray<FColor>> Mips;
-        TMap<uint32,FAC2TerrainMesh> WaterMeshes;
+        TMap<uint32,FAC2ShoreWaterMesh> WaterMeshes;
+        TMap<uint32,double> WaterHeights;
+        TMap<uint32,FAC2TerrainMesh> BelowMeshes;
+        TMap<uint32,uint32> BelowMaterials;
         int32 WaterTiles = 0;
     };
     UWorld *World = nullptr;
@@ -34,6 +39,7 @@ struct FAC2FarTerrain::FImpl
     int32 Count = 0;
     int32 WaterCount = 0, WaterBatches = 0;
     TMap<uint32,UMaterialInterface*> WaterMaterials;
+    TMap<uint32,UMaterialInterface*> BelowWaterMaterials;
     void Build(FJob &J, int32 Near)
     {
         J.Pixels.Init(FColor::White, AtlasSize * AtlasSize);
@@ -61,7 +67,9 @@ struct FAC2FarTerrain::FImpl
                 const auto W = Water.At(Defs, Land);
                 if(W.Present)
                 {
-                    AppendAC2WaterMesh(Id,W,Offset,J.WaterMeshes.FindOrAdd(W.Above));
+                    J.WaterHeights.Add(Id,W.Height*100.);
+                    AppendAC2ShoreWaterMesh(Id,W,Offset,Defs,Neighborhood,J.WaterMeshes.FindOrAdd(W.Above),&Cell);
+                    if(W.Below){AppendAC2WaterMesh(Id,W,Offset,J.BelowMeshes.FindOrAdd(W.Above));J.BelowMaterials.Add(W.Above,W.Below);}
                     ++J.WaterTiles;
                 }
                 // Water spans the whole landscape radius, including nearby
@@ -156,6 +164,11 @@ bool FAC2FarTerrain::Open(UWorld *World, const FString &Directory, FString &Erro
 }
 void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
 {
+    // This library owns the combined near/distant water materials. It is not
+    // part of WorldStream's per-block tick, so advance its DAT UV waveforms
+    // here too, on the same world clock as the temporary near surfaces.
+    if (Impl->Assets && Impl->World)
+        Impl->Assets->UpdateMaterials(Impl->World->GetTimeSeconds());
     uint32 Id;
     if (!AC2::WorldBlock(Viewer, Id))
         return;
@@ -197,7 +210,11 @@ void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
             }
             Texture->UpdateResource();
             Material->SetTextureParameterValue(TEXT("Albedo"), Texture);
+            Impl->Assets->ConfigureTerrainCloud(Material);
             C->SetMaterial(0, Material);
+            RegisterAC2WorldMaterial(Material,C,false);
+            Impl->WaterBatches=0;
+            for(const auto& Plane:J.WaterHeights)RegisterAC2WaterPlane(Impl->Actor->GetWorld(),Impl->Actor,Plane.Key,Plane.Value);
             for(const auto& Pair:J.WaterMeshes)
             {
                 auto* Surface=NewObject<UProceduralMeshComponent>(Impl->Actor);
@@ -205,19 +222,51 @@ void FAC2FarTerrain::Tick(const FVector &Viewer, int32 Near, bool Ready)
                 Surface->SetupAttachment(C);
                 Surface->SetCollisionEnabled(ECollisionEnabled::NoCollision);
                 Surface->SetCastShadow(false);
+                ExcludeFromAC2WaterReflection(Impl->World,Surface);
                 Surface->RegisterComponent();
                 const auto& Mesh=Pair.Value;
                 Surface->CreateMeshSection(0,Mesh.Vertices,Mesh.Indices,Mesh.Normals,Mesh.UVs,
+                                          Mesh.ShoreUVs,{},{},
                                           TArray<FColor>(),TArray<FProcMeshTangent>(),false);
                 auto*& WaterMaterial=Impl->WaterMaterials.FindOrAdd(Pair.Key);
                 if(!WaterMaterial)WaterMaterial=Impl->Assets->Material(Pair.Key,true);
                 Surface->SetMaterial(0,WaterMaterial);
+                RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(WaterMaterial),Surface,false);
+                RegisterAC2WaterReflection(Impl->Actor->GetWorld(),Cast<UMaterialInstanceDynamic>(WaterMaterial));
+                if(const auto* Under=J.BelowMeshes.Find(Pair.Key)){
+                    Surface->CreateMeshSection(1,Under->Vertices,Under->Indices,Under->Normals,Under->UVs,TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                    const uint32 BelowId=J.BelowMaterials[Pair.Key];
+                    auto*& UnderMaterial=Impl->BelowWaterMaterials.FindOrAdd(BelowId);
+                    if(!UnderMaterial)UnderMaterial=Impl->Assets->Material(BelowId,true,true);
+                    Surface->SetMaterial(1,UnderMaterial);RegisterAC2WorldMaterial(Cast<UMaterialInstanceDynamic>(UnderMaterial),Surface,false);
+                    RegisterAC2WaterReflection(Impl->Actor->GetWorld(),Cast<UMaterialInstanceDynamic>(UnderMaterial));
+                }
+                ++Impl->WaterBatches;
+                if(!Mesh.Strip.Indices.IsEmpty()){
+                    auto* Shore=NewObject<UProceduralMeshComponent>(Impl->Actor);
+                    Impl->Actor->AddInstanceComponent(Shore);Shore->SetupAttachment(C);
+                    Shore->SetCollisionEnabled(ECollisionEnabled::NoCollision);Shore->SetCastShadow(false);
+                    ExcludeFromAC2WaterReflection(Impl->World,Shore);
+                    Shore->SetTranslucentSortPriority(1);Shore->RegisterComponent();
+                    const auto& Strip=Mesh.Strip;
+                    Shore->CreateMeshSection(0,Strip.Vertices,Strip.Indices,Strip.Normals,Strip.UVs,
+                        Mesh.StripUVs,{},{},TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                    Shore->SetMaterial(0,WaterMaterial);
+                    const auto& Foam=Mesh.Foam;
+                    if(!Foam.Indices.IsEmpty()){
+                        Shore->CreateMeshSection(1,Foam.Vertices,Foam.Indices,Foam.Normals,Foam.UVs,
+                            Mesh.FoamMaskUVs,Mesh.FoamPassUVs,{},TArray<FColor>(),TArray<FProcMeshTangent>(),false);
+                        Shore->SetMaterial(1,Shore->GetMaterial(0));
+                        ++Impl->WaterBatches;
+                    }
+                    ++Impl->WaterBatches;
+                }
             }
             Impl->Current = Id;
             Impl->Count = J.Tiles;
-            Impl->WaterCount=J.WaterTiles;Impl->WaterBatches=J.WaterMeshes.Num();
+            Impl->WaterCount=J.WaterTiles;
             UE_LOG(LogTemp, Display, TEXT("AC2 distant terrain: %d tiles, %d triangles; native water: %d tiles, %d batches"),
-                   J.Tiles,J.Indices.Num()/3,J.WaterTiles,J.WaterMeshes.Num());
+                   J.Tiles,J.Indices.Num()/3,J.WaterTiles,Impl->WaterBatches);
         }
         Impl->Job.Reset();
     }

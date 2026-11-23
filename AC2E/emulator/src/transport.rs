@@ -482,13 +482,6 @@ impl Transport {
         }
         Ok(retransmissions)
     }
-    pub fn retransmit_requested(
-        &mut self,
-        sequences: &[u32],
-        now: Instant,
-    ) -> Result<Vec<Vec<u8>>, TransportError> {
-        self.retransmit_requested_inner(sequences, now, None)
-    }
     fn retransmit_requested_inner(
         &mut self,
         sequences: &[u32],

@@ -15,8 +15,10 @@ Value rows are (value float, level float). Effect records: field 0 duration
 table, 1 FX, 2 period seconds, 3 effect type, 5 effect class; local Legions
 instant vitals use magnitude field 36, periodic vitals use field 38;
 self-effect records use field 36 and may reference further effect records.
-Buff records list modified stat ids (node kind ffff000a) followed by their
-multiplier table. Recall effects name a telepad in an encrypted string node
+Buff fields 30 and 36 in both profiles reference the modified-stat list and
+magnitude table. Compound effects reference their children through field 35;
+the parent's dependency lists and default tables are not applied modifiers.
+Recall effects name a telepad in an encrypted string node
 (kind ffff0076), resolved against the telepad table.
 """
 import argparse
@@ -132,29 +134,50 @@ def texts(data, values, graph):
 
 
 def stat_tables(values, graph):
-    """Pair each modified-stat list with the fullest multiplier table after it.
+    """Follow effect references, preserving each modifier's operation.
 
-    A stat list is followed by a one-row default (1 at level 0) and then the
-    per-level magnitude table; the table with the most rows is kept.
+    Eff_SetFloatStat (9), Eff_MultiplyFloatStat (a), and additive integer
+    effects (6) can all have a one-row table. A root's field 31 is a default
+    coefficient, not its derived magnitude. Choosing the largest nearby table
+    changed roots/stuns to a multiplier of one and could copy another stat's
+    magnitude. Never use stream adjacency or table length to resolve a value.
     """
-    best, pending = {}, []
-    for marker, offset in graph:
-        if marker != NODE:
-            continue
-        kind = values[offset + 2]
-        if kind == STATS:
-            pending = list_items(values, offset)
-        elif kind == LIST and pending:
-            rows = []
-            for item in list_items(values, offset):
-                if item < len(graph) and graph[item][0] == NODE and values[graph[item][1] + 2] == ROW:
-                    o = graph[item][1]
-                    rows.append((round(floating(values[o + 5]), 3), round(floating(values[o + 4]), 3)))
-            rows = sorted(set(rows))
-            for stat in pending:
-                if rows and len(rows) > len(best.get(stat, [])):
-                    best[stat] = rows
-    return sorted(best.items())
+    active = set()
+
+    def node(index, kind):
+        return (index is not None and index < len(graph) and graph[index][0] == NODE
+                and values[graph[index][1] + 2] == kind)
+
+    def visit(index, nested=False):
+        if index in active:
+            raise ValueError("cyclic compound stat effect")
+        if index >= len(graph) or graph[index][0] not in (ROOT, NODE):
+            # A non-stat child needs its own handler. Preserve an explicit
+            # unresolved component instead of discarding the whole skill or
+            # treating only its recognized siblings as the complete effect.
+            return [(0xFFFFFFFF, 0, [])]
+        active.add(index)
+        fields = struct_fields(values, graph[index][1])
+        get = lambda slot: fields[slot] if slot < len(fields) else None
+        children = get(35)
+        out = []
+        if get(3) == 0 and node(children, 0xFFFF0065):
+            for child in list_items(values, graph[children][1]):
+                out.extend(visit(child, True))
+        elif node(get(30), STATS):
+            stats = list_items(values, graph[get(30)][1])
+            # Both archived stat classes use field 36. The build-specific
+            # vital magnitude below belongs to different derived classes.
+            magnitude = value_rows(values, graph, get(36))
+            # Retain unresolved stat dependencies so the runtime cannot silently
+            # promote a partially decoded compound effect to executable.
+            out.extend((stat, get(3) or 0, magnitude) for stat in stats)
+        if nested and not out:
+            out.append((0xFFFFFFFF, get(3) or 0, []))
+        active.remove(index)
+        return out
+
+    return visit(0)
 
 
 def effect_record(portal, did, seen, own_field=37, profile="legions"):
@@ -247,7 +270,7 @@ def table(rows):
 
 
 def effect_text(side, e):
-    stats = "|".join(f"{stat:x}={table(rows)}" for stat, rows in e["stats"]) or "-"
+    stats = "|".join(f"{stat:x}@{operation:x}={table(rows)}" for stat, operation, rows in e["stats"]) or "-"
     return "/".join([
         side, f"{e['record']:08x}", f"{e['type']:x}", f"{e['class']:x}", f"{e['fx']:08x}",
         f"{e['period']:g}", table(e["duration"]), table(e["values"]), stats, e["telepad"] or "-",
@@ -277,12 +300,12 @@ def main():
                if line and not line.startswith(("#", "pyrealium"))]
     pads, pad_hash = telepads(args.telepads)
     out = [
-        "pyrealium-skill-effects-v2",
+        "pyrealium-skill-effects-v3",
         "# Active-skill use data read from portal.dat skill state records.",
         "# skill record kind reset_s vigor range targets right left story fx damage_table effects",
         "# Tables are level:value pairs. Effects are separated by ';' with fields",
         "# side/record/type/class/fx/period_s/duration_table/value_table/stats/telepad;",
-        "# stats are stat=table pairs separated by '|'.",
+        "# stats are stat@native_operation=table entries separated by '|'.",
     ]
     travel = [
         "pyrealium-skill-travel-v1",
@@ -305,7 +328,7 @@ def main():
                 tables = [s['values']]
                 for _, effect in s['effects']:
                     tables += [effect['values'], effect['duration']]
-                    tables += [values for _, values in effect['stats']]
+                    tables += [values for _, _, values in effect['stats']]
                 for points in tables:
                     if (len({level for level, _ in points}) != len(points)
                             or any(not (math.isfinite(level) and math.isfinite(value))

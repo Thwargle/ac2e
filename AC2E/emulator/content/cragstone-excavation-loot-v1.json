@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "notes": "Independent corpse identities with at least one observed child in Cragstone Excavation (block 05f9), in the two January captures identified in cragstone-excavation-v1.json. An unobserved fragment can reflect incomplete looting. Fragment roll probabilities approximate these sample proportions; native rates remain unknown. The Shear Beetle flesh slot has a native rate.",
+  "rules": [
+    {
+      "name": "Drudge Slinker",
+      "entity": 1191187900,
+      "definition": 1191187929,
+      "visual": 520097177,
+      "reference_definition": 1191185186,
+      "sources": {
+        "470015bc": "41c7c853c27814e8",
+        "47001b7c": "4b57d133ee843988",
+        "470015d9": "3861171409ead44c",
+        "810015d9": "42f5b2309fc9f167"
+      },
+      "observed": {
+        "813000008931396d": {
+          "capture": "349a701add92",
+          "cell": "05f9012f",
+          "item": "76bd095d4bcd8ad7063978e94895672b9a92dc491df5898458b2e0022fdde012"
+        },
+        "81300000893139aa": {
+          "capture": "349a701add92",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "81300000893139c3": {
+          "capture": "349a701add92",
+          "cell": "05f90138",
+          "item": null
+        },
+        "81300000893139c2": {
+          "capture": "349a701add92",
+          "cell": "05f90138",
+          "item": null
+        },
+        "8130000089071574": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": null
+        },
+        "8130000089071717": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90120",
+          "item": "5560d73e569e0765332c91f57bb031e92c53af641ee5dc1689f2f11c39e769dc"
+        },
+        "8130000089071702": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90120",
+          "item": null
+        },
+        "81300000890716f9": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90120",
+          "item": "103852996ad46744bc836314e1830192e67488ac393f44cb37e2c6fba7f6219a"
+        },
+        "8130000089071835": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": "ca3b57eb2071bae4dceec1c7fe60374afd9ee52aba2f65b065a80e8be68deecf"
+        },
+        "813000008907184a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": "077d84750338cee91a9f420cb51f86643eafeba6a87ddee89f7c5909155643d2"
+        },
+        "813000008907182c": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "81300000890718b8": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90138",
+          "item": "c9a6566076b1e995d373e40c77f372a4c43bd3c608383027bfd72293ee8011f7"
+        },
+        "81300000890718ae": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90139",
+          "item": null
+        },
+        "8130000089071909": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9013c",
+          "item": null
+        },
+        "8130000089071901": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9013c",
+          "item": null
+        }
+      },
+      "matches": 6,
+      "sampled": 15,
+      "probability": 0.4
+    },
+    {
+      "name": "Drudge Prowler",
+      "entity": 1191187899,
+      "definition": 1191187931,
+      "visual": 520097178,
+      "reference_definition": 1191185188,
+      "sources": {
+        "470015bb": "21954bd55568d4ee",
+        "47001b7c": "4b57d133ee843988",
+        "470015db": "ff7f0ec7d7229694",
+        "810015db": "bdede7dc8ccf6bfc"
+      },
+      "observed": {
+        "8130000089313996": {
+          "capture": "349a701add92",
+          "cell": "05f9011e",
+          "item": null
+        },
+        "813000008931398f": {
+          "capture": "349a701add92",
+          "cell": "05f9012e",
+          "item": "bfd7527121efcec3b7d7dbc0af06db4c93be07b1295b17aec520e5c820c9aae6"
+        },
+        "813000008931399a": {
+          "capture": "349a701add92",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "81300000893139b0": {
+          "capture": "349a701add92",
+          "cell": "05f90138",
+          "item": null
+        },
+        "81300000893139be": {
+          "capture": "349a701add92",
+          "cell": "05f90138",
+          "item": "96b4a886a9bd6f711bb4f45c650df459a7ad5ae43d67daa9a4d05f3a978d3b27"
+        },
+        "813000008907179c": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9011d",
+          "item": "975f14b2469622f057d7452e8d68e8f1fc5daad1c589592cfad4e5196bbb4046"
+        },
+        "8130000089071795": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9011d",
+          "item": null
+        },
+        "8130000089071798": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9011d",
+          "item": null
+        },
+        "81300000890717c9": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9011d",
+          "item": null
+        },
+        "81300000890717d2": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9011e",
+          "item": null
+        },
+        "8130000089071844": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "813000008907184e": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "81300000890718ba": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90138",
+          "item": null
+        },
+        "813000008907189b": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90138",
+          "item": "8b90950f03bc04228203ee2d98952a8952632773061c28809e4bc58041d5f027"
+        },
+        "813000008907189a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90138",
+          "item": null
+        },
+        "813000008907190a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9013c",
+          "item": null
+        }
+      },
+      "matches": 4,
+      "sampled": 16,
+      "probability": 0.25
+    },
+    {
+      "name": "Drudge Raider",
+      "entity": 1191187923,
+      "definition": 1191187933,
+      "visual": 520097179,
+      "reference_definition": 1191185187,
+      "sources": {
+        "470015d3": "0ed70cba0f70ae62",
+        "47001dd2": "0b52029bfd6476b3",
+        "470015dd": "089b6a2392a1b614",
+        "810015dd": "17503d10278c74dd"
+      },
+      "observed": {
+        "81300000893139a7": {
+          "capture": "349a701add92",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "813000008907150a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90102",
+          "item": null
+        },
+        "8130000089071581": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": null
+        },
+        "8130000089071576": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": null
+        },
+        "813000008907157a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": null
+        },
+        "813000008907160e": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90144",
+          "item": null
+        },
+        "8130000089071601": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90145",
+          "item": null
+        },
+        "8130000089071628": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9014a",
+          "item": null
+        },
+        "813000008907163d": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90108",
+          "item": null
+        },
+        "8130000089071657": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9014b",
+          "item": null
+        },
+        "813000008907167b": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9010a",
+          "item": "3300c9256bc80ae2028a89987371f1815e9cac6c385593b246ee7971ff5ccf3d"
+        },
+        "81300000890716e7": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90120",
+          "item": null
+        },
+        "81300000890716ec": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90120",
+          "item": "85b4b1f11ae2d5a78820ffe4bd757340586d54a4ccbb3b22b5af1fde7e20c943"
+        },
+        "8130000089071824": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": null
+        },
+        "8130000089071819": {
+          "capture": "82e9d74adad6",
+          "cell": "05f9012e",
+          "item": "6ef002ee0ec1da3a5ba0539f213556a671238ad5d741d01d5bef9ef716ec1319"
+        }
+      },
+      "matches": 3,
+      "sampled": 15,
+      "probability": 0.2
+    },
+    {
+      "name": "Shear Beetle",
+      "entity": 1191186368,
+      "definition": 1191186297,
+      "visual": 520094159,
+      "reference_definition": 1191183881,
+      "sources": {
+        "47000fc0": "ba77f45c84a7623a",
+        "47001b41": "d8176b0d6bfcda8c",
+        "47000f79": "25887cb60a0c63b0",
+        "81000f79": "2064056d24880a63"
+      },
+      "observed": {
+        "8130000089071511": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90105",
+          "item": "ba074772b52ca25de4e91d27e6b36e38f54073dede13d72aea14fc9d996196f5"
+        },
+        "8130000089071552": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": "c629ee75a9ac5c3c91653c394de3b56fb9b908946b85281a1c54d4017dad5844"
+        },
+        "8130000089071573": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90136",
+          "item": "9631088631978871e3ece8089589821116ce0ed96e258ff2dc8831ae24f542ca"
+        },
+        "8130000089071606": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90146",
+          "item": "492d3572d7c42901d52a7c5b59ecc27f4e951bb6460fe422e25e55b1def1e570"
+        },
+        "813000008907162a": {
+          "capture": "82e9d74adad6",
+          "cell": "05f90148",
+          "item": "ff9ac01109e1ea5269e985a719861e1ba942f89de0b0bf3e397e5462fd2c0574"
+        }
+      },
+      "matches": 5,
+      "sampled": 5,
+      "probability": 1,
+      "rate_source": "2017 NPC_TrophyDrop1_Rate on 4700222e; applied to the captured Excavation variant and interior only.",
+      "reference_entity_sha256": "b73b894253eff339deee28edebdf01ed22c32e623b4bbb433ad885ea1bc712b0"
+    }
+  ]
+}

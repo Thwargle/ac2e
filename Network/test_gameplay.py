@@ -12,6 +12,13 @@ import uuid
 from test_network import Peer, ROOT, SERVER, DAT_DIRECTORY, prepare_test_content
 
 
+def panel_text(panel):
+    # Native examination values are styled spans, not a single JSON string.
+    return ''.join('\n' if node.get('kind') == 0x40000006 else
+                   (node.get('text', {}).get('resolved') or node.get('text', {}).get('literal') or '')
+                   for node in panel['nodes'])
+
+
 def until(peer, start, event, predicate=lambda e: True, timeout=15):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
@@ -33,7 +40,7 @@ def main():
     log = (data/'server.log').open('w', encoding='utf-8')
     args = [str(SERVER), 'serve', '--bind', '127.0.0.1:19320', '--account', 'local',
             '--data', str(data/'world'), '--game-data', str(DAT_DIRECTORY), '--content', str(content),
-            '--initialize-ui', 'true', '--training-kit', 'false', '--lifestones', 'true', '--portals', 'true', '--seconds', '240']
+            '--initialize-ui', 'true', '--lifestones', 'true', '--portals', 'true', '--seconds', '240']
     server = subprocess.Popen(args, env=dict(os.environ, PYREALIUM_UNREAL_LEGIONS_DATA='1'),
                               stdout=log, stderr=log, creationflags=0x08000000)
     peers=[]
@@ -136,6 +143,12 @@ def main():
                 position=[x+(y-x)*i/steps for x,y in zip(old,destination)]
                 a.send('move',cell=cell,position=position,heading=90,motion=[0,1,0]);time.sleep(.1)
             a.send('move',cell=cell,position=position,heading=90,motion=[0,0,0])
+        # Practice is optional: accept through the nearby mentor before kills.
+        mentor=next(e for e in a.events if e.get('event')=='object' and e.get('entity')==0x47001699 and e['placement']['cell']==pose['cell'])
+        previous=position[:];move(mentor['placement']['position']);start=len(a.events)
+        a.send('use',item=mentor['id'],target='0')
+        until(a,start,'chat',lambda e:'Training creatures defeated: 0/3' in str(e))
+        move(previous)
         equip(sword,0x4100000a)
         start=len(a.events); obs=len(b.events)
         move([position[0]+.5,position[1],position[2]])
@@ -151,8 +164,27 @@ def main():
         # First kill: retaliation, native attack and death all visible to the observer.
         start=len(a.events);obs=len(b.events)
         a.send('attack',id=ids[0])
+        until(a,start,'quality',lambda e:e.get('id')==ids[0] and e['key']==0x102 and 0<e['value']<60)
+        # A native targeted stop keeps combat stance. Selecting a creature in
+        # that stance must not resume attacks without an explicit attack request.
+        stopped=len(a.events);remote_stopped=len(b.events)
+        a.send('stop_target',id=ids[0])
+        until(a,stopped,'combat',lambda e:e['enabled'])
+        until(b,remote_stopped,'mode',lambda e:e['id']==a.id and e['mode']==0x4100000a)
+        a.send('target',id='0');a.send('target',id=ids[0])
+        time.sleep(4.5)
+        assert not any(e.get('event')=='hit' and e.get('id')==ids[0] for e in a.events[stopped:]),a.events[stopped:]
+        assert not any(e.get('event')=='combat' and not e['enabled'] for e in a.events[stopped:])
+        result['targeted_stop_preserves_stance_and_reselection_does_not_attack']=True
+        # Allow retaliation even when this short-lived target misses its first swing.
         until(a,start,'hit',lambda e:e['id']==a.id)
         until(b,obs,'hit',lambda e:e['id']==a.id)
+        targeted=until(a,start,'story_target',lambda e:e['id']==a.id and e['attacker']==ids[0])
+        assert targeted['skill']==6 and targeted['owner']==a.id and targeted['instance']==a.spawn['instance'],targeted
+        observer_targeted=until(b,obs,'story_target',lambda e:e['id']==a.id and e['attacker']==ids[0])
+        assert observer_targeted==targeted,(observer_targeted,targeted)
+        result['native_last_attacker_skill_and_victim_stamp']=True
+        a.send('attack',id=ids[0])
         until(a,start,'quality',lambda e:e.get('id')==ids[0] and e['key']==0x102 and e['value']==0)
         until(b,obs,'quality',lambda e:e.get('id')==ids[0] and e['key']==0x102 and e['value']==0)
         a.send('combat',enabled=False)
@@ -175,7 +207,7 @@ def main():
         claim(ids[0])
         unequip(sword);equip(staff,0x41000011)
         start=len(a.events);obs=len(b.events)
-        a.send('skill',skill=0x60,target=ids[1]);until(a,start,'skill_finished')
+        a.send('skill',skill=0x60,target=ids[1]);until(a,start,'story', lambda e: e.get('request') is not None)
         until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000b9)
         # Native perception may have brought this creature into melee before
         # the first spell. Its shared approach need not start at that spell.
@@ -194,7 +226,7 @@ def main():
         claim(ids[1])
         time.sleep(.3);unequip(staff);equip(bow,0x41000010)
         start=len(a.events);obs=len(b.events)
-        a.send('skill',skill=0xcf,target=ids[2]);until(a,start,'skill_finished')
+        a.send('skill',skill=0xcf,target=ids[2]);until(a,start,'story', lambda e: e.get('request') is not None)
         until(b,obs,'behavior',lambda e:e['id']==a.id and e['behavior']==0x410000e2)
         # A basic missile skill must continue attacking its target without a
         # second attack command, including the killing blow.
@@ -215,6 +247,12 @@ def main():
         a.send('use',item=portal['id'],target='0')
         exit_pose=until(a,start,'position',lambda e:e['id']==a.id and e['cell']==0x74ba0008)
         until(b,obs,'remove',lambda e:e['id']==a.id)
+        for peer, mark in ((a,start),(b,obs)):
+            departure=[(a.id,0x410004fa),(a.id,0x41000010),(portal['id'],0x41000044)]
+            seen=[(e['id'],e['fx']) for e in peer.events[mark:] if e['event']=='fx']
+            assert [fx for fx in seen if fx in departure]==departure, seen
+        a.send('ready')
+        until(a,start,'stop_fx',lambda e:e['id']==a.id and e['fx']==0x41000010)
         result['starter_dungeon_exit']=exit_pose['cell']
         time.sleep(5.1);start=len(a.events);obs=len(b.events)
         a.send('recall')
@@ -223,18 +261,27 @@ def main():
         result['lifestone_recall_and_interest']=True
         # The observer deliberately lets a respawned creature kill it. Death
         # blocks combat, and resurrection restores a fresh native instance.
-        initial_instance=next(e['instance'] for e in idols if e['id']==ids[0])
-        respawn=until(b,0,'object',lambda e:e['id']==ids[0] and e['instance']>initial_instance,timeout=65)
+        # Use the second defeated Idol's spawner for the death/resurrection check.
+        respawn_id=ids[1]
+        initial_instance=next(e['instance'] for e in idols if e['id']==respawn_id)
+        respawn=until(b,0,'object',lambda e:e['id']==respawn_id and e['instance']>initial_instance,timeout=65)
+        # Leave a clear margin inside melee reach instead of relying on a rounded 3 m boundary.
+        approach=list(respawn['placement']['position']);approach[1]-=1
+        b.send('move',cell=respawn['placement']['cell'],position=approach,heading=0,motion=[0,0,0])
         start=len(b.events);obs=len(a.events)
-        b.send('skill',skill=0xb0,target=ids[0]);until(b,start,'skill_finished')
+        b.send('skill',skill=0xb0,target=respawn_id);until(b,start,'story', lambda e: e.get('request') is not None)
         b.send('combat',enabled=False)
-        until(b,start,'death',lambda e:e['dead']==1,timeout=65)
+        # Native armor and misses can outlast the old unarmored 65-second budget.
+        until(b,start,'death',lambda e:e['dead']==1,timeout=120)
         until(a,obs,'quality',lambda e:e.get('id')==b.id and e['key']==0x102 and e['value']==0)
-        start=len(b.events);b.send('attack',id=ids[0])
+        start=len(b.events);b.send('attack',id=respawn_id)
         until(b,start,'chat',lambda e:'dead' in str(e).lower())
         start=len(b.events);b.send('resurrect')
         until(b,start,'death',lambda e:e['dead']==0)
         until(b,start,'quality',lambda e:e.get('id') is None and e['key']==0x102 and e['value']>0)
+        until(b,start,'quality',lambda e:e.get('id') is None and e['key']==0x11e and e['value']==95)
+        until(b,start,'quality',lambda e:e.get('id') is None and e['key']==0x13c and int(e['value'])>0)
+        fallen=b.id
         result['player_death_and_resurrection']=True
         # Replaying the real journals must preserve gear and the completed quest.
         hero=a.id;bow_id=bow['id']
@@ -251,6 +298,12 @@ def main():
         time.sleep(.6) # Chat commands share the normal anti-flood interval.
         start=len(p.events);p.send('chat',text='@quest shelter',channel='say')
         until(p,start,'chat',lambda e:"Imbued Digging Tool" in str(e))
+        observer=Peer();peers.append(observer)
+        observer.send('connect',host='127.0.0.1',port=19320,account='local');observer.wait('characters')
+        observer.send('enter',id=fallen);observer.wait('player');observer.send('ready')
+        until(observer,0,'quality',lambda e:e.get('id') is None and e['key']==0x11e and e['value']==95)
+        until(observer,0,'quality',lambda e:e.get('id') is None and e['key']==0x13c and int(e['value'])>0)
+        result['vitae_and_recovery_xp_survive_restart']=True
         result['restart_preserves_gear_and_quest']=True
         result['shelter_introduction_survives_restart']=True
         result['scope']='Shelter introduction plus AC2E authored combat/binding/exit circuit; continuation tested separately by test_shelter.py'

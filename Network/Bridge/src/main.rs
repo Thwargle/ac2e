@@ -2,14 +2,33 @@
 // Separate process adapter for AC2_Rusted's native protocol. Stdio is private IPC, never a listener.
 #![forbid(unsafe_code)]
 mod events;
+mod status_effects;
+mod story_scenes;
+mod output;
 mod examination;
 mod shop;
 mod journal;
 mod crafting;
-use ac2_net::{protocol::*, Credential, Logon, NetClient, NetClientConfig, NetEvent};
+mod craft_catalog;
+mod groups;
+mod allegiance;
+mod preferences;
+mod login;
+mod dat_login;
+mod dat_patch;
+mod room_chat;
+mod friends;
+mod selection;
+mod look;
+mod inventory_bulk;
+mod link_status;
+mod localization;
+#[cfg(test)]
+mod native_usage_tests;
+use ac2_net::{protocol::*, NetClient, NetClientConfig, NetEvent};
 use serde_json::{json, Value};
 use std::{
-    io::{self, BufRead, Write},
+    io::{self, BufRead},
     net::ToSocketAddrs,
     sync::mpsc,
     time::{Duration, Instant},
@@ -19,6 +38,29 @@ const MAX_LINE: usize = 65536;
 #[cfg(test)]
 mod use_tests {
     use super::*;
+    #[test]
+    fn movement_stamps_reject_duplicates_stale_values_and_honor_wrap() {
+        assert!(!newer_stamp(1,1));assert!(!newer_stamp(10,9));
+        assert!(newer_stamp(0,1));assert!(newer_stamp(65535,0));
+        assert!(!newer_stamp(0,65535));
+    }
+    #[test]
+    fn targeted_stop_is_native_and_preserves_the_full_unsigned_target() {
+        let target=0x8140000000030003;
+        let ClientEvent::Interp{function,arguments,encrypted}=stop_target(target) else {panic!("targeted stop")};
+        assert_eq!(function,0x82040025);assert!(!encrypted);
+        let values=unpack_values(&arguments).unwrap();
+        assert_eq!(values.len(),1);
+        assert!(matches!(values[0],PackValue::LongInt(id) if id==target));
+    }
+    #[test]
+    fn combat_stance_packs_the_native_null_attack_target() {
+        let ClientEvent::Interp{function,arguments,..}=combat_stance(true,0) else {panic!("combat")};
+        assert_eq!(function,0x82040008);
+        assert_eq!(arguments,vec![2,0,0,0,0,0,0,0,0,0,0,0]);
+        let ClientEvent::Interp{function,arguments,..}=combat_stance(false,42) else {panic!("peace")};
+        assert_eq!(function,0x82040010);assert!(arguments.is_empty());
+    }
     #[test]
     fn bag_sort_uses_native_reorganize_and_unsigned_heap_fields() {
         let ClientEvent::Interp{function,arguments,..}=reorganize_item(InvMoveDesc::new(0x813000000000002a,7,3,7,8,12)) else {panic!("reorganize event")};
@@ -52,15 +94,39 @@ mod use_tests {
     }
 }
 fn emit(value: Value) {
-    let mut out = io::stdout().lock();
-    let _ = writeln!(out, "{value}");
-    let _ = out.flush();
+    use std::sync::OnceLock;
+    static OUTPUT: OnceLock<output::Output> = OnceLock::new();
+    let output = OUTPUT.get_or_init(|| {
+        let (output, pending) = output::Output::channel(8 * 1024 * 1024);
+        std::thread::spawn(move || {
+            if pending.write_to(io::stdout().lock()).is_err() { std::process::exit(1); }
+        });
+        output
+    });
+    if output.send(format!("{value}\n")).is_err() { std::process::exit(1); }
+}
+// CPhysicsObj::is_newer (16-bit native movement stamps).
+fn newer_stamp(old: u16, new: u16) -> bool {
+    if new > old { new-old <= 0x7fff } else { old-new > 0x7fff }
 }
 fn text<'a>(v: &'a Value, key: &str) -> Result<&'a str, String> {
     v[key].as_str().ok_or_else(|| format!("Missing {key}"))
 }
 fn id(v: &Value, key: &str) -> Result<u64, String> {
     text(v, key)?.parse().map_err(|_| format!("Invalid {key}"))
+}
+// Legions gmCWInterface::StopAttacking: IFun 00b40104 -> 9aac0013 ->
+// 82040026 sends 82040025 with the target IID. This is not peace mode.
+fn stop_target(target: u64) -> ClientEvent {
+    ClientEvent::Interp {function:0x82040025,
+        arguments:pack_values(&[PackValue::LongInt(target)]),encrypted:false}
+}
+// Legions WM_Combat::16 packs a long IID for 82040008, even when merely
+// drawing a weapon without a target. An empty payload throws on retail servers.
+// WM_Combat::14 (peace) has no arguments.
+fn combat_stance(enabled: bool,target:u64) -> ClientEvent {
+    ClientEvent::Interp {function:if enabled {0x82040008} else {0x82040010},
+        arguments:if enabled {pack_values(&[PackValue::LongInt(target)])} else {vec![]},encrypted:false}
 }
 fn word(v: &Value, key: &str) -> Result<u32, String> {
     v[key]
@@ -114,6 +180,46 @@ fn equip_item(desc: InvEquipDesc, equip: bool) -> ClientEvent {
     ClientEvent::Interp {function:if equip {0x820e004f}else{0x820e0015},
         arguments:pack_values(&[PackValue::Reference(reference)]),encrypted:false}
 }
+fn transfer_item(desc: InvMoveDesc) -> ClientEvent {
+    transfer_item_with_type(desc,0)
+}
+fn transfer_item_with_type(desc: InvMoveDesc, move_type: u32) -> ClientEvent {
+    let mut reference=desc.to_reference();
+    // gmCWInterface::MoveItem -> InvMoveDesc::3F retains the unsigned
+    // object IDs and slot/quantity arguments from CallIFun_MoveItem.
+    if let PackedEntry::Heap{object,..}=&mut reference.entries[0] {
+        object.slots[12]=move_type;
+        for i in [44,16,2,36,8,32,28] {object.tags[i]=0x84;object.tags[i+1]=0xcd;}
+        for i in [39,11,26,1,24,50,25] {object.tags[i]=4;}
+    }
+    ClientEvent::Interp{function:0x820e0036,arguments:pack_values(&[PackValue::Reference(reference)]),encrypted:false}
+}
+fn world_item_request(v: &Value, player: u64, native: bool) -> Result<ClientEvent,String> {
+    let giving=match v["command"].as_str(){Some("give_item")=>true,Some("drop_item")=>false,
+        _=>return Err("Invalid world item action".into())};
+    if giving && !native {return Err("This server profile does not support giving items yet".into());}
+    let item=id(v,"id")?;
+    let from=word(v,"from")?;
+    let quantity=word(v,"quantity")?;
+    if item==0 || item==u64::MAX || player==0 || item==player {return Err("Invalid inventory item".into());}
+    if from>i32::MAX as u32 || quantity==0 || quantity>i32::MAX as u32 {return Err("Invalid item slot or quantity".into());}
+    let target=if giving {id(v,"target")?}else if native {0}else{u64::from(word(v,"landblock")?)};
+    if giving && (target==0 || target==player || target==item || target==u64::MAX) {
+        return Err("Invalid item recipient".into());
+    }
+    let desc=InvMoveDesc::new(item,player,from as i32,target,
+        if native || giving {0}else{-1},quantity as i32);
+    if native {
+        // CInventorySystem::DirectiveMoveItem classifies creature -> world
+        // (33) or creature -> creature (36) before sending WM_Inventory::36.
+        Ok(transfer_item_with_type(desc,if giving {36}else{33}))
+    } else {
+        // AC2E's bounded inventory profile predates the native client path.
+        let mut event=reorganize_item(desc);
+        if let ClientEvent::Interp{function,..}=&mut event {*function=0x820e0036;}
+        Ok(event)
+    }
+}
 fn reorganize_item(desc: InvMoveDesc) -> ClientEvent {
     let mut reference=desc.to_reference();
     // Native same-container drag (820e0049), including typed DID/unsigned IID
@@ -128,17 +234,38 @@ fn reorganize_item(desc: InvMoveDesc) -> ClientEvent {
 }
 struct Session {
     client: NetClient,
+    link_status: link_status::LinkStatus,
+    build: Build,
+    dat_login: dat_login::DatLogin,
     account: String,
     player: u64,
     instance: u16,
+    position_stamp: u16,
     teleport: u16,
     force: u16,
     moveto: u16,
     ready: bool,
-    logged_on: bool,
+    native_inventory: bool,
+    characters_received: bool,
     since: Instant,
     entered: bool,
+    selection_return: events::SelectionReturn,
+    selection: selection::Selection,
     skill_request: u32,
+    preferences_dirty: bool,
+    logout_fence: preferences::LogoutFence,
+    logout_started: Option<Instant>,
+    logout_probe_sent: bool,
+    last_examination_reply: Option<Instant>,
+    last_examination_request: Option<Instant>,
+    room_chat: room_chat::RoomChatState,
+    story_scenes: story_scenes::StoryScenes,
+    friends: Option<friends::Friends>,
+    bulk_inventory: Option<inventory_bulk::Profile>,
+    dat_directory: String,
+    localization: localization::Localization,
+    craft_catalog:craft_catalog::Catalog,
+    local_tell_echo: bool,
 }
 impl Session {
     fn connect(v: &Value) -> Result<Self, String> {
@@ -152,72 +279,67 @@ impl Session {
             .map_err(|_| "Cannot resolve server")?
             .find(|a| a.is_ipv4())
             .ok_or("Server has no IPv4 address")?;
-        let account = text(v, "account")?.to_ascii_lowercase();
-        if account.is_empty()
-            || account.len() > 32
-            || !account
-                .bytes()
-                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'_')
-        {
-            return Err("Account must contain 1-32 letters, digits or underscores".into());
-        }
-        let ticket = v["ticket"].as_str().unwrap_or("");
-        let credential = if ticket.is_empty() {
-            if !server.ip().is_loopback() {
-                return Err("Remote servers require an account-service login ticket".into());
-            }
-            Credential::Account
-        } else {
-            if ticket.len() != 64
-                || !ticket
-                    .bytes()
-                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
-            {
-                return Err("Invalid login ticket".into());
-            }
-            // Pyrealium's GLS ticket uses auth 0x40000002, packed as a narrow string.
-            Credential::Password(ticket.into())
-        };
-        let version = v["version"].as_str().unwrap_or("7148");
-        if !matches!(version, "7148" | "7230") {
-            return Err("Pyrealium wire version must be 7148 or 7230".into());
-        }
-        let client = NetClient::connect(NetClientConfig {
-            server,
-            logon: Logon {
-                version: version.into(),
-                account: account.clone(),
-                credential,
-                connection_sequence: ac2_net::real_time() as u32,
-                crypto: None,
-            },
-        })
-        .map_err(|e| e.to_string())?;
+        let logon = login::logon(v, server.ip().is_loopback())?;
+        let account = logon.account.clone();
+        let build = Build::from_version(&logon.version);
+        let socket = ac2_net::UdpTransport::bind(server).map_err(|e| e.to_string())?;
+        let (transport, link_status) = link_status::measure(socket);
+        let client = NetClient::with_transport(NetClientConfig {server, logon}, Box::new(transport));
+        let mut dat_login=dat_login::DatLogin::new(v["dat_directory"].as_str().unwrap_or(""));
+        if v["auth"].as_str()==Some("gls_direct"){dat_login.allow_updates(v["dat_cache_root"].as_str().unwrap_or(""));}
         Ok(Self {
             client,
+            link_status,
+            build,
+            dat_login,
             account,
             player: 0,
             instance: 0,
+            position_stamp: 0,
             teleport: 0,
             force: 0,
             moveto: 0,
             ready: false,
-            logged_on: false,
+            native_inventory: v["auth"].as_str()==Some("gls_direct"),
+            characters_received: false,
             since: Instant::now(),
             skill_request: 0,
             entered: false,
+            selection_return: events::SelectionReturn::new(v["auth"].as_str()==Some("gls_direct")),
+            selection: selection::Selection::new(v["auth"].as_str()==Some("gls_direct")),
+            preferences_dirty: false,
+            logout_fence: preferences::LogoutFence::default(),
+            logout_started: None,
+            logout_probe_sent: false,
+            last_examination_reply: None,
+            last_examination_request: None,
+            room_chat: room_chat::RoomChatState::default(),
+            story_scenes: story_scenes::StoryScenes::default(),
+            friends: (v["auth"].as_str()!=Some("gls_direct")).then(friends::Friends::default),
+            bulk_inventory: if v["auth"].as_str()==Some("gls_direct"){None}else{Some(inventory_bulk::Profile::stock())},
+            dat_directory: v["dat_directory"].as_str().unwrap_or("").to_owned(),
+            craft_catalog:craft_catalog::Catalog::load(v["dat_directory"].as_str().unwrap_or("")),
+            localization: localization::Localization::load(v["dat_directory"].as_str().unwrap_or("")),
+            local_tell_echo: v["auth"].as_str()==Some("gls_direct"),
         })
     }
     fn command(&mut self, v: &Value) -> Result<(), String> {
+        if self.selection_return.waiting() {
+            return Err("Wait for the server character list before selecting a character".into());
+        }
         match text(v, "command")? {
             "delete" if !self.ready && self.player == 0 => {
                 send(&mut self.client, ClientEvent::DeleteCharacter {
                     account: self.account.clone(), character: id(v, "id")?,
                 })?;
             }
-            "enter" => {
+            "enter" if self.logout_started.is_none() => {
+                self.story_scenes.clear();
+                if let Some(friends)=&mut self.friends { friends.reset(); }
                 self.ready = false;
                 self.player = 0;
+                self.selection.reset();
+                self.preferences_dirty=false;self.logout_fence=preferences::LogoutFence::default();self.logout_probe_sent=false;
                 // Pyrealium retains its incoming ordered counter across character logout.
                 if !self.entered {
                     self.client.net_mut().enter_world();
@@ -276,6 +398,17 @@ impl Session {
                 emit(
                     json!({"event":"status","phase":"world","message":"Connected to server world"}),
                 );
+                if let Some(friends)=&mut self.friends {
+                    if !friends.subscribed {
+                        friends.request("list","",None,|packet| send(&mut self.client,packet))?;
+                        friends.request("mode","",None,|packet| send(&mut self.client,packet))?;
+                    }
+                }
+            }
+            "friends" if self.ready => {
+                let friends=self.friends.as_mut().ok_or("This server does not support the AC2E friends service.")?;
+                let mode=v.get("mode").map(|value| value.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or("Invalid friend availability.")).transpose()?;
+                friends.request(text(v,"action")?,v["name"].as_str().unwrap_or(""),mode,|packet| send(&mut self.client,packet))?;
             }
             "move" if self.ready => {
                 let heading = v["heading"]
@@ -290,7 +423,9 @@ impl Session {
                     },
                     heading_degrees: heading.rem_euclid(360.),
                     motion: vector(v, "motion")?,
-                    cancel_moveto: true,
+                    // PlayerMovementModule::m_is_actively_moving, not a heartbeat.
+                    // Cancelling on every idle report interrupts NPC use/equipment.
+                    cancel_moveto: v["cancel_moveto"].as_bool().unwrap_or(false),
                     instance_stamp: self.instance,
                     teleport_stamp: self.teleport,
                     force_position_stamp: self.force,
@@ -299,11 +434,23 @@ impl Session {
                 };
                 send(&mut self.client, ClientEvent::Position(p))?;
             }
+            "game_options" if self.ready => {
+                send(&mut self.client, preferences::game_command(v)?)?;self.preferences_dirty=true;
+            }
+            "shortcut" if self.ready => {
+                send(&mut self.client, preferences::command(v)?)?;self.preferences_dirty=true;
+            }
             "chat" if self.ready => {
                 let message = text(v, "text")?;
-                if message.len() > 2048 {
-                    return Err("Chat message too long".into());
+                if matches!(v["channel"].as_str(), Some("general" | "fellowship" | "allegiance")) {
+                    let packet = self.room_chat.request_channel(v["channel"].as_str().unwrap(), message)?;
+                    self.client.net_mut().send_chat(&packet).ok_or("Could not send chat")?;
+                    return Ok(());
                 }
+                if message.trim().is_empty() || message.len() > 2048 || message.chars().any(char::is_control) {
+                    return Err("Enter a chat message of up to 2048 bytes on one line.".into());
+                }
+                if v["channel"].as_str()==Some("tell") && text(v,"recipient")?.trim().is_empty(){return Err("Enter a tell recipient.".into())}
                 let literal = StringInfo {
                     literal: Some(message.into()),
                     ..Default::default()
@@ -325,15 +472,29 @@ impl Session {
                     _ => return Err("Unsupported server chat channel".into()),
                 };
                 send(&mut self.client, request.to_event())?;
+                // Native CCommunicationSystem echoes a submitted tell locally.
+                // AC2E already echoes it from the server; do not duplicate that.
+                // Emit only after the transport accepts the request (not delivery).
+                if self.local_tell_echo && v["channel"].as_str()==Some("tell") {
+                    emit(json!({"event":"chat","kind":0x20,"format":"tell_sent",
+                        "speaker":{"literal":text(v,"recipient")?},"text":{"literal":message}}));
+                }
             }
             "target" if self.ready => {
-                send(
-                    &mut self.client,
-                    ScriptRequest::SetTarget(id(v, "id")?).to_event(),
-                )?;
+                for event in self.selection.requests(id(v,"id")?) {
+                    send(&mut self.client,event)?;
+                }
             }
+            "look_target" | "look_direction" if self.ready => {
+                send(&mut self.client,look::command(v)?)?;
+            }
+            "fellowship" if self.ready => {send(&mut self.client,groups::command(v)?)?;}
+            "allegiance" if self.ready => {send(&mut self.client,allegiance::command(v)?)?;}
             "examine" if self.ready => {
-                send(&mut self.client, examination::request(id(v,"id")?))?;
+                let target=id(v,"id")?;
+                send(&mut self.client, examination::request(target,self.build))?;
+                self.last_examination_request=Some(Instant::now());
+                if target==self.player {self.logout_fence.request(false);}
             }
             "attack" if self.ready => {
                 let target = id(v, "id")?;
@@ -356,12 +517,12 @@ impl Session {
                     },
                 )?;
             }
+            "stop_target" if self.ready => {
+                send(&mut self.client,stop_target(id(v,"id")?))?;
+            }
             "combat" if self.ready => {
                 let enabled = v["enabled"].as_bool().ok_or("Expected combat enabled flag")?;
-                send(&mut self.client, ClientEvent::Interp {
-                    function: if enabled { 0x82040008 } else { 0x82040010 },
-                    arguments: vec![], encrypted: false,
-                })?;
+                send(&mut self.client, combat_stance(enabled,self.selection.combat_target()))?;
             }
             "skill_cancel_untrain" if self.ready => {
                 send(&mut self.client,ClientEvent::Interp{function:0x82140001,arguments:vec![],encrypted:false})?;
@@ -381,6 +542,9 @@ impl Session {
                     arguments: pack_values(&[PackValue::Int(self.skill_request), PackValue::Int(skill), PackValue::LongInt(id(v, "target")?)]),
                     encrypted: false,
                 })?;
+                // Native RequestSpecialAttack is a local notice paired with the
+                // actual wire counter, not a speculative cooldown or acceptance.
+                emit(json!({"event":"skill_requested","request":self.skill_request,"skill":skill}));
             }
             "resurrect" if self.ready => {
                 send(
@@ -399,13 +563,12 @@ impl Session {
                     arguments: pack_values(&[PackValue::Int(self.skill_request), PackValue::Int(0x343), PackValue::LongInt(self.player)]),
                     encrypted: false,
                 })?;
+                emit(json!({"event":"skill_requested","request":self.skill_request,"skill":0x343}));
             }
-            "loot" if self.ready => {
-                send(
-                    &mut self.client,
-                    ScriptRequest::LootAll(InvTakeAllDesc::new(id(v, "id")?, self.player))
-                        .to_event(),
-                )?;
+            "loot" | "transmute_loot" if self.ready => {
+                if self.bulk_inventory.is_none(){self.bulk_inventory=Some(inventory_bulk::Profile::load(&self.dat_directory)?);}
+                let request=self.bulk_inventory.unwrap().request(id(v,"id")?,self.player,v["command"]=="transmute_loot");
+                send(&mut self.client,request)?;
             }
             "open_container" if self.ready => {
                 send(
@@ -413,15 +576,12 @@ impl Session {
                     ScriptRequest::OpenContainer(id(v, "id")?).to_event(),
                 )?;
             }
-            "transmute_loot" if self.ready => {
-                send(&mut self.client,ScriptRequest::TransmuteAll(InvTransmuteAllDesc::new(id(v,"id")?,self.player)).to_event())?;
-            }
             "close_container" if self.ready => {
                 send(&mut self.client, ScriptRequest::CloseContainer(id(v,"id")?).to_event())?;
             }
             "take_item" if self.ready => {
-                send(&mut self.client, ScriptRequest::MoveItem(InvMoveDesc::new(
-                    id(v,"id")?,id(v,"container")?,word(v,"from")? as i32,self.player,-1,1)).to_event())?;
+                send(&mut self.client, transfer_item(InvMoveDesc::new(
+                    id(v,"id")?,id(v,"container")?,word(v,"from")? as i32,self.player,-1,1)))?;
             }
             "move_item" if self.ready => {
                 send(
@@ -436,10 +596,8 @@ impl Session {
                     )),
                 )?;
             }
-            "drop_item" if self.ready => {
-                let mut event=reorganize_item(InvMoveDesc::new(id(v,"id")?,self.player,
-                    word(v,"from")? as i32,u64::from(word(v,"landblock")?),-1,word(v,"quantity")? as i32));
-                if let ClientEvent::Interp {function,..}=&mut event {*function=0x820e0036;}
+            "drop_item" | "give_item" if self.ready => {
+                let event=world_item_request(v,self.player,self.native_inventory)?;
                 send(&mut self.client,event)?;
             }
             "equip" if self.ready => {
@@ -470,11 +628,26 @@ impl Session {
             "shop_sell" if self.ready => send(&mut self.client,shop::sell(self.player,id(v,"item")?,word(v,"slot")?,word(v,"quantity")?))?,
             "shop_close" if self.ready => send(&mut self.client,shop::close(id(v,"vendor")?))?,
             "shop_refresh" if self.ready => send(&mut self.client,ClientEvent::Interp{function:0xb83a0066,arguments:pack_values(&[PackValue::LongInt(id(v,"vendor")?)]),encrypted:false})?,
+            "story_scene_complete" if self.ready => {
+                if let Some(reply) = self.story_scenes.finished(word(v,"id")?) {
+                    send(&mut self.client,reply)?;
+                    self.story_scenes.clear();
+                }
+            }
             "use" if self.ready => {
                 let event = use_item(self.player, id(v, "item")?, id(v, "target")?);
                 send(&mut self.client, event)?;
             }
-            "logout" => {
+            "logout" if self.ready && self.logout_started.is_none() => {
+                let character=id(v,"id")?;
+                if character!=self.player {return Err("Logout character does not match this session.".into());}
+                if self.preferences_dirty {
+                    // Logoff is unordered queue 4; preference writes are ordered
+                    // queue 3. A native read-only self-examination is a barrier
+                    // on queue 3 before we let logoff overtake those writes.
+                    self.logout_probe_sent=false;self.logout_started=Some(Instant::now());
+                    self.ready=false;return Ok(());
+                }
                 self.ready = false;
                 send(
                     &mut self.client,
@@ -488,8 +661,38 @@ impl Session {
         Ok(())
     }
     fn poll(&mut self) -> bool {
-        if !self.logged_on && self.since.elapsed() > Duration::from_secs(45) {
-            emit(json!({"event":"disconnected","message":"Server login timed out"}));
+        match self.dat_login.poll(){
+            Ok(Some(reply))=>{
+                if self.client.net_mut().send_dat_event(reply).is_none(){emit(json!({"event":"disconnected","message":"Could not acknowledge installed game data."}));return false;}
+                self.since=Instant::now();
+                if let Some(path)=self.dat_login.updated.take(){
+                    emit(json!({"event":"data_updated","directory":path}));
+                    // Let the transport flush the acknowledgement before the UI
+                    // reloads its DAT readers and opens a new login session.
+                    self.client.poll();
+                    return false;
+                }
+            },
+            Ok(None)=>{},
+            Err(message)=>{emit(json!({"event":"disconnected","message":message}));return false;}
+        }
+
+        if self.logout_started.is_some_and(|t|t.elapsed()>Duration::from_secs(15)) {
+            self.logout_started=None;self.logout_fence.cancel();self.ready=true;
+            emit(json!({"event":"logout_cancelled","message":"Logout cancelled: the server did not confirm processing the hotbar changes. You are still connected."}));
+        }
+        // Do not collide with an outstanding UI examination or the server's
+        // 100 ms cooldown. Time is a pacing guard; only the reply releases logout.
+        if self.logout_started.is_some() && !self.logout_probe_sent && self.logout_fence.idle()
+            && self.last_examination_reply.is_none_or(|t|t.elapsed()>=Duration::from_millis(350))
+            && self.last_examination_request.is_none_or(|t|t.elapsed()>=Duration::from_millis(600)) {
+            match send(&mut self.client,examination::request(self.player,self.build)) {
+                Ok(())=>{self.logout_fence.request(true);self.logout_probe_sent=true;self.last_examination_request=Some(Instant::now());}
+                Err(message)=>{self.logout_started=None;self.ready=true;emit(json!({"event":"logout_cancelled","message":message}));}
+            }
+        }
+        if !self.characters_received && self.since.elapsed() > Duration::from_secs(if self.dat_login.progress().is_some(){180}else{45}) {
+            emit(json!({"event":"disconnected","message":"Server login timed out before receiving the character list. Check the server's supported client version and game data."}));
             return false;
         }
         for event in self.client.poll() {
@@ -503,7 +706,6 @@ impl Session {
                     emit(json!({"event":"clock","server_time":self.client.net().timer().cur_time()}));
                 }
                 NetEvent::LoggedOn => {
-                    self.logged_on = true;
                     emit(
                         json!({"event":"status","phase":"selection","message":"Loading server characters..."}),
                     );
@@ -521,13 +723,32 @@ impl Session {
                     return false;
                 }
                 NetEvent::Blob(blob) => {
-                    // Pyrealium currently emits the admin CharacterSet layout even for its 7230 profile.
-                    match ServerEvent::decode(&blob.data, Build::Admin7148) {
+                    match login::decode(&blob.data, self.build) {
                         Ok(event) => {
                             match &event {
+                                ServerEvent::Dat(dat) if blob.queue==QUEUE_DAT => {
+                                    self.since=Instant::now();
+                                    match self.dat_login.receive(dat) {
+                                        Ok(Some(reply)) => {
+                                            if self.client.net_mut().send_dat_event(reply).is_none() {
+                                                emit(json!({"event":"disconnected","message":"Could not send the game-data version response."}));
+                                                return false;
+                                            }
+                                            emit(json!({"event":"status","phase":"checking_data","message":"Checking installed game data..."}));
+                                        }
+                                        Ok(None) => {if let Some(message)=self.dat_login.progress(){emit(json!({"event":"status","phase":"updating_data","message":message}));}},
+                                        Err(message) => {emit(json!({"event":"disconnected","message":message}));return false;}
+                                    }
+                                }
+                                ServerEvent::CharacterSet(set) => {
+                                    self.characters_received=true;
+                                    self.room_chat.reset();
+                                    self.room_chat.turbine=set.turbine_chat;
+                                }
                                 ServerEvent::CreatePlayer { id, .. } => self.player = *id,
                                 ServerEvent::CreateObject(o) if o.id == self.player => {
                                     self.instance = o.physics.instance_stamp;
+                                    self.position_stamp = o.physics.timestamps[0];
                                     // PhysicsDesc stamps: position, teleport, force-position, move-to.
                                     self.teleport = o.physics.timestamps[1];
                                     self.force = o.physics.timestamps[2];
@@ -536,18 +757,56 @@ impl Session {
                                 ServerEvent::UpdatePosition(p) | ServerEvent::PositionCell(p)
                                     if p.sender.id == self.player =>
                                 {
-                                    self.instance = p.sender.instance;
-                                    self.teleport = p.teleport_stamp;
-                                    self.force = p.force_position_stamp;
+                                    if p.sender.instance!=self.instance || p.position.cell==0 || !newer_stamp(self.position_stamp,p.position_stamp) {continue;}
+                                    self.position_stamp=p.position_stamp;
+                                    if newer_stamp(self.teleport,p.teleport_stamp) {self.teleport=p.teleport_stamp;}
+                                    if newer_stamp(self.force,p.force_position_stamp) {self.force=p.force_position_stamp;}
+                                }
+                                ServerEvent::Object(o) if o.sender.id == self.player && o.sender.instance == self.instance => {
+                                    if let ObjectAction::MoveTo {stamp,..} = &o.action {
+                                        if newer_stamp(self.moveto,*stamp) {self.moveto=*stamp;}
+                                    }
                                 }
                                 ServerEvent::CharExitGame => {
+                                    self.story_scenes.clear();
+                                    if let Some(friends)=&mut self.friends { friends.reset(); }
                                     self.ready = false;
                                     self.player = 0;
+                                    self.selection.reset();
+                                    self.room_chat.reset();
                                 }
                                 _ => {}
                             }
-                            for value in events::convert(event) {
-                                emit(value);
+                            if let Some(value) = self.story_scenes.receive(&event) {
+                                emit(self.localization.event(value));
+                                continue;
+                            }
+                            if let Some(values) = self.room_chat.receive(&event) {
+                                for value in values { emit(value); }
+                                continue;
+                            }
+                            if matches!(&event, ServerEvent::Interp { function: ac2_gun_friends::EVENT_ID, .. }) {
+                                if self.ready {
+                                    if let Some(friends)=&mut self.friends {
+                                        if let Some(value)=friends.receive(&event,self.player) { emit(value); }
+                                    }
+                                }
+                                continue;
+                            }
+                            for value in self.selection_return.convert(event) {
+                                if value["event"]=="examination" {
+                                    self.last_examination_reply=Some(Instant::now());
+                                    if value["id"].as_str()==Some(self.player.to_string().as_str()) && self.logout_fence.response() {
+                                        if self.logout_started.take().is_some() {
+                                            self.preferences_dirty=false;
+                                            if let Err(message)=send(&mut self.client,ClientEvent::LogOffCharacter{character:self.player}) {
+                                                self.preferences_dirty=true;self.ready=true;emit(json!({"event":"logout_cancelled","message":message}));
+                                            }
+                                        }
+                                        continue;
+                                    }
+                                }
+                                emit(self.localization.event(self.craft_catalog.event(value)));
                             }
                         }
                         Err(_) => {
@@ -564,6 +823,9 @@ impl Session {
                 }
                 _ => {}
             }
+        }
+        if let Some(sample) = self.link_status.sample(Instant::now()) {
+            emit(sample);
         }
         true
     }

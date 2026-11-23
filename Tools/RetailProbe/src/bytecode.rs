@@ -19,13 +19,24 @@ pub fn listing(stream:&ByteStream, names:&[String])->Value {
     let mut packages=Vec::new();
     for (name,pid) in &p.package_names {
         let name=String::from_utf8_lossy(name);
-        if !names.iter().any(|n|n==name.as_ref()){continue;}
+        if !names.iter().any(|n|n.trim_end_matches('+')==name.as_ref()){continue;}
+        let include_inherited=names.iter().any(|n|n.ends_with('+') && n.trim_end_matches('+')==name.as_ref());
         let index=p.package_vtable[*pid as usize] as usize;
         let parent=p.exports[index].1 as usize;
         let inherited=p.vtables.get(parent);
+        let mut function_ids=std::collections::BTreeMap::<u32,Vec<u32>>::new();
+        for (interface,ids) in p.func_ids.iter().enumerate() {
+            for (function,&entry) in ids.iter().enumerate() {
+                if entry==u32::MAX {continue;}
+                let fid=FunctionId(((interface as u32)<<16)|function as u32);
+                if let Some(offset)=p.function_offset(*pid,fid) {
+                    function_ids.entry(offset).or_default().push(fid.0);
+                }
+            }
+        }
         let mut functions=Vec::new();let mut seen=BTreeSet::new();
         for (slot,&offset) in p.vtables[index].iter().enumerate() {
-            if offset==u32::MAX || inherited.and_then(|v|v.get(slot))==Some(&offset) || !seen.insert(offset){continue;}
+            if offset==u32::MAX || (!include_inherited && inherited.and_then(|v|v.get(slot))==Some(&offset)) || !seen.insert(offset){continue;}
             let end=ends.range((std::ops::Bound::Excluded(offset),std::ops::Bound::Unbounded)).next().copied().unwrap_or(offset);
             let mut instructions=Vec::new();let mut pc=offset as usize/4;
             while pc<end as usize/4 && pc<p.code.len() {
@@ -40,9 +51,21 @@ pub fn listing(stream:&ByteStream, names:&[String])->Value {
                 instructions.push(json!({"offset":pc*4,"op":op,"tag":(word>>8)&255,"immediate":(word as i32)>>16,"operands":operands,"target":target,"literal":literal}));
                 pc=next;
             }
-            functions.push(json!({"slot":slot,"offset":offset,"kind":body_kind(&stream.opcodes,offset,end),"instructions":instructions}));
+            functions.push(json!({"slot":slot,"offset":offset,"function_ids":function_ids.get(&offset),"kind":body_kind(&stream.opcodes,offset,end),"instructions":instructions}));
         }
         packages.push(json!({"name":name,"pid":pid,"functions":functions}));
+    }
+    for name in names.iter().filter_map(|n|n.strip_prefix('@')) {
+        let Ok(offset)=u32::from_str_radix(name,16) else{continue};
+        if offset%4!=0 || offset as usize>=stream.opcodes.len(){continue;}
+        let end=ends.range((std::ops::Bound::Excluded(offset),std::ops::Bound::Unbounded)).next().copied().unwrap_or(offset);
+        let mut instructions=Vec::new();let mut pc=offset as usize/4;
+        while pc<end as usize/4 && pc<p.code.len() {
+            let word=p.code[pc];let next=p.walk(pc).min(p.code.len());
+            instructions.push(json!({"offset":pc*4,"op":word&255,"tag":(word>>8)&255,"immediate":(word as i32)>>16,"operands":&p.code[pc+1..next]}));
+            pc=next;
+        }
+        packages.push(json!({"offset":offset,"instructions":instructions}));
     }
     json!(packages)
 }

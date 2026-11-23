@@ -6,6 +6,7 @@
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
 #include "Misc/Paths.h"
+#include "Misc/ConfigCacheIni.h"
 
 namespace
 {
@@ -24,7 +25,11 @@ const uint32 Overviews[] = {0x05e947be, 0x47c002fe, 0x140fff33, 0xbfb2f786, 0xc4
 } // namespace
 bool FAC2MapUI::Open(const FString &Directory, FString &Error)
 {
+    FVector2D Saved;
+    if(GConfig->GetVector2D(TEXT("AC2.Windows"),TEXT("OverviewMap"),Saved,GGameUserSettingsIni) && !Saved.ContainsNaN())
+        OverviewOrigin=Saved;
     Ready = Native.Open(Directory, Error) && Data.Open(Directory, Error) &&
+            RadarData.Open(Directory,Error) &&
             Local.Open(FPaths::Combine(Directory, TEXT("local_English.dat")), 3, Error);
     if (!Ready && Error.IsEmpty())
         Error = TEXT("Unsupported map record");
@@ -100,8 +105,9 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
     Native.Text.Add(T(TEXT("DateText")), TEXT("")); // No fabricated calendar date without server game-time.
     if (Mode->bMap)
     {
-        Native.Root(0x22000001, TEXT("LeftSidePanel"));
-        Native.ConstrainRoot(TEXT("LeftSidePanel"), FIntRect(0, 0, Size.X, Size.Y));
+        Show(TEXT("NavigationField"),true);
+        Native.Root(0x22000001, Native.PanelRoot(TEXT("NavigationField")));
+        Native.ConstrainRoot(Native.PanelRoot(TEXT("NavigationField")), FIntRect(0, 0, Size.X, Size.Y));
         if (auto *N = Native.Find(TEXT("NavigationField")))
         {
             MacroOrigin = FVector2D(N->Attr(TEXT("MacroXOffset"), 321), N->Attr(TEXT("MacroYOffset"), 195));
@@ -164,27 +170,33 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
                     FIntRect(0, 0, Size.X, Size.Y));
     for (auto &N : Native.Nodes)
         if (N.Id == T(TEXT("HeadingField")))
+        {
+            HeadingImage=0;
+            for(const auto& Art:N.Media)if(Art.Image){HeadingImage=Art.Image;break;}
             N.Media.Reset();
+        }
     if (Pawn)
     {
         const float Range = Mode->bIndoors ? 50.f : 75.f; // RadarControl 7160 defaults.
         const FVector2D Center = FVector2D(RadarRect.Min) + RadarCenter;
-        auto Add = [&](AActor *Actor, FString Id, FString Name, bool Selected) {
-            if (!Actor || Actor->IsHidden())
+        auto Add = [&](AActor *Actor, FString Id, FString Name, bool Selected,AC2Radar::FLook Look) {
+            if (!Actor || Actor->IsHidden() || !Look.Visible(RadarMask))
                 return;
             const FVector Delta = Actor->GetActorLocation() - Pawn->GetActorLocation();
             if (Delta.SizeSquared2D() > FMath::Square(Range * 100))
                 return;
             Contacts.Add({Center + FAC2MapData::RadarOffset(Delta, RadarYaw, Range)*(RadarRadius/60.f),
-                          MoveTemp(Id), MoveTemp(Name), Actor, Selected});
+                          MoveTemp(Id), MoveTemp(Name), Actor, Selected,Look});
         };
         if (Mode->Network)
             for (const auto &C : Mode->Network->RadarContacts())
-                Add(C.Actor.Get(), C.Id, C.Name, C.Id == Mode->Network->TargetId);
+            {
+                const auto Look=AC2Radar::Resolve(RadarData.Look(C.Entity),C.Health,C.Shape,C.Selectable,C.Color);
+                Add(C.Actor.Get(),C.Id,C.Name,C.Id==Mode->Network->TargetId,Look);
+            }
         else
-            for (const auto &Mob : Mode->MobList())
-                if (Mob.IsValid() && Mob->Health > 0)
-                    Add(Mob.Get(), TEXT(""), Mob->DisplayName, Mode->Target == Mob.Get());
+            for(const auto& Mob:Mode->MobList())
+                if(Mob.IsValid())Add(Mob.Get(), TEXT(""), Mob->DisplayName, Mode->Target == Mob.Get(),AC2Radar::DefaultLook(AC2Radar::Monsters));
     }
     if (Overview && Mode->bMap)
     {
@@ -230,8 +242,8 @@ void FAC2MapUI::Update(AAC2GameMode &InMode, FIntPoint Size, FAC2AssetLibrary &A
         Native.LoadImage(Pic.Image, Assets);
     for (const auto &Marker : Markers)
         Native.LoadImage(Marker.Image, Assets);
-    for (uint32 Id : {0x41100000u, 0x41000a43u, 0x4100801bu})
-        Native.LoadImage(Id, Assets);
+    for (uint32 Id : {HeadingImage, 0x41000a43u, 0x4100801bu})
+        if(Id)Native.LoadImage(Id, Assets);
     Move(Mouse);
     if (!PC || !PC->bShowMouseCursor)
     {
@@ -265,7 +277,7 @@ int32 FAC2MapUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometr
         }
         if (N.Id == T(TEXT("HeadingField")))
         {
-            if (const auto *B = Native.Brush(0x41100000))
+            if (const auto *B = Native.Brush(HeadingImage))
             {
                 // The native compass atlas has four disconnected cardinal marks.
                 // Keep each glyph readable while placing it in the world/view basis;
@@ -285,10 +297,10 @@ int32 FAC2MapUI::Paint(FSlateWindowElementList &Out, int32 Layer, const FGeometr
             }
             for (const auto &C : Contacts)
             {
-                if (C.Selected)
-                    Box(Solid, C.Point - FVector2D(4, 4), FVector2D(8, 8), FLinearColor::White, ++L);
-                Box(Solid, C.Point - FVector2D(2, 2), FVector2D(4, 4),
-                    C.Id.IsEmpty() ? FLinearColor(1, .15f, .1f) : FLinearColor(1, .8f, .2f), ++L);
+                const FVector2D Center(FMath::RoundToInt(C.Point.X),FMath::RoundToInt(C.Point.Y));
+                ++L;
+                for(const auto& Pixel:AC2Radar::Pixels(C.Look.Shape,C.Selected))
+                    Box(Solid,Center+FVector2D(Pixel),FVector2D(1,1),C.Look.Color,L);
             }
         }
         return L;
@@ -378,7 +390,7 @@ bool FAC2MapUI::Press(FVector2D Point, bool Right, bool Shift)
     if (!Contains(Point))
         return false;
     Pressed = ButtonAt(Point);
-    Native.Pressed = Pressed;
+    Native.Press(Pressed);
     PressPoint = Point;
     Moved = false;
     Dragging = !Right && !Pressed && Detail && Inside(MapRect, Point) && !Inside(OverviewRect, Point);
@@ -396,6 +408,10 @@ bool FAC2MapUI::Release(FVector2D Point, bool Right, bool Shift)
     if (OverviewDragging)
     {
         OverviewDragging = false;
+        if(OverviewOrigin.IsSet() && !OverviewOrigin->Equals(OverviewDragOrigin)){
+            GConfig->SetVector2D(TEXT("AC2.Windows"),TEXT("OverviewMap"),OverviewOrigin.GetValue(),GGameUserSettingsIni);
+            GConfig->Flush(false,GGameUserSettingsIni);
+        }
         return true;
     }
     if (Moved)
@@ -461,7 +477,6 @@ bool FAC2MapUI::Release(FVector2D Point, bool Right, bool Shift)
             else if (auto *Mob = Cast<AAC2Mob>(Closest->Actor.Get()))
             {
                 Mode->Target = Mob;
-                Mode->Notice = TEXT("Target: ") + Mob->DisplayName;
             }
         }
         return true;
@@ -515,6 +530,7 @@ void FAC2MapUI::Activate(uint32 Id, bool Shift)
     if (Id == T(TEXT("CoordBoxButton")))
     {
         Coords = !Coords;
+        if(OnCoordinatesChanged)OnCoordinatesChanged(Coords);
         return;
     }
     if (Id == T(TEXT("OverviewMapCloseButton")))
@@ -568,7 +584,7 @@ void FAC2MapUI::Activate(uint32 Id, bool Shift)
 }
 bool FAC2MapUI::Validate(FString &Error) const
 {
-    if (!Ready || !Native.Find(TEXT("RadarField")) || !Native.Brush(0x41100000) || Native.MissingImages)
+    if (!Ready || !Native.Find(TEXT("RadarField")) || !Native.Brush(HeadingImage) || Native.MissingImages)
     {
         Error = TEXT("Native map/radar resources unavailable");
         return false;
@@ -699,7 +715,12 @@ bool FAC2MapUI::SmokeStep(int32 Step, FString &Error)
         FVector2D Delta(Display.X - OverviewRect.Max.X, 30);
         Press(P, false, false);
         Move(P + Delta);
+        FString PriorSetting;
+        const bool WasSet=GConfig->GetString(TEXT("AC2.Windows"),TEXT("OverviewMap"),PriorSetting,GGameUserSettingsIni);
         Release(P + Delta, false, false);
+        if(WasSet)GConfig->SetString(TEXT("AC2.Windows"),TEXT("OverviewMap"),*PriorSetting,GGameUserSettingsIni);
+        else GConfig->RemoveKey(TEXT("AC2.Windows"),TEXT("OverviewMap"),GGameUserSettingsIni);
+        GConfig->Flush(false,GGameUserSettingsIni);
         if (!OverviewOrigin.IsSet() || !OverviewOrigin->Equals(FVector2D(OverviewRect.Min) + Delta))
         {
             Error = TEXT("Overview title bar did not drag");

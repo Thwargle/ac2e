@@ -212,7 +212,7 @@ class SAC2CreatorLayout : public SLeafWidget
         return FReply::Handled().ReleaseMouseCapture();
     }
     virtual void OnMouseLeave(const FPointerEvent &E) override
-    { SLeafWidget::OnMouseLeave(E); UI->Hovered=0; }
+    { SLeafWidget::OnMouseLeave(E); UI->Hovered=0; Avatar(FVector2D(-1,-1),false); }
     virtual void OnMouseCaptureLost(const FCaptureLostEvent &) override
     { UI->Pressed=0; Dragging=0; Rotating=false; }
     virtual FReply OnMouseButtonDoubleClick(const FGeometry &G,const FPointerEvent &E) override
@@ -318,6 +318,7 @@ void SAC2CharacterUI::BuildCreatorLayout()
     CreatorLayout.Text.Reset();
     CreatorLayout.Visibility.Reset();
     CreatorLayout.States.Reset();
+    SelectionRows.Reset();
     if (Screen==EScreen::Credits) {BuildCredits();CreatorLayout.Prepare(*Assets,Fonts);return;}
     if (Screen == EScreen::Select)
     {
@@ -345,15 +346,23 @@ void SAC2CharacterUI::BuildCreatorLayout()
             FIntPoint Origin = List.Min + FIntPoint(0, (I - Page) * 20);
             CreatorLayout.Template(0x22000002, TEXT("list_box_item"),
                                    FIntRect(Origin, Origin + FIntPoint(List.Width(), 20)), List, T(TEXT("CharacterListBox")));
-            // Keep the DAT's font, spacing and selection artwork. Its dark-blue
-            // selected label is illegible against this dark panel at modern scales.
+            // Keep the complete DAT highlight (blue text on its gray strip), not
+            // an almost-identical gold/white label. The whole painted row is a hit.
             auto& Row = CreatorLayout.Nodes.Last();
-            const FLinearColor Ink = P.Id == Mode->Characters.ActiveId
-                ? FLinearColor(1.f, .86f, .48f) : FLinearColor::White;
-            const TCHAR* Channels[] = {TEXT("font_color_red"),TEXT("font_color_green"),TEXT("font_color_blue")};
-            for(int32 C=0;C<3;++C){uint32 Bits;FMemory::Memcpy(&Bits,&Ink.Component(C),4);Row.Attributes.Add(T(Channels[C]),Bits);}
-            Row.Attributes.Add(T(TEXT("font_outline")),1);
+            SelectionRows.Add(Row.Clip);
+            // gmCharacterSelectionUI::ListenToMessage truncates names before
+            // painting. Do not center a long name beyond both edges of its row.
+            if (const auto Font = Fonts.Get(Row.Attr(TEXT("font"))))
+            {
+                const int32 Width = Row.Rect.Width()-Row.Attr(TEXT("left_margin"))-Row.Attr(TEXT("right_margin"));
+                if (Font->Width(Row.Text) > Width)
+                {
+                    while (!Row.Text.IsEmpty() && Font->Width(Row.Text + TEXT("...")) > Width) Row.Text.LeftChopInline(1);
+                    Row.Text += TEXT("...");
+                }
+            }
         }
+        BuildSelectionHint();
         if (!DeletePending.IsEmpty())
         {
             // A modal native confirmation tree owns all pointer hits while it is open.
@@ -424,6 +433,59 @@ void SAC2CharacterUI::BuildCreatorLayout()
     CreatorLayout.Prepare(*Assets, Fonts);
     UpdateSceneOverlays();
 }
+int32 SAC2CharacterUI::CharacterAt(FVector2D Point) const
+{
+    if (Screen != EScreen::Select || ShowSelectionOptions || !DeletePending.IsEmpty() ||
+        (Mode->Network && !Mode->Network->IsSelection())) return INDEX_NONE;
+    for (int32 I = 0; I < SelectionRows.Num(); ++I)
+    {
+        const auto& R = SelectionRows[I];
+        if (Point.X >= R.Min.X && Point.X < R.Max.X && Point.Y >= R.Min.Y && Point.Y < R.Max.Y)
+            return Page + I;
+    }
+    const FIntRect View = CreatorLayout.Bounds(TEXT("Viewport"));
+    if (Selection.IsValid() && Point.X >= View.Min.X && Point.X < View.Max.X &&
+        Point.Y >= View.Min.Y && Point.Y < View.Max.Y)
+        return Selection->PickAvatar((Point-FVector2D(View.Min))/FVector2D(View.Size()));
+    return INDEX_NONE;
+}
+void SAC2CharacterUI::BuildSelectionHint()
+{
+    const int32 Index = CharacterAt(SelectionPointer);
+    if (!Mode->Characters.Characters.IsValidIndex(Index)) return;
+    const auto& Character = Mode->Characters.Characters[Index];
+    const FString Hint = Character.Name + (Character.Id == Mode->Characters.ActiveId ? TEXT(" (selected)") : TEXT("")) +
+        TEXT("\nClick to select. Double-click to enter world.");
+    // The DAT tooltip's frame and font make list and model hits discoverable;
+    // keep the selected row unchanged while hovering another character.
+    constexpr uint32 Tooltip = 0xf7c721aa, TooltipText = 0xd5a32d4d;
+    const FIntRect View(0,0,1024,768);
+    const int32 Start = CreatorLayout.Nodes.Num();
+    if (!CreatorLayout.Template(0x22000005,Tooltip,FIntRect(0,0,360,100),View)) return;
+    const auto* Text = CreatorLayout.Find(TooltipText);
+    const auto Font = Text ? Fonts.Get(Text->Attr(TEXT("font"),0x4200000c)) : nullptr;
+    const int32 Left = Text ? Text->Attr(TEXT("left_margin")) : 2;
+    const int32 Right = Text ? Text->Attr(TEXT("right_margin")) : 2;
+    const int32 Top = Text ? Text->Attr(TEXT("top_margin")) : 0;
+    const int32 Bottom = Text ? Text->Attr(TEXT("bottom_margin")) : 0;
+    CreatorLayout.Nodes.SetNum(Start);
+    if (!Font) return;
+    int32 TextWidth = 0;
+    for (const auto& Line : Font->Lines(Hint)) TextWidth = FMath::Max(TextWidth,FMath::CeilToInt(Font->Width(Line)));
+    const int32 Width = FMath::Clamp(TextWidth+Left+Right+8,16,360);
+    const int32 Height = Font->Lines(Hint,Width-Left-Right-8).Num()*int32(Font->Height)+Top+Bottom+8;
+    FVector2D At = SelectionPointer+FVector2D(16,20);
+    if (At.X+Width > View.Max.X) At.X = SelectionPointer.X-Width-12;
+    if (At.Y+Height > View.Max.Y) At.Y = SelectionPointer.Y-Height-12;
+    const FIntPoint Origin(FMath::Clamp(int32(At.X),0,1024-Width),FMath::Clamp(int32(At.Y),0,768-Height));
+    CreatorLayout.Template(0x22000005,Tooltip,FIntRect(Origin,Origin+FIntPoint(Width,Height)),View);
+    for (int32 I=Start;I<CreatorLayout.Nodes.Num();++I)
+    {
+        auto& N = CreatorLayout.Nodes[I];
+        if (N.Parent==INDEX_NONE) N.Z=-100; // Above the selection scene and controls, never a hit target.
+        if (N.Id==TooltipText) { N.Text=Hint; N.Rect.Min+=FIntPoint(4,4); N.Rect.Max-=FIntPoint(4,4); N.Clip=N.Rect; }
+    }
+}
 
 void SAC2CharacterUI::UpdateSceneOverlays()
 {
@@ -449,7 +511,7 @@ void SAC2CharacterUI::UpdateSceneOverlays()
 }
 void SAC2CharacterUI::CreatorSlider(uint32 Id, float Value)
 {
-    if (Screen==EScreen::Select && Id==0xb9d70117)
+    if (Screen==EScreen::Select && DeletePending.IsEmpty() && !ShowSelectionOptions && Id==0xb9d70117)
     {Page=FMath::RoundToInt(Value*FMath::Max(0,Mode->Characters.Characters.Num()-5));return;}
     if (Screen != EScreen::Create || CreationStep != 1)
         return;
@@ -621,21 +683,14 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                 Portrait->SetCamera(HeadZoom,Rotation);
             })
             .Wheel([this](float V) {
-                if (Screen == EScreen::Select)
+                if (Screen == EScreen::Select && DeletePending.IsEmpty() && !ShowSelectionOptions)
                     Page = FMath::Clamp(Page - FMath::RoundToInt(V), 0,
                                         FMath::Max(0, Mode->Characters.Characters.Num() - 5));
             })
             .Activate([this](FVector2D P){
-                if(Screen!=EScreen::Select || !DeletePending.IsEmpty())return;
-                const auto List=CreatorLayout.Bounds(TEXT("CharacterListBox"));
-                int32 Index=INDEX_NONE;
-                if(List.Contains(FIntPoint(P.X,P.Y)))Index=Page+int32((P.Y-List.Min.Y)/20);
-                else if(Selection.IsValid())
-                {
-                    const auto R=CreatorLayout.Bounds(TEXT("Viewport"));
-                    if(R.Contains(FIntPoint(P.X,P.Y)))Index=Selection->PickAvatar((P-FVector2D(R.Min))/FVector2D(R.Size()));
-                }
-                if(Mode->Characters.Characters.IsValidIndex(Index) && Mode->Characters.Characters[Index].Id==Mode->Characters.ActiveId)Enter();
+                const int32 Index=CharacterAt(P);
+                // Retail selects the double-clicked row/object before EnterWorld.
+                if(Mode->Characters.Characters.IsValidIndex(Index)){SelectCharacter(Index);Enter();}
             })
             .Avatar([this](FVector2D P, bool Click) {
                 if (Screen==EScreen::Credits)
@@ -643,21 +698,8 @@ TSharedRef<SWidget> SAC2CharacterUI::Creation()
                 if (!DeletePending.IsEmpty()) return;
                 if (Screen == EScreen::Select)
                 {
-                    if (Click)
-                    {
-                        FIntRect R = CreatorLayout.Bounds(TEXT("CharacterListBox"));
-                        int32 Index = Page + int32((P.Y - R.Min.Y) / 20);
-                        if (R.Contains(FIntPoint(P.X, P.Y)) &&
-                            Mode->Characters.Characters.IsValidIndex(Index))
-                        {
-                            SelectCharacter(Index);
-                        }
-                        else if (Selection.IsValid())
-                        {
-                            R=CreatorLayout.Bounds(TEXT("Viewport"));
-                            if (R.Contains(FIntPoint(P.X,P.Y))) SelectCharacter(Selection->PickAvatar((P-FVector2D(R.Min))/FVector2D(R.Size())));
-                        }
-                    }
+                    SelectionPointer=P;
+                    if (Click) SelectCharacter(CharacterAt(P));
                     return;
                 }
                 if (CreationStep != 0 || !Lineup.IsValid() || PendingAvatar!=INDEX_NONE)
@@ -809,6 +851,77 @@ bool SAC2CharacterUI::SmokeCreatorDrafts(FString& Error)
     UE_LOG(LogTemp,Display,TEXT("AC2 creator drafts: appearance/body retained across avatars; native lineup and picking verified"));
     return true;
 }
+bool SAC2CharacterUI::SmokeAvatarPicking(int32 Step, FString& Error)
+{
+    auto Fail=[&](const FString& Why){Error=Why;return false;};
+    if(!Mode.IsValid() || !CreatorView || !Lineup.IsValid() || !Lineup->Ready)
+        return Fail(TEXT("Creation lineup unavailable"));
+    // Fixed points on visible bodies in the native 1024x768 page, taken from
+    // the rendered lineup, not generated by the picker or projected bounds.
+    // The first reproduces the reported Empyrean/Tumerok rectangle overlap.
+    struct FProbe { FVector2D Point; uint32 Race, Sex; };
+    const FProbe Probes[] = {
+        {{195,303},16,8192}, {{235,402},4,8192}, {{355,400},1,8192}, {{430,345},2,8192},
+        {{449,465},8,8192}, {{541,327},16,4096}, {{585,548},8,4096}, {{614,380},4,4096},
+        {{706,345},2,4096}, {{820,395},1,4096}
+    };
+    if(Step==11)
+    {
+        if(CreationStep!=1 || PendingAvatar!=INDEX_NONE || Race!=16 || Sex!=8192 || !PreviewReady())
+            return Fail(TEXT("Empyrean click did not complete native animation into customization"));
+        UE_LOG(LogTemp,Display,TEXT("AC2 creator picking: Empyrean click completed native selection animation"));
+        return true;
+    }
+    if(CreationStep!=0)return Fail(TEXT("Hover unexpectedly left avatar selection"));
+    const auto R=CreatorLayout.Bounds(TEXT("AvatarSelectionViewport"));
+    const auto Pick=[&](FVector2D P){return Lineup->PickAvatar((P-FVector2D(R.Min))/FVector2D(R.Size()));};
+    if(Step==0)
+    {
+        TSet<int32> Seen;
+        for(const auto& Probe:Probes)
+        {
+            const int32 Index=Pick(Probe.Point);
+            if(!Mode->CharacterCatalog.Avatars.IsValidIndex(Index) || Mode->CharacterCatalog.Avatars[Index].Race!=Probe.Race ||
+               Mode->CharacterCatalog.Avatars[Index].Sex!=Probe.Sex)
+                return Fail(FString::Printf(TEXT("Visible body at %.0f,%.0f: expected %u/%u, picked avatar %d"),Probe.Point.X,Probe.Point.Y,Probe.Race,Probe.Sex,Index));
+            Seen.Add(Index);
+        }
+        if(Seen.Num()!=Mode->CharacterCatalog.Avatars.Num())return Fail(TEXT("Visible probes did not cover all ten race/sex choices"));
+        if(Pick(FVector2D(510,200))!=INDEX_NONE || Lineup->PickAvatar(FVector2D(-.01,.5))!=INDEX_NONE ||
+           Lineup->PickAvatar(FVector2D(1,.5))!=INDEX_NONE)
+            return Fail(TEXT("Backdrop or outside viewport selected an avatar"));
+    }
+    const auto& Probe=Probes[Step==10?0:Step];
+    const int32 Expected=Pick(Probe.Point);
+    if(!Mode->CharacterCatalog.Avatars.IsValidIndex(Expected) || Mode->CharacterCatalog.Avatars[Expected].Race!=Probe.Race ||
+       Mode->CharacterCatalog.Avatars[Expected].Sex!=Probe.Sex)
+        return Fail(FString::Printf(TEXT("Animated body no longer matches probe %d"),Step));
+    const auto& Choice=Mode->CharacterCatalog.Avatars[Expected];
+    auto& App=FSlateApplication::Get();
+    const auto Window=App.FindWidgetWindow(CreatorView.ToSharedRef());
+    if(!Window)return Fail(TEXT("Creator Slate window unavailable"));
+    const FVector2D Absolute=CreatorView->GetCachedGeometry().LocalToAbsolute(Probe.Point);
+    auto Path=App.LocateWindowUnderMouse(Absolute,{Window.ToSharedRef()},false);
+    if(!Path.IsValid())return Fail(TEXT("Creator pointer outside hit-test grid"));
+    const TSet<FKey> None,Down={EKeys::LeftMouseButton};
+    App.RoutePointerMoveEvent(Path,FPointerEvent(0,Absolute,Absolute,None,FKey(),0,FModifierKeysState()),false);
+    BuildCreatorLayout();
+    const auto State=FAC2UILayout::Token(FAC2CharacterCatalog::RaceName(Choice.Race).ToLower()+
+        (Choice.Sex==4096?TEXT("male"):TEXT("female")));
+    if(HoveredAvatar!=Expected || CreatorLayout.States.FindRef(FAC2UILayout::Token(TEXT("RaceDescField")))!=State || PendingAvatar!=INDEX_NONE)
+        return Fail(TEXT("Mouse hover did not update the matching native race/sex label and description"));
+    if(Step==10)
+    {
+        App.RoutePointerDownEvent(Path,FPointerEvent(0,Absolute,Absolute,Down,EKeys::LeftMouseButton,0,FModifierKeysState()));
+        App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,None,EKeys::LeftMouseButton,0,FModifierKeysState()));
+        if(PendingAvatar!=Expected || Race!=Choice.Race || Sex!=Choice.Sex || Lineup->AvatarSelectionDuration()<=0)
+            return Fail(TEXT("Mouse click did not choose the hovered Empyrean and start its native animation"));
+    }
+    UE_LOG(LogTemp,Display,TEXT("AC2 creator picking step %d: %s %s at %.0f,%.0f"),Step,
+        *FAC2CharacterCatalog::RaceName(Choice.Race),Choice.Sex==4096?TEXT("male"):TEXT("female"),Absolute.X,Absolute.Y);
+    return true;
+}
+
 bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
 {
     auto T=[](const TCHAR *N){return FAC2UILayout::Token(N);};
@@ -843,9 +956,28 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         if (Characters.Num()<2 || !Selection.IsValid() || !Selection->Ready) return Fail(TEXT("Two native selection models required"));
         for (const auto &C:Characters)
             if (!CreatorLayout.Nodes.ContainsByPredicate([&](const auto &N){return N.Text==C.Name && N.Kind==T(TEXT("text")) && N.Parent!=INDEX_NONE;})) return Fail(TEXT("Character name missing from native list"));
+        int32 Highlights=0;
         for(const auto& N:CreatorLayout.Nodes)if(N.Id==T(TEXT("list_box_item")))
-            if(N.Attr(TEXT("font"))!=0x42000024 || !N.Attr(TEXT("font_outline")) || N.Float(TEXT("font_color_green"))<.8f)
-                return Fail(TEXT("Character list lost native font or readable text contrast"));
+        {
+            const bool Selected=N.State==T(TEXT("highlight"));
+            Highlights+=Selected;
+            if(N.Attr(TEXT("font"))!=0x42000024 || N.Attr(TEXT("font_outline")) ||
+                !FMath::IsNearlyEqual(N.Float(TEXT("font_color_green")),Selected?.1f:1.f) ||
+                !N.Media.ContainsByPredicate([&](const auto& M){return M.Image==(Selected?0x410002f6u:0x4100225fu);}))
+                return Fail(TEXT("Character list lost the retail font, selected ink or row artwork"));
+        }
+        if(Highlights!=1)return Fail(TEXT("Character list must highlight exactly one selected character"));
+        const auto R=CreatorLayout.Bounds(TEXT("CharacterListBox"));
+        const FString Before=Mode->Characters.ActiveId;
+        LocalPointer(FVector2D(R.Max.X-1,R.Min.Y+10),false);BuildCreatorLayout();
+        const auto* Tip=CreatorLayout.Find(0xd5a32d4d);
+        if(CharacterAt(FVector2D(R.Max.X-1,R.Min.Y+10))!=Page || !Tip || !Tip->Text.Contains(Characters[Page].Name) ||
+            Mode->Characters.ActiveId!=Before)return Fail(TEXT("Full-width row hover must identify its target without selecting it"));
+        LocalPointer(FVector2D(R.Min)+FVector2D(20,80),true);
+        if(Mode->Characters.ActiveId!=Before || CharacterAt(FVector2D(R.Min)+FVector2D(20,80))!=INDEX_NONE)
+            return Fail(TEXT("Empty character-list space selected a character"));
+        if(Selection->PickAvatar(FVector2D(-.01,.5))!=INDEX_NONE || Selection->PickAvatar(FVector2D(.02,.02))!=INDEX_NONE)
+            return Fail(TEXT("Empty/outside scene space selected a character"));
         if(!Button(TEXT("CreateButton"),false))return Fail(TEXT("Create button not hit-testable"));
         BuildCreatorLayout();
         if(CreatorLayout.Find(TEXT("CreateButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Create hover feedback missing"));
@@ -853,7 +985,7 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
     if(Step==1)
     {
         const auto R=CreatorLayout.Bounds(TEXT("CharacterListBox"));
-        LocalPointer(FVector2D(R.Min)+FVector2D(40,30),true);
+        LocalPointer(FVector2D(R.Max.X-1,R.Min.Y+30),true);
         if(Mode->Characters.ActiveId!=Characters[1].Id)return Fail(TEXT("Mouse did not select second name"));
     }
     if(Step==2)
@@ -865,7 +997,14 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         LocalPointer(FVector2D(R.Min)+Point*FVector2D(R.Size()),true);
         if(Mode->Characters.ActiveId!=Characters[0].Id)return Fail(TEXT("3D character click did not select first slot"));
     }
-    if(Step==3 && (Selection->SelectionMoving() || Selection->SelectionIndex()!=0))return Fail(TEXT("3D selection did not rotate carousel"));
+    if(Step==3)
+    {
+        if(Selection->SelectionMoving() || Selection->SelectionIndex()!=0)return Fail(TEXT("3D selection did not rotate carousel"));
+        const auto R=CreatorLayout.Bounds(TEXT("Viewport"));
+        LocalPointer(FVector2D(R.Min)+Selection->AvatarPoint(0)*FVector2D(R.Size()),false);BuildCreatorLayout();
+        const auto* Tip=CreatorLayout.Find(0xd5a32d4d);
+        if(!Tip || !Tip->Text.Contains(Characters[0].Name+TEXT(" (selected)")))return Fail(TEXT("Model hover did not identify the selected character"));
+    }
     if(Step==4) {if(!Button(TEXT("OptionsButton")) || !ShowSelectionOptions)return Fail(TEXT("Options button did not open native panel"));}
     if(Step==5)
     {
@@ -880,18 +1019,38 @@ bool SAC2CharacterUI::SmokeSelection(int32 Step,FString &Error)
         if(Screen!=EScreen::Select)return Fail(TEXT("Credits did not return to selection"));
     }
     if(Step==8) {if(!Button(TEXT("DeleteButton")) || DeletePending.IsEmpty())return Fail(TEXT("Delete confirmation did not open"));}
-    if(Step==9) {if(!Button(TEXT("NoButton")) || !DeletePending.IsEmpty() || Characters.Num()!=2)return Fail(TEXT("Delete cancellation failed"));}
+    if(Step==9)
+    {
+        const FString Before=Mode->Characters.ActiveId;
+        OnKeyDown(CreatorView->GetCachedGeometry(),FKeyEvent(EKeys::Down,FModifierKeysState(),0,false,0,0));
+        if(Mode->Characters.ActiveId!=Before || DeletePending.IsEmpty())return Fail(TEXT("Arrow key changed the character behind delete confirmation"));
+        if(!Button(TEXT("NoButton")) || !DeletePending.IsEmpty() || Characters.Num()!=2)return Fail(TEXT("Delete cancellation failed"));
+    }
     if(Step==10) {if(!Button(TEXT("CreateButton")) || Screen!=EScreen::Create)return Fail(TEXT("Create button failed"));}
     if(Step==11) {if(!Button(TEXT("CancelButton")) || Screen!=EScreen::Select)return Fail(TEXT("Creation cancel failed"));}
     if(Step==12)
     {
         const int32 Index=Characters.IndexOfByPredicate([](const auto &C){return C.Name==TEXT("Controller Hero");});
         if(Index==INDEX_NONE)return Fail(TEXT("Combat fixture character missing"));
+        SelectCharacter((Index+1)%Characters.Num());BuildCreatorLayout();
         const auto R=CreatorLayout.Bounds(TEXT("CharacterListBox"));
-        LocalPointer(FVector2D(R.Min)+FVector2D(40,(Index-Page)*20+10),true);
-        if(Mode->Characters.ActiveId!=Characters[Index].Id)return Fail(TEXT("Final name selection failed"));
-        Button(TEXT("EnterButton"),false);BuildCreatorLayout();
-        if(CreatorLayout.Find(TEXT("EnterButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Enter hover feedback missing"));
+        const FVector2D Absolute=CreatorView->GetCachedGeometry().LocalToAbsolute(FVector2D(R.Min)+FVector2D(40,(Index-Page)*20+10));
+        auto& App=FSlateApplication::Get();const auto Window=App.FindWidgetWindow(CreatorView.ToSharedRef());
+        if(!Window)return Fail(TEXT("Selection window missing"));
+        const auto Path=App.LocateWindowUnderMouse(Absolute,{Window.ToSharedRef()},false);
+        // The focused selection run enters this previously unselected character.
+        // The full creator run keeps its normal Enter readiness gate closed here.
+        const bool SelectionOnly=FPlatformMisc::GetEnvironmentVariable(TEXT("AC2_SELECTION_SMOKE"))==TEXT("1");
+        const bool Ready=Mode->CharacterDataReady;
+        if(!SelectionOnly)Mode->CharacterDataReady=false;
+        App.RoutePointerDoubleClickEvent(Path,FPointerEvent(0,Absolute,Absolute,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
+        Mode->CharacterDataReady=Ready;
+        if(Mode->Characters.ActiveId!=Characters[Index].Id)return Fail(TEXT("Double-click did not select the clicked character before entry"));
+        if(!SelectionOnly)
+        {
+            Button(TEXT("EnterButton"),false);BuildCreatorLayout();
+            if(CreatorLayout.Find(TEXT("EnterButton"))->State!=T(TEXT("normal_rollover")))return Fail(TEXT("Enter hover feedback missing"));
+        }
     }
     // Submit the real creator's DAT choices. Pre-seeding characters with bridge
     // commands hid an incorrect start_area taken from the preview holding point.

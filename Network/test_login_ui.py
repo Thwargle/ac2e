@@ -18,6 +18,8 @@ def main():
         with socket.socket(socket.AF_INET,kind) as check:check.bind(('127.0.0.1',port))
     content=prepare_test_content(directory)
     env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1')
+    selection_only='--selection-only' in os.sys.argv
+    if selection_only:env['AC2_SELECTION_SMOKE']='1'
     if '--gameplay' in os.sys.argv:env['AC2_GAMEPLAY_SMOKE']='1'
     log=(directory/'server.log').open('w',encoding='utf-8')
     web=subprocess.Popen([str(SERVER),'account-web','--auth-data',str(auth),'--data',str(world),
@@ -34,6 +36,7 @@ def main():
         if register:ui_env['AC2_LOGIN_REGISTER_SMOKE']='1'
         result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'Launch-AC2.ps1'),
             '-SkipBuild','-LoginSmoke','-AccountUrl','http://127.0.0.1:19480','-Account','controller_test',
+            '-LoginProfiles',str(directory/'test-profiles.json'),
             '-DatDirectory',str(DAT_DIRECTORY)],
             cwd=ROOT,env=ui_env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',timeout=190,creationflags=0x08000000)
         ui_env.pop('AC2_TEST_PASSWORD',None)
@@ -43,7 +46,7 @@ def main():
         time.sleep(1)
         game=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19482','--auth-data',str(auth),
             '--data',str(world),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--lifestones','true','--portals','false','--seconds','240'],
+            '--initialize-ui','true','--lifestones','true','--portals','false','--seconds','240'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(1)
         assert game.poll() is None,(directory/'server.log').read_text()
@@ -73,13 +76,23 @@ def main():
         time.sleep(5.2)
         peer.send('move',cell=spawn['cell'],position=spawn['position'],heading=0,motion=[0,0,0]);time.sleep(.3)
         peer.send('recall')
-        recalled=peer.wait('position',lambda e:e['id']==character and e.get('force',0)>0)
+        # Recall advances the native teleport stamp, not the force-position stamp.
+        recalled=peer.wait('position',lambda e:e['id']==character and e.get('teleport',0)>0)
         assert all(abs(a-b)<.01 for a,b in zip(recalled['position'],bound)),recalled
         # Restore the known combat test start before handing the account to the UI.
         peer.send('move',cell=spawn['cell'],position=spawn['position'],heading=0,motion=[0,0,0]);time.sleep(.3)
         peer.send('logout',id=character);peer.wait('selection');peer.close();peer=None
         ui_login()
         combat_log=(directory/'login-ui.log').read_text(encoding='utf-8',errors='replace')
+        if selection_only:
+            assert all(f'AC2 selection pointer smoke step {step} passed' in combat_log for step in range(13)), 'Selection input regression did not complete'
+            assert 'AC2 character selection enter PASS: Controller Hero' in combat_log, 'Double-click entered the wrong character'
+            report={'result':'PASS','checks':['retail row highlight and DAT font','full-row hits and empty-space rejection',
+                'hover identifies target without changing selection','visible model picking and carousel synchronization',
+                'native selected-character hover hint','delete confirmation protects selection','options, credits and creator cancellation',
+                'double-click an unselected character and verify server world identity'], 'directory':str(directory)}
+            (directory/'result.json').write_text(json.dumps(report,indent=2))
+            print(json.dumps(report));return
         assert all(f'AC2 combat input step {step} passed' in combat_log for step in range(8)), 'Combat input regression did not complete'
         assert 'AC2 combat world pointer selected' in combat_log, 'World mouse selection was not verified'
         if env.get('AC2_GAMEPLAY_SMOKE')=='1':

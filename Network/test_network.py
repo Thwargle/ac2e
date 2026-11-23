@@ -26,6 +26,11 @@ def prepare_test_content(directory):
     lines=content.read_text(encoding='utf-8').splitlines()
     if lines[0]=='pyrealium-world-v4':
         content.write_text('pyrealium-world-v3\n'+'\n'.join('\t'.join(line.split('\t')[:12]) for line in lines[1:])+'\n',encoding='utf-8')
+    with content.open('a', encoding='utf-8') as output:
+        fixture = ROOT / 'AC2E/emulator/tests/fixtures/human-practice-world.tsv'
+        for row in fixture.read_text().splitlines()[1:]:
+            if row and not row.startswith('#'):
+                output.write(row + '\n')
     return content
 
 class Peer:
@@ -70,8 +75,7 @@ def main():
     log = (data / 'server.log').open('w', encoding='utf-8')
     server_args = [str(SERVER), 'serve', '--bind', '127.0.0.1:19270', '--account', 'local',
         '--data', str(data/'world'), '--game-data', str(DAT_DIRECTORY),
-        '--content', str(content), '--training-kit','false',
-        '--lifestones','false','--portals','false','--seconds','180']
+        '--content', str(content), '--lifestones','false','--portals','false','--seconds','180']
     server = subprocess.Popen(server_args, env=env, stdout=log,stderr=log, creationflags=0x08000000)
     peers=[]
     try:
@@ -99,6 +103,12 @@ def main():
         assert abs(update['position'][0]-moved[0])<.01,update
         a.send('chat',text='AC2 network smoke',channel='say')
         b.wait('chat',lambda e:'AC2 network smoke' in str(e))
+        # The same sender must respect AC2E's 500 ms chat rate limit.
+        time.sleep(.6)
+        a.send('chat',text='Private Alpha to Beta',channel='tell',recipient='Network Beta')
+        b.wait('chat',lambda e:'Private Alpha to Beta' in str(e))
+        b.send('chat',text='Private Beta to Alpha',channel='tell',recipient='Network Alpha')
+        a.wait('chat',lambda e:'Private Beta to Alpha' in str(e))
         target=next(e for e in a.events if e.get('event')=='object' and e.get('entity')==0x470007d1)
         a.send('attack',id=target['id'])
         a.wait('quality',lambda e:e.get('id')==target['id'] and e.get('key')==0x102 and e.get('value')==0,timeout=25)
@@ -126,7 +136,7 @@ def main():
         p.send('enter',id=a.id);p.wait('player');p.wait('object',lambda e:e['id']==a.id);p.send('ready')
         restored=p.wait('object',lambda e:e['id']==item['id'])
         assert restored['container']==a.id and restored['quantity']==1,restored
-        report={'result':'PASS','checks':['native UDP login','character creation','world entry','two-peer visibility','movement replication','server chat','mob kill','journaled loot grant','logout removal','re-entry with owned loot','server restart with persisted characters and loot'], 'directory':str(data)}
+        report={'result':'PASS','checks':['native UDP login','character creation','world entry','two-peer visibility','movement replication','server chat','two-way private tells','mob kill','journaled loot grant','logout removal','re-entry with owned loot','server restart with persisted characters and loot'], 'directory':str(data)}
         (data/'result.json').write_text(json.dumps(report,indent=2))
         print(json.dumps(report))
     finally:

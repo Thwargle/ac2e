@@ -25,6 +25,7 @@ struct FAC2BehaviorData
     struct FCombo { uint32 Element,Mode,Behavior,Key,Layer; };
     TArray<FCombo> Combos;
     TArray<uint32> LayerOrder;
+    TArray<uint32> InitialBehaviors;
     struct FTransition {uint32 FromElement,FromMode,ToElement,ToMode,Behavior,Effect,StopEffect;};
     TArray<FTransition> Transitions;
     TMap<uint32,float> Ramps;
@@ -50,4 +51,5 @@ constexpr uint32 Move=0x40000001, Jump=0x4000000a, Land=0x4000000b, Fall=0x40000
 // EnumMapper 23000027: Melee_Auto1, death, Damage_Hit1, Magic_LS_Recall1.
 constexpr uint32 Attack=0x41000089, Death=0x4100001f, Hit=0x4100007c, Recall=0x410000d8;
 constexpr uint32 MeleeNormal=0x41000077, Unarmed=0x4100000f;
+constexpr uint32 Pickup=0x41000020, Putdown=0x41000021;
 }

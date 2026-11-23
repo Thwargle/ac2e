@@ -1,0 +1,5 @@
+# Additional entities placed from AC2Hero settlement and hunting-ground records.
+# Iridescent Worker (47003af6) is already in wilderness-creature-combat-v1.tsv.
+47003a3c
+47004319
+4700431e

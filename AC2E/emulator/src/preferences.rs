@@ -228,6 +228,23 @@ enum Shortcut {
     Craft(u32),
 }
 impl Shortcut {
+    fn read(r: &mut Reader<'_>) -> Result<Self, WorldError> {
+        Ok(match r.word()? {
+            0 => Self::Empty,
+            0x40000001 => Self::Skill(r.word()?),
+            0x40000002 => Self::Item(u64::from(r.word()?) | (u64::from(r.word()?) << 32)),
+            0x40000003 => {
+                let (text, size) = crate::world::read_ui_text(&r.bytes[r.pos..])?;
+                r.pos += size;
+                if text.trim().is_empty() || text.encode_utf16().count() > 512
+                    || text.chars().any(char::is_control) { return Err(WorldError::InvalidValue); }
+                Self::Text(text)
+            }
+            0x40000004 => Self::Enumeration(r.word()?),
+            0x40000006 => Self::Craft(r.word()?),
+            _ => return Err(WorldError::InvalidValue),
+        })
+    }
     fn words(&self) -> Result<Vec<u32>, WorldError> {
         Ok(match self {
             Self::Empty => vec![0],
@@ -259,25 +276,7 @@ impl HotbarUpdate {
         }
         let mut r = Reader { bytes, pos: 0 };
         r.graph(0xac)?; // gmCNativeFactory 00466c10 -> ShortcutInfo.
-        let shortcut = match r.word()? {
-            0 => Shortcut::Empty,
-            0x40000001 => Shortcut::Skill(r.word()?),
-            0x40000002 => Shortcut::Item(u64::from(r.word()?) | (u64::from(r.word()?) << 32)),
-            0x40000003 => {
-                let (text, size) = crate::world::read_ui_text(&bytes[r.pos..])?;
-                r.pos += size;
-                if text.is_empty()
-                    || text.chars().count() > 256
-                    || text.chars().any(char::is_control)
-                {
-                    return Err(WorldError::InvalidValue);
-                }
-                Shortcut::Text(text)
-            }
-            0x40000004 => Shortcut::Enumeration(r.word()?),
-            0x40000006 => Shortcut::Craft(r.word()?),
-            _ => return Err(WorldError::InvalidValue),
-        };
+        let shortcut = Shortcut::read(&mut r)?;
         r.expect(0)?;
         r.expect(1)?;
         let slot = r.word()?;
@@ -299,32 +298,30 @@ impl HotbarUpdate {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Hotbar {
     slots: BTreeMap<u32, Shortcut>,
+    initialized: bool,
 }
 impl Hotbar {
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
-    /// First slot is the authored training attack. Shown only while the saved bar is empty.
-    pub fn training_attack() -> Self {
-        let mut slots = BTreeMap::new();
-        slots.insert(0, Shortcut::Skill(crate::skills::TRAINING_ATTACK));
-        Self { slots }
-    }
-    /// The race's three basic attacks in the first slots of an empty bar.
+    pub fn is_initialized(&self) -> bool { self.initialized }
+    /// The race's three basic attacks in the first slots of a new bar.
     pub fn starter(race: u32, sex: u32) -> Self {
         let Some(body) = crate::appearance::body(race, sex) else {
-            return Self::training_attack();
+            return Self::default();
         };
-        let slots = body
-            .starters
+        // Body metadata is melee/missile/magic; retain the client's established
+        // 1=melee, 2=magic, 3=missile starter bar and tutorial instructions.
+        let slots = [body.starters[0], body.starters[2], body.starters[1]]
             .iter()
             .enumerate()
             .map(|(slot, &skill)| (slot as u32, Shortcut::Skill(skill)))
             .collect();
-        Self { slots }
+        Self { slots, initialized: false }
     }
     pub fn apply(&self, update: &HotbarUpdate) -> Result<Self, WorldError> {
         let mut next = self.clone();
+        next.initialized = true;
         if update.shortcut == Shortcut::Empty {
             next.slots.remove(&update.slot);
         } else {
@@ -335,6 +332,21 @@ impl Hotbar {
         }
         Ok(next)
     }
+    pub fn encode(&self) -> Result<Vec<u8>, WorldError> {
+        Ok(self.words()?.into_iter().flat_map(u32::to_le_bytes).collect())
+    }
+    /// Initial checkpoint preserves starter slots when the first update changes
+    /// just one slot. Later h1 journal entries retain their original format.
+    pub fn decode(bytes: &[u8]) -> Result<Self, WorldError> {
+        if bytes.len() > MAX_BYTES { return Err(WorldError::LimitExceeded); }
+        let mut r = Reader { bytes, pos: 0 }; r.expect(100)?;
+        let mut slots = BTreeMap::new();
+        for slot in 0..100 { let shortcut = Shortcut::read(&mut r)?;
+            if shortcut != Shortcut::Empty { slots.insert(slot, shortcut); }
+        }
+        if r.pos != bytes.len() { return Err(WorldError::TrailingBytes); }
+        Ok(Self { slots, initialized: true })
+    }
     fn words(&self) -> Result<Vec<u32>, WorldError> {
         let mut words = vec![100];
         for slot in 0..100 {
@@ -342,12 +354,6 @@ impl Hotbar {
         }
         Ok(words)
     }
-}
-pub fn options_words(
-    settings: Option<&UiSettings>,
-    hotbar: Option<&Hotbar>,
-) -> Result<Vec<u32>, WorldError> {
-    options_words_with_gameplay(settings, hotbar, None)
 }
 pub fn options_words_with_gameplay(
     settings: Option<&UiSettings>,
@@ -383,4 +389,31 @@ pub fn options_words_with_gameplay(
         settings.opacity_words(&mut words);
     }
     Ok(words)
+}
+
+#[cfg(test)] mod shortcut_tests {
+    use super::*;
+    #[test] fn hotbar_native_text_limits_and_empty_checkpoint_roundtrip() {
+        let update = HotbarUpdate { slot:99, shortcut:Shortcut::Text("🙂".repeat(256)) };
+        assert_eq!(HotbarUpdate::decode(&update.encode().unwrap()).unwrap(),update);
+        let saved = Hotbar::default().apply(&update).unwrap();
+        assert_eq!(Hotbar::decode(&saved.encode().unwrap()).unwrap(),saved);
+        for text in ["🙂".repeat(257),"x".repeat(513),"\u{85}".into()," ".into()] {
+            let invalid=HotbarUpdate{slot:0,shortcut:Shortcut::Text(text)};
+            assert!(HotbarUpdate::decode(&invalid.encode().unwrap()).is_err());
+        }
+        let empty=saved.apply(&HotbarUpdate{slot:99,shortcut:Shortcut::Empty}).unwrap();
+        assert!(empty.is_empty() && empty.is_initialized());
+        assert_ne!(empty,Hotbar::default());
+        assert_eq!(Hotbar::decode(&empty.encode().unwrap()).unwrap(),empty);
+        let mut trailing=empty.encode().unwrap();trailing.push(0);assert!(Hotbar::decode(&trailing).is_err());
+    }
+    #[test] fn hotbar_limit_rejects_a_write_without_modifying_previous_state() {
+        let mut bar=Hotbar::default();let mut rejected=false;
+        for slot in 0..100 {
+            let update=HotbarUpdate{slot,shortcut:Shortcut::Text("x".repeat(512))};
+            match bar.apply(&update) {Ok(next)=>bar=next,Err(WorldError::LimitExceeded)=>{rejected=true;break},other=>panic!("{other:?}")}
+        }
+        assert!(rejected);assert!(bar.encode().unwrap().len()<=MAX_BYTES);
+    }
 }

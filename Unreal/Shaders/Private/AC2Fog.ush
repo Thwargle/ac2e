@@ -1,0 +1,44 @@
+#ifndef AC2_NATIVE_FOG_USH
+#define AC2_NATIVE_FOG_USH
+#define AC2_NATIVE_FOG_USER_FLAG (1u << 28)
+
+
+// Native rendering stores and blends fog in D3D display RGB. UE scene colour
+// and authored texture samples are linear. Keep this conversion shared by the
+// opaque scene pass and the alpha/additive material paths.
+float3 AC2FogToDisplay(float3 Color)
+{
+    Color = saturate(Color);
+    return select(Color <= .0031308, Color * 12.92,
+        1.055 * pow(Color, 1.0 / 2.4) - .055);
+}
+
+float3 AC2FogToLinear(float3 Color)
+{
+    Color = saturate(Color);
+    return select(Color <= .04045, Color / 12.92,
+        pow((Color + .055) / 1.055, 2.4));
+}
+
+// Range.xy are native start/end in centimetres; z enables the effect.
+float AC2FogAmount(float DistanceCm, float4 Range)
+{
+    if (Range.z <= 0) return 0;
+    float Amount = Range.y > Range.x
+        ? saturate((DistanceCm - Range.x) / (Range.y - Range.x))
+        : step(Range.y, DistanceCm);
+    return Amount * saturate(Range.z);
+}
+
+float3 AC2FogApply(float3 LinearColor, float DistanceCm, float4 Range,
+    float3 DisplayFogColor, bool Additive)
+{
+    float Amount = AC2FogAmount(DistanceCm, Range);
+    if (Amount <= 0) return LinearColor;
+    // Additive effects fade toward black, otherwise a particle's fog colour
+    // would brighten the scene even when the particle is fully obscured.
+    return AC2FogToLinear(lerp(AC2FogToDisplay(LinearColor),
+        Additive ? float3(0, 0, 0) : saturate(DisplayFogColor), Amount));
+}
+#endif
+

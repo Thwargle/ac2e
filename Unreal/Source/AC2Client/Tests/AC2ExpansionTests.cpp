@@ -187,7 +187,30 @@ bool FAC2WaveAndKeysTest::RunTest(const FString &)
     W.Phase = 1.f / UE_PI;
     TestTrue(TEXT("frame-loop steps and wraps"),
              FMath::IsNearlyEqual(W.Value(1.6f), 3.f) && FMath::IsNearlyZero(W.Value(2.1f)));
+    W = {};
+    W.Kind = 7;
+    W.Amplitude = 1;
+    TestTrue(TEXT("Seed-zero retail gradient table"), FMath::IsNearlyEqual(W.Value(.3125f), .15475333f));
+    W.Kind = 8;
+    TestTrue(TEXT("Six-octave fractal noise"), FMath::IsNearlyEqual(W.Value(.3125f), .24052393f));
+    W.Kind = 3;
+    bool Changed = false;
+    const float First = W.Value(0);
+    for (int32 I = 0; I < 32; ++I)
+    {
+        const float Next = W.Value(0);
+        Changed |= Next != First;
+        TestTrue(TEXT("Random wave stays within its amplitude"), Next >= -1 && Next <= 1);
+    }
+    TestTrue(TEXT("Noise sampled by simultaneous births varies"), Changed);
     FAC2ParticleEmitter E;
+    E.Start = 1;
+    E.Duration = 10;
+    E.FadeIn = 2;
+    E.FadeOut = 6;
+    TestEqual(TEXT("Emitter fades in after fast-forward"), E.Opacity(3, 1), .5f);
+    TestEqual(TEXT("Emitter fades out from its authored start"), E.Opacity(9.5f, 1), .5f);
+    TestEqual(TEXT("Expired emitter contributes zero alpha"), E.Opacity(11, 1), 0.f);
     FAC2ParticleKey A, B, C;
     A.Flags = 8 | 16 | 32 | 128 | 256;
     A.X = A.Y = 2;

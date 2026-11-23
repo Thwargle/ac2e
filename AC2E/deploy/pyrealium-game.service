@@ -1,5 +1,5 @@
 [Unit]
-Description=Pyrealium authenticated training world
+Description=AC2E authenticated game world
 After=network-online.target pyrealium-accounts.service
 Wants=network-online.target
 Requires=pyrealium-accounts.service
@@ -12,7 +12,7 @@ Slice=pyrealium.slice
 Nice=10
 IOSchedulingClass=idle
 WorkingDirectory=/opt/pyrealium
-ExecStart=/opt/pyrealium/pyrealium serve-training --auth-data /var/lib/pyrealium/auth --bind 0.0.0.0:19370 --data /var/lib/pyrealium/game --game-data /srv/pyrealium/game-data --content /srv/pyrealium/live-world.tsv
+ExecStart=/opt/pyrealium/pyrealium serve --auth-data /var/lib/pyrealium/auth --bind 0.0.0.0:19370 --data /var/lib/pyrealium/game --game-data /srv/pyrealium/game-data --content /srv/pyrealium/live-world.tsv
 ExecStop=/opt/pyrealium/pyrealium stop --data /var/lib/pyrealium/game --seconds 20
 Restart=on-failure
 RestartSec=5

@@ -5,9 +5,17 @@
 class UWorld;
 class USceneComponent;
 class UMaterialInstanceDynamic;
+class UPointLightComponent;
 void RegisterAC2WorldMaterial(UMaterialInstanceDynamic* Material,USceneComponent* Component,bool Baked);
+void RegisterAC2FoliageMaterial(UMaterialInstanceDynamic* Material,USceneComponent* Component,bool Bend);
+// Cosmetic contacts in centimetres; no collision or gameplay state is changed.
+struct FAC2FoliageContact { uint32 Id=0; FVector Feet=FVector::ZeroVector; float Radius=45,Height=180; };
+constexpr int32 AC2FoliageContactLimit=8;
+void UpdateAC2FoliageInteraction(UWorld* World,TConstArrayView<FAC2FoliageContact> Contacts,float Delta);
 void UpdateAC2WorldLighting(UWorld* World,const FAC2PreviewLighting& Outdoor,
     TFunctionRef<bool(const FVector&,FAC2PreviewLighting&)> Interior);
+void RegisterAC2EffectLight(UPointLightComponent* Light);
+void AppendAC2EffectLights(UWorld* World,const FVector& Position,FAC2PreviewLighting& Lighting);
 
 // Native texture filtering/tinting operates on byte RGB, before the final
 // conversion to UE's linear scene colour. FLinearColor(FColor) decodes sRGB and
@@ -57,5 +65,5 @@ struct FAC2NativeMaterialExpressions
     UMaterialExpressionCustom *Stages=nullptr;
 };
 FAC2NativeMaterialExpressions BuildAC2NativeStages(UMaterial *Material, UMaterialExpression *Base,
-    UMaterialExpression *Tint, bool Preview);
+    UMaterialExpression *Tint, bool Preview, bool Shadowed, bool Water, bool Anisotropic);
 #endif

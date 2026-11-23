@@ -38,6 +38,7 @@ class SourceOfferTests(unittest.TestCase):
                 path.write_text('fixture', encoding='utf-8')
             reference_files=['References/AC2_Rusted/Cargo.toml','References/AC2_Rusted/LICENSE',
                              'Network/Bridge/src/main.rs','Network/Bridge/src/capture_decode.rs',
+                             'Network/GunFriends/src/lib.rs',
                              'References/AC2_Rusted/crates/ac2-physics/Cargo.toml',
                              'References/AC2_Rusted/crates/ac2-physics/src/lib.rs']
             for relative in reference_files:

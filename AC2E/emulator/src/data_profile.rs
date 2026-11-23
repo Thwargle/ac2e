@@ -1,6 +1,7 @@
 //! Which game data release the server runs on. Tables imported from the Legions DVD data have
 //! counterparts imported from the installed 7230 data under `content/7230/`, used when the
-//! server runs on the installed 7230 data (its fingerprint, see bootstrap.rs).
+//! server uses 7230 gameplay records (including its build-7148 WState conversion).
+//! See the portal DAT fingerprint in bootstrap.rs.
 use std::sync::OnceLock;
 
 static UNCONVERTED_7230: OnceLock<bool> = OnceLock::new();

@@ -57,9 +57,6 @@ pub fn is_weapon(definition: u32) -> bool {
         .iter()
         .any(|profile| profile.definition == definition && profile.worn == 0)
 }
-pub fn is_sword(definition: u32) -> bool {
-    matches!(definition, 0x470007ee | 0x470007f5 | 0x47000809)
-}
 /// DAT-validated racial starter weapons: melee, missile and magic respectively.
 /// These are equipment categories, not client-selected damage or animation IDs.
 pub fn weapon_category(definition: u32) -> Option<usize> {
@@ -72,13 +69,22 @@ pub fn weapon_category(definition: u32) -> Option<usize> {
 }
 pub fn equipped_category(inventory: &Inventory) -> usize {
     inventory.items().find(|item| item.location == Location::Equipped(0x40))
-        .and_then(|item| weapon_category(item.definition)).unwrap_or(0)
+        .and_then(item_category).unwrap_or(0)
+}
+fn item_category(item: &Item) -> Option<usize> {
+    weapon_category(item.definition).or_else(|| crate::treasure_weapons::profile(item).map(|p| {
+        match p.implement {
+            0x4 | 0x800 | 0x8000 => 1, // bows, thrown vials, javelins
+            0x8 | 0x40000 | 0x200000 => 2, // drums, staves/scepters, orbs
+            _ => 0,
+        }
+    }))
 }
 pub fn combat_mode(inventory: &Inventory) -> u32 {
     let Some(item) = inventory.items().find(|item| item.location == Location::Equipped(0x40)) else {
         return crate::combat_visual::MARTIAL_ARTS;
     };
-    match weapon_category(item.definition) {
+    match item_category(item) {
         Some(1) if item.definition == 0x47000807 => crate::combat_visual::BOULDER,
         Some(1) => crate::combat_visual::MISSILE,
         Some(2) => crate::combat_visual::MAGIC,

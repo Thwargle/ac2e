@@ -1,0 +1,911 @@
+{
+  "version": 2,
+  "basis": "Outdoor quest walkthroughs and creature guide locations anchor each camp. Exact slots are reconstructed on dry retail terrain with body clearance and clearance from existing placements. A two-minute respawn is an AC2E reconstruction.",
+  "validate_camp_bodies": true,
+  "templates": {
+    "1191186322": {
+      "name": "Ulu Sclavus",
+      "visual": 520094677
+    },
+    "1191186323": {
+      "name": "Aste Sclavus",
+      "visual": 520093815
+    },
+    "1191186324": {
+      "name": "Essa Sclavus",
+      "visual": 520094624
+    },
+    "1191186325": {
+      "name": "Sata Sclavus",
+      "visual": 520094676
+    },
+    "1191186477": {
+      "name": "Sephal Nefane",
+      "visual": 520095265
+    },
+    "1191186510": {
+      "name": "Bominous Gigurath",
+      "visual": 520095051
+    },
+    "1191187101": {
+      "name": "Gurog Emissary",
+      "visual": 520095271
+    },
+    "1191188162": {
+      "name": "Feyen Mimbu Swamprunner",
+      "visual": 520097274
+    },
+    "1191188312": {
+      "name": "Aste Sclavus Gatekeeper",
+      "visual": 520093815
+    },
+    "1191188313": {
+      "name": "Aste Sclavus Preceptor",
+      "visual": 520093815
+    },
+    "1191188314": {
+      "name": "Aste Sclavus Temple Guard",
+      "visual": 520093815
+    },
+    "1191188315": {
+      "name": "Essa Sclavus Gatekeeper",
+      "visual": 520094624
+    },
+    "1191188316": {
+      "name": "Essa Sclavus Preceptor",
+      "visual": 520094624
+    },
+    "1191188317": {
+      "name": "Essa Sclavus Temple Guard",
+      "visual": 520094624
+    },
+    "1191188321": {
+      "name": "Sata Sclavus Gatekeeper",
+      "visual": 520094676
+    },
+    "1191188322": {
+      "name": "Sata Sclavus Preceptor",
+      "visual": 520094676
+    },
+    "1191188323": {
+      "name": "Sata Sclavus Temple Guard",
+      "visual": 520094676
+    },
+    "1191188324": {
+      "name": "Ulu Sclavus Gatekeeper",
+      "visual": 520094677
+    },
+    "1191188325": {
+      "name": "Ulu Sclavus Preceptor",
+      "visual": 520094677
+    },
+    "1191188326": {
+      "name": "Ulu Sclavus Temple Guard",
+      "visual": 520094677
+    },
+    "1191189587": {
+      "name": "Olthoi Grub",
+      "visual": 520097865
+    },
+    "1191190354": {
+      "name": "Olthoi Harvester Grub",
+      "visual": 520097865
+    },
+    "1191190446": {
+      "name": "Maturing Olthoi Drone Grub",
+      "visual": 520098437
+    },
+    "1191190977": {
+      "name": "Scarred Shreth Hunter",
+      "visual": 520098355
+    },
+    "1191197243": {
+      "name": "Banderling Bandit",
+      "visual": 520093813
+    },
+    "1191197248": {
+      "name": "Banderling Mangler",
+      "visual": 520100538
+    },
+    "1191197250": {
+      "name": "Banderling Mauler",
+      "visual": 520100539
+    },
+    "1191197318": {
+      "name": "Iron Colossus",
+      "visual": 520100480
+    },
+    "1191197332": {
+      "name": "Toxic Grievver",
+      "visual": 520100508
+    },
+    "1191197334": {
+      "name": "Virulent Grievver",
+      "visual": 520100509
+    },
+    "1191197379": {
+      "name": "Mu-miyah Initiate",
+      "visual": 520098508
+    },
+    "1191197396": {
+      "name": "Swarm Drone Nymph",
+      "visual": 520098090
+    },
+    "1191197425": {
+      "name": "Ebon Worker",
+      "visual": 520100789
+    },
+    "1191197437": {
+      "name": "Chromu Sclavus",
+      "visual": 520100706
+    },
+    "1191197473": {
+      "name": "Slithis Eye Stalk",
+      "visual": 520098405
+    },
+    "1191197487": {
+      "name": "Laes Takeru",
+      "visual": 520100468
+    },
+    "1191197544": {
+      "name": "Plains Matron",
+      "visual": 520100676
+    },
+    "1191197545": {
+      "name": "Irontooth",
+      "visual": 520100678
+    },
+    "1191199515": {
+      "name": "Resuscitated Urkhad",
+      "visual": 520100707
+    },
+    "1191199516": {
+      "name": "Benshii Felsister",
+      "visual": 520100685
+    },
+    "1191199517": {
+      "name": "Bar Nobla",
+      "visual": 520098123
+    },
+    "1191199519": {
+      "name": "Chromast Chromu",
+      "visual": 520100706
+    },
+    "1191199520": {
+      "name": "Uncle Finiel",
+      "visual": 520098506
+    }
+  },
+  "camps": [
+    {
+      "id": 9313687021471924480,
+      "land": [
+        1587.12,
+        716.04
+      ],
+      "roster": [
+        1191199517,
+        1191197379,
+        1191197379
+      ],
+      "capacity": 3,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_bloodfeud.html",
+        "sha256": "0eeb3f76a46509bcee737ccdf1e3a0526fb4a320da62c6e326fff5fc84e5bcd8",
+        "coordinates": [
+          -29.8,
+          55.6
+        ],
+        "basis": "The guide locates Bar Nobla and his Mu-miyah Initiates at the temple. Two guards use the lower documented group size."
+      }
+    },
+    {
+      "id": 9313687021471924736,
+      "land": [
+        1388.22,
+        597.72
+      ],
+      "roster": [
+        1191199515
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_clensethestandingstones.html",
+        "sha256": "f0e462606417ad460935ad286ca2403c769144d0ddbad6f2ed38a977656d7b47",
+        "coordinates": [
+          -41.4,
+          36.1
+        ],
+        "basis": "Resuscitated Urkhad at the standing stones. Existing Repulsive Urkhads already guard the site."
+      }
+    },
+    {
+      "id": 9313687021471924992,
+      "land": [
+        1462.68,
+        575.28
+      ],
+      "roster": [
+        1191199516
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_afellplot.html",
+        "sha256": "37cb5156e66be623dc3a682f2ca6cc7c77795199cf77a2b69803662afc7114d0",
+        "coordinates": [
+          -43.6,
+          43.4
+        ],
+        "basis": "Benshii Felsister at the guide location; the quest giver calls her a Benshii Crone."
+      }
+    },
+    {
+      "id": 9313687021471925248,
+      "land": [
+        1582.02,
+        649.74
+      ],
+      "roster": [
+        1191199520
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_releaseunclefiniel.html",
+        "sha256": "9efff4dd6fe90267234f8285a7285ab6e8c6720c1eeacd5239bf3a8e0c6a9bc9",
+        "coordinates": [
+          -36.3,
+          55.1
+        ],
+        "basis": "Uncle Finiel at his named location. The guide does not identify the nearby lashers and minions by template."
+      }
+    },
+    {
+      "id": 9313687021471925504,
+      "land": [
+        1533.06,
+        440.64
+      ],
+      "roster": [
+        1191199519,
+        1191197437,
+        1191197437,
+        1191197437
+      ],
+      "capacity": 4,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_templecromast.html",
+        "sha256": "d3d045ede07cd47fc7db0bd68771ec6956810044fb69356e42cecfb7c4b88587",
+        "coordinates": [
+          -56.8,
+          50.3
+        ],
+        "basis": "Chromast Chromu with three Chromu Sclavus, using the lower documented guard count."
+      }
+    },
+    {
+      "id": 9313687021471925760,
+      "land": [
+        1467.78,
+        657.9
+      ],
+      "roster": [
+        1191197250,
+        1191197248,
+        1191197243
+      ],
+      "capacity": 3,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_slaythebanderlingmaulers.html",
+        "sha256": "5d50cc89d8af9c2a9eb765f41c6ee6ca5bcf87568727c8e0ffa0610fa10afea8",
+        "coordinates": [
+          -35.5,
+          43.9
+        ],
+        "basis": "The guild camp includes Maulers, Manglers and Bandits. One slot each is inferred; the kill quota is not simultaneous population."
+      }
+    },
+    {
+      "id": 9313687021471926016,
+      "land": [
+        1859.46,
+        1260.72
+      ],
+      "roster": [
+        1191187101,
+        1191187101
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_darkstone.html",
+        "sha256": "cce0c1862991d9396f0baeb5478ac5729047ad2ce3cac0ea3b216e285ab3eb92",
+        "coordinates": [
+          23.6,
+          82.3
+        ],
+        "basis": "The two Gurog Emissaries at Choker are explicitly counted. The Burun Immortal is already present within 20 m."
+      }
+    },
+    {
+      "id": 9313687021471926272,
+      "land": [
+        1714.62,
+        1419.84
+      ],
+      "roster": [
+        1191190977
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_shrethhideleather.html",
+        "sha256": "4bcea43437919527fcfbe75fe16fde98a650d950c53c809106c7bdb47526e876",
+        "coordinates": [
+          39.2,
+          68.1
+        ],
+        "basis": "The Scarred Shreth Hunter is placed at its hunting ground."
+      }
+    },
+    {
+      "id": 9313687021471926528,
+      "land": [
+        1642.2,
+        452.88
+      ],
+      "roster": [
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473,
+        1191197473
+      ],
+      "capacity": 9,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_eliminatetheslithiseyestalks.html",
+        "sha256": "ff315fd0830638b2decbbc085eb3b81d25390be71f1ea4ae54baf38e0b76e2da",
+        "coordinates": [
+          -55.6,
+          61.0
+        ],
+        "basis": "The small cut-out on the northeast shore has nine to ten Eye Stalks. Use the lower bound."
+      }
+    },
+    {
+      "id": 9313687021471926784,
+      "land": [
+        1277.04,
+        622.2
+      ],
+      "roster": [
+        1191197545,
+        1191197544
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html",
+        "sha256": "ef12f4bc3ddb6e0b6d54b8fb56bbefc8d9d9207364a713e6b65b3dc787c28531",
+        "coordinates": [
+          -39,
+          25.2
+        ],
+        "basis": "First dig: one Irontooth and one Plains Matron guard the survey site."
+      }
+    },
+    {
+      "id": 9313687021471927040,
+      "land": [
+        1477.98,
+        587.52
+      ],
+      "roster": [
+        1191197318
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html",
+        "sha256": "ef12f4bc3ddb6e0b6d54b8fb56bbefc8d9d9207364a713e6b65b3dc787c28531",
+        "coordinates": [
+          -42.4,
+          44.9
+        ],
+        "basis": "Second dig: Iron Colossus."
+      }
+    },
+    {
+      "id": 9313687021471927296,
+      "land": [
+        1425.96,
+        531.42
+      ],
+      "roster": [
+        1191197425,
+        1191197396
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html",
+        "sha256": "ef12f4bc3ddb6e0b6d54b8fb56bbefc8d9d9207364a713e6b65b3dc787c28531",
+        "coordinates": [
+          -47.9,
+          39.8
+        ],
+        "basis": "Third dig: Ebon Worker and Swarm Drone Nymph."
+      }
+    },
+    {
+      "id": 9313687021471927552,
+      "land": [
+        1355.58,
+        587.52
+      ],
+      "roster": [
+        1191197332,
+        1191197334
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html",
+        "sha256": "ef12f4bc3ddb6e0b6d54b8fb56bbefc8d9d9207364a713e6b65b3dc787c28531",
+        "coordinates": [
+          -42.4,
+          32.9
+        ],
+        "basis": "Fourth dig: Toxic and Virulent Grievvers."
+      }
+    },
+    {
+      "id": 9313687021471927808,
+      "land": [
+        1351.5,
+        494.7
+      ],
+      "roster": [
+        1191197487,
+        1191197487
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/knorr_combatarchaeology.html",
+        "sha256": "ef12f4bc3ddb6e0b6d54b8fb56bbefc8d9d9207364a713e6b65b3dc787c28531",
+        "coordinates": [
+          -51.5,
+          32.5
+        ],
+        "basis": "Sixth dig: two Laes Takeru represent the unspecified guard count. The elevated fifth dig needs platform heights."
+      }
+    },
+    {
+      "id": 9313687021471928064,
+      "land": [
+        1578.96,
+        1132.2
+      ],
+      "roster": [
+        1191188313,
+        1191188312,
+        1191188314,
+        1191186323
+      ],
+      "capacity": 4,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html",
+        "sha256": "d6b221f9763ecf4108a6462260468087de48ebc69cfb74da07bc1d8319b6c07e",
+        "coordinates": [
+          11,
+          54.8
+        ],
+        "basis": "Aste fort. The walkthrough names the preceptor, gatekeepers, temple guards and ordinary Aste Sclavus. One of each represents the documented roster. Headcounts and positions inside the fort are unknown."
+      }
+    },
+    {
+      "id": 9313687021471928320,
+      "land": [
+        1612.62,
+        1086.3
+      ],
+      "roster": [
+        1191188316,
+        1191188315,
+        1191188317,
+        1191186324
+      ],
+      "capacity": 4,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html",
+        "sha256": "d6b221f9763ecf4108a6462260468087de48ebc69cfb74da07bc1d8319b6c07e",
+        "coordinates": [
+          6.5,
+          58.1
+        ],
+        "basis": "Essa fort. The walkthrough names the preceptor, gatekeepers, temple guards and ordinary Essa Sclavus. One of each represents the documented roster. Headcounts and positions inside the fort are unknown."
+      },
+      "scale": 1.05
+    },
+    {
+      "id": 9313687021471928576,
+      "land": [
+        1728.9,
+        907.8
+      ],
+      "roster": [
+        1191188322,
+        1191188321,
+        1191188323,
+        1191186325
+      ],
+      "capacity": 4,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html",
+        "sha256": "d6b221f9763ecf4108a6462260468087de48ebc69cfb74da07bc1d8319b6c07e",
+        "coordinates": [
+          -11,
+          69.5
+        ],
+        "basis": "Sata fort. The walkthrough names the preceptor, gatekeepers, temple guards and ordinary Sata Sclavus. One of each represents the documented roster. Headcounts and positions inside the fort are unknown."
+      },
+      "scale": 1.2
+    },
+    {
+      "id": 9313687021471928832,
+      "land": [
+        1810.5,
+        994.5
+      ],
+      "roster": [
+        1191188325,
+        1191188324,
+        1191188326,
+        1191186322
+      ],
+      "capacity": 4,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html",
+        "sha256": "d6b221f9763ecf4108a6462260468087de48ebc69cfb74da07bc1d8319b6c07e",
+        "coordinates": [
+          -2.5,
+          77.5
+        ],
+        "basis": "Ulu fort. The walkthrough names the preceptor, gatekeepers, temple guards and ordinary Ulu Sclavus. One of each represents the documented roster. Headcounts and positions inside the fort are unknown."
+      },
+      "scale": 1.25
+    },
+    {
+      "id": 9313687021471929088,
+      "land": [
+        441.66,
+        980.22
+      ],
+      "roster": [
+        1191186510
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2wiki.info/index.php/Gigurath",
+        "sha256": "1c6e2850f2ce850d4f055303c774217ddef953073f33cb3d44076a9a5ca90f14",
+        "coordinates": [
+          -3.9,
+          -56.7
+        ],
+        "basis": "One Bominous Gigurath at a documented Linvak hunting location. Group is a difficulty rating. Simultaneous retail population is unknown."
+      },
+      "scale": 1.2
+    },
+    {
+      "id": 9313687021471929344,
+      "land": [
+        355.98,
+        933.3
+      ],
+      "roster": [
+        1191186510
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2wiki.info/index.php/Gigurath",
+        "sha256": "1c6e2850f2ce850d4f055303c774217ddef953073f33cb3d44076a9a5ca90f14",
+        "coordinates": [
+          -8.5,
+          -65.1
+        ],
+        "basis": "One Bominous Gigurath at a documented Linvak hunting location. Group is a difficulty rating. Simultaneous retail population is unknown."
+      },
+      "scale": 1.2
+    },
+    {
+      "id": 9313687021471929600,
+      "land": [
+        409.02,
+        898.62
+      ],
+      "roster": [
+        1191186510
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2wiki.info/index.php/Gigurath",
+        "sha256": "1c6e2850f2ce850d4f055303c774217ddef953073f33cb3d44076a9a5ca90f14",
+        "coordinates": [
+          -11.8,
+          -59.8
+        ],
+        "basis": "One Bominous Gigurath at a documented Linvak hunting location. Group is a difficulty rating. Simultaneous retail population is unknown. The anchor is displaced 29 m southwest to keep spacing from an existing Gurog camp."
+      },
+      "scale": 1.2
+    },
+    {
+      "id": 9313687021471929856,
+      "land": [
+        1391.28,
+        1150.56
+      ],
+      "roster": [
+        1191188162
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_killchiefbenamu.html",
+        "sha256": "e85a14aa9f08bbc0979241eb46e35f068b183151778c7209d4ac9540e1bc8aa0",
+        "coordinates": [
+          12.8,
+          36.4
+        ],
+        "basis": "Reconstructed point between Western Kydi Outpost (9.3N, 35.4E) and Kydi Vault (16.3N, 36.9E), the guide's outdoor hunting corridor. The Swamprunner has the native Chief Benamu quest-start death effect.",
+        "waypoint_sql_sha256": {
+          "outposts": "9746afc05330cf018a3bf3bab6e539c16a6bd54e6b1b959b083226c5e1cdcc58",
+          "vaults": "68b9e171fa92805f16269016759aa595a08c19977ed4d2957d34c1c65afce2ca"
+        },
+        "coordinate_basis": "Reconstructed camp anchor inside the named hunting area."
+      }
+    },
+    {
+      "id": 9313687021471930112,
+      "land": [
+        1906.38,
+        1213.8
+      ],
+      "roster": [
+        1191186477,
+        1191186477
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_puncturethesephalnefanes.html",
+        "sha256": "cfd4b8a387fa246fc8c97fdcd89c9b08f6ae3a90e5cb65f9762a5c468212ead2",
+        "coordinates": [
+          19,
+          86.9
+        ],
+        "basis": "Reconstructed hunting patch between Southeast Farali Outpost (18.8N, 86.4E) and Slaughter Plain (19.3N, 87.4E). The walkthrough identifies the quarry; the pair represents a hunt with unknown retail density.",
+        "waypoint_sql_sha256": {
+          "outposts": "9746afc05330cf018a3bf3bab6e539c16a6bd54e6b1b959b083226c5e1cdcc58",
+          "ringways": "fdac41e03b8857c0e8db17223272d02127921b6bcadefbd719b89532bf69baae"
+        },
+        "coordinate_basis": "Reconstructed camp anchor inside the named hunting area."
+      },
+      "scale": 1.1
+    },
+    {
+      "id": 9313687021471930368,
+      "land": [
+        1816.62,
+        1304.58
+      ],
+      "roster": [
+        1191190354,
+        1191189587
+      ],
+      "capacity": 2,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_rangersbestfriendlashertreats.html",
+        "sha256": "31ba0d3693ec6e544f72ec132a011ee952acef7be0b6ad30502e18156854f4e2",
+        "coordinates": [
+          27.9,
+          78.1
+        ],
+        "basis": "Reconstructed patch north of Central Farali Outpost (27.4N, 77.5E). The walkthrough identifies both ordinary Olthoi Grubs and Harvester Grubs in the southern part of the hunting area.",
+        "waypoint_sql_sha256": {
+          "outposts": "9746afc05330cf018a3bf3bab6e539c16a6bd54e6b1b959b083226c5e1cdcc58"
+        },
+        "coordinate_basis": "Reconstructed camp anchor inside the named hunting area."
+      }
+    },
+    {
+      "id": 9313687021471930624,
+      "land": [
+        1865.58,
+        1354.56
+      ],
+      "roster": [
+        1191190446
+      ],
+      "capacity": 1,
+      "regeneration_ms": 120000,
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/omishan_slowtheolthoimenace.html",
+        "sha256": "eeb135bc8208765c57b0d851b1fbadb636e6960cb36c70e2dab26b0779cc18fa",
+        "coordinates": [
+          32.8,
+          82.9
+        ],
+        "basis": "Outdoor quest starter near the Farali lifestone. The guide abbreviates the name to Olthoi Drone Grub; its Maturing variant carries the native Eff_BestowQuestKillBossOlthoiNymphNoble death effect. The later nymph objective is inside a hive."
+      }
+    }
+  ],
+  "npcs": [],
+  "quest_evidence": {
+    "40000101": {
+      "title": "The Sclavus Hierophant's Cabals",
+      "status": "Reference only. Fort encounters are active; staged quest, gated trophies, matching doors, and boss encounter remain to be implemented.",
+      "quest_giver": "47001767",
+      "guide": "http://ac2hero.e5i5o.com/quest/omishan_sclavushierophantscabals.html",
+      "guide_sha256": "d6b221f9763ecf4108a6462260468087de48ebc69cfb74da07bc1d8319b6c07e",
+      "native_take_quest": "40000101",
+      "native_take_status": "10000000",
+      "fort_stages": [
+        {
+          "preceptor": "47001759",
+          "talisman": "47001752",
+          "pickup_capture": {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_fort1_talisman_aufheben_quest_advance.elog",
+            "sha256": "7b25b3e6afd06421d0cf6676b23a3128986db5a984ce2319f68b7ddeb40f7989"
+          }
+        },
+        {
+          "preceptor": "4700175c",
+          "talisman": "47001753",
+          "pickup_capture": {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_fort2_talisman_aufheben_quest_advance.elog",
+            "sha256": "bcf9bcc977ad58d7af3949521a11c3403e868d59dba812cfe6f46eb8dc89d807"
+          }
+        },
+        {
+          "preceptor": "47001762",
+          "talisman": "47001756",
+          "pickup_capture": {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_fort3_talisman_aufheben_quest_advance.elog",
+            "sha256": "6917023c2df99756fde459bc7d1e760ed67ea34d08930193626a6e7f0544d9c6"
+          }
+        },
+        {
+          "preceptor": "47001765",
+          "talisman": "47001757",
+          "pickup_capture": {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_fort4_talisman_aufheben_quest_advance.elog",
+            "sha256": "3495366e091e0ba0c65674bad5af3e058577513d79b180ca78c455ab8c1ac4ab"
+          }
+        }
+      ],
+      "dungeon": {
+        "exterior_coordinates": [
+          8.8,
+          67.9
+        ],
+        "map_url": "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Sclavus_Hierophant_Temple.png",
+        "telepad_table": "AC2UtilSQL telepads, rows 290 (return) and 291 (arrival)",
+        "arrival_cell": "09fb010a",
+        "return_cell": "d68a0010",
+        "entry_capture": {
+          "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_portal_betreten.elog",
+          "sha256": "00fdae4238d750dce9b55ffbbb0c4b13ce3a2cf577be2559ce80378b804a0fe5"
+        },
+        "door_captures": [
+          {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_locked.door1.opening.elog",
+            "sha256": "4778100c7aff2f653a3efeb740cec1cc3527e5cf8628b9165624de21b937f8be",
+            "instance": "4009fb0000000001",
+            "template": "4700174e",
+            "lock_key": "4000004f",
+            "matching_talisman": "47001752",
+            "native_fixture_cell": "09fb0107",
+            "native_fixture_template": "47000301",
+            "native_fixture_xyz": [
+              -35.0,
+              20.0,
+              7.04
+            ]
+          },
+          {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_locked.door2.opening.elog",
+            "sha256": "c761b3e2815ff56bfbccf33286a4521241443af85cb5795db97b8b7982522c81",
+            "instance": "4009fb0000000002",
+            "template": "4700174f",
+            "lock_key": "40000050",
+            "matching_talisman": "47001753",
+            "native_fixture_cell": "09fb0120",
+            "native_fixture_template": "47000301",
+            "native_fixture_xyz": [
+              20.0,
+              -65.0,
+              -4.96
+            ]
+          },
+          {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_locked.door3.opening.elog",
+            "sha256": "32a93b17baa47a0cac37b409004378ab5f89b3c2276c76b7eec5efe0ddd5b77c",
+            "instance": "4009fb0000000003",
+            "template": "47001750",
+            "lock_key": "40000051",
+            "matching_talisman": "47001756",
+            "native_fixture_cell": "09fb013e",
+            "native_fixture_template": "47000301",
+            "native_fixture_xyz": [
+              75.0,
+              -195.0,
+              -19.96
+            ]
+          },
+          {
+            "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_locked.door4.opening.elog",
+            "sha256": "488adf652a01e1cce9251ec127bc896cc5302b9519c928b858808fcc2cebbb6a",
+            "instance": "4009fb0000000004",
+            "template": "47001751",
+            "lock_key": "40000052",
+            "matching_talisman": "47001757",
+            "native_fixture_cell": "09fb015e",
+            "native_fixture_template": "47000521",
+            "native_fixture_xyz": [
+              295.0,
+              -155.0,
+              -34.96
+            ]
+          }
+        ],
+        "boss": "4700175f",
+        "boss_talisman": "47001754",
+        "boss_pickup_capture": {
+          "file": "quest_die_kabale_des_sclavus_hierophanten_sclavus_hierophanten_tempel_boss_talisman_pingingup_quest_advance.elog",
+          "sha256": "17d2679e31664768812513bbc495c636e3c0d86e0f66e0270fb6ca7ecc297ef0"
+        },
+        "placement_basis": "The guide places Faisi beyond the four doors. A server position update during corpse looting places the interacting player in 09FB01C6, immediately before the animation and inventory transfer for 47001754. This identifies the boss chamber; the trace does not contain the living boss transform.",
+        "pickup_position": {
+          "actor": "interacting player",
+          "message": "00010086",
+          "cell": "09fb01c6",
+          "xyz": [
+            438.80127,
+            -114.58745,
+            -24.99511
+          ]
+        },
+        "door_basis": "Each opening capture identifies its static door IID. The native locked templates and talismans have matching Lock_KeyID values. The listed room fixtures line up with the captured approach. The entrance trace separately supplies the live transform for door one."
+      },
+      "reward_talisman": "47001755",
+      "acceptance_capture": {
+        "file": "quest_die_kabale_des_sclavus_hierophanten_received.elog",
+        "sha256": "bd9a875d3b82135551bb5c7a2d9f4f9c65995400c5865e72674727aee0c4a24c"
+      },
+      "delivery_capture": {
+        "file": "quest_die_kabale_des_sclavus_hierophanten_boss_talisman_delivery_quest_complete.elog",
+        "sha256": "7c7792190ca9ab2d8d5279d89e10b1b08268f64b093dfb11ceb5ef82500d447b"
+      },
+      "drop_basis": "The walkthrough identifies each talisman and capture records show quest advancement on pickup. The preceptor records do not provide trophy probabilities; item pickup carries the native quest restriction and quest-specific effects."
+    }
+  }
+}

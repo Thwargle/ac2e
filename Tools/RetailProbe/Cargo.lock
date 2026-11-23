@@ -86,9 +86,11 @@ dependencies = [
 name = "ac2-retail-probe"
 version = "0.1.0"
 dependencies = [
+ "ac2-assets",
  "ac2-core",
  "ac2-dat",
  "ac2-db",
+ "ac2-net",
  "ac2-script",
  "ac2-world",
  "serde_json",

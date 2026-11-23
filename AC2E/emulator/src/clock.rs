@@ -41,7 +41,9 @@ impl WorldClock {
     }
 
     pub fn seconds(&self) -> f64 { self.at(Instant::now()) }
-    fn at(&self, now: Instant) -> f64 {
+    /// Stamp a simulation sample at the instant it was evaluated, rather than
+    /// at its later serialization time after collision/content work finishes.
+    pub(crate) fn at(&self, now: Instant) -> f64 {
         self.base + now.saturating_duration_since(self.started).as_secs_f64()
     }
 }

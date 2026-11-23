@@ -1,0 +1,1259 @@
+{
+  "version": 1,
+  "sources": [
+    "http://ac2hero.e5i5o.com/maps/dungeonimg/AC2_Ossuary.png",
+    "http://ac2hero.e5i5o.com/quest/linvak_killossein.html",
+    "Pyreal_DB_Insert_Telepad.sql / telepads 1027, 1028"
+  ],
+  "notes": [
+    "The four captures share two named portal CREATEs. The source and installed portal visual agree. Paired telepads 1027 and 1028 supply headings and arrival coordinates. For the exterior return, the first stable player position after arrival fits the installed collision mesh.",
+    "Repeated CREATE positions with different source IIDs identify respawn homes. Each home is counted once. The main capture contains two visits. Groups contain only neighboring actors observed together in the same cell; other homes are point spawners.",
+    "Revenant Legionary maps by treasure profile 774 and the Asmolum quest kill effect. Revenant Prefect maps by treasure profile 780. Other same-name variants have profiles 1259 and 1260. Ossein is a unique named monster with profile 1160 and the Servant of the Bones completion effect in both builds.",
+    "Gurog Captain's exact native variant is unresolved. The Trove and its encounter gates are withheld pending supported interaction evidence.",
+    "AC2 Hero's Kill Ossein guide identifies one randomly appearing Servant of the Bones near the Ossuary. The three outdoor approach areas west and southwest of the captured portal are inferred. Ground, body, and separation are checked against the installed DAT and existing placements. Each lifetime occupies one randomly chosen home. The refill uses the emulator creature policy."
+  ],
+  "captures": {
+    "d142a9e8c2f3": {
+      "archive_sha256": "d142a9e8c2f39bcec74e856361eb0815ad3c03bbc0a9f33517595b00bffdec4d",
+      "path": "2e638a3b6320c2e2/pkt_2017-1-27_1485500185_log.pcap"
+    },
+    "e14e5082b872": {
+      "archive_sha256": "e14e5082b872065e9a5013eea5a10da335a85d8b0e33f7f55ac3a03ba5a08e70",
+      "path": "e2eca91beaa611d4/pkt_2017-1-27_1485500038_log.pcap"
+    },
+    "ff18829f2593": {
+      "archive_sha256": "ff18829f25937268e942dfd753c472e849d4725af378ce4b341666702bdf24df",
+      "path": "e2eca91beaa611d4/pkt_2017-1-27_1485514200_log.pcap"
+    },
+    "8ba7f54dd173": {
+      "archive_sha256": "8ba7f54dd173afd5f5678b9bcc5ffafc1753dc0b6d8a4f74ab54666d8113c607",
+      "path": "e2a72ca935e2ecf1/pkt_2017-1-21_1485040337_log.pcap"
+    }
+  },
+  "templates": {
+    "1191186524": {
+      "name": "Revenant Legionary",
+      "visual": 520094817
+    },
+    "1191184426": {
+      "name": "Revenant Prefect",
+      "visual": 520094817
+    },
+    "1191188382": {
+      "name": "Ossein, Digger of Graves",
+      "visual": 520097377
+    },
+    "1191187537": {
+      "name": "Portal",
+      "visual": 520094494
+    },
+    "1191188383": {
+      "name": "Servant of the Bones",
+      "visual": 520097376
+    }
+  },
+  "camps": [
+    {
+      "id": 9313715643050099200,
+      "land": [
+        665.2860367999999,
+        970.71827505
+      ],
+      "roaming_homes": [
+        [
+          665.2860367999999,
+          970.71827505
+        ],
+        [
+          662.89196245,
+          969.6200123000001
+        ],
+        [
+          665.7553341,
+          967.1846443000001
+        ]
+      ],
+      "roster": [
+        1191188383,
+        1191188383,
+        1191188383
+      ],
+      "capacity": 1
+    }
+  ],
+  "npcs": [],
+  "validate_captured_bodies": true,
+  "interiors": [
+    {
+      "id": 9313715643050098688,
+      "capture_id": "8130000089216d57",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191184426,
+      "cell": 133890305,
+      "position": [
+        20.844783782958984,
+        -22.595943450927734,
+        1.058666467666626
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227248"
+      }
+    },
+    {
+      "id": 9313715643050098689,
+      "capture_id": "8130000089216d60",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890308,
+      "position": [
+        42.04277038574219,
+        21.899940490722656,
+        1.0762699842453003
+      ],
+      "rotation": [
+        0.3826834261417389,
+        0.0,
+        0.0,
+        0.9238795638084412
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227251"
+      }
+    },
+    {
+      "id": 9313715643050098690,
+      "capture_id": "8130000089216d61",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890310,
+      "position": [
+        -3.3260927200317383,
+        20.381052017211914,
+        1.0625791549682617
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089216f03"
+      }
+    },
+    {
+      "id": 9313715643050098691,
+      "capture_id": "8130000089216d62",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890324,
+      "position": [
+        2.566204071044922,
+        90.43653106689453,
+        1.0257130861282349
+      ],
+      "rotation": [
+        -0.4999999701976776,
+        0.0,
+        0.0,
+        0.866025447845459
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089216f3c"
+      }
+    },
+    {
+      "id": 9313715643050098692,
+      "capture_id": "8130000089216d63",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890326,
+      "position": [
+        22.10059356689453,
+        80.82242584228516,
+        1.016969084739685
+      ],
+      "rotation": [
+        0.7867449522018433,
+        0.0,
+        0.0,
+        0.6172782182693481
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089216f2c"
+      }
+    },
+    {
+      "id": 9313715643050098693,
+      "capture_id": "8130000089216d6c",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890329,
+      "position": [
+        13.182488441467285,
+        112.22445678710938,
+        1.0745769739151
+      ],
+      "rotation": [
+        0.704925537109375,
+        0.0,
+        0.0,
+        0.7092812657356262
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922725d"
+      }
+    },
+    {
+      "id": 9313715643050098694,
+      "capture_id": "8130000089216d0c",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890354,
+      "position": [
+        10.08932113647461,
+        84.27613830566406,
+        10.96696949005127
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "81300000892271fd"
+      }
+    },
+    {
+      "id": 9313715643050098695,
+      "capture_id": "8130000089216d6e",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890362,
+      "position": [
+        -72.44712829589844,
+        48.20589065551758,
+        11.070704460144043
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922725f"
+      }
+    },
+    {
+      "id": 9313715643050098696,
+      "capture_id": "81300000892271f2",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890367,
+      "position": [
+        -71.66146087646484,
+        37.68428421020508,
+        11.22130298614502
+      ],
+      "rotation": [
+        0.9999241232872009,
+        0.0,
+        0.0,
+        -0.012319659814238548
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "8ba7f54dd173",
+        "source_iid": "81300000890c4023"
+      }
+    },
+    {
+      "id": 9313715643050098697,
+      "capture_id": "8130000089216d00",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890383,
+      "position": [
+        -40.29096221923828,
+        54.579986572265625,
+        11.018667221069336
+      ],
+      "rotation": [
+        0.37841111421585083,
+        0.0,
+        0.0,
+        0.9256376624107361
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "81300000892271f1"
+      }
+    },
+    {
+      "id": 9313715643050098698,
+      "capture_id": "8130000089216d33",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890434,
+      "position": [
+        -50.80146026611328,
+        64.50074768066406,
+        1.0215322971343994
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227224"
+      }
+    },
+    {
+      "id": 9313715643050098699,
+      "capture_id": "8130000089216d32",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890437,
+      "position": [
+        -39.25078582763672,
+        75.26913452148438,
+        1.0218861103057861
+      ],
+      "rotation": [
+        0.704925537109375,
+        0.0,
+        0.0,
+        0.7092812657356262
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227223"
+      }
+    },
+    {
+      "id": 9313715643050098700,
+      "capture_id": "8130000089216d0d",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890467,
+      "position": [
+        67.67218780517578,
+        38.601104736328125,
+        1.016968011856079
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "81300000892271fe"
+      }
+    },
+    {
+      "id": 9313715643050098701,
+      "capture_id": "8130000089216d0e",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890468,
+      "position": [
+        67.9486312866211,
+        62.389747619628906,
+        1.0169670581817627
+      ],
+      "rotation": [
+        0.24988310039043427,
+        0.0,
+        0.0,
+        0.9682760238647461
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "81300000892271ff"
+      }
+    },
+    {
+      "id": 9313715643050098702,
+      "capture_id": "8130000089216d19",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890523,
+      "position": [
+        62.21144104003906,
+        19.563718795776367,
+        -8.974284172058105
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922720a"
+      }
+    },
+    {
+      "id": 9313715643050098703,
+      "capture_id": "8130000089216d3d",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191184426,
+      "cell": 133890561,
+      "position": [
+        -48.419742584228516,
+        -6.879752159118652,
+        -5.920565605163574
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089225bae"
+      }
+    },
+    {
+      "id": 9313715643050098704,
+      "capture_id": "8130000089216d3f",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890574,
+      "position": [
+        -26.15550994873047,
+        14.197120666503906,
+        -8.980875015258789
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227230"
+      }
+    },
+    {
+      "id": 9313715643050098705,
+      "capture_id": "8130000089216d3e",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191184426,
+      "cell": 133890575,
+      "position": [
+        -15.105962753295898,
+        20.50122833251953,
+        -8.981332778930664
+      ],
+      "rotation": [
+        0.7221865653991699,
+        0.0,
+        0.0,
+        0.6916983127593994
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922722f"
+      }
+    },
+    {
+      "id": 9313715643050098706,
+      "capture_id": "8130000089216d1b",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191186524,
+      "cell": 133890606,
+      "position": [
+        7.45357084274292,
+        91.95927429199219,
+        -8.917313575744629
+      ],
+      "rotation": [
+        -0.4999999701976776,
+        0.0,
+        0.0,
+        0.866025447845459
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "8ba7f54dd173",
+        "source_iid": "81300000890c403d"
+      }
+    },
+    {
+      "id": 9313715643050098707,
+      "capture_id": "8130000089216d24",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890611,
+      "position": [
+        64.26416778564453,
+        83.44105529785156,
+        -8.981921195983887
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227215"
+      }
+    },
+    {
+      "id": 9313715643050098708,
+      "capture_id": "8130000089216d6d",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890683,
+      "position": [
+        -72.72821807861328,
+        112.00987243652344,
+        7.085705757141113
+      ],
+      "rotation": [
+        0.7136101126670837,
+        0.0,
+        0.0,
+        -0.7005430459976196
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922725e"
+      }
+    },
+    {
+      "id": 9313715643050098709,
+      "capture_id": "8130000089216d3c",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191184426,
+      "cell": 133890695,
+      "position": [
+        -41.25102996826172,
+        126.05258178710938,
+        -1.9413330554962158
+      ],
+      "rotation": [
+        0.24988310039043427,
+        0.0,
+        0.0,
+        0.9682760238647461
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922722d"
+      }
+    },
+    {
+      "id": 9313715643050098710,
+      "capture_id": "8130000089216d26",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191184426,
+      "cell": 133890696,
+      "position": [
+        49.17880630493164,
+        113.14205932617188,
+        6.058506965637207
+      ],
+      "rotation": [
+        -0.2617928385734558,
+        0.0,
+        0.0,
+        0.9651240706443787
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227217"
+      }
+    },
+    {
+      "id": 9313715643050098711,
+      "capture_id": "8130000089216d4b",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890702,
+      "position": [
+        -54.240413665771484,
+        173.18441772460938,
+        -1.983029842376709
+      ],
+      "rotation": [
+        0.7942898869514465,
+        0.0,
+        0.0,
+        -0.6075389385223389
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922723c"
+      }
+    },
+    {
+      "id": 9313715643050098712,
+      "capture_id": "8130000089216d54",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890702,
+      "position": [
+        -53.343101501464844,
+        169.84109497070312,
+        -1.983029842376709
+      ],
+      "rotation": [
+        0.7136101126670837,
+        0.0,
+        0.0,
+        -0.7005430459976196
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227245"
+      }
+    },
+    {
+      "id": 9313715643050098713,
+      "capture_id": "8130000089216d31",
+      "capture_entity": "47002c88",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191184426,
+      "cell": 133890703,
+      "position": [
+        -32.15399932861328,
+        173.7216339111328,
+        -1.9813328981399536
+      ],
+      "rotation": [
+        0.24988310039043427,
+        0.0,
+        0.0,
+        0.9682760238647461
+      ],
+      "scale": 1.100000023841858,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227222"
+      }
+    },
+    {
+      "id": 9313715643050098714,
+      "capture_id": "8130000089216d4a",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890730,
+      "position": [
+        -52.00188064575195,
+        197.1112518310547,
+        -1.9830299615859985
+      ],
+      "rotation": [
+        0.7136101126670837,
+        0.0,
+        0.0,
+        -0.7005430459976196
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922723b"
+      }
+    },
+    {
+      "id": 9313715643050098715,
+      "capture_id": "8130000089216d49",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890732,
+      "position": [
+        -47.28385543823242,
+        198.59120178222656,
+        -1.9830299615859985
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "813000008922723a"
+      }
+    },
+    {
+      "id": 9313715643050098716,
+      "capture_id": "8130000089216d48",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890732,
+      "position": [
+        -41.130882263183594,
+        197.99496459960938,
+        -1.9830299615859985
+      ],
+      "rotation": [
+        -0.006159864831715822,
+        0.0,
+        0.0,
+        0.9999810457229614
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227239"
+      }
+    },
+    {
+      "id": 9313715643050098717,
+      "capture_id": "8130000089216d56",
+      "capture_entity": "47002cc4",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191188382,
+      "cell": 133890764,
+      "position": [
+        -66.48585510253906,
+        210.41796875,
+        -1.9430299997329712
+      ],
+      "rotation": [
+        0.7136101126670837,
+        0.0,
+        0.0,
+        -0.7005430459976196
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227247"
+      }
+    },
+    {
+      "id": 9313715643050098718,
+      "capture_id": "8130000089216d27",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890767,
+      "position": [
+        -10.024250030517578,
+        208.48495483398438,
+        -1.9336307048797607
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227218"
+      }
+    },
+    {
+      "id": 9313715643050098719,
+      "capture_id": "8130000089216d30",
+      "capture_entity": "47002c84",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593"
+      ],
+      "entity": 1191186524,
+      "cell": 133890771,
+      "position": [
+        -45.532711029052734,
+        226.19436645507812,
+        -1.9811395406723022
+      ],
+      "rotation": [
+        0.24988310039043427,
+        0.0,
+        0.0,
+        0.9682760238647461
+      ],
+      "scale": null,
+      "recurrence": {
+        "capture": "d142a9e8c2f3",
+        "source_iid": "8130000089227221"
+      }
+    }
+  ],
+  "interior_groups": [
+    {
+      "id": 9313715643050098688,
+      "members": [
+        9313715643050098688
+      ]
+    },
+    {
+      "id": 9313715643050098689,
+      "members": [
+        9313715643050098689
+      ]
+    },
+    {
+      "id": 9313715643050098690,
+      "members": [
+        9313715643050098690
+      ]
+    },
+    {
+      "id": 9313715643050098691,
+      "members": [
+        9313715643050098691
+      ]
+    },
+    {
+      "id": 9313715643050098692,
+      "members": [
+        9313715643050098692
+      ]
+    },
+    {
+      "id": 9313715643050098693,
+      "members": [
+        9313715643050098693
+      ]
+    },
+    {
+      "id": 9313715643050098694,
+      "members": [
+        9313715643050098694
+      ]
+    },
+    {
+      "id": 9313715643050098695,
+      "members": [
+        9313715643050098695
+      ]
+    },
+    {
+      "id": 9313715643050098696,
+      "members": [
+        9313715643050098696
+      ]
+    },
+    {
+      "id": 9313715643050098697,
+      "members": [
+        9313715643050098697
+      ]
+    },
+    {
+      "id": 9313715643050098698,
+      "members": [
+        9313715643050098698
+      ]
+    },
+    {
+      "id": 9313715643050098699,
+      "members": [
+        9313715643050098699
+      ]
+    },
+    {
+      "id": 9313715643050098700,
+      "members": [
+        9313715643050098700
+      ]
+    },
+    {
+      "id": 9313715643050098701,
+      "members": [
+        9313715643050098701
+      ]
+    },
+    {
+      "id": 9313715643050098702,
+      "members": [
+        9313715643050098702
+      ]
+    },
+    {
+      "id": 9313715643050098703,
+      "members": [
+        9313715643050098703
+      ]
+    },
+    {
+      "id": 9313715643050098704,
+      "members": [
+        9313715643050098704
+      ]
+    },
+    {
+      "id": 9313715643050098705,
+      "members": [
+        9313715643050098705
+      ]
+    },
+    {
+      "id": 9313715643050098706,
+      "members": [
+        9313715643050098706
+      ]
+    },
+    {
+      "id": 9313715643050098707,
+      "members": [
+        9313715643050098707
+      ]
+    },
+    {
+      "id": 9313715643050098708,
+      "members": [
+        9313715643050098708
+      ]
+    },
+    {
+      "id": 9313715643050098709,
+      "members": [
+        9313715643050098709
+      ]
+    },
+    {
+      "id": 9313715643050098710,
+      "members": [
+        9313715643050098710
+      ]
+    },
+    {
+      "id": 9313715643050098711,
+      "members": [
+        9313715643050098711,
+        9313715643050098712
+      ],
+      "captured_together": true
+    },
+    {
+      "id": 9313715643050098713,
+      "members": [
+        9313715643050098713
+      ]
+    },
+    {
+      "id": 9313715643050098714,
+      "members": [
+        9313715643050098714
+      ]
+    },
+    {
+      "id": 9313715643050098715,
+      "members": [
+        9313715643050098715,
+        9313715643050098716
+      ],
+      "captured_together": true
+    },
+    {
+      "id": 9313715643050098717,
+      "members": [
+        9313715643050098717
+      ]
+    },
+    {
+      "id": 9313715643050098718,
+      "members": [
+        9313715643050098718
+      ]
+    },
+    {
+      "id": 9313715643050098719,
+      "members": [
+        9313715643050098719
+      ]
+    }
+  ],
+  "portals": [
+    {
+      "id": 9313715643050098944,
+      "capture_id": "4053790000000001",
+      "capture_entity": "47001154",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191187537,
+      "cell": 1400438830,
+      "position": [
+        101.71739196777344,
+        110.5554428100586,
+        152.34469604492188
+      ],
+      "rotation": [
+        0.9368935227394104,
+        0.0,
+        0.0,
+        -0.34961485862731934
+      ],
+      "scale": null,
+      "name": "The Ossuary",
+      "destination_telepad": 1027
+    },
+    {
+      "id": 9313715643050098945,
+      "capture_id": "4007fb000000003c",
+      "capture_entity": "47001154",
+      "captures": [
+        "d142a9e8c2f3",
+        "e14e5082b872",
+        "ff18829f2593",
+        "8ba7f54dd173"
+      ],
+      "entity": 1191187537,
+      "cell": 133890431,
+      "position": [
+        -20.658613204956055,
+        39.97901916503906,
+        1.5505889654159546
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": null,
+      "name": "Exit to Surface from The Ossuary",
+      "destination_telepad": 1028,
+      "return_evidence": {
+        "capture": "d142a9e8c2f3",
+        "movement_code": "0001008e",
+        "teleport_seconds": 16510.39621,
+        "teleport_position": [
+          99.230003,
+          104.790001,
+          163.945114
+        ],
+        "teleport_frame_sha256": "9a7e43970b5f6ef2f1fe0b296f9cb45f9151244c17ec4ea4e672c924a56f3f04",
+        "stable_seconds": 16513.52136,
+        "stable_position": [
+          94.839836,
+          105.028816,
+          161.756714
+        ],
+        "stable_frame_sha256": "9a733d46fa194f8d727ded4b44c2ecc10653125bb1be64493ddeca612732b237"
+      }
+    }
+  ],
+  "validate_camp_bodies": true
+}

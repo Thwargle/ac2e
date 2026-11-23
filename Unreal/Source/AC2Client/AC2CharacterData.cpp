@@ -4,6 +4,7 @@
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Fnv.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -62,7 +63,7 @@ FString ItemLabel(FString Source)
     return Out;
 }
 FString StringTable(FAC2DatArchive &Local, uint32 Table, uint32 Key, int32 Depth = 0,
-                   const FString *Argument = nullptr)
+                   const FString *Argument = nullptr, const TMap<uint32,FString>* Arguments = nullptr)
 {
     FString Error;
     TArray<uint8> Bytes;
@@ -90,7 +91,8 @@ FString StringTable(FAC2DatArchive &Local, uint32 Table, uint32 Key, int32 Depth
         }
         R.Align();
         uint16 Variables = R.Short();
-        R.Take(int64(Variables) * 4);
+        TArray<uint32> VariableIds;
+        for(int32 J=0;J<Variables && R.Good;++J)VariableIds.Add(R.Word());
         R.Align();
         if (Header & 32768)
         {
@@ -100,11 +102,19 @@ FString StringTable(FAC2DatArchive &Local, uint32 Table, uint32 Key, int32 Depth
             R.Align();
         }
         // Map notes contain one coordinate argument between two localized string segments.
-        const bool Formatted = Argument && Variables == 1 && Segments.Num() == 2;
+        bool Formatted = Argument && Variables == 1 && Segments.Num() == 2;
         if (Formatted) Text = Segments[0] + *Argument + Segments[1];
+        if(Arguments && Variables>0 && VariableIds.Num()==Variables &&
+            (Segments.Num()==Variables || Segments.Num()==Variables+1))
+        {
+            Formatted=true;Text.Reset();
+            for(int32 J=0;J<Variables;++J){const auto* Value=Arguments->Find(VariableIds[J]);
+                if(!Value){Formatted=false;break;}Text+=Segments[J]+*Value;}
+            if(Segments.Num()>Variables)Text+=Segments.Last();
+        }
         if (K == Key && R.Good && (!Variables || Formatted))
             return Text.IsEmpty() && PrivateTable && PrivateTable != Table
-                       ? StringTable(Local, PrivateTable, Key, Depth + 1, Argument)
+                       ? StringTable(Local, PrivateTable, Key, Depth + 1, Argument, Arguments)
                        : Text;
     }
     return {};
@@ -140,14 +150,13 @@ FString ReadItemStringInfo(FAC2AssetReader& R,FAC2DatArchive& Local,int32 Depth=
     {int32 Start;if(!Text.FindLastChar('[',Start)||Text.Len()-Start>8)break;Text.LeftInline(Start);}
     return Text;
 }
-void ReadItemDescriptor(FAC2DatArchive& Portal,FAC2DatArchive& Local,FAC2ItemDefinition& Item)
+void ReadItemDescriptor(FAC2DatArchive& Portal,FAC2DatArchive& Local,FAC2ItemDefinition& Item,TConstArrayView<uint8> Entity)
 {
     TArray<uint8> Bytes;FString Error;const uint32 Did=0x81000000|(Item.Id&0xffffff);
     if(!Portal.Read(Did,Bytes,Error))return;
     FAC2AssetReader R(MoveTemp(Bytes));const uint32 Header=R.Word();
     if(R.Word()!=Did || !(Header&1))return;
-    // CBaseQualities starts with gmWeenieDesc. Only read its bounded metadata
-    // prefix; the remaining quality tables are not needed for inventory art.
+    // CBaseQualities starts with gmWeenieDesc.
     const uint32 Mask=R.Word();if(Mask&1)R.Word();if(Mask&0x02000000)R.Word();if(Mask&2)R.Word();
     const FString Name=(Mask&4)?ReadItemStringInfo(R,Local):FString();
     if(Mask&8)ReadItemStringInfo(R,Local);
@@ -155,19 +164,48 @@ void ReadItemDescriptor(FAC2DatArchive& Portal,FAC2DatArchive& Local,FAC2ItemDef
     if(!R.Good)return;
     if(!Name.IsEmpty())Item.Name=Name;
     if(Icon>>24==0x41)Item.Icon=Icon;
-    // Native pile/worn pairs recovered from matching EntityDesc families.
-    // A shared mesh cannot supply randomized item statistics.
-    static const struct {uint32 Definition,Race,Slot;int32 Armor;} Wearables[]={
+    // Template numbers are reused across releases. Apply the recovered pile/worn
+    // pair only to the exact qualities and entity records used by the recovery tool.
+    static const struct {uint32 Definition,Race,Slot;int32 Armor;uint64 QualitiesHash,EntityHash;} Wearables[]={
 #include "AC2RecoveredApparel.inl"
     };
-    for(const auto& W:Wearables)if(W.Definition==Item.Id)
-    {Item.Race=W.Race;Item.Slots=Item.Preferred=W.Slot;Item.HasArmor=W.Armor>=0;Item.Armor=FMath::Max(0,W.Armor);break;}
+    for(const auto& W:Wearables)
+    {
+        if(W.Definition!=Item.Id)continue;
+        if(FFnv::MemFnv64(R.Data.GetData(),R.Data.Num())==W.QualitiesHash &&
+           FFnv::MemFnv64(Entity.GetData(),Entity.Num())==W.EntityHash)
+        {
+            Item.Race=W.Race;Item.Slots=Item.Preferred=W.Slot;
+            Item.HasArmor=W.Armor>=0;Item.Armor=FMath::Max(0,W.Armor);
+        }
+        break;
+    }
+    // gmWeenieDesc::StreamPack (admin 006037C0): skip the rest of the
+    // descriptor in serialization order to reach the integer qualities.
+    // Bit 0x800000 has no payload. Unknown layouts remain unknown.
+    if((Header&~0xfffu) || !(Header&2) || (Mask&~0x7fffbbffu))return;
+    for(uint32 Bit:{0x20u,0x40u,0x100u,0x200u,0x20000000u,0x40000000u,0x4000000u})if(Mask&Bit)R.Take(8);
+    for(uint32 Bit:{0x80u,0x800u,0x1000u,0x2000u,0x200000u,0x400000u,0x8000u,0x10000u,
+        0x20000u,0x40000u,0x80000u,0x100000u,0x8000000u,0x10000000u})if(Mask&Bit)R.Take(4);
+    const uint32 Table=R.Word(),Count=Table&0xffffff;
+    if(!R.Good || Table>>24>22 || Count>512 || uint32(R.Left())<Count*8)return;
+    TMap<uint32,uint32> Stats;
+    for(uint32 I=0;I<Count;++I)
+    {
+        const uint32 Key=R.Word(), Value=R.Word();
+        if(Stats.Contains(Key))return;
+        Stats.Add(Key,Value);
+    }
+    if(const uint32* V=Stats.Find(0xfa0))Item.Implement=*V;
+    if(const uint32* V=Stats.Find(0x2d0);V && *V<=16)Item.UseTargets=*V;
+    if(const uint32* V=Stats.Find(0x113))Item.Slots=*V;
+    if(const uint32* V=Stats.Find(0x11a))Item.Preferred=*V;
+    if(const uint32* V=Stats.Find(0x262);V && *V<=MAX_int32){Item.Armor=*V;Item.HasArmor=true;}
 }
 // Entity overrides have typed properties. Unknown script defaults remain unknown instead of fabricated stats.
 void ReadItem(FAC2DatArchive &Portal, FAC2DatArchive &Local, const TMap<uint32, uint32> &Types,
               FAC2ItemDefinition &Item)
 {
-    ReadItemDescriptor(Portal,Local,Item);
     FString Error;
     TArray<uint8> Bytes;
     // Closed/Open modes are shared by doors and containers. Resolve the native
@@ -182,7 +220,9 @@ void ReadItem(FAC2DatArchive &Portal, FAC2DatArchive &Local, const TMap<uint32, 
         Base=(Flags&8)?Parent.Word():0;if(!Parent.Good){Base=0;break;}
     }
     Item.NativeClass=(Base>>24)==0x47?0:Base;
-    if (!Portal.Read(Item.Id, Bytes, Error))
+    const bool HasEntity=Portal.Read(Item.Id, Bytes, Error);
+    ReadItemDescriptor(Portal,Local,Item,HasEntity?TConstArrayView<uint8>(Bytes):TConstArrayView<uint8>());
+    if (!HasEntity)
         return;
     FAC2AssetReader R(MoveTemp(Bytes));
     uint32 Bits = R.Word();
@@ -314,6 +354,10 @@ FString AC2ReadPackedString(FAC2AssetReader &Reader, int32 Width)
 FString AC2ReadUIString(FAC2DatArchive &Local, uint32 Table, uint32 Key, const FString *Argument)
 {
     return StringTable(Local, Table, Key, 0, Argument);
+}
+FString AC2FormatUIString(FAC2DatArchive &Local, uint32 Table, uint32 Key, const TMap<uint32,FString>& Arguments)
+{
+    return StringTable(Local,Table,Key,0,nullptr,&Arguments);
 }
 
 bool FAC2CharacterCatalog::DecodeMatrix(TConstArrayView<uint8> Bytes)

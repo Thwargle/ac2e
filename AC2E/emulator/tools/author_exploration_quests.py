@@ -54,7 +54,7 @@ def build():
                                            basis='Recovered journal outgoing ringway coordinate; inferred obelisk 8m east, native ground search <=32m.')))
             used.add(entity)
     referral = wiki['Find the Arwic Mines Overseer']
-    return dict(version=1, policy='Reconstructed quest progression, XP and timers. Native text/IDs; guide rewards. Buff effects are not enabled.',
+    return dict(version=1, policy='Reconstructed quest progression, XP and timers. Native text/IDs; guide rewards. Ordered obelisk visits and the Explorer turn-in award timed blessings from the installed DAT profile.',
                 quests=quests, referral=dict(id=0x400000c0, npc=0x470015ad,
                 title='Find the Arwic Mines Overseer', level=1, xp=0,
                 limit_seconds=172800, repeat_seconds=86400,

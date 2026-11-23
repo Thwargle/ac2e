@@ -28,7 +28,23 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         const auto* A=Buttons.Find(*FString::Printf(TEXT("Cell%d"),From));
         const auto* B=Buttons.Find(*FString::Printf(TEXT("Cell%d"),To));if(!A||(To>=0&&!B))return false;
         auto Point=[&](const FSlateRect& R){return GetCachedGeometry().LocalToAbsolute(FVector2D((R.Left+R.Right)*.5,(R.Top+R.Bottom)*.5)*Scale);};
-        const auto Start=Point(*A),End=To<0?GetCachedGeometry().LocalToAbsolute(FVector2D(Size.X*.55,Size.Y*.35)*Scale):Point(*B);auto& App=FSlateApplication::Get();
+        const auto Start=Point(*A);
+        FVector2D End=FVector2D::ZeroVector;
+        if(To<0)
+        {
+            // Saved movable panels can cover a formerly valid fixed world
+            // point. Select an actual world pixel without moving user panels.
+            bool Found=false;
+            for(float Y:{.35f,.5f,.2f,.65f})for(float X:{.55f,.7f,.4f,.85f,.25f})
+            {
+                const FVector2D Candidate(Size.X*X,Size.Y*Y);
+                if(!Found && !OwnsPointer(Candidate))
+                {End=GetCachedGeometry().LocalToAbsolute(Candidate*Scale);Found=true;}
+            }
+            if(!Found)return false;
+        }
+        else End=Point(*B);
+        auto& App=FSlateApplication::Get();
         DragStart=Start;DragEnd=End;
         auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
         auto Path=App.LocateWindowUnderMouse(Start,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
@@ -42,6 +58,8 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         const auto& I=Profile->Items[Index];Pack=0;PackRow=I.Equipped?0:FMath::Max(0,I.Cell/6-1);Rebuild();
         const FName Key(*(I.Equipped?FString::Printf(TEXT("Item%d"),Index):FString::Printf(TEXT("Cell%d"),I.Cell)));
         const auto* R=Buttons.Find(Key);if(!R)return false;
+        const FVector2D Local((R->Left+R->Right)*.5,(R->Top+R->Bottom)*.5);
+        if(!AllowsPanelButton(Key,Local))return false;
         const auto Absolute=GetCachedGeometry().LocalToAbsolute(FVector2D((R->Left+R->Right)*.5,(R->Top+R->Bottom)*.5)*Scale);
         auto& App=FSlateApplication::Get();auto Window=App.FindWidgetWindow(SharedThis(this));if(!Window)return false;
         auto Path=App.LocateWindowUnderMouse(Absolute,{Window.ToSharedRef()},false);if(!Path.IsValid())return false;
@@ -51,7 +69,7 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         App.RoutePointerUpEvent(Path,FPointerEvent(0,Absolute,Absolute,{},EKeys::LeftMouseButton,0,FModifierKeysState()));return true;
     };
     const int32 Sword=Item(0x470007ee),Staff=Item(0x470007e0);
-    if((Sword==INDEX_NONE && Step!=11) || Staff==INDEX_NONE)return Fail(TEXT("Starter equipment is missing"));
+    if((Sword==INDEX_NONE && (Step<12 || Step>14)) || Staff==INDEX_NONE)return Fail(TEXT("Starter equipment is missing"));
     switch(Step)
     {
     case 0: Net->SetCombat(false);break;
@@ -65,7 +83,9 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         if(!ClickItem(Staff))return Fail(TEXT("Staff double-click did not route"));break;
     case 3:
     {
-        if(Profile->Items[Staff].Equipped!=0x40 || Profile->Items[Sword].Equipped)return Fail(TEXT("Second weapon replacement failed"));
+        if(Profile->Items[Staff].Equipped!=0x40 || Profile->Items[Sword].Equipped){
+            Error=FString::Printf(TEXT("Second weapon replacement failed: staff=%u sword=%u selected=%s notice=%s"),Profile->Items[Staff].Equipped,
+                Profile->Items[Sword].Equipped,*SelectedNetworkItem,*Mode->Notice);return false;}
         Rebuild();
         for(const auto& Icon:Icons)if(!Native.Brush(Icon.Image)){Error=FString::Printf(TEXT("Inventory icon texture missing: %08X"),Icon.Image);return false;}
         FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-icons-tooltip.png"),true,false);
@@ -81,6 +101,9 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
     case 4:
     {
         if(Net->ExaminationPending || Net->ExaminationId!=Net->PlayerId || !Net->ExaminationRows.ContainsByPredicate([](const auto& R){return R.Text.Contains(TEXT("Vigor:"));}))return Fail(TEXT("Self examination did not receive authoritative vitals"));
+        // Self-examination intentionally raises Examine. Resume interacting
+        // with Inventory; saved panel positions may overlap its scroll area.
+        RaiseWindow(FAC2UILayout::Token(TEXT("InventoryField")));
         Pack=0;PackRow=0;Rebuild();
         const FIntRect TopThumb=PackThumb;
         if(PackMaxScroll<=0 || TopThumb.IsEmpty() || PackBar.Height()<=TopThumb.Height())return Fail(TEXT("Inventory has no usable scroll thumb"));
@@ -133,14 +156,28 @@ bool SAC2GameUI::SmokeInventoryInput(int32 Step,FString& Error)
         if(!HasMouseCapture() || DragItem.IsEmpty())return Fail(TEXT("World drag lost capture while held"));
         if(!ReleaseDrag())return Fail(TEXT("World drop release did not route"));break;
     case 11:
+    {
+        const auto* PC=Mode->GetWorld()->GetFirstPlayerController();
+        const auto* Pawn=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
+        if(!Pawn || !Pawn->HandlingItem() || Sword==INDEX_NONE)return Fail(TEXT("Drop skipped its native reach or committed before contact"));
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-putdown-reach.png"),true,false);break;
+    }
+    case 12:
         if(Sword!=INDEX_NONE || !Net->RadarContacts().ContainsByPredicate([&](const auto& C){return C.Id==DroppedId && C.Actor.IsValid();}))return Fail(TEXT("World drop did not transfer the owned item to a rendered object"));
         FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-world-drop.png"),true,false);
         Net->SelectTarget(DroppedId);Net->UseTarget();break;
-    case 12:
+    case 13:
+    {
+        const auto* PC=Mode->GetWorld()->GetFirstPlayerController();
+        const auto* Pawn=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
+        if(!Pawn || !Pawn->HandlingItem() || Sword!=INDEX_NONE)return Fail(TEXT("Pickup skipped its native reach or committed before contact"));
+        FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir()/TEXT("Screenshots/AC2Inventory-pickup-reach.png"),true,false);break;
+    }
+    case 14:
         if(Sword==INDEX_NONE || Net->RadarContacts().ContainsByPredicate([&](const auto& C){return C.Id==DroppedId;}))return Fail(TEXT("Ground item pickup did not restore inventory and remove its world object"));
         if(!DragCell(Profile->Items[Sword].Cell,0,true))return Fail(TEXT("Cancel test drag did not start"));
         FSlateApplication::Get().ReleaseAllPointerCapture();break;
-    case 13:
+    case 15:
         if(!DragItem.IsEmpty() || HasMouseCapture())return Fail(TEXT("Capture loss left an inventory drag active"));
         ClosePanels();break;
     }

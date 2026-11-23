@@ -22,7 +22,8 @@ MUCOR, TALLOW = 0x47001744, 0x470027A7
 def fixture(run):
     rows = [(MENTOR, 0x47001699, 0x1F000DEB, 59, 240),
             (VENDOR, 0x47003724, 0x1F001941, 60, 241)]
-    rows += [(iid, 0x470007D1, 0x1F0003D1, 58 + n * .5, 242) for n, iid in enumerate(IDOLS)]
+    # Leave body clearance between spawner anchors, including retained corpses.
+    rows += [(iid, 0x470007D1, 0x1F0003D1, 58 + n * 4, 242) for n, iid in enumerate(IDOLS)]
     content = run / 'world.tsv'
     content.write_text('pyrealium-world-v3\n' + ''.join(
         f'{int(iid):016x}\t{entity:08x}\t{visual:08x}\t02990109\t{x}\t{y}\t-44.606205\t1\t0\t0\t0\t-\n'
@@ -35,7 +36,8 @@ def fixture(run):
 
 def connect(name=None, character=None):
     p = Peer()
-    p.send('connect', host='127.0.0.1', port=PORT, account='local');p.wait('characters')
+    p.send('connect', host='127.0.0.1', port=PORT, account='local',
+           dat_directory=str(DAT_DIRECTORY));p.wait('characters')
     if character is None:
         p.send('create', name=name, start_area=0, race=1, sex=4096, physical=[[1,1],[2,1]])
         character = p.wait('created')['character']['id']
@@ -47,12 +49,19 @@ def connect(name=None, character=None):
     return p
 
 
+def at(p, x, y):
+    p.send('move',cell=0x02990109,position=[x,y,-44.606205],heading=0,motion=[0,0,0])
+    time.sleep(.35)
+
+
 def talk(p, text):
+    at(p, 59, 240)
     time.sleep(1.1);mark = len(p.events);p.send('use', item=MENTOR, target='0')
     until(p, mark, 'chat', lambda e:text in str(e))
 
 
 def buy_pair(p):
+    at(p, 60, 241)
     time.sleep(.3);mark=len(p.events);p.send('use',item=VENDOR,target='0')
     shop=until(p,mark,'shop');items=[]
     for definition in [MUCOR,TALLOW]:
@@ -65,12 +74,17 @@ def buy_pair(p):
 
 
 def prepare_practice(p):
+    # Optional mentor practice starts through the NPC, never on login.
+    talk(p, 'Training creatures defeated: 0/3')
     # Complete the existing authored combat prerequisite using ordinary attacks.
     bag=next(e['items'] for e in reversed(p.events) if e.get('event')=='inventory')
     sword=next(e for e in p.events if e.get('entity')==0x470007EE and e.get('container')==p.id)
     mark=len(p.events);p.send('equip',id=sword['id'],location=0x40,slot=bag.index(sword['id']))
     assert until(p,mark,'inventory_result',lambda e:e['id']==sword['id'])['status']==0
-    for iid in IDOLS:
+    for n, iid in enumerate(IDOLS):
+        at(p, 58 + n * 4, 243.5)
+        until(p,0,'object',lambda e:e['id']==iid)
+        time.sleep(1.1)
         mark=len(p.events);p.send('attack',id=iid)
         until(p,mark,'quality',lambda e:e.get('id')==iid and e['key']==0x102 and e['value']==0)
     mark=len(p.events);p.send('combat',enabled=False);until(p,mark,'combat',lambda e:not e['enabled'])
@@ -103,8 +117,7 @@ def main(render=False):
     def start(log):
         process=subprocess.Popen([str(SERVER),'serve','--bind',f'127.0.0.1:{PORT}','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--encounters',str(encounters),'--initialize-ui','true','--training-kit','false',
-            '--portals','false','--lifestones','false','--seconds','240'],env=env,
+            '--encounters',str(encounters),'--initialize-ui','true','--portals','false','--lifestones','false','--seconds','240'],env=env,
             stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(1);assert process.poll() is None,(run/'server.log').read_text();return process
     def stop():
@@ -114,6 +127,22 @@ def main(render=False):
         with (run/'server.log').open('w') as log:
             server=start(log);p=connect('Craft UI Tester' if render else 'Craft Tester');peers.append(p);character=p.id
             items=prepare_practice(p)
+            # Seed two owned stacks in the disposable journal while the
+            # server is stopped. Dragging in AC2E currently only moves whole stacks.
+            source = until(p, 0, 'inventory_acquired', lambda e: e['id'] == items[1])['slot']
+            mark=len(p.events);p.send('logout',id=p.id);until(p,mark,'selection');p.close();peers.remove(p)
+            stop()
+            split_id = str(int(items[1]) + 1)
+            record = f'i1\t{character}\ts,{items[1]},{split_id},40,{source+1}'
+            checksum = 2166136261
+            for byte in record.encode():
+                checksum = ((checksum ^ byte) * 16777619) & 0xffffffff
+            with (run/'world/characters.journal').open('ab') as journal:
+                journal.write(f'{record}\t{checksum:08x}\n'.encode())
+            (run/'world/stop.request').unlink(missing_ok=True)
+            server=start(log);p=connect(character=character);peers.append(p)
+            until(p,0,'object',lambda e:e.get('id')==items[1] and e.get('quantity')==60)
+            until(p,0,'object',lambda e:e.get('id')==split_id and e.get('quantity')==40)
             if render:
                 mark=len(p.events);p.send('logout',id=p.id);until(p,mark,'selection');p.close();peers.remove(p)
                 result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'Launch-AC2.ps1'),
@@ -123,6 +152,7 @@ def main(render=False):
                 shutil.copyfile(ROOT/'Unreal/Saved/Logs/AC2Network-smoke.log',run/'client.log')
                 print(result.stdout);result.check_returncode()
                 assert 'AC2 crafting render smoke PASS' in (run/'client.log').read_text(encoding='utf-8',errors='replace')
+                for shot in (ROOT/'Unreal/Saved/Screenshots').glob('AC2Craft-*.png'):shutil.copyfile(shot,run/shot.name)
             else:
                 for ordinal,item in enumerate(items,1):validate(p,HEALTH,ordinal,item,True)
                 validate(p,HEALTH,1,items[1],False)
@@ -133,7 +163,7 @@ def main(render=False):
                 p.send('combat',enabled=False);until(p,mark,'combat',lambda e:not e['enabled'])
                 mark=craft(p,HEALTH,items,True)
                 output=until(p,mark,'object',lambda e:e.get('entity')==0x47001745 and e.get('container')==p.id)
-                for item in items:until(p,mark,'inventory_remove',lambda e:e['id']==item)
+                for item in items+[split_id]:until(p,mark,'inventory_remove',lambda e:e['id']==item)
                 until(p,mark,'chat',lambda e:'you crafted a potion' in str(e))
                 time.sleep(1.1);failed=craft(p,HEALTH,items,False)
                 assert not any(e.get('event')=='object' and e.get('entity')==0x47001745 for e in p.events[failed:]),'Replay created another potion'
@@ -151,14 +181,21 @@ def main(render=False):
             quest=until(p,0,'quests',lambda e:any(q['id']==0x4000FF03 for q in e['items']))
             practice=next(q for q in quest['items'] if q['id']==0x4000FF03)
             assert ('you crafted a potion' if render else 'Potion Practice complete') in str(practice),practice
-            if not render:assert output['id'] in bag,'Crafted potion lost after restart'
+            assert split_id not in bag,'A consumed Tallow stack reappeared after restart'
+            if render:
+                output=until(p,0,'object',lambda e:e.get('entity')==0x47001745 and e.get('container')==p.id)
+            assert output['id'] in bag,'Crafted potion lost after restart'
         report={'result':'PASS','rendered':render,'checks':['normal profile grants native recipe registry',
             'mentor advances combat -> Field Supplies -> Potion Practice',
             'native crafting consumes ingredients and credits quest atomically','server restart preserves items and quest']}
-        if not render:report['checks']+=['wrong ingredient, unknown recipe, ownership, combat and replay rejected','health and vigor recipes']
+        if not render:report['checks']+=['wrong ingredient, unknown recipe, ownership, combat and replay rejected','health and vigor recipes','split Tallow stacks are consumed together']
+        else:report['checks']+=['recipe drag to hotbar and right-click examination',
+            'recipe shortcut opens ingredient window with craft book closed',
+            'repeated shortcut cannot reset pending craft','recipe binding survives ingredient consumption']
         (run/'result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report));print('Evidence:',run)
     finally:
-        for p in peers:p.close()
+        for n,p in enumerate(peers):
+            (run/f'peer-{n}.json').write_text(json.dumps(p.events));p.close()
         stop()
 
 

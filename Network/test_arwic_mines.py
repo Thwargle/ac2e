@@ -10,12 +10,14 @@ import subprocess
 import time
 import uuid
 from test_network import ROOT, SERVER, DAT_DIRECTORY, Peer
-from test_gameplay import until
+from test_gameplay import panel_text, until
 from prepare_content import prepare
 
 PORT = 19525
 NPC, OUTCAST, HAMMER, IRON = 0x470015AD, 0x470015AC, 0x470015A9, 0x470010F3
 SWORD, GLYPH, GUIDE, RECIPE, QUEST = 0x470015AA, 0x4700109F, 0x47002917, 0x6F001F0E, 0x400000C1
+MILLER, REFERRAL = 0x470015C4, 0x400000C2
+XP, POINTS = 0x12C, 0x7AC20003
 
 
 def main():
@@ -29,10 +31,12 @@ def main():
     overseers = [r for r in rows if int(r[1], 16) == NPC]
     assert len(overseers) == 1, 'Overseer must be present exactly once'
     npc = overseers[0]
+    millers = [r for r in rows if int(r[1], 16) == MILLER]
+    assert len(millers) == 1, 'The recipient of the mine referral must have a production placement'
+    miller = millers[0]
     mob = next(r for r in pack if int(r[1], 16) == OUTCAST)
-    idol = next(r for r in rows if r[1] == '470007d1')
     content = run / 'world.tsv'
-    content.write_text('pyrealium-world-v4\n' + '\n'.join('\t'.join(r) for r in [npc, idol, *pack]) + '\n')
+    content.write_text('pyrealium-world-v4\n' + '\n'.join('\t'.join(r) for r in [npc, miller, *pack]) + '\n')
     encounters = run / 'encounters.tsv'
     encounters.write_text((ROOT / 'AC2E/emulator/content/development-encounters.tsv').read_text() +
                           '\nnpc\t470015ac\t20\t1\t1500\t3\t120000\t19\t2\n')
@@ -43,7 +47,7 @@ def main():
         p = subprocess.Popen([str(SERVER), 'serve', '--bind', f'127.0.0.1:{PORT}', '--account', 'local',
                               '--data', str(run / 'world'), '--game-data', str(DAT_DIRECTORY),
                               '--content', str(content), '--encounters', str(encounters),
-                              '--initialize-ui', 'true', '--training-kit', 'false', '--portals', 'false',
+                              '--initialize-ui', 'true', '--portals', 'false',
                               '--lifestones', 'false', '--test-map-travel', 'true', '--seconds', '180'],
                              env=env, stdout=log, stderr=log, creationflags=0x08000000)
         time.sleep(1)
@@ -57,7 +61,7 @@ def main():
 
     def connect(create=False):
         p = Peer(); peers.append(p)
-        p.send('connect', host='127.0.0.1', port=PORT, account='local'); p.wait('characters')
+        p.send('connect', host='127.0.0.1', port=PORT, account='local', dat_directory=str(DAT_DIRECTORY)); p.wait('characters')
         if create:
             p.send('create', name='Arwic Apprentice', race=1, sex=4096, start_area=0, physical=[[1, 1], [2, 1]])
             p.id = p.wait('created')['character']['id']
@@ -83,8 +87,8 @@ def main():
     def use(p, item, target='0'):
         time.sleep(1.1); mark = len(p.events); p.send('use', item=item, target=target); return mark
 
-    def quest(p, mark, phase):
-        until(p, mark, 'quests', lambda e: any(q['id'] == QUEST and q['phase'] == phase for q in e['items']))
+    def quest(p, mark, phase, did=QUEST):
+        until(p, mark, 'quests', lambda e: any(q['id'] == did and q['phase'] == phase for q in e['items']))
 
     def owned(p, definition, mark=0):
         return until(p, mark, 'object', lambda e: e.get('entity') == definition and e.get('container') == p.id)
@@ -130,14 +134,15 @@ def main():
             at(p, npc); mark = use(p, owned(p, HAMMER)['id'], str(int(npc[0], 16))); quest(p, mark, 3)
             iron = owned(p, IRON, mark); assert iron['quantity'] == 20
             registry = until(p, mark, 'craft_registry', lambda e: RECIPE in e['recipes'])
-            assert not registry['replace'] and registry['catalog'][0]['ingredients'][0]['name'] == 'Iron'
+            ingredient = registry['catalog'][0]['ingredients'][0]
+            assert not registry['replace'] and ingredient['choices'] == [IRON] and ingredient['quantities'] == [20], registry
             time.sleep(1.1); mark = len(p.events)
             p.send('craft_validate', recipe=RECIPE, ordinal=1, item=iron['id'], spinner=0)
             assert until(p, mark, 'craft_ingredient')['error'] == 0
             mark = craft(p, [{'ordinal': 1, 'item': iron['id']}], True)
             sword = owned(p, SWORD, mark); quest(p, mark, 4)
             mark = len(p.events); p.send('examine', id=sword['id'])
-            assert 'Weapon damage: 10' in str(until(p, mark, 'examination'))
+            assert 'Weapon damage: 10' in panel_text(until(p, mark, 'examination'))
             # Replay of the consumed Iron identity must fail without granting a second sword.
             craft(p, [{'ordinal': 1, 'item': iron['id']}], False)
             leave(p); stop(); server = start(log); p = connect(); quest(p, 0, 4)
@@ -146,20 +151,35 @@ def main():
             owned(p, GLYPH, mark); guide = owned(p, GUIDE, mark)
             mark = use(p, guide['id']); until(p, mark, 'chat', lambda e: 'Page 1/15' in str(e))
             mark = use(p, guide['id']); until(p, mark, 'chat', lambda e: 'Page 2/15' in str(e))
-            mark = use(p, str(int(npc[0], 16))); until(p, mark, 'chat', lambda e: '20 hours' in str(e))
+            mark = use(p, str(int(npc[0], 16))); until(p, mark, 'chat', lambda e: 'Miller of Kehan' in str(e))
+            quest(p, mark, 1, REFERRAL)
             assert not any(e.get('event') == 'object' and e.get('entity') in (GLYPH, GUIDE) for e in p.events[mark:])
             leave(p); stop(); server = start(log); p = connect(); quest(p, 0, 0)
             owned(p, GLYPH); owned(p, GUIDE)
             assert not any(e.get('event') == 'object' and e.get('container') == p.id and e.get('entity') == SWORD for e in p.events)
+            quest(p, 0, 1, REFERRAL)
+            before_xp = int(until(p, 0, 'quality', lambda e: e['key'] == XP and e['table'] == 12)['value'])
+            before_points = int(until(p, 0, 'quality', lambda e: e['key'] == POINTS)['value'])
+            at(p, miller)
+            mark = use(p, str(int(miller[0], 16)))
+            quest(p, mark, 0, REFERRAL)
+            until(p, mark, 'quality', lambda e: e['key'] == XP and int(e['value']) == before_xp + 30)
+            mark = use(p, str(int(miller[0], 16)))
+            until(p, mark, 'chat', lambda e: 'Map south of Kehan' in str(e))
+            leave(p); stop(); server = start(log); p = connect()
+            quest(p, 0, 0, REFERRAL)
+            assert int(until(p, 0, 'quality', lambda e: e['key'] == XP and e['table'] == 12)['value']) == before_xp + 30
+            assert int(until(p, 0, 'quality', lambda e: e['key'] == POINTS)['value']) == before_points
             leave(p)
-            report = {'result': 'PASS', 'production_mine_spawners': len(pack), 'checks': [
+            report = {'result': 'PASS', 'production_mine_spawners': len(pack), 'completed_miller_referral': True, 'checks': [
                 'single Overseer, four Outcasts, two beetles in validated rooms',
                 'unlearned craft, remote NPC and combat NPC use rejected',
                 'actual combat and owned corpse hammer claim',
                 'native quest journal and recipe unlock survive restarts',
                 '20 Iron, no forge, guaranteed sword with damage inspection',
                 'consumed ingredient replay rejected',
-                'sword turn-in, glyph and readable 15-page guide, no duplicate rewards']}
+                'sword turn-in, glyph and readable 15-page guide, no duplicate rewards',
+                'Miller referral accepted, resumed after restart and completed at Kehan for 30 XP; repeat talk and restart preserve balances']}
             (run / 'result.json').write_text(json.dumps(report, indent=2)); print(json.dumps(report)); print('Evidence:', run)
         finally:
             for i, p in enumerate(peers):

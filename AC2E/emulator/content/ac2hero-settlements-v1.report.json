@@ -1,0 +1,73 @@
+{
+  "existing_outdoor_sha256": "194bebb4eefce4eed87f3e30b2ebe17cd321f2d61f44d96ec5ef11f435415256",
+  "groups": [
+    {
+      "capacity": 4,
+      "id": 9313685921968685056,
+      "members": [
+        9313685921968685056,
+        9313685921968685057,
+        9313685921968685058,
+        9313685921968685059
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 4,
+      "id": 9313685921968685312,
+      "members": [
+        9313685921968685312,
+        9313685921968685313,
+        9313685921968685314,
+        9313685921968685315
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 3,
+      "id": 9313685921968685568,
+      "members": [
+        9313685921968685568,
+        9313685921968685569,
+        9313685921968685570
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 5,
+      "id": 9313685921968685824,
+      "members": [
+        9313685921968685824,
+        9313685921968685825,
+        9313685921968685826,
+        9313685921968685827,
+        9313685921968685828
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 3,
+      "id": 9313685921968686080,
+      "members": [
+        9313685921968686080,
+        9313685921968686081,
+        9313685921968686082
+      ],
+      "regeneration_ms": 120000
+    }
+  ],
+  "included": 48,
+  "inferred": true,
+  "manifest_sha256": "ee819da66de131d04ebced706f3b6c65e1e1b1d0941e9efa0139cd49e40b5db2",
+  "native_ground_verified": true,
+  "rejected": [
+    {
+      "entity": 1191198875,
+      "group": 9313683724128239771,
+      "reason": "no reachable walkable native ground within 32m",
+      "slot": 0
+    }
+  ],
+  "source_sha256": "30f5af1911ecafb162a0ef16cc1c10c711a65a2f5433e3724e6c0f9dbf32d5b6",
+  "version": 1
+}

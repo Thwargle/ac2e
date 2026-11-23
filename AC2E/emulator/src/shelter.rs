@@ -9,11 +9,17 @@ pub const LIEUTENANT: u32 = 0x4700157e;
 pub const SENTRY: u32 = 0x47001581;
 pub const SCOUT: u32 = 0x47001580;
 pub const ADVANCE: u32 = 0x4700157f;
-pub const SHARD: u32 = 0x47002448;
+pub const SHARD: u32 = 0x4700079a;
 pub const TOOL: u32 = 0x47001587;
 pub const GLYPH: u32 = 0x47001582;
 pub const DIGGER: u32 = 0x4700158b;
 pub const SENTINEL: u32 = 0x4700158c;
+pub const EXIT_WARNING: u32 = 0x470015af;
+pub const WARNING_SKULL: u32 = 0x47001586;
+const HUMAN_EXIT_WARNING: u64 = 0x8140000000031070;
+const HUMAN_WARNING_SKULL: u64 = 0x8140000000031071;
+pub const HUMAN_QUICK_EXIT: u64 = 0x8140000000031072;
+pub const QUICK_EXIT_REQUIREMENT: &str = "Read the Exit Warning Stone, then use the Warning Skull before entering this portal.";
 pub const PORTAL: u64 = 0x8140000000030047;
 // Clear arrival beside the scout, outside the authored seven-meter Menhir Shard.
 // Verified against the native room, shard collision, and the largest avatar capsule.
@@ -26,8 +32,12 @@ pub fn recover_vault_arrival(point:crate::movement::Placement) -> crate::movemen
     } else {point}
 }
 pub const JOURNAL: u32 = 0x4000ff05; // AC2E identity; original quest ID not recovered.
-pub fn supported(entity: u32) -> bool {
-    matches!(entity, GUARD | LIEUTENANT | SENTRY | SCOUT | ADVANCE | SHARD | 0x47001573..=0x4700157c)
+pub fn supported(entity: u32, instance: u64) -> bool {
+    match entity {
+        EXIT_WARNING => instance == HUMAN_EXIT_WARNING,
+        WARNING_SKULL => instance == HUMAN_WARNING_SKULL,
+        _ => matches!(entity, GUARD | LIEUTENANT | SENTRY | SCOUT | ADVANCE | 0x47001573..=0x4700157c),
+    }
 }
 pub fn guidance(phase: u8) -> &'static str {
     match phase {
@@ -37,7 +47,7 @@ pub fn guidance(phase: u8) -> &'static str {
         4 => "Defeat a Drudge Sentinel for its Menhir Glyph. Target the Menhir Portal and use the glyph from your backpack.",
         5 => "Speak to the Advance Shelter Scout inside the Vault.",
         6 => "Use the Menhir Shard to complete Rescue the Shelter Hold.",
-        7 => "Rescue the Shelter Hold complete. Use the exit portal to enter Dereth.",
+        7 => "Rescue the Shelter Hold complete. The Menhir Shard leads to Dereth.",
         _ => "Speak to the Shelter Guard to begin Rescue the Shelter Hold.",
     }
 }
@@ -45,6 +55,9 @@ pub fn guidance(phase: u8) -> &'static str {
 pub fn introduction(book: &Book, entity: u32) -> Option<(u32, u32, Option<Command>)> {
     let phase = book.shelter_phase();
     Some(match entity {
+        EXIT_WARNING => (0x2500169e, 0x6c459364, (book.quick_exit == 0).then_some(Command::ReadExitWarning)),
+        WARNING_SKULL if book.quick_exit == 0 => (0x2500164f, 0x63691d8f, None),
+        WARNING_SKULL => (0x2500164f, 0x2824fd4c, (book.quick_exit == 1).then_some(Command::ConfirmExitSkull)),
         GUARD => (0x25001648, if phase == 0 {0x2824fd4c} else {0x63691d8f},
             (phase == 0).then_some(Command::ShelterGuard)),
         LIEUTENANT if phase == 0 => (0x25001649, 0x8b6b186d, None),
@@ -55,11 +68,33 @@ pub fn introduction(book: &Book, entity: u32) -> Option<(u32, u32, Option<Comman
         SCOUT => (0x2500164b, if phase < 4 {0x8b6b1865} else {0x8b6b1867}, None),
         ADVANCE => (0x2500164a, if phase == 5 {0x8b6b1863} else {0x63691d8f},
             (phase == 5).then_some(Command::ShelterAdvance)),
-        SHARD if phase >= 6 => (0x2500164a, 0x8b6b187d,
-            (phase == 6).then_some(Command::ShelterComplete)),
         0x47001573..=0x4700157c => (0x2500163e + entity - 0x47001573, 0x6c459364, None),
         _ => return None,
     })
+}
+
+/// The walkthrough confirms XP on the bypass. Match the normal route's total,
+/// crediting only the unpaid portion if the Scout already rewarded the player.
+pub fn quick_exit(book: &Book, progression: &crate::progression::Progression)
+    -> std::io::Result<(Book, crate::progression::Progression)> {
+    if book.quick_exit < 2 { return Err(std::io::Error::other(QUICK_EXIT_REQUIREMENT)); }
+    if book.shelter_phase() == 7 { return Ok((book.clone(), progression.clone())); }
+    let xp = if book.shelter_phase() < 4 { 105 } else { 65 };
+    let next = book.apply(&Command::LeaveThroughQuickExit).map_err(std::io::Error::other)?;
+    let rewarded = progression.apply(&crate::progression::Command::AwardXp(xp)).map_err(std::io::Error::other)?;
+    Ok((next, rewarded))
+}
+
+/// Complete the full tutorial and relocate in a single store transaction.
+pub fn shard_exit(book: &Book, progression: &crate::progression::Progression)
+    -> std::io::Result<(Book, crate::progression::Progression)> {
+    if book.shelter_phase() == 7 { return Ok((book.clone(), progression.clone())); }
+    if book.shelter_phase() != 6 {
+        return Err(std::io::Error::other("Speak to the Advance Shelter Scout before using the Menhir Shard."));
+    }
+    let next = book.apply(&Command::ShelterComplete).map_err(std::io::Error::other)?;
+    let rewarded = progression.apply(&crate::progression::Command::AwardXp(65)).map_err(std::io::Error::other)?;
+    Ok((next, rewarded))
 }
 
 struct ItemProfile { definition:u32, visual:u32, physical:u32, appearance:u32, hash:u64 }
@@ -92,6 +127,26 @@ pub fn owned(inventory:&crate::inventory::Inventory,definition:u32)->Option<u64>
 pub fn drop(book:&Book,inventory:&crate::inventory::Inventory,entity:u32)->Option<u32> {
     let definition=match (book.shelter_phase(),entity) {(3,DIGGER)=>TOOL,(4,SENTINEL)=>GLYPH,_=>return None};
     owned(inventory,definition).is_none().then_some(definition)
+}
+/// Starter quest rewards go straight into the bag. Reopening an empty corpse
+/// must explain that outcome, rather than falling through to scripted-object use.
+pub fn creature_guidance(book:&Book,inventory:&crate::inventory::Inventory,entity:u32,dead:bool)->Option<String> {
+    let (definition,name,destination)=match entity {
+        DIGGER=>(TOOL,"Imbued Digging Tool","Speak to the Shelter Scout to hand it in."),
+        SENTINEL=>(GLYPH,"Menhir Glyph","Target the Menhir Vault Portal and use the glyph from your backpack."),
+        _=>return None,
+    };
+    if owned(inventory,definition).is_some() {
+        return Some(format!("Your {name} is already in your backpack. {destination}"));
+    }
+    if drop(book,inventory,entity).is_some() {
+        return Some(if dead {
+            format!("This corpse is empty. Make room in your backpack and defeat another Drudge to collect the {name}. It is placed directly in your backpack.")
+        } else {
+            format!("Defeat this Drudge to collect the {name}. Leave a free backpack slot; the tool or glyph is collected automatically.")
+        });
+    }
+    Some(guidance(book.shelter_phase()).to_owned())
 }
 pub fn exchange(command:Command)->bool {
     matches!(command,Command::ShelterTool|Command::ShelterGlyph|Command::ShelterAdvance|Command::ShelterComplete)
@@ -128,6 +183,33 @@ pub fn text(table: u32, key: u32) -> Result<Vec<u8>, WorldError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn quick_exit_actions_only_belong_to_the_wired_human_instances() {
+        assert!(supported(EXIT_WARNING, HUMAN_EXIT_WARNING));
+        assert!(supported(WARNING_SKULL, HUMAN_WARNING_SKULL));
+        assert!(!supported(EXIT_WARNING, HUMAN_WARNING_SKULL));
+        assert!(!supported(WARNING_SKULL, HUMAN_EXIT_WARNING));
+        assert!(!supported(EXIT_WARNING, 0x8140e1a2e99c7422)); // 0298011e
+        assert!(!supported(WARNING_SKULL, 0x8140f1e50c2cb596)); // 028d011e
+    }
+    #[test]
+    fn quest_creatures_explain_automatic_rewards_without_duplicate_grants() {
+        use crate::inventory::{Inventory,Command as I,ITEM_NAMESPACE};
+        let mut book=Book::default();let bag=Inventory::default();
+        assert!(creature_guidance(&book,&bag,DIGGER,true).unwrap().contains("Shelter Guard"));
+        for command in [Command::ShelterGuard,Command::ShelterLieutenant,Command::ShelterSentry] {
+            book=book.apply(&command).unwrap();
+        }
+        assert_eq!(drop(&book,&bag,DIGGER),Some(TOOL));
+        assert!(creature_guidance(&book,&bag,DIGGER,false).unwrap().contains("automatically"));
+        let bag=bag.apply(&I::Grant(item(TOOL,ITEM_NAMESPACE+1,0).unwrap())).unwrap();
+        for dead in [false,true] {
+            let text=creature_guidance(&book,&bag,DIGGER,dead).unwrap();
+            assert!(text.contains("already in your backpack") && text.contains("Shelter Scout"));
+        }
+        assert_eq!(drop(&book,&bag,DIGGER),None);
+        assert!(creature_guidance(&book,&bag,0x47000000,true).is_none());
+    }
     #[test]
     fn vault_recovery_only_moves_the_old_obstructed_arrival() {
         let mut p=VAULT;p.coordinates=[178.730484,62.94236,15.121846];

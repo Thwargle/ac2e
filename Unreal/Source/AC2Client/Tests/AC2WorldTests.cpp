@@ -102,10 +102,22 @@ bool FAC2SkyCycleTest::RunTest(const FString &Parameters)
     B.Time = .75f;
     B.Direct = 1;
     B.Heading = 10;
+    A.FogColor = FLinearColor::Red;
+    B.FogColor = FLinearColor(0,1,1);
+    FAC2SkyReplacement BeforeLayer, AfterLayer;
+    BeforeLayer.Name = AfterLayer.Name = 1;
+    BeforeLayer.Color = FLinearColor(1,0,0,0);
+    AfterLayer.Color = FLinearColor(0,1,1,1);
+    A.Replacements.Add(BeforeLayer);
+    B.Replacements.Add(AfterLayer);
     Day.Keys = {A, B};
+    TestTrue(TEXT("quarter-phase fog follows the retail half-turn hue through magenta"),
+             Day.Sample(.375f).FogColor.Equals(FLinearColor(1,0,.75f)));
     TestEqual(TEXT("day lighting interpolation"), Day.Sample(.5f).Direct, .5f);
     TestTrue(TEXT("heading interpolates across north"),
              FMath::Abs(FMath::UnwindDegrees(Day.Sample(.5f).Heading)) < .001f);
+    TestEqual(TEXT("exact key uses its own light"), Day.Sample(.75f).Direct, 1.f);
+    TestTrue(TEXT("terminal midnight ratio is finite"), FMath::IsFinite(AC2::SkyTimeRatio(1.f,0.f,1.f)));
     TestEqual(TEXT("night lighting wraps"), Day.Sample(.875f).Direct, .75f);
     FAC2SkyObject Sun;
     Sun.Name = 1;
@@ -114,13 +126,19 @@ bool FAC2SkyCycleTest::RunTest(const FString &Parameters)
     Sun.End = .75f;
     Sun.EndPitch = 180;
     Day.Objects.Add(Sun);
+    const auto Quarter = Day.Positions(.375f);
+    TestTrue(TEXT("quarter-phase layer uses the native hue path and linear alpha"),
+             Quarter.Num() == 1 && Quarter[0].Color.Equals(FLinearColor(1,0,.75f,.25f)));
     auto Noon = Day.Positions(.5f);
     TestEqual(TEXT("sun rises in native window"), Noon.Num(), 1);
     if (Noon.Num())
         TestEqual(TEXT("sun reaches midpoint"), Noon[0].Pitch, 90.f);
     TestEqual(TEXT("sun sets outside native window"), Day.Positions(.9f).Num(), 0);
+    Day.Objects[0].After = true;
+    TestTrue(TEXT("post-fog sky objects preserve their draw group"), Day.Positions(.5f)[0].After);
     Day.Objects[0].Water = 1;
     TestEqual(TEXT("underwater objects excluded outdoors"), Day.Positions(.5f).Num(), 0);
+    TestEqual(TEXT("underwater sky admits its own object flag"), Day.Positions(.5f,true).Num(), 1);
     return true;
 }
 #endif

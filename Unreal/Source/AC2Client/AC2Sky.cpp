@@ -1,8 +1,11 @@
 #include "AC2Sky.h"
+#include "AC2WaterReflection.h"
 #include "AC2AssetReader.h"
 #include "Engine/World.h"
-#include "Engine/ExponentialHeightFog.h"
-#include "Components/ExponentialHeightFogComponent.h"
+#include "GameFramework/Actor.h"
+#include "Engine/StaticMesh.h"
+#include "Components/StaticMeshComponent.h"
+#include "AC2Fog.h"
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
 #include "Engine/TextureCube.h"
@@ -26,7 +29,8 @@ float AC2::SkyTimeRatio(float Before, float After, float Time)
         return 0;
     if (Before < After)
         return Time >= Before && Time <= After ? (Time - Before) / (After - Before) : 0.5f;
-    return FMath::Fmod(Time - Before + 1, 1) / (After - Before + 1);
+    const float Span = After - Before + 1;
+    return Span > 0 ? FMath::Fmod(Time - Before + 1, 1) / Span : 0;
 }
 float AC2::SkySweep(float Begin, float End, float Ratio, bool West)
 {
@@ -43,6 +47,19 @@ FLinearColor Packed(FAC2AssetReader &R)
     // CDayDesc interpolates HSB in native packed RGB, before display decoding.
     return FColor(R.Word()).ReinterpretAsLinear();
 }
+FLinearColor InterpolateSkyColor(const FLinearColor& Before, const FLinearColor& After, float Ratio)
+{
+    const FLinearColor A = Before.LinearRGBToHSV();
+    const FLinearColor B = After.LinearRGBToHSV();
+    float HueDelta = B.R - A.R;
+    // CDayDesc::InterpAngleClosest takes the wrapped path even at exactly half a turn.
+    if (HueDelta >= 180.f)
+        HueDelta -= 360.f;
+    else if (HueDelta <= -180.f)
+        HueDelta += 360.f;
+    return FLinearColor(A.R + HueDelta * Ratio, FMath::Lerp(A.G,B.G,Ratio), FMath::Lerp(A.B,B.B,Ratio),
+                        FMath::Lerp(Before.A,After.A,Ratio)).HSVToLinearRGB();
+}
 void Keys(const FAC2SkyDay &Day, float T, const FAC2SkyKey *&Before, const FAC2SkyKey *&After)
 {
     Before = After = nullptr;
@@ -50,18 +67,15 @@ void Keys(const FAC2SkyDay &Day, float T, const FAC2SkyKey *&Before, const FAC2S
         return;
     Before = &Day.Keys.Last();
     After = &Day.Keys[0];
-    for (int32 I = 0; I < Day.Keys.Num() - 1; ++I)
-        if (Day.Keys[I].Time <= T && T <= Day.Keys[I + 1].Time)
-        {
-            Before = &Day.Keys[I];
-            break;
-        }
     for (const auto &K : Day.Keys)
+    {
         if (T < K.Time)
         {
             After = &K;
             break;
         }
+        Before = &K;
+    }
 }
 } // namespace
 bool FAC2SkyDay::Decode(uint32 ExpectedId, TConstArrayView<uint8> Bytes)
@@ -144,9 +158,9 @@ FAC2SkyKey FAC2SkyDay::Sample(float T) const
     K.Ambient = FMath::Lerp(B->Ambient, A->Ambient, R);
     K.Heading = FMath::Lerp(B->Heading, B->Heading + FMath::FindDeltaAngleDegrees(B->Heading, A->Heading), R);
     K.Pitch = FMath::Lerp(B->Pitch, B->Pitch + FMath::FindDeltaAngleDegrees(B->Pitch, A->Pitch), R);
-    K.DirectColor = FLinearColor::LerpUsingHSV(B->DirectColor, A->DirectColor, R);
-    K.AmbientColor = FLinearColor::LerpUsingHSV(B->AmbientColor, A->AmbientColor, R);
-    K.FogColor = FLinearColor::LerpUsingHSV(B->FogColor, A->FogColor, R);
+    K.DirectColor = InterpolateSkyColor(B->DirectColor, A->DirectColor, R);
+    K.AmbientColor = InterpolateSkyColor(B->AmbientColor, A->AmbientColor, R);
+    K.FogColor = InterpolateSkyColor(B->FogColor, A->FogColor, R);
     K.FogMin = FMath::Lerp(B->FogMin, A->FogMin, R);
     K.FogMax = FMath::Lerp(B->FogMax, A->FogMax, R);
     K.FogSky = FMath::Lerp(B->FogSky, A->FogSky, R);
@@ -155,19 +169,33 @@ FAC2SkyKey FAC2SkyDay::Sample(float T) const
     K.WindY = FMath::Lerp(B->WindY, A->WindY, R);
     return K;
 }
-TArray<FAC2SkyReplacement> FAC2SkyDay::Positions(float T) const
+EAC2CelestialBody FAC2SkyDay::CelestialBody(uint32 ObjectName) const
+{
+    // SkyObject::obj_name is a day-local replacement key, not a global enum.
+    // Stock names its sun/moon 6/5; Icefire uses 5/7 and inserts other sky
+    // objects. Both archives retain these celestial graphics in every day.
+    // Classify the base object so authored replacement graphics retain its role.
+    const auto* Object=Objects.FindByPredicate([&](const auto& O){return O.Name==ObjectName;});
+    if(!Object || Object->Water)return EAC2CelestialBody::None;
+    if(Object->Graphic==0x04000023)return EAC2CelestialBody::Sun;
+    if(Object->Graphic==0x040000b6)return EAC2CelestialBody::Moon;
+    // Unrecognized sky content keeps the native light-key direction.
+    return EAC2CelestialBody::None;
+}
+TArray<FAC2SkyReplacement> FAC2SkyDay::Positions(float T,bool InWater) const
 {
     TArray<FAC2SkyReplacement> Result;
     const FAC2SkyKey *B, *A;
     ::Keys(*this, T, B, A);
     for (const auto &O : Objects)
     {
-        if (O.Water)
+        if (O.Water && O.Water!=uint32(InWater))
             continue;
         FAC2SkyReplacement P;
         P.Name = O.Name;
+        P.After = O.After;
         const bool Up =
-            O.Begin == O.End || (O.Begin <= T && T < O.End) || (O.End < O.Begin && (T < O.End || T > O.Begin));
+            O.Begin == O.End || (O.Begin <= T && T < O.End) || (O.End < O.Begin && (T < O.End || T >= O.Begin));
         if (Up)
         {
             P.Graphic = O.Graphic;
@@ -185,7 +213,7 @@ TArray<FAC2SkyReplacement> FAC2SkyDay::Positions(float T) const
             P.Pitch += BR->Pitch;
             P.Color = BR->Color;
             if (AR)
-                P.Color = FLinearColor::LerpUsingHSV(BR->Color, AR->Color, AC2::SkyTimeRatio(B->Time, A->Time, T));
+                P.Color = InterpolateSkyColor(BR->Color, AR->Color, AC2::SkyTimeRatio(B->Time, A->Time, T));
         }
         if (P.Graphic)
             Result.Add(P);
@@ -194,6 +222,7 @@ TArray<FAC2SkyReplacement> FAC2SkyDay::Positions(float T) const
 }
 FAC2SkyRenderer::~FAC2SkyRenderer()
 {
+    ReleaseAC2WaterReflection(World);
     for (auto &Pair : Instances)
         if (IsValid(Pair.Value.Actor))
             Pair.Value.Actor->Destroy();
@@ -203,8 +232,9 @@ FAC2SkyRenderer::~FAC2SkyRenderer()
         Sun->Destroy();
     if (IsValid(Ambient))
         Ambient->Destroy();
-    if (IsValid(Fog))
-        Fog->Destroy();
+    if (IsValid(SkyFogLayer))
+        SkyFogLayer->Destroy();
+    ReleaseAC2Fog(World);
 }
 bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &Error)
 {
@@ -219,15 +249,15 @@ bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &E
     R.Word();
     R.String();
     R.Take(28);
-    uint32 SkyId = 0;
+    uint32 SkyId = 0, FogId = 0;
     for (int32 I = 0; I < 11 && R.Good; ++I)
     {
         const int32 N = R.Count(8, 4096);
         for (int32 J = 0; J < N; ++J)
         {
             const uint32 Id = R.Word();
-            if (I == 6 && J == 0)
-                SkyId = Id;
+            if (I == 6 && J == 0) SkyId = Id;
+            if (I == 8 && J == 0) FogId = Id;
         }
         R.Take(int64(N) * 4);
         R.Align();
@@ -273,6 +303,11 @@ bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &E
         Error = TEXT("Cannot decode native game calendar");
         return false;
     }
+    if(FogId){
+        FString FogError;
+        if(!RegionFog.Load(Portal,FogId,FogError))
+            UE_LOG(LogTemp,Warning,TEXT("AC2 region fog: %s"),*FogError);
+    }
     const auto Date = Calendar.At(CurrentTime);
     DayFraction = Date.Fraction;
     DayNumber = Date.Seed;
@@ -281,11 +316,44 @@ bool FAC2SkyRenderer::Open(UWorld *InWorld, const FString &Directory, FString &E
     if (!Assets->Open(Directory, Error))
         return false;
     WeatherIndex = Days.IndexOfByPredicate([&](const FAC2SkyDay &D) { return D.Id == Day.Id; });
-    Fog = World->SpawnActor<AExponentialHeightFog>();
-    Fog->GetComponent()->SetFogHeightFalloff(0.001f);
-    Fog->GetComponent()->SetFogCutoffDistance(5000000);
+    // LScapeSky composites a uniform source-alpha quad between two sky
+    // groups. Place its equivalent behind the world but ahead of DrawSky's
+    // 100 km sky meshes, retaining ordinary scene occlusion.
+    auto* Sphere = LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+    auto* SkyAlpha = LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/AC2/Materials/M_AC2SkyAlpha.M_AC2SkyAlpha"));
+    if (!Sphere || !SkyAlpha)
+    {
+        Error = TEXT("Missing sky fog mesh or material");
+        return false;
+    }
+    SkyFogLayer = World->SpawnActor<AActor>();
+    SkyFogLayer->SetActorEnableCollision(false);
+    auto* Shell = NewObject<UStaticMeshComponent>(SkyFogLayer, TEXT("SkyFogShell"));
+    SkyFogLayer->SetRootComponent(Shell);
+    Shell->SetMobility(EComponentMobility::Movable);
+    Shell->SetStaticMesh(Sphere);
+    Shell->SetCollisionProfileName(TEXT("NoCollision"));
+    Shell->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Shell->SetCollisionResponseToAllChannels(ECR_Ignore);
+    Shell->SetGenerateOverlapEvents(false);
+    Shell->SetCanEverAffectNavigation(false);
+    Shell->SetCastShadow(false);
+    Shell->SetReceivesDecals(false);
+    Shell->SetTranslucentSortPriority(-11000);
+    SkyFogMaterial = UMaterialInstanceDynamic::Create(SkyAlpha,SkyFogLayer);
+    Shell->SetMaterial(0,SkyFogMaterial);
+    Shell->RegisterComponent();
+    SkyFogLayer->SetActorScale3D(FVector(7000000.0 / Sphere->GetBounds().SphereRadius));
+    SkyFogLayer->SetActorHiddenInGame(true);
     Sun = World->SpawnActor<ADirectionalLight>();
     Sun->GetLightComponent()->SetMobility(EComponentMobility::Movable);
+    Sun->GetLightComponent()->SetCastShadows(true);
+    CastChecked<UDirectionalLightComponent>(Sun->GetLightComponent())->SetDynamicShadowDistanceMovableLight(20000);
+    CastChecked<UDirectionalLightComponent>(Sun->GetLightComponent())->DynamicShadowCascades=4;
+    Sun->GetLightComponent()->ShadowBias=.3f;
+    // VSM supplies the full world-space silhouette. Screen-space contact rays
+    // disappear at screen edges and were the only visible shadows under SM5.
+    Sun->GetLightComponent()->ContactShadowLength=0;
     Ambient = World->SpawnActor<ASkyLight>();
     auto *AmbientLight = Ambient->GetLightComponent();
     AmbientLight->SetMobility(EComponentMobility::Movable);
@@ -324,6 +392,7 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<d
 {
     if (!World || !Assets)
         return;
+    CurrentViewer=Viewer;
     if (ServerTime.IsSet() && FMath::IsFinite(ServerTime.GetValue()))
         CurrentTime = ServerTime.GetValue();
     else
@@ -337,9 +406,21 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<d
     DayFraction = Date.Fraction;
     for (auto &Pair : Instances)
         Pair.Value.Actor->SetActorHiddenInGame(true);
-    int32 DrawOrder = 0;
-    for (const auto &P : Day.Positions(DayFraction))
+    const auto Atmosphere = Lighting();
+    const float FogAlpha = FMath::Clamp(Atmosphere.FogSky,0.f,1.f);
+    SkyFogLayer->SetActorLocation(Viewer);
+    SkyFogLayer->SetActorHiddenInGame(FogAlpha <= 0);
+    if (FogAlpha > 0)
     {
+        auto Tint = FLinearColor::FromSRGBColor(Atmosphere.FogColor.ToFColor(false));
+        Tint.A = FogAlpha;
+        SkyFogMaterial->SetVectorParameterValue(TEXT("SkyTint"),Tint);
+    }
+    int32 DrawOrder = 0;
+    TOptional<FVector> VisibleSun,VisibleMoon;
+    for (const auto &P : Day.Positions(DayFraction,IsSubmerged()))
+    {
+        const auto Body=Day.CelestialBody(P.Name);
         // Cache each authored variant so cycling days doesn't accumulate MIDs.
         auto &I = Instances.FindOrAdd((uint64(P.Name) << 32) | P.Graphic);
         if (!I.Actor)
@@ -350,6 +431,8 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<d
             I.Actor->AddInstanceComponent(Root);
             Root->RegisterComponent();
             I.Rendered = Assets->DrawSky(P.Graphic, I.Actor, Root);
+            if(I.Rendered && Body!=EAC2CelestialBody::None)
+                I.CelestialCenter=I.Actor->GetComponentsBoundingBox(true).GetCenter();
             if (!I.Rendered)
             {
                 UE_LOG(LogTemp, Warning, TEXT("AC2 sky graphic %08X could not render"), P.Graphic);
@@ -359,16 +442,21 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<d
                 UE_LOG(LogTemp, Display, TEXT("AC2 native sky graphic %08X loaded"), P.Graphic);
             }
         }
-        I.Actor->SetActorHiddenInGame(false);
+        I.Actor->SetActorHiddenInGame(!P.After && FMath::IsNearlyEqual(FogAlpha,1.f,.0002f));
         I.Actor->SetActorLocation(Viewer);
         I.Actor->SetActorRotation(FQuat(FVector::YAxisVector, -FMath::DegreesToRadians(P.Pitch)) *
                                   FQuat(FVector::UpVector, -FMath::DegreesToRadians(P.Heading)));
+        if(Body!=EAC2CelestialBody::None && P.Color.A>KINDA_SMALL_NUMBER && !I.CelestialCenter.IsNearlyZero())
+        {
+            const FVector ToOrb=I.Actor->GetActorQuat().RotateVector(I.CelestialCenter).GetSafeNormal();
+            if(ToOrb.Z>0){if(Body==EAC2CelestialBody::Sun)VisibleSun=ToOrb;else VisibleMoon=ToOrb;}
+        }
         TInlineComponentArray<UMeshComponent *> Components(I.Actor);
         // Native LScapeSky draws in object-list order; all mesh bounds follow the
         // same viewer so distance sorting alone is ambiguous for the alpha layers.
         for (auto *C : Components)
         {
-            C->SetTranslucentSortPriority(-1000 + DrawOrder);
+            C->SetTranslucentSortPriority((P.After ? -10000 : -16000) + DrawOrder);
             for (int32 J = 0; J < C->GetNumMaterials(); ++J)
                 if (auto *M = Cast<UMaterialInstanceDynamic>(C->GetMaterial(J)))
                     M->SetVectorParameterValue(TEXT("SkyTint"), FLinearColor::FromSRGBColor(P.Color.ToFColor(false)));
@@ -376,19 +464,27 @@ void FAC2SkyRenderer::Update(const FVector &Viewer, float DeltaTime, TOptional<d
         ++DrawOrder;
     }
     Assets->UpdateMaterials(World->GetTimeSeconds());
-    const auto K = Day.Sample(DayFraction);
-    if (Fog)
+    if(!IsSubmerged())UpdateAC2WaterReflection(World);
+    // Retail's light keys and sky meshes have separately authored paths. Keep
+    // its colour/intensity keys, but align cast shadows with the visible orb.
+    // Ease back to the keyed direction at the horizon to avoid a sunrise snap.
+    CelestialDirection.Reset();
+    const auto Orb=VisibleSun.IsSet()?VisibleSun:VisibleMoon;
+    if(Orb.IsSet())
     {
-        auto *F = Fog->GetComponent();
-        F->SetFogInscatteringColor(FLinearColor::FromSRGBColor(K.FogColor.ToFColor(false)));
-        F->SetStartDistance(FMath::Max(0.f, K.FogMin * 100));
-        F->SetFogDensity(FMath::Clamp(250.f / FMath::Max(100.f, (K.FogMax - K.FogMin) * 100), 0.001f, 0.04f));
-        F->SetFogMaxOpacity(0.7f);
+        const float Horizon=FMath::Clamp(float(Orb.GetValue().Z)/.15f,0.f,1.f);
+        const float Blend=Horizon*Horizon*(3-2*Horizon);
+        CelestialDirection=FMath::Lerp(Day.Sample(DayFraction).LightDirection(),-Orb.GetValue(),Blend).GetSafeNormal();
     }
+    const auto K = Lighting();
+    const auto FogKey=InteriorFogOverride.IsSet()?InteriorFogOverride.GetValue():K;
+    UpdateAC2Fog(World,{FogKey.FogMin,FogKey.FogMax,FogKey.FogColor,FogKey.FogType==1});
     Sun->SetActorRotation(K.LightDirection().Rotation());
     Sun->GetLightComponent()->SetIntensity(FMath::Max(0.0f, K.Direct) * 4);
     Sun->GetLightComponent()->SetLightColor(FLinearColor::FromSRGBColor(K.DirectColor.ToFColor(false)));
-    Ambient->GetLightComponent()->SetIntensity(FMath::Max(0.0f, K.Ambient) * 2);
+    // Per-room/native ambient is supplied by world materials. A global sky fill
+    // would double-light outdoor surfaces and wash out underground rooms.
+    Ambient->GetLightComponent()->SetIntensity(0);
     Ambient->GetLightComponent()->SetLightColor(FLinearColor::FromSRGBColor(K.AmbientColor.ToFColor(false)));
 }
 

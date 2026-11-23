@@ -42,7 +42,19 @@ pub struct Butcher {
     pub profile: u32,
     pub material: u32,
 }
+impl Butcher {
+    pub fn yield_material(&self, roll: u32) -> u32 {
+        // AC2Hero's traits.html lists Hide and Tallow for Shreth. The DAT assigns this
+        // profile to the Hunter and its kin. Equal weights are a reconstruction.
+        if self.profile == 0x6f0028a8 && roll & 0x8000_0000 != 0 {
+            crate::crafting::TALLOW
+        } else {
+            self.material
+        }
+    }
+}
 pub fn map(id: u32) -> Option<&'static Map> {
+    if id==crate::windmill::MAP {return Some(crate::windmill::survey_map());}
     professions::catalog().maps.iter().find(|v| v.id == id)
 }
 pub fn mine(id: u32) -> Option<&'static Mine> {
@@ -84,11 +96,12 @@ impl Job {
         let e = (self.target[0] as f32 - 20400.) / 204.;
         let n = (self.target[1] as f32 - 20400.) / 204.;
         format!(
-            "Survey site: {:.1}{}, {:.1}{}. Use the map within 40 meters, then use the appropriate tool on the deposit.",
+            "Survey site: {:.1}{}, {:.1}{}. Use the map within {} meters, then use the appropriate tool on the deposit.",
             n.abs(),
             if n < 0. { "S" } else { "N" },
             e.abs(),
-            if e < 0. { "W" } else { "E" }
+            if e < 0. { "W" } else { "E" },
+            map(self.definition).map_or(40, |m|m.radius)
         )
     }
 }

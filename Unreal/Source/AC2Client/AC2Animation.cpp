@@ -71,6 +71,22 @@ bool FAC2Setup::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
             Sockets.Add(Key, S);
         }
     }
+    // CharacterSetup::UnPack places its collision primitives after the two
+    // socket lists. Coordinates and dimensions here are Unreal centimetres.
+    if(R.Left()) {
+        N=R.Count(20,4096);
+        for(int32 I=0;I<N && R.Good;++I) {
+            FCylinder C;C.Low=R.Vector()*100;C.Radius=R.Float()*100;C.Height=R.Float()*100;
+            if(C.Radius<0 || C.Height<0)R.Good=false;
+            Cylinders.Add(C);
+        }
+        N=R.Count(16,4096);
+        for(int32 I=0;I<N && R.Good;++I) {
+            FSphere S;S.Center=R.Vector()*100;S.Radius=R.Float()*100;
+            if(S.Radius<0)R.Good=false;
+            Spheres.Add(S);
+        }
+    }
     return R.Good && Rest.Num() == Parents.Num() && Bind.Num() == Parents.Num();
 }
 TArray<FMatrix> FAC2Setup::World(const TArray<FTransform> &Pose, bool IncludeScale) const
@@ -144,7 +160,16 @@ bool FAC2Animation::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
             if(!FMath::IsFinite(E.Phase)||!FMath::IsFinite(E.Probability)||!FMath::IsFinite(E.Intensity)||!FMath::IsFinite(E.Variation))R.Good=false;
             Effects.Add(E);
         }
-        N=R.Count(20,4096);R.Take(int64(N)*20); // Server-owned attack hooks never apply damage locally.
+        N=R.Count(20,4096);
+        for(int32 I=0;I<N && R.Good;++I)
+        {
+            const uint32 Type=R.Word();R.Take(12);const float Phase=R.Float();
+            if(!FMath::IsFinite(Phase)||Phase<0||Phase>1)R.Good=false;
+            // StoryManager::HandleAnimHook increments its counter for this
+            // hook. Presentation only: damage is still entirely server-owned.
+            if(Type==0x40000002)StoryTriggers.Add(Phase);
+        }
+        StoryTriggers.Sort();
         N=R.Count(12,4096);
         for(int32 I=0;I<N && R.Good;++I)
         {
@@ -154,7 +179,9 @@ bool FAC2Animation::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
             if(!FMath::IsFinite(Phase)||Phase<0||Phase>1)R.Good=false;
             if(Jump)JumpTriggers.Add(Phase);
         }
-        R.Take(12); // hold flag, loop start/end
+        const bool HasHoldLoop=R.Word()!=0;
+        const float Start=R.Float(), End=R.Float();
+        if(HasHoldLoop)HoldLoop={Start,End};
     }
     return R.End() && !Tracks.IsEmpty();
 }
@@ -182,7 +209,7 @@ TArray<FAC2Animation::FEffect> FAC2Animator::EffectsBetween(double From,double T
     TArray<FAC2Animation::FEffect> Out;
     if(!FMath::IsFinite(From)||!FMath::IsFinite(To)||From<0||To<=From)return Out;
     const FNode* Node=Root.Get();
-    while(Node && !Node->Clip && Node->Kind!=0x40000002)
+    while(Node && (Node->Kind==0x40000003 || Node->Kind==0x40000008))
     {
         int32 Child=0;
         if(Node->Kind==0x40000008)
@@ -202,14 +229,18 @@ TArray<FAC2Animation::FEffect> FAC2Animator::EffectsBetween(double From,double T
         // footsteps and snaps their timing when walk/run blend weights cross.
         TArray<FWeighted> Leaves;Gather(Node,Input,1,Leaves);
         TMap<uint32,FAC2Animation::FEffect> Merged;
-        for(const auto& Leaf:Leaves)for(const auto& E:Leaf.Node->Clip->Effects)
+        for(const auto& Leaf:Leaves)
         {
+          if(!Leaf.Node->Clip)continue;
+          for(const auto& E:Leaf.Node->Clip->Effects)
+          {
             auto* Total=Merged.Find(E.Id);
             if(!Total){FAC2Animation::FEffect Empty;Empty.Id=E.Id;Empty.Probability=Empty.Intensity=0;Total=&Merged.Add(E.Id,Empty);}
             Total->Phase+=E.Phase*Leaf.Weight;
             Total->Probability+=E.Probability*Leaf.Weight;
             Total->Intensity+=E.Intensity*Leaf.Weight;
             Total->Variation+=E.Variation*Leaf.Weight;
+          }
         }
         Merged.GenerateValueArray(Events);
     }
@@ -246,12 +277,22 @@ bool FAC2FXScript::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
     {
         FAC2Animation::FEffect E;E.Id=R.Word();E.Phase=R.Float();E.Stop=R.Word()!=0;
         E.Probability=R.Float();E.Intensity=R.Float();E.Variation=R.Float();E.Play=R.Word()!=0;
-        if(!FMath::IsFinite(E.Phase)||E.Phase<0||E.Phase>1||!FMath::IsFinite(E.Probability)||!FMath::IsFinite(E.Intensity)||!FMath::IsFinite(E.Variation))R.Good=false;
+        // FxScript::GetTriggers accepts authored pre-roll times. Icefire's
+        // 5700000C starts its first effect at -0.01, due on the first update.
+        if(!FMath::IsFinite(E.Phase)||E.Phase>1||!FMath::IsFinite(E.Probability)||!FMath::IsFinite(E.Intensity)||!FMath::IsFinite(E.Variation))R.Good=false;
         Effects.Add(E);
     }
     N=R.Count(12,4096);
     for(int32 I=0;I<N && R.Good;++I){if(!R.Word())R.Take(12);R.Take(8);}
     Period=R.Float();return R.End() && FMath::IsFinite(Period) && Period>0 && Period<=300;
+}
+TArray<FAC2Animation::FEffect> FAC2FXScript::EffectsBetween(float From,float To) const
+{
+    TArray<FAC2Animation::FEffect> Due;
+    if(!FMath::IsFinite(From)||!FMath::IsFinite(To)||From<0||To<=From)return Due;
+    for(const auto& E:Effects)
+        if((E.Phase>From || (From==0 && E.Phase<=0)) && E.Phase<=To)Due.Add(E);
+    return Due;
 }
 TSharedPtr<FAC2Animation> FAC2Animation::Load(FAC2DatArchive &Portal, uint32 Map, uint32 Motion)
 {

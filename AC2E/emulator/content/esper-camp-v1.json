@@ -1,0 +1,664 @@
+{
+  "version": 1,
+  "title": "Drudge Outcast Camp Quest",
+  "phases": [
+    "Use a Drudge Slayer quest recipe to create a special weapon. The Esper Warder told you, \"The Warders have discovered the hidden Drudge Outcast headquarters on the island southeast of Millstone. I will give you quest recipes for weapons that will be especially effective against their Cadre. If you use one of these weapons to kill a Cadre member and bring back his bones, I will reward you.",
+    "Journey to the island southeast of Millstone to purge Esper of the Drudge Outcast Cadre. The Esper Warder has promised to reward you for slaying the Cadre with a special Cadre Slayer weapon. Bring back one of the Cadre's bones for your reward.",
+    "The Esper Warder has promised to reward you if you bring back one of the Drudge Cadre's bones."
+  ],
+  "policy": "Reconstructed server transitions. Native recipes cost 25 Bone, native weapons have 22 damage and require level 6. No free materials: the guide directs players to butcher vermin. All six recovered recipes are exposed while active; original per-race three-recipe assignment is unrecovered. Weapon equip race/level restrictions are enforced. Cadre Slayer multiplies direct weapon-bearing hits by three before armor, never periodic ticks. Captured Cadres retain native level 10 (guide says 8), 285 health and their existing independent respawning placements. Quest is 24h, reward 320 XP plus Esper Glyph, repeat 20h. Sound Heart effect graph is retained below (10800 duration table, stat 0x40107, final value table 40). Timed maximum-health modifiers are not implemented; no substitute buff is awarded.",
+  "sources": [
+    {
+      "title": "Drudge Outcast Camp Quest",
+      "url": "http://ac2wiki.info/index.php/Drudge_Outcast_Camp_Quest",
+      "html_sha256": "71697e94552dd20e9c7a037b1d1848287941dedff76557902c546cba1d53a13a"
+    },
+    {
+      "title": "Esper Warder",
+      "url": "http://ac2wiki.info/index.php/Esper_Warder",
+      "html_sha256": "c5c60da83127b1c74f9a6e8377fc6f585782af9a1972fbeea3a0689dadbd87ec"
+    },
+    {
+      "title": "Drudge Outcast Cadre",
+      "url": "http://ac2wiki.info/index.php/Drudge_Outcast_Cadre",
+      "html_sha256": "b591e1cff9bc323abda52eb55ff0ed5ffed8e4db1e3d3ef8f4185d44fb855a74"
+    },
+    {
+      "title": "Esper Glyph",
+      "url": "http://ac2wiki.info/index.php/Esper_Glyph",
+      "html_sha256": "c612ed79dff2fa4b684dc847dd7b2757e40185a7e205d131cb399b553a0b2fa5"
+    }
+  ],
+  "native_fields": [
+    {
+      "quest": "400000d0",
+      "package": "QuestDrudgeCampEsper",
+      "field": "name",
+      "table": "250016b7",
+      "key": "a8607cec",
+      "text_raw": "Drudge Outcast Camp Quest[E]",
+      "records": [
+        {
+          "table": "250016b7",
+          "sha256": "950423afa42798b5a21f6fa9cb8832f3bf8ecb34abf17b5c2a6be14635ba7237",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250216b7",
+          "sha256": "141aa27adfe2dec33b1b76bf0d28fa24c622ae39e4c02d737d5d08101bec9830",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000d0",
+      "package": "QuestDrudgeCampEsper",
+      "field": "summary",
+      "table": "250016b7",
+      "key": "6c459364",
+      "text_raw": "\n\nThe Esper Warder has enlisted your aid in eradicating the Drudge threat from this region.\n\n",
+      "records": [
+        {
+          "table": "250016b7",
+          "sha256": "950423afa42798b5a21f6fa9cb8832f3bf8ecb34abf17b5c2a6be14635ba7237",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250416b7",
+          "sha256": "0685a8c2fff4c6ef80b771ba20e22a141647a0050e905c3b2271c62ee1a64211",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000d0",
+      "package": "QuestDrudgeCampEsper",
+      "field": "phases/1/journal",
+      "table": "250016b7",
+      "key": "2e5c1e52",
+      "text_raw": "Use a Drudge Slayer quest recipe to create a special weapon.\n\nThe Esper Warder told you, \\qThe Warders have discovered the hidden Drudge Outcast headquarters on the island southeast of Millstone. I will give you quest recipes for weapons that will be especially effective against their Cadre. If you use one of these weapons to kill a Cadre member and bring back his bones, I will reward you.",
+      "records": [
+        {
+          "table": "250016b7",
+          "sha256": "950423afa42798b5a21f6fa9cb8832f3bf8ecb34abf17b5c2a6be14635ba7237",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250616b7",
+          "sha256": "044264644e6ff387c0f2c8c5990dd654db2eef4d04f14f64a5787bdd8b270699",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000d0",
+      "package": "QuestDrudgeCampEsper",
+      "field": "phases/2/journal",
+      "table": "250016b7",
+      "key": "2e5f1e52",
+      "text_raw": "Journey to the island southeast of Millstone to purge Esper of the Drudge Outcast Cadre. The Esper Warder has promised to reward you for slaying the Cadre with a special Cadre Slayer weapon. Bring back one of the Cadre's bones for your reward.",
+      "records": [
+        {
+          "table": "250016b7",
+          "sha256": "950423afa42798b5a21f6fa9cb8832f3bf8ecb34abf17b5c2a6be14635ba7237",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250816b7",
+          "sha256": "6552062ddb88ba63334814ce7e407152654fb636cb4169003c7b51b327640877",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000d0",
+      "package": "QuestDrudgeCampEsper",
+      "field": "phases/3/journal",
+      "table": "250016b7",
+      "key": "2e5e1e52",
+      "text_raw": "The Esper Warder has promised to reward you if you bring back one of the Drudge Cadre's bones.",
+      "records": [
+        {
+          "table": "250016b7",
+          "sha256": "950423afa42798b5a21f6fa9cb8832f3bf8ecb34abf17b5c2a6be14635ba7237",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250a16b7",
+          "sha256": "1d9161b59dc260e1d79c8d157c76d0a05ae8ccf535ad203343f6099ab533bfc8",
+          "installed_record_identical": false
+        }
+      ]
+    }
+  ],
+  "placements": [
+    [
+      "8140ef4ae2bb7095",
+      "470015bd",
+      "1f000df0",
+      "67aa0002",
+      "14.4272404",
+      "32.6350212",
+      "84.686554",
+      "0.774751782",
+      "0",
+      "0",
+      "-0.632265508",
+      "1.10000002",
+      "Drudge Outcast Cadre"
+    ],
+    [
+      "8140bbc232281287",
+      "470015bd",
+      "1f000df0",
+      "67aa001d",
+      "74.4000397",
+      "92.5267639",
+      "90.7042236",
+      "-0.258819073",
+      "0",
+      "0",
+      "0.965925813",
+      "1.10000002",
+      "Drudge Outcast Cadre"
+    ],
+    [
+      "81408265874bd1c0",
+      "470015bd",
+      "1f000df0",
+      "67aa0033",
+      "137.567123",
+      "46.3326187",
+      "86.0174332",
+      "0.881674588",
+      "0",
+      "0",
+      "0.471857965",
+      "1.10000002",
+      "Drudge Outcast Cadre"
+    ]
+  ],
+  "effects": {
+    "70001e33": {
+      "sha256": "d28e6dfbb126a2794cad934e345bce609456a6ea25e86bc46fd874101f93efe2",
+      "graph": [
+        {
+          "flags": 1543504128,
+          "state": 0,
+          "package": 7731,
+          "native": 0,
+          "slots": [
+            1,
+            0,
+            1065353216,
+            0,
+            0,
+            2281,
+            0,
+            1128269075,
+            0,
+            0,
+            2,
+            3,
+            0,
+            4,
+            0,
+            0,
+            4294967295,
+            0,
+            0,
+            0,
+            10,
+            0,
+            0,
+            0,
+            1120403456,
+            0,
+            0,
+            1,
+            5,
+            2,
+            4294967295,
+            6,
+            0,
+            2139095039,
+            0,
+            8,
+            1041865114
+          ],
+          "tags": [
+            1,
+            2,
+            3,
+            2,
+            2,
+            4,
+            3,
+            130,
+            205,
+            3,
+            1,
+            1,
+            2,
+            1,
+            2,
+            3,
+            1,
+            2,
+            2,
+            2,
+            2,
+            2,
+            2,
+            3,
+            3,
+            3,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            2,
+            3,
+            2,
+            1,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 106,
+          "string": [
+            2824895724,
+            620762805
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 106,
+          "string": [
+            1816499044,
+            620762805
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [
+            7
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 12781,
+          "native": 0,
+          "slots": [
+            1065353216,
+            0
+          ],
+          "tags": [
+            3,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 1,
+          "pairs": [
+            [
+              54,
+              1065353216
+            ]
+          ],
+          "slots": [],
+          "tags": []
+        }
+      ]
+    },
+    "70001e34": {
+      "sha256": "cab9ab30083da1c88584e1293d6bad736c590e83bdd52fb06c3de0170506dc63",
+      "graph": [
+        {
+          "flags": 1543504128,
+          "state": 0,
+          "package": 7732,
+          "native": 0,
+          "slots": [
+            1,
+            0,
+            1065353216,
+            5,
+            0,
+            2264,
+            0,
+            25167635,
+            2,
+            0,
+            3,
+            4,
+            0,
+            5,
+            0,
+            0,
+            4294967295,
+            0,
+            0,
+            1090523999,
+            10,
+            0,
+            0,
+            0,
+            1120403456,
+            0,
+            0,
+            1,
+            6,
+            3,
+            8,
+            9,
+            0,
+            2139095039,
+            15,
+            0,
+            11,
+            0,
+            0
+          ],
+          "tags": [
+            1,
+            2,
+            3,
+            2,
+            2,
+            4,
+            3,
+            130,
+            205,
+            3,
+            1,
+            1,
+            2,
+            1,
+            2,
+            3,
+            1,
+            2,
+            2,
+            4,
+            2,
+            2,
+            2,
+            3,
+            3,
+            3,
+            2,
+            2,
+            1,
+            1,
+            1,
+            1,
+            2,
+            3,
+            2,
+            3,
+            1,
+            3,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [
+            2
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 12781,
+          "native": 0,
+          "slots": [
+            1177075712,
+            0
+          ],
+          "tags": [
+            3,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 106,
+          "string": [
+            2824895724,
+            620762806
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 106,
+          "string": [
+            1816499044,
+            620762806
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [
+            7
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 12781,
+          "native": 0,
+          "slots": [
+            1065353216,
+            0
+          ],
+          "tags": [
+            3,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 10,
+          "list": [
+            262407
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [
+            10
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 12781,
+          "native": 0,
+          "slots": [
+            1065353216,
+            0
+          ],
+          "tags": [
+            3,
+            3
+          ]
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 65535,
+          "native": 97,
+          "list": [
+            12
+          ],
+          "slots": [],
+          "tags": []
+        },
+        {
+          "flags": 1140850944,
+          "state": 0,
+          "package": 12781,
+          "native": 0,
+          "slots": [
+            1109393408,
+            0
+          ],
+          "tags": [
+            3,
+            3
+          ]
+        }
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": 1191187456,
+      "name": "Bone",
+      "visual": 520094260,
+      "physical": 1191182944,
+      "quality_hash": "4ccdd297c1452e06"
+    },
+    {
+      "id": 1191187890,
+      "name": "Drudge Cadre Slayer Bow",
+      "visual": 520097225,
+      "physical": 1191188037,
+      "quality_hash": "bb5e48ba49f8bcf1"
+    },
+    {
+      "id": 1191187891,
+      "name": "Drudge Cadre Slayer Chuck",
+      "visual": 520097224,
+      "physical": 1191188036,
+      "quality_hash": "c9d5674ad11c85b1"
+    },
+    {
+      "id": 1191187892,
+      "name": "Drudge Cadre Slayer Drum",
+      "visual": 520097226,
+      "physical": 1191188038,
+      "quality_hash": "b3edf9ac2cc81a61"
+    },
+    {
+      "id": 1191187893,
+      "name": "Drudge Cadre Slayer Spear",
+      "visual": 520097227,
+      "physical": 1191188039,
+      "quality_hash": "4c0febfe7b21a7de"
+    },
+    {
+      "id": 1191187894,
+      "name": "Drudge Cadre Slayer Staff",
+      "visual": 520097229,
+      "physical": 1191188040,
+      "quality_hash": "9519d9b0d7b6dfbd"
+    },
+    {
+      "id": 1191187895,
+      "name": "Drudge Cadre Slayer Sword",
+      "visual": 520097228,
+      "physical": 1191188041,
+      "quality_hash": "f59f91b897148d15"
+    },
+    {
+      "id": 1191187896,
+      "name": "Drudge Cadre Bone",
+      "visual": 520097182,
+      "physical": 1191187942,
+      "quality_hash": "f03b923e1175ec6b"
+    },
+    {
+      "id": 1191186593,
+      "name": "Esper Glyph",
+      "visual": 520094159,
+      "physical": 1191182954,
+      "quality_hash": "8402d54333ab876f"
+    }
+  ]
+}

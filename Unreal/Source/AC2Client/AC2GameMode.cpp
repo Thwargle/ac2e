@@ -1,4 +1,8 @@
 #include "AC2GameMode.h"
+#include "Camera/PlayerCameraManager.h"
+#include "AC2GameInstance.h"
+#include "AC2LoginProfiles.h"
+#include "Kismet/GameplayStatics.h"
 #include "AC2Performance.h"
 #include "AC2NativeMaterial.h"
 #include "AC2CellLighting.h"
@@ -6,7 +10,9 @@
 #include "AC2Explorer.h"
 #include "AC2CharacterUI.h"
 #include "AC2GameUI.h"
+#include "AC2ShortcutKeys.h"
 #include "AC2Placement.h"
+#include "AC2PortalSpace.h"
 #include "AC2WorldGrid.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -16,6 +22,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerInput.h"
 #include "HAL/FileManager.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
@@ -29,11 +36,21 @@
 AAC2GameMode::AAC2GameMode()
 {
     PrimaryActorTick.bCanEverTick = true;
+    // Held items are separate actors. Resolve their sockets after the local
+    // pawn has both sampled its pose and moved, just like remote actors in
+    // Network::Tick. PrePhysics left weapons a frame behind a running hand.
+    PrimaryActorTick.TickGroup = TG_PostPhysics;
     DefaultPawnClass = AAC2Explorer::StaticClass();
     PlayerControllerClass = AAC2PlayerController::StaticClass();
     HUDClass = AAC2HUD::StaticClass();
     DatDirectory = TEXT("../Asheron's Call 2 - Legions");
     StartBlock = TEXT("5667");
+}
+void AAC2GameMode::InitGame(const FString& MapName,const FString& Options,FString& ErrorMessage)
+{
+    Super::InitGame(MapName,Options,ErrorMessage);
+    DatDirectory=AC2::ResolveDatDirectory(DatDirectory);
+    if(auto* Instance=GetGameInstance<UAC2GameInstance>();Instance&&!Instance->DatDirectory.IsEmpty())DatDirectory=Instance->DatDirectory;
 }
 void AAC2GameMode::BeginPlay()
 {
@@ -52,6 +69,8 @@ void AAC2GameMode::BeginPlay()
     bSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2Smoke"));
     bEnvironmentSmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2EnvironmentSmoke")) || AC2Performance::Enabled();
     DatDirectory = AC2::ResolveDatDirectory(DatDirectory);
+    if(auto* Instance=GetGameInstance<UAC2GameInstance>();Instance&&!Instance->DatDirectory.IsEmpty())
+        DatDirectory=Instance->DatDirectory;
     Audio=MakeUnique<FAC2Audio>();
     Audio->Open(GetWorld(),DatDirectory);
     bUISmoke = FParse::Param(FCommandLine::Get(), TEXT("AC2UISmoke"));
@@ -126,8 +145,8 @@ bool AAC2GameMode::OpenWorld()
 }
 void AAC2GameMode::LeaveWorld()
 {
-    if(Audio){Audio->Music(0);Audio->Environment({},FVector::ZeroVector,true);Audio->SetGroove(0);}
-    FrontEnd=true;OfflineEntering=false;NetworkTravel=false;bWaiting=true;bRevealing=false;
+    if(Audio){Audio->Music(0);Audio->Environment({},FVector::ZeroVector,true);Audio->Scenery({},true);Audio->SetGroove(0);}
+    FrontEnd=true;OfflineEntering=false;OfflineDeparture=false;NetworkTravel=false;bWaiting=true;bRevealing=false;WaitingForExitAnimation=false;
     ArrivalRender.Reset();
     if(auto* PC=GetWorld()->GetFirstPlayerController())
         if(auto* P=Cast<AAC2Explorer>(PC->GetPawn())){P->SetHeld(true);P->SetActorHiddenInGame(true);}
@@ -163,6 +182,20 @@ void AAC2GameMode::SignOut()
 }
 void AAC2GameMode::Connect(const FAC2ConnectionSettings& Settings)
 {
+    if(!Settings.DatDirectory.IsEmpty() && !FPaths::IsSamePath(Settings.DatDirectory,DatDirectory))
+    {
+        FString Error;
+        if(!FAC2LoginProfiles::ValidateData(Settings.DatDirectory,Error)){ShowLogin(Error);return;}
+        auto* Instance=GetGameInstance<UAC2GameInstance>();
+        if(!Instance){ShowLogin(TEXT("Cannot switch DAT folders in this session."));return;}
+        Instance->DatDirectory=Settings.DatDirectory;Instance->AccountEndpoint=LastAccountEndpoint;
+        Instance->PendingLogin=Settings;LeaveWorld();Network.Reset();
+        UGameplayStatics::OpenLevel(this,FName(*UGameplayStatics::GetCurrentLevelName(this,true)));
+        return;
+    }
+    LastLogin.Host=Settings.Host;LastLogin.Port=Settings.Port;LastLogin.Account=Settings.Account;
+    LastLogin.DirectLogin=Settings.DirectLogin;LastLogin.Protocol=Settings.Protocol;HasLastLogin=true;
+    LastLogin.DatDirectory=DatDirectory;
     LeaveWorld();Network.Reset();Characters=FAC2CharacterStore();
     Network=MakeUnique<FAC2Network>(this);
     if(auto* H=Cast<AAC2HUD>(GetWorld()->GetFirstPlayerController()->GetHUD()))
@@ -210,14 +243,7 @@ bool AAC2GameMode::LoadBlock(uint32 Block)
         return false;
     }
     PendingCell = 0;
-    InteriorBlock = 0;
-    Stream->SetInteriorCell(0);
-    bTeleport = true;
-    bWaiting = true;
-    bRevealing=false; ArrivalRender.Reset();
-    Notice = TEXT("Traveling...");
-    StreamFocus = Destination;
-    PositionViewer(GetWorld()->GetFirstPlayerController());
+    BeginOfflineTravel();
     UE_LOG(LogTemp, Display, TEXT("AC2 travel requested: %04X"), Block);
     return true;
 }
@@ -238,16 +264,27 @@ bool AAC2GameMode::TravelToMap(FVector2D Land)
     if (!Stream->Destination(Block, Point, Error)) { Notice = Error; return false; }
     // Destination verifies the block and supplies a height hint. Preserve the clicked XY.
     Destination = FVector(Land.X * 2000., Land.Y * 2000., Point.Z);
-    PendingCell = InteriorBlock = 0;
-    Stream->SetInteriorCell(0);
-    bTeleport = bWaiting = true;
-    bRevealing=false; ArrivalRender.Reset();
-    StreamFocus = Destination;
-    Notice = TEXT("Traveling...");
-    PositionViewer(GetWorld()->GetFirstPlayerController());
+    PendingCell = 0;
+    BeginOfflineTravel();
     if (auto* PC = Cast<AAC2PlayerController>(GetWorld()->GetFirstPlayerController()))
         PC->SetCursor(bMap || !PC->WantsMouseLook());
     return true;
+}
+void AAC2GameMode::BeginOfflineTravel()
+{
+    auto* PC=GetWorld()->GetFirstPlayerController();
+    auto* HUD=PC?Cast<AAC2HUD>(PC->GetHUD()):nullptr;
+    const bool HasSource=InWorld() && !bWaiting && !bRevealing && Stream->AllReady();
+    OfflineDeparture=HUD && HUD->PortalEffect && (HasSource || OfflineDeparture) && HUD->PortalEffect->HoldDeparture();
+    bTeleport=bWaiting=true;bRevealing=false;ArrivalRender.Reset();
+    Notice=TEXT("Traveling...");
+    if(OfflineDeparture)
+    {
+        if(auto* P=Cast<AAC2Explorer>(PC->GetPawn())) P->SetHeld(true);
+        return;
+    }
+    InteriorBlock=0;Stream->SetInteriorCell(PendingCell);StreamFocus=Destination;
+    PositionViewer(PC);
 }
 void AAC2GameMode::PositionViewer(APlayerController *PC)
 {
@@ -257,6 +294,7 @@ void AAC2GameMode::PositionViewer(APlayerController *PC)
     {
         P->SetHeld(true);
         P->SetActorLocation(Destination, false, nullptr, ETeleportType::TeleportPhysics);
+        P->SetActorRotation(FRotator(0,45,0));
         P->SetWater(false, 0);
         P->SetFlying(false);
     }
@@ -384,7 +422,20 @@ void AAC2GameMode::UpdateEnvironment(float Delta)
     auto* PC=GetWorld()->GetFirstPlayerController();
     auto* P=PC?Cast<AAC2Explorer>(PC->GetPawn()):nullptr;
     if(!P || !Stream || !Sky)return;
-    Sky->Update(P->Camera->GetComponentLocation(), Delta, Network ? Network->ServerTime() : TOptional<double>());
+    const auto* Capsule=P->GetCapsuleComponent();
+    const FVector Feet=P->GetActorLocation()-FVector(0,0,Capsule->GetScaledCapsuleHalfHeight());
+    TArray<FAC2FoliageContact> Contacts;
+    Contacts.Add({P->GetUniqueID(),Feet,Capsule->GetScaledCapsuleRadius(),Capsule->GetScaledCapsuleHalfHeight()*2});
+    if(Network)Network->AppendFoliageContacts(Contacts,Feet);
+    UpdateAC2FoliageInteraction(GetWorld(),Contacts,Delta);
+    // Use the viewing camera, not the swimming body's centre. Orbiting the
+    // camera across the surface changes the native underwater light/fog mode.
+    const FVector Viewer=PC->PlayerCameraManager?PC->PlayerCameraManager->GetCameraLocation():P->Camera->GetComponentLocation();
+    const auto* Water=Stream->WaterDataAt(Viewer);
+    Sky->SetWaterView(Water,Water?Water->Height-Viewer.Z/100:-1);
+    FAC2SkyKey RoomFog;
+    Sky->SetInteriorFog(Stream->InteriorFog(Viewer,RoomFog)?TOptional<FAC2SkyKey>(RoomFog):TOptional<FAC2SkyKey>());
+    Sky->Update(Viewer, Delta, Network ? Network->ServerTime() : TOptional<double>());
     if (Far)
     {
         if (Stream->ExteriorVisible()) Far->Tick(StreamFocus, ViewRadius, Stream->AllReady());
@@ -401,9 +452,8 @@ void AAC2GameMode::UpdateEnvironment(float Delta)
         FHitResult Hit;
         FCollisionQueryParams Q;
         Q.AddIgnoredActor(P);
-        FVector Eye = P->Camera->GetComponentLocation();
         bIndoors = InteriorBlock ||
-                   GetWorld()->LineTraceSingleByObjectType(Hit, Eye, Eye + FVector(0, 0, 10000),
+                   GetWorld()->LineTraceSingleByObjectType(Hit, Viewer, Viewer + FVector(0, 0, 10000),
                                                            FCollisionObjectQueryParams(ECC_WorldStatic), Q);
     }
     auto K = Sky->Lighting();
@@ -418,18 +468,70 @@ void AAC2GameMode::UpdateEnvironment(float Delta)
         EffectSync = .5f;
         Effects->SyncSources(Stream->ParticleSources(P->GetActorLocation()));
     }
-    Effects->Update(P->Camera->GetComponentLocation(), P->Camera->GetRightVector(), P->Camera->GetUpVector(),
+    const FRotationMatrix CameraFrame(PC->PlayerCameraManager?PC->PlayerCameraManager->GetCameraRotation():P->Camera->GetComponentRotation());
+    Effects->Update(Viewer,CameraFrame.GetUnitAxis(EAxis::Y),CameraFrame.GetUnitAxis(EAxis::Z),
                     Delta, Sky->RainOverride >= 0 ? Sky->RainOverride : K.Rain, FVector(K.WindX, K.WindY, 0),
-                    bIndoors);
+                    bIndoors || Sky->IsSubmerged(),nullptr,Stream.Get());
+}
+FAC2PreviewLighting AAC2GameMode::ParticleLightingAt(const FVector& Position) const
+{
+    FAC2PreviewLighting Result;
+    if(!Stream || !Stream->InteriorLighting(Position,Result))
+    {
+        if(Sky)
+        {
+            const auto K=Sky->Lighting();Result.Ambient=K.AmbientColor*K.Ambient;
+            FAC2PreviewLight Sun;Sun.Directional=true;Sun.Direction=K.LightDirection();
+            Sun.Diffuse=K.DirectColor;Sun.Intensity=K.Direct;Result.Lights.Add(Sun);
+        }
+    }
+    AppendAC2EffectLights(GetWorld(),Position,Result);
+    return Result;
+}
+bool AAC2GameMode::HasGroundSupport(const AAC2Explorer* Player, double& Height) const
+{
+    if (!Player || !Stream) return false;
+    const auto* Movement = Player->GetCharacterMovement();
+    const auto& Floor = Movement->CurrentFloor;
+    const auto* Support = Floor.HitResult.GetComponent();
+    const auto* Capsule = Player->GetCapsuleComponent();
+    const FVector Feet = Player->GetActorLocation() - FVector(0, 0, Capsule->GetScaledCapsuleHalfHeight());
+    const float Radius = Capsule->GetScaledCapsuleRadius();
+    const bool ContactIsNear = FVector::DistSquared2D(Feet, Floor.HitResult.ImpactPoint) <= FMath::Square(Radius + 5) &&
+        FMath::Abs(Feet.Z - Floor.HitResult.ImpactPoint.Z) <= Movement->MaxStepHeight + Radius + 5;
+    // Native room polygons can have narrow seams. The swept walking capsule
+    // bridges them, while a ray through its centre misses. Do not undo a valid
+    // walking step because that weaker query says there is no floor. A cached
+    // contact from before a teleport or an unloaded room is not valid support.
+    if (Movement->IsMovingOnGround() && !Movement->bJustTeleported &&
+        Floor.IsWalkableFloor() && Floor.HitResult.IsValidBlockingHit() &&
+        IsValid(Support) && Support->IsQueryCollisionEnabled() && ContactIsNear)
+    {
+        Height = Floor.HitResult.ImpactPoint.Z;
+        return true;
+    }
+    return Stream->GroundAt(Player->GetActorLocation(), Height);
 }
 void AAC2GameMode::Tick(float Delta)
 {
     AC2Performance::FScope Measurement(TEXT("world_tick"));
     Super::Tick(Delta);
     if(Audio)Audio->Tick(GetWorld()->GetTimeSeconds());
-    if(!LoginStarted){ShowLogin();return;}
+    if(!LoginStarted){
+        if(auto* Instance=GetGameInstance<UAC2GameInstance>();Instance&&Instance->PendingLogin.IsSet()){
+            auto Settings=MoveTemp(Instance->PendingLogin.GetValue());Instance->PendingLogin.Reset();
+            LastAccountEndpoint=Instance->AccountEndpoint;ShowLogin();
+            if(CharacterDataReady)Connect(Settings);else ShowLogin(CharacterError);
+            Settings.DirectPassword.Reset();Settings.Ticket.Reset();
+        } else ShowLogin();
+        return;
+    }
     if(bControllerSmoke)ControllerSmokeTick(Delta);
     if(Network)Network->Tick(Delta);
+    if(Network && Network->DataReload.IsSet()){
+        auto Settings=MoveTemp(Network->DataReload.GetValue());Network->DataReload.Reset();
+        Connect(Settings);Settings.DirectPassword.Reset();Settings.Ticket.Reset();return;
+    }
     if(Network && Network->HasPlayerPose && !bReady)OpenWorld();
     if(!bReady)return;
     auto *PC = GetWorld()->GetFirstPlayerController();
@@ -437,6 +539,13 @@ void AAC2GameMode::Tick(float Delta)
     if (!P)
         return;
     bool EnvironmentUpdated=false;
+    auto* HUD=Cast<AAC2HUD>(PC->GetHUD());
+    if(OfflineDeparture)
+    {
+        if(HUD && HUD->PortalEffect && HUD->PortalEffect->HoldDeparture())return;
+        OfflineDeparture=false;InteriorBlock=0;Stream->SetInteriorCell(PendingCell);
+        StreamFocus=Destination;PositionViewer(PC);
+    }
     if (Network)
     {
         if(Network->IsWorld()&&!bWaiting&&!Network->NeedsPlacement)
@@ -449,11 +558,18 @@ void AAC2GameMode::Tick(float Delta)
         if (!Network->HasPlayerPose) return;
         if (Network->NeedsPlacement && (!NetworkTravel || !Network->Feet.Equals(Destination, .01)))
         {
+            if(InWorld() && !bWaiting && !bRevealing && HUD && HUD->PortalEffect && HUD->PortalEffect->HoldDeparture())
+            {
+                if(!P->IsHeld())P->SetHeld(true);
+                return;
+            }
             FString Error;
             if (!Stream->Destination(Network->Cell >> 16, Destination, Error))
             { Notice=Error; return; }
             // A second map request can replace an obstructed arrival while loading.
             Destination = Network->Feet;
+            Network->FinishArrivalEffect();
+            WaitingForExitAnimation=false;
             NetworkTravel=true; bWaiting=true; bTeleport=false; PendingCell=0;
             bRevealing=false; ArrivalRender.Reset();
             InteriorBlock=(Network->Cell & 65535)>=256 ? Network->Cell>>16 : 0;
@@ -488,7 +604,9 @@ void AAC2GameMode::Tick(float Delta)
             bRevealing=true; ArrivalRender.Reset();
             if(FrontEnd)if(auto* H=Cast<AAC2HUD>(PC->GetHUD()))if(H->GameUI)H->GameUI->RestoreOptions();
             FrontEnd=false;P->SetActorHiddenInGame(false);
-            Network->SceneComplete();
+            // Landing is only the first part of arrival. Keep the server's
+            // player inactive until the final rendered scene is revealed.
+            Network->NeedsPlacement=false;
         }
     }
     FVector Here = P->GetActorLocation();
@@ -496,7 +614,10 @@ void AAC2GameMode::Tick(float Delta)
     if(Audio && !FrontEnd && !bWaiting && AudioEnvironmentSync<=0){
         AudioEnvironmentSync=.25f;
         Audio->Environment(Stream->AmbientPoints(Here),Here,Stream->PlayerOutside());
+        const float Hour=MapHour();
+        Audio->Scenery(Stream->SoundSources(),Hour>=6 && Hour<18);
     }
+    else if(Audio && (FrontEnd || bWaiting))Audio->Scenery({},true);
     AudioGrooveSync-=Delta;
     if(Audio && !FrontEnd && AudioGrooveSync<=0){
         AudioGrooveSync=2;
@@ -504,7 +625,7 @@ void AAC2GameMode::Tick(float Delta)
     }
     if (!bWaiting && !CharacterUIStarted && !bSmoke && !bEnvironmentSmoke)
     {
-        if (auto *HUD = Cast<AAC2HUD>(PC->GetHUD()))
+        if (HUD)
         {
             HUD->InitializeCharacterUI();
             if (HUD->CharacterUI)
@@ -548,7 +669,7 @@ void AAC2GameMode::Tick(float Delta)
         if (InteriorBlock)
         {
             double Floor;
-            if (!P->IsFlying() && !Stream->GroundAt(Here, Floor))
+            if (!P->IsFlying() && !HasGroundSupport(P, Floor))
             {
                 P->SetActorLocation(LastSafe);
                 P->GetCharacterMovement()->StopMovementImmediately();
@@ -576,7 +697,7 @@ void AAC2GameMode::Tick(float Delta)
         else
         {
             double Ground;
-            if (!P->IsFlying() && (!Stream->GroundAt(Here, Ground) || Here.Z < Ground - 150))
+            if (!P->IsFlying() && (!HasGroundSupport(P, Ground) || Here.Z < Ground - 150))
             {
                 P->SetActorLocation(LastSafe);
                 P->GetCharacterMovement()->StopMovementImmediately();
@@ -616,6 +737,7 @@ void AAC2GameMode::Tick(float Delta)
                 }
             }
             PC->SetControlRotation(FRotator(0, BestYaw, 0));
+            P->SetActorRotation(FRotator(0, BestYaw, 0));
             Notice = FString::Printf(TEXT("Interior %08X"), PendingCell);
         }
         else
@@ -657,9 +779,19 @@ void AAC2GameMode::Tick(float Delta)
     if(bRevealing && SceneReadyToReveal())
     {
         bRevealing=false;
-        P->SetHeld(false);
+        if(Network)Network->SceneComplete();
+        // The server can activate the destination under cover. Keep the
+        // avatar's arrival effect visible through emergence.
+        WaitingForExitAnimation=true;
         UE_LOG(LogTemp,Display,TEXT("AC2 portal destination ready: %s distant=%d frame=%llu"),
             *Stream->Status(),Far?Far->TileCount():0,GFrameCounter);
+    }
+    if(WaitingForExitAnimation && !bWaiting && !WantsPortalSpace() &&
+       (!HUD || !HUD->PortalEffect || !HUD->PortalEffect->Active()))
+    {
+        WaitingForExitAnimation=false;
+        if (Network) Network->FinishArrivalEffect();
+        P->SetHeld(false);
     }
     for (int32 I = Mobs.Num() - 1; I >= 0; --I)
         if (!Mobs[I].IsValid())
@@ -1164,7 +1296,7 @@ void AAC2GameMode::LoadCell(uint32 Id)
     if ((Id & 65535) < 256 || !LoadBlock(Id >> 16))
         return;
     PendingCell = Id;
-    Stream->SetInteriorCell(Id);
+    if(!OfflineDeparture)Stream->SetInteriorCell(Id);
 }
 void AAC2GameMode::Weather(int32 Index)
 {
@@ -1383,7 +1515,6 @@ void AAC2GameMode::SetCombat(bool Enabled)
     {
         P->StopBehavior();
         P->SetNativeMode(Enabled?AC2Motion::Unarmed:AC2Motion::Peace);
-        Notice=Enabled?TEXT("Combat stance"):TEXT("Peace stance");
     }
 }
 void AAC2PlayerController::SelectUnderCursor()
@@ -1417,25 +1548,23 @@ void AAC2PlayerController::MissileSkill()
 void AAC2PlayerController::SetupInputComponent()
 {
     Super::SetupInputComponent();
-    InputComponent->BindKey(EKeys::M, IE_Pressed, this, &AAC2PlayerController::Map);
-    InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AAC2PlayerController::Select);
-    InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
-    InputComponent->BindKey(EKeys::LeftMouseButton, IE_DoubleClick, this, &AAC2PlayerController::UseUnderCursor);
-    InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AAC2PlayerController::InspectUnderCursor);
-    const FKey NumberKeys[]={EKeys::One,EKeys::Two,EKeys::Three,EKeys::Four,EKeys::Five,EKeys::Six,EKeys::Seven,EKeys::Eight,EKeys::Nine,EKeys::Zero};
-    for(int32 I=0;I<10;++I){
-        FInputKeyBinding Binding(FInputChord(NumberKeys[I]),IE_Pressed);
-        Binding.KeyDelegate.GetDelegateForManualSet().BindLambda([this,I](){if(auto* H=Cast<AAC2HUD>(GetHUD());H&&H->GameUI)H->GameUI->ActivateShortcut(I);});
-        InputComponent->KeyBindings.Add(MoveTemp(Binding));
+    if (BoundKeyComponent.Get() != InputComponent)
+    {
+        BoundKeyComponent = InputComponent;
+        InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AAC2PlayerController::SelectUnderCursor);
+        InputComponent->BindKey(EKeys::LeftMouseButton, IE_DoubleClick, this, &AAC2PlayerController::UseUnderCursor);
+        InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AAC2PlayerController::InspectUnderCursor);
+        FirstGameplayKey = InputComponent->KeyBindings.Num();
+        NumGameplayKeys = 0;
     }
-    InputComponent->BindKey(EKeys::Z, IE_Pressed, this, &AAC2PlayerController::CombatMode);
-    InputComponent->BindKey(EKeys::E, IE_Pressed, this, &AAC2PlayerController::UseTarget);
-    InputComponent->BindKey(EKeys::Home, IE_Pressed, this, &AAC2PlayerController::AC2Recall);
-    InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &AAC2PlayerController::CloseUI);
-    InputComponent->BindKey(EKeys::I, IE_Pressed, this, &AAC2PlayerController::Inventory);
-    InputComponent->BindKey(EKeys::C, IE_Pressed, this, &AAC2PlayerController::CharacterStats);
-    InputComponent->BindKey(EKeys::F4, IE_Pressed, this, &AAC2PlayerController::CharacterSelect);
-    InputComponent->BindKey(EKeys::Enter, IE_Pressed, this, &AAC2PlayerController::Chat);
+    TArray<FAC2ShortcutKey> ShortcutKeys;FString KeyError;
+    const auto* Game=GetWorld()->GetAuthGameMode<AAC2GameMode>();
+    if(!FAC2ShortcutKeys::Load(AC2::ResolveDatDirectory(Game?Game->DatDirectory:TEXT("")),ShortcutKeys,KeyError))
+        UE_LOG(LogTemp,Warning,TEXT("Native shortcut keys: %s"),*KeyError);
+    FAC2KeyBindings Configured;
+    Configured.Initialize(ShortcutKeys);
+    Configured.Load(GGameUserSettingsIni);
+    ApplyGameplayKeys(Configured);
 }
 
 void AAC2PlayerController::FlushPressedKeys()

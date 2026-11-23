@@ -1,0 +1,85 @@
+{
+  "policy": "AC2Hero Omishan walkthroughs give fixed XP, minimum level, no time limit and a six-day reset. The original wiki-derived amounts remain valid for historical journal replay.",
+  "limit_seconds": 0,
+  "repeat_seconds": 518400,
+  "quests": [
+    {
+      "id": 1073806359,
+      "level": 17,
+      "xp": 3000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_pluckthestraydarkenfowl.html"
+    },
+    {
+      "id": 1073806360,
+      "level": 18,
+      "xp": 5000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_perforatetheservitorspawn.html"
+    },
+    {
+      "id": 1073806361,
+      "level": 20,
+      "xp": 7000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_perforatethepuppetspawn.html"
+    },
+    {
+      "id": 1073806362,
+      "level": 22,
+      "xp": 14000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_perforatethesurrogatespawn.html"
+    },
+    {
+      "id": 1073806363,
+      "level": 21,
+      "xp": 9500,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_driveoutthemimbukachem.html"
+    },
+    {
+      "id": 1073806364,
+      "level": 23,
+      "xp": 18000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_deflatetheparfalnephanes.html"
+    },
+    {
+      "id": 1073806365,
+      "level": 24,
+      "xp": 22000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_deflatethelistrisniffis.html"
+    },
+    {
+      "id": 1073806366,
+      "level": 25,
+      "xp": 30000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_eliminatetheulusclavus.html"
+    },
+    {
+      "id": 1073806367,
+      "level": 26,
+      "xp": 40000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_eliminatethefaisisclavus.html"
+    },
+    {
+      "id": 1073806368,
+      "level": 27,
+      "xp": 60000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_thinthemarsharmoredillos.html"
+    },
+    {
+      "id": 1073806369,
+      "level": 28,
+      "xp": 115000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_puncturetheoporniffis.html"
+    },
+    {
+      "id": 1073806370,
+      "level": 30,
+      "xp": 150000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_puncturetheopornefane.html"
+    },
+    {
+      "id": 1073806371,
+      "level": 29,
+      "xp": 100000,
+      "source": "http://ac2hero.e5i5o.com/quest/omishan_culltheblightedmucor.html"
+    }
+  ]
+}

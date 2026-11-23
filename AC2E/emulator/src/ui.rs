@@ -38,7 +38,7 @@ pub fn portal_used(
     point: crate::movement::Placement,
     distance: f32,
 ) -> Result<Vec<u8>, WorldError> {
-    if !distance.is_finite() || !(0.0..=4.0).contains(&distance) {
+    if !distance.is_finite() || !(0.0..=crate::starters::use_radius(target)).contains(&distance) {
         return Err(WorldError::InvalidValue);
     }
     use_success(owner, target, point, Some(distance))
@@ -250,15 +250,43 @@ fn graph(bytes: &mut Vec<u8>, objects: &[Object]) {
     }
 }
 
-pub fn hand_equipment(
-    owner: u64,
-    item: u64,
-    slot: u16,
-    other_hands: u16,
-    metadata: crate::inventory_request::Equipment,
-    equipped: bool,
-) -> Result<Vec<u8>, WorldError> {
-    hand_equipment_at(owner, item, slot, other_hands, metadata, equipped, 0)
+/// Native Menhir story Act 0x40000021, identical in all three retail
+/// porting.from.shardroom captures. Each frame references client DAT assets.
+pub fn menhir_story() -> Vec<u8> {
+    const ACT: u32 = 0x40000021;
+    const TABLE: u32 = 0x250014be;
+    // Duration, artwork, voice, localized caption.
+    const FRAMES: &[(f64, u32, u32, u32)] = &[
+        (3.0, 0x4100497d, 0x2c000311, 0xc96d8b37),
+        (3.0, 0x410064fa, 0x00000000, 0xc96e8b37),
+        (5.0, 0x410064fb, 0x00000000, 0x00000000),
+        (2.0, 0x410064fc, 0x00000000, 0x00000000),
+        (3.0, 0x00000000, 0x00000000, 0xc9698b37),
+        (2.0, 0x4100497d, 0x00000000, 0x00000000),
+        (6.0, 0x00000000, 0x00000000, 0xc96b8b37),
+        (5.0, 0x410064fd, 0x00000000, 0xc9648b37),
+        (2.0, 0x410064fe, 0x00000000, 0x00000000),
+        (3.0, 0x00000000, 0x00000000, 0x40bcc81a),
+        (6.0, 0x410064ff, 0x00000000, 0x00000000),
+        (2.0, 0x41006500, 0x00000000, 0x40bccc1a),
+        (2.0, 0x41006501, 0x00000000, 0x00000000),
+        (3.0, 0x41006502, 0x00000000, 0x00000000),
+        (3.0, 0x41006503, 0x00000000, 0x40bcc21a),
+        (3.0, 0x41006504, 0x00000000, 0x00000000),
+        (1.0, 0x00000000, 0x00000000, 0x40bcc61a),
+        (6.0, 0x41006505, 0x00000000, 0x00000000),
+        (12.0, 0x4100497d, 0x00000000, 0x40bcda1a),
+    ];
+    let mut words = vec![1, ACT, 0xd41385e6, TABLE, 0, 0x40000008, 1, 0, 1, FRAMES.len() as u32];
+    for (index, &(seconds, artwork, voice, caption)) in FRAMES.iter().enumerate() {
+        let duration = seconds.to_bits();
+        let flags = u32::from(artwork != 0) | (u32::from(voice != 0) << 2) | (u32::from(caption != 0) << 4);
+        words.extend([ACT, index as u32 + 1, duration as u32, (duration >> 32) as u32, artwork, 0, voice, caption,
+            if caption == 0 { 0 } else { TABLE }, 0, 0, flags]);
+    }
+    let mut bytes = Vec::new();
+    graph(&mut bytes, &[Object::native(0xa4, &words)]);
+    bytes
 }
 
 pub fn hand_equipment_at(
@@ -342,12 +370,14 @@ pub fn empty_player() -> Result<Vec<u8>, WorldError> {
 /// Retail 2017 login SkillData: state flags 1 known / 2 bought with credits /
 /// 0x20 last-use stamp set, rank at field 10 and credits spent at field 12.
 fn skill_object(id: u32, entry: &crate::skills::Trained) -> Object {
-    let flags = if entry.locked && entry.credits == 0 { 1 } else { 3 };
+    let flags = (if entry.locked && entry.credits == 0 { 1 } else { 3 })
+        | if entry.reset_started.is_some() { 0x20 } else { 0 };
+    let reset = entry.reset_started.unwrap_or((-1f64).to_bits());
     Object::interpreted(
         0x231,
         &[
-            (0, 0xc3),
-            (0xbff00000, 0xcd),
+            (reset as u32, 0xc3),
+            ((reset >> 32) as u32, 0xcd),
             (0, INT),
             (0, 0x83),
             (0, 0xcd),
@@ -370,6 +400,26 @@ pub fn skill_update(id: u32, entry: &crate::skills::Trained) -> Result<Vec<u8>, 
     let mut args = Vec::new();
     graph(&mut args, &[skill_object(id, entry)]);
     script::private_call(0x8214000d, &args)
+}
+/// Legions SkillSystem::InqSkillTimeLeft reads SkillInfo TIME[0], flag 0x20,
+/// and the player's shared reset TIME quality 0x12f / FLOAT quality 0xbb8.
+/// Send the duration first; the timestamp change triggers UpdateResetTime.
+pub fn shared_skill_reset(started: Option<f64>) -> Vec<Vec<u8>> {
+    let mut duration = 0x1006du32.to_le_bytes().to_vec();
+    duration.extend(0xbb8u32.to_le_bytes());
+    duration.extend((crate::abilities::GLOBAL_COOLDOWN_MS as f32 / 1000.).to_le_bytes());
+    let mut stamp = 0x10077u32.to_le_bytes().to_vec();
+    stamp.extend(0x12fu32.to_le_bytes());
+    stamp.extend(started.unwrap_or(-1.).to_le_bytes());
+    vec![duration, stamp]
+}
+pub fn skill_started(id: u32, entry: &crate::skills::Trained, started: f64) -> Result<Vec<Vec<u8>>, WorldError> {
+    if !started.is_finite() || started < 0. { return Err(WorldError::InvalidValue); }
+    let mut entry = entry.clone();
+    entry.reset_started = Some(started.to_bits());
+    let mut events = vec![skill_update(id, &entry)?];
+    events.extend(shared_skill_reset(Some(started)));
+    Ok(events)
 }
 pub fn skill_remove(id: u32) -> Result<Vec<u8>, WorldError> {
     script::private_call(0x82140014, &script::integer(id))
@@ -450,20 +500,22 @@ pub fn player_all_quests_options(
                     (NULL, REF),
                     (2, REF),
                     (NULL, REF),
-                    (0, INT),
-                    (NULL, REF),
+                    (2, INT),
+                    (4, REF), // EffectRecord by effect ID (ARHash).
                     (0, 0xc3),
                     (0xbff00000, 0xcd), // Native -1.0 double sentinel.
                     (NULL, REF),
                     (NULL, REF),
-                    (0, INT),
+                    (1, INT),
                     (NULL, REF),
-                    (NULL, REF),
+                    (5, REF), // Effect ID by display order (AAHash).
                     (NULL, REF),
                     (3, REF),
                 ],
             ),
             Object::native(1, &[0]),
+            Object::native(1, &[0]),
+            Object::native(0x11, &[0]),
             Object::native(1, &[0]),
         ],
     );
@@ -580,6 +632,31 @@ fn inventory_map(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn accepted_skills_pack_native_last_use_and_shared_reset_without_mutating_training() {
+        let state=crate::progression::Progression::default();
+        let mut book=crate::skills::Book::default().with_starter_skills(&state,1,0x1000).unwrap();
+        let id=book.entries().next().unwrap().0;
+        let stamp=123456.125f64;
+        let before=book.clone();
+        let events=skill_started(id,book.get(id).unwrap(),stamp).unwrap();
+        assert_eq!(book,before); // staging a reply cannot spend a cooldown
+        book.record_use(id,stamp);
+        assert_eq!(events[0],skill_update(id,book.get(id).unwrap()).unwrap());
+        assert_eq!(book.shared_reset(),Some(stamp));
+        let fields=skill_object(id,book.get(id).unwrap()).fields;
+        assert_eq!(fields[0],(stamp.to_bits() as u32,0xc3));
+        assert_eq!(fields[1],((stamp.to_bits()>>32) as u32,0xcd));
+        assert_ne!(fields[7].0&0x20,0);
+        assert_eq!(fields[10].0,u32::from(before.get(id).unwrap().rank));
+        assert_eq!(&events[1][..8],&[0x6d,0,1,0,0xb8,0xb,0,0]);
+        assert_eq!(&events[1][8..],&1f32.to_le_bytes());
+        assert_eq!(&events[2][..8],&[0x77,0,1,0,0x2f,1,0,0]);
+        assert_eq!(&events[2][8..],&stamp.to_le_bytes());
+        for invalid in [-1.,f64::NAN,f64::INFINITY] {
+            assert!(skill_started(id,book.get(id).unwrap(),invalid).is_err());
+        }
+    }
     #[test]
     fn layout_gate_rejects_changed_sizes_truncation_and_unbounded_counts() {
         let mut section = Vec::new();

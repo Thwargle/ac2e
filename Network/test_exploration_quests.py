@@ -48,8 +48,7 @@ def main():
     def start(log):
         p = subprocess.Popen([str(SERVER), 'serve', '--bind', '127.0.0.1:19524', '--account', 'local',
                               '--data', str(run / 'world'), '--game-data', str(DAT_DIRECTORY),
-                              '--content', str(content), '--initialize-ui', 'true', '--training-kit', 'false',
-                              '--portals', 'false', '--lifestones', 'false', '--test-map-travel', 'true',
+                              '--content', str(content), '--initialize-ui', 'true', '--portals', 'false', '--lifestones', 'false', '--test-map-travel', 'true',
                               '--seconds', '180'], env=env, stdout=log, stderr=log, creationflags=0x08000000)
         time.sleep(1)
         assert p.poll() is None, (run / 'server.log').read_text()
@@ -91,8 +90,19 @@ def main():
         event = until(p, mark, 'quests', lambda e: any(i['id'] == q and i['status'] == status and i['phase'] == phase for i in e['items']))
         return next(i for i in event['items'] if i['id'] == q)
 
+    def check_rewards(p, mark, xp, points):
+        until(p, mark, 'quality', lambda e: e['key'] == 0x12c and e['table'] == 12 and int(e['value']) == xp)
+        until(p, mark, 'quality', lambda e: e['key'] == 0x7ac20003 and int(e['value']) == points)
+
     def leave(p):
         mark = len(p.events); p.send('logout', id=p.id); until(p, mark, 'selection'); p.close()
+
+    def blessing(p, mark, did, duration):
+        event = until(p, mark, 'status_effects', lambda e: any(
+            effect['did'] == did for effect in e.get('effects', [])))
+        effect = next(effect for effect in event['effects'] if effect['did'] == did)
+        assert effect['duration'] == duration and effect['flags'] & 2, effect
+        return effect
 
     with (run / 'server.log').open('w') as log:
         try:
@@ -108,18 +118,29 @@ def main():
             p.send('combat', enabled=False); until(p, mark, 'combat', lambda e: not e['enabled'])
             report['unaccepted_remote_and_combat_use_rejected'] = True
             for index, q in enumerate(pack['quests']):
-                at(p, q['npc']); mark = use(p, q['npc']); quest(p, mark, q['id'], 1)
+                at(p, q['npc']); mark = use(p, q['npc']); accepted = quest(p, mark, q['id'], 1)
+                assert accepted['expires'] and 0 < accepted['remaining'] <= q['limit_seconds']
+                assert accepted['retry'] == 0
                 until(p, mark, 'script', lambda e: e['function'] == 0x82120024)
                 at(p, q['objectives'][2]); mark = use(p, q['objectives'][2])
                 until(p, mark, 'script', lambda e: e['function'] == 0x82120024)
                 for i, entity in enumerate(q['objectives']):
                     at(p, entity, -.5 if index == 0 and i == 2 else .5)
                     mark = use(p, entity); quest(p, mark, q['id'], i + 2)
+                    boon = blessing(p, mark, [0x6f00025a, 0x6f000259, 0x6f00025b][i], 7200)
                     if index == 0 and i == 0:
+                        until(p, mark, 'motion', lambda e: e.get('parameter') == 'velocity' and abs(e['value'] - 1.08) < .001)
                         leave(p); stop(); server = start(log); p = connect()
-                        quest(p, 0, q['id'], 2)
+                        assert abs(blessing(p, 0, 0x6f00025a, 7200)['cast'] - boon['cast']) < 2
+                        restored = quest(p, 0, q['id'], 2)
+                        assert restored['bestowal'] == accepted['bestowal']
+                        assert restored['expires'] and 0 < restored['remaining'] < accepted['remaining']
                         report['partial_progress_survives_restart'] = True
-                at(p, q['npc']); mark = use(p, q['npc']); quest(p, mark, q['id'], 0, True)
+                at(p, q['npc']); mark = use(p, q['npc']); completed = quest(p, mark, q['id'], 0, True)
+                assert not completed['expires'] and completed['remaining'] == 0
+                assert 0 < completed['retry'] <= q['repeat_seconds']
+                check_rewards(p, mark, 80 * (index + 1), 100 * (index + 1))
+                latest_ward = blessing(p, mark, 0x6f00025c, 10800)
                 if index == 0:
                     quest(p, mark, pack['referral']['id'], 1)
                 else:
@@ -130,13 +151,16 @@ def main():
                     assert not any(i['id'] == pack['referral']['id']
                                    for e in p.events[mark:] if e.get('event') == 'quests'
                                    for i in e['items']), 'Unchanged referral was resent'
-                report[q['title']] = 'three ordered visits, return, 80 XP and referral'
+                report[q['title']] = 'three ordered visits with timed blessings, return, Obelisk Ward and referral'
             at(p, pack['referral']['npc']); mark = use(p, pack['referral']['npc'])
             quest(p, mark, pack['referral']['id'], 0, True)
             leave(p); stop(); server = start(log); p = connect()
             for q in pack['quests']:
                 quest(p, 0, q['id'], 0, True)
             quest(p, 0, pack['referral']['id'], 0, True)
+            assert abs(blessing(p, 0, 0x6f00025c, 10800)['cast'] - latest_ward['cast']) < 2, 'Restart reset the Obelisk Ward timer'
+            check_rewards(p, 0, 240, 300)
+            report['persisted_rewards'] = {'xp': 240, 'quest_points': 300}
             report['all_four_completed_journals_survive_restart'] = True
             report['grounded_obelisks'] = 9
             report['nearby_use_across_landblock_boundary'] = True

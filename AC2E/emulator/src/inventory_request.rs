@@ -260,13 +260,14 @@ impl Equipment {
             crate::inventory::Location::Equipped(slot) => u32::from(slot),
             _ => self.preferred,
         };
-        // Explicit initial hand-equipment policy. Body armor needs VisualDesc
-        // composition. Arbitrary parenting selectors are never accepted.
+        // Drum/arrow holding points also belong to recovered treasure weapons.
+        // Validate the complete catalog identity, not just the original starter IDs.
         if !matches!(slot, 0x40 | 0x80)
             || self.valid & slot == 0
             || u32::from(item.equipment_mask) & slot == 0
             || !matches!(self.primary, 1..=4)
-            || (self.primary >= 3 && !crate::starter_gear::is_weapon(item.definition))
+            || (self.primary >= 3 && !crate::starter_gear::is_weapon(item.definition)
+                && crate::treasure_weapons::profile(item).is_none())
             || (slot == 0x80 && self.primary != 2)
             || item.quantity != 1
         {
@@ -280,6 +281,9 @@ impl Metadata {
     /// gmWeenieDesc::StreamPack 006037c0, CBaseQualities::UnPack 005192f0.
     /// Localized names with substitutions and string quality tables are unsupported.
     pub fn load(portal: &mut crate::dat::Dat, definition: u32) -> std::io::Result<Self> {
+        Self::load_with_ints(portal, definition).map(|(metadata, _)| metadata)
+    }
+    pub(crate) fn load_with_ints(portal: &mut crate::dat::Dat, definition: u32) -> std::io::Result<(Self, std::collections::BTreeMap<u32, u32>)> {
         let invalid = || {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -456,11 +460,11 @@ impl Metadata {
                 secondary: integers.get(&0x115).copied().unwrap_or(0),
             })
         })();
-        Ok(Self {
+        Ok((Self {
             icon,
             physical,
             equipment,
             implement: integers.get(&0xfa0).copied(),
-        })
+        }, integers))
     }
 }

@@ -64,6 +64,7 @@ class SAC2CharacterUI : public SCompoundWidget
     bool SmokeEyes(bool Last);
     bool SmokeSelection(int32 Step, FString &Error);
     bool SmokeCreatorDrafts(FString& Error);
+    bool SmokeAvatarPicking(int32 Step, FString& Error);
     bool WaitingForAvatarAnimation() const { return PendingAvatar!=INDEX_NONE; }
 
   private:
@@ -81,6 +82,10 @@ class SAC2CharacterUI : public SCompoundWidget
     double CreditsStart=0;
     void BuildCredits();
     void SelectCharacter(int32 Index);
+    int32 CharacterAt(FVector2D Point) const;
+    void BuildSelectionHint();
+    TArray<FIntRect> SelectionRows;
+    FVector2D SelectionPointer = FVector2D(-1,-1);
     FSlateBrush LineupBrush;
     int32 HoveredAvatar = INDEX_NONE;
     int32 PendingAvatar = INDEX_NONE;

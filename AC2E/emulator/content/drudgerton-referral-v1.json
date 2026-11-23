@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "npcs": [],
+  "camps": [],
+  "templates": {
+    "1191199481": {
+      "visual": 520094190,
+      "name": "Jrent"
+    },
+    "1191192478": {
+      "visual": 520094158,
+      "name": "Jellio"
+    }
+  },
+  "validate_captured_bodies": true,
+  "interiors": [
+    {
+      "id": 9313672727820772128,
+      "entity": 1191199481,
+      "capture_id": "81300000892cb7b5",
+      "capture_entity": "47002fb7",
+      "cell": 1467088948,
+      "position": [
+        137.01675415039062,
+        63.33291244506836,
+        216.5050048828125
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1,
+      "outdoor_capture": true,
+      "name": "Jrent",
+      "quest_entity": 1191200182,
+      "message_sha256": "23442cd3d8fe669badf13dfac8d93ca233be46b416d732f56ebb18ea83335404",
+      "physics_object": 1191182534
+    },
+    {
+      "id": 9313672727820772129,
+      "entity": 1191192478,
+      "capture_id": "81300000892cb95c",
+      "capture_entity": "47002fb8",
+      "cell": 1684996138,
+      "position": [
+        118.20020294189453,
+        26.358665466308594,
+        140.5052490234375
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": 1.0499999523162842,
+      "outdoor_capture": true,
+      "name": "Jellio",
+      "quest_entity": 1191200183,
+      "message_sha256": "e7bc04c34856e68d9a214fafa8df7abb1585350c32f86bfe4045464c03824f85",
+      "physics_object": 1191182536
+    }
+  ],
+  "quests": [
+    {
+      "id": 1073806852,
+      "title": "To Drudgerton!",
+      "giver": 1191200182,
+      "recipient": 1191200183,
+      "giver_name": "Jrent",
+      "recipient_name": "Jellio",
+      "level": 40,
+      "limit": 604800,
+      "repeat": 604800,
+      "xp": 750000,
+      "direction": "Find Jellio at the southern entrance to Drudgerton (12.8S, 21.1W). The Thusik Ringway east of Linvak Tukal leads toward town.",
+      "evidence": {
+        "url": "http://ac2hero.e5i5o.com/quest/linvak_todrudgerton.html",
+        "page_sha256": "c30517f1e4897f2f3ae1c0a1d3f0f1ce73b7c5a6ea3c8e49f0d30ba020d6fd85"
+      },
+      "greeting": "Welcome to Drudgerton. Jrent is at Linvak Tukal if you are looking for an introduction.",
+      "welcome": "Welcome to Drudgerton! Jrent sent you just in time for the Blazing Drudge Festival. Meet the other drudges while you are in town."
+    }
+  ],
+  "notes": [
+    "The guide records level 40, a seven-day deadline and reset, 750,000 XP and 1,500 QP. The installed Legions quest export has no identified native quest ID for the introduction. 4000fe04 is a local journal identity.",
+    "Both NPCs were observed together in this retail capture with the visual, scale, orientation and positions below. Installed Legions lacks their named workbook templates; its records at the late capture IDs represent unrelated entities. The two named instances use compatible neutral Legions assets with the same PhysObj (470000c6 / 470000c8), visual, selection and entity type. The literal CREATE name and explicit instance-to-role mapping distinguish them from other instances of the same rendering template."
+  ],
+  "captures": [
+    {
+      "archive_sha256": "05cd1867afbb74d45a4a285fc6b013da872ef61d331e89371cf175c6b4f78766",
+      "path": "351683a029468fbd/pkt_2017-1-29_1485679330_log.pcap"
+    }
+  ]
+}

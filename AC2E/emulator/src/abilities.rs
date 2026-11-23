@@ -15,8 +15,10 @@
 //! and timed armor, attack and
 //! defense ratings. Armor uses NaturalArmor 0x40125 and ArmorLevel 0x40262.
 //! Attack ratings are 0x800001/7/c and defense ratings 0x800002/8/d (magic,
-//! melee, missile). Other buff stats, projectile flight, area attacks, combos
-//! and summoned portals are not applied. Recovered recall destinations are
+//! melee, missile). Native missiles use the encounter's authored flight timing.
+//! Explosion, Earthquake and Volley strike around the selected creature.
+//! Sand Fiend summons a mobile combat pet. Further area shapes, combo chains,
+//! buff stats and summoned portals still need handlers. Recovered recall destinations are
 //! retained as evidence; only the server's existing bound-lifestone recall is
 //! executable. Base damage and the hit curve remain authored server policy.
 //!
@@ -174,6 +176,10 @@ fn implement_name(mask: u32) -> &'static str {
         .map_or("a different implement", |(_, name)| name)
 }
 
+pub(crate) fn item_implement_name(mask: u32) -> Option<&'static str> {
+    IMPLEMENTS.iter().find(|(bits, _)| *bits == mask).map(|(_, name)| *name)
+}
+
 /// Level points (level, value), sorted by level.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct Table(Vec<(f32, f32)>);
@@ -235,6 +241,7 @@ enum Side {
 
 #[derive(Clone, Debug)]
 struct Timed {
+    effect: u32,
     side: Side,
     vigor: bool,
     values: Table,
@@ -244,6 +251,7 @@ struct Timed {
 
 #[derive(Clone, Debug)]
 struct Buff {
+    effect: u32,
     side: Side,
     health: Table,
     vigor: Table,
@@ -251,6 +259,7 @@ struct Buff {
 }
 #[derive(Clone, Debug)]
 struct RatingSpec {
+    effect: u32,
     side: Side,
     duration: Table,
     armor: Vec<Table>,
@@ -263,7 +272,7 @@ impl RatingSpec {
             || self.attack.iter().any(|tables| !tables.is_empty())
             || self.defense.iter().any(|tables| !tables.is_empty())
     }
-    fn resolve(&self, rank: u16) -> (crate::combat::Ratings, u64) {
+    fn resolve(&self, rank: u16) -> crate::encounters::RatingEffect {
         let sum = |tables: &[Table]| -> i32 {
             tables
                 .iter()
@@ -281,7 +290,7 @@ impl RatingSpec {
         } else {
             (seconds * 1000.0) as u64
         };
-        (ratings, duration_ms)
+        crate::encounters::RatingEffect { ratings, duration_ms, effect: self.effect }
     }
 }
 
@@ -303,14 +312,18 @@ struct Definition {
     left: u32,
     story: u32,
     fx: u32,
+    status_fx: Vec<(Side, u32, Table, bool)>,
     damage: Table,
     health: Table,
     vigor_effect: Table,
+    own_health: Table,
+    own_vigor: Table,
     timed: Vec<Timed>,
-    buff: Option<Buff>,
+    buffs: Vec<Buff>,
     ratings: Vec<RatingSpec>,
     unresolved: bool,
     weapon: bool,
+    sand_fiend: bool,
     travel: Option<Travel>,
 }
 impl Definition {
@@ -337,28 +350,23 @@ impl Definition {
     }
     fn usable(&self) -> bool {
         self.weapon
+            || self.sand_fiend
             || self.travel.is_some()
             || !self.damage.is_empty()
             || !self.health.is_empty()
             || !self.vigor_effect.is_empty()
+            || !self.own_health.is_empty()
+            || !self.own_vigor.is_empty()
             || !self.timed.is_empty()
-            || self.buff.is_some()
+            || !self.buffs.is_empty()
             || self.ratings.iter().any(RatingSpec::useful)
     }
-    fn ratings_for(&self, side: Side, rank: u16) -> Option<(crate::combat::Ratings, u64)> {
-        let mut total = crate::combat::Ratings::default();
-        let mut duration = 0u64;
-        let mut found = false;
-        for spec in &self.ratings {
-            if spec.side != side || !spec.useful() {
-                continue;
-            }
-            let (part, ms) = spec.resolve(rank);
-            total.add(part);
-            duration = duration.max(ms);
-            found = true;
-        }
-        (found && !total.is_empty()).then_some((total, duration))
+    fn ratings_for(&self, side: Side, rank: u16) -> Vec<crate::encounters::RatingEffect> {
+        self.ratings.iter()
+            .filter(|spec| spec.side == side && spec.useful())
+            .map(|spec| spec.resolve(rank))
+            .filter(|effect| !effect.ratings.is_empty())
+            .collect()
     }
 }
 
@@ -394,16 +402,16 @@ pub enum Outcome {
     Restore {
         health: u32,
         vigor: u32,
-        mend: Option<Over>,
-        regen: Option<Regen>,
+        mend: Vec<Over>,
+        regen: Vec<Regen>,
     },
     /// Vigor is in `commands()`; the target's vitals land on the next tick.
     Support {
         target: u64,
         health: u32,
         vigor: u32,
-        mend: Option<Over>,
-        regen: Option<Regen>,
+        mend: Vec<Over>,
+        regen: Vec<Regen>,
     },
     /// Queue one encounter strike; its vigor is spent when it lands.
     Strike {
@@ -413,10 +421,11 @@ pub enum Outcome {
         weapon_damage: bool,
         cost: u32,
         range: f32,
-        burn: Option<Over>,
+        burn: Vec<Over>,
     },
     /// Move the caster; vigor is in `commands()`.
     Travel(Travel),
+    SandFiend { rank: u16 },
 }
 
 pub struct Runtime {
@@ -478,9 +487,11 @@ impl Runtime {
         }
 
         let mut lines = text.lines();
-        if lines.next() != Some("pyrealium-skill-effects-v2") {
-            return Err(AbilityError::Catalog);
-        }
+        let explicit_stat_operations = match lines.next() {
+            Some("pyrealium-skill-effects-v2") => false,
+            Some("pyrealium-skill-effects-v3") => true,
+            _ => return Err(AbilityError::Catalog),
+        };
         let mut definitions = BTreeMap::new();
         for line in lines {
             if line.is_empty() || line.starts_with('#') {
@@ -511,14 +522,18 @@ impl Runtime {
                 left: hex(f[8])?,
                 story: hex(f[9])?,
                 fx: hex(f[10])?,
+                status_fx: Vec::new(),
                 damage: Table::parse(f[11])?,
                 health: Table::default(),
                 vigor_effect: Table::default(),
+                own_health: Table::default(),
+                own_vigor: Table::default(),
                 timed: Vec::new(),
-                buff: None,
+                buffs: Vec::new(),
                 ratings: Vec::new(),
                 unresolved: false,
                 weapon: false,
+                sand_fiend: false,
                 travel: routes.remove(&skill),
             };
             if f[12] != "-" {
@@ -527,15 +542,15 @@ impl Runtime {
                     if p.len() != 10 {
                         return Err(AbilityError::Catalog);
                     }
-                    let side = if p[0] == "self" {
-                        Side::Own
-                    } else {
-                        Side::Target
+                    let side = match p[0] {
+                        "self" => Side::Own,
+                        "target" => Side::Target,
+                        _ => return Err(AbilityError::Catalog),
                     };
+                    let effect = hex(p[1])?;
                     let kind = hex(p[2])?;
-                    if definition.fx == 0 {
-                        definition.fx = hex(p[4])?;
-                    }
+                    let effect_fx=hex(p[4])?;
+                    if effect_fx!=0 && !matches!(effect_fx>>24,0x40|0x41|0x81) {return Err(AbilityError::Catalog);}
                     let period = number(p[5])?;
                     let duration = Table::parse(p[6])?;
                     let values = Table::parse(p[7])?;
@@ -543,26 +558,42 @@ impl Runtime {
                     // essential status/summon component. Recognized stat effects
                     // occur under several derived native type codes.
                     let has_stats = p[8] != "-";
-                    let stat_ids: Vec<u32> = if has_stats {
+                    let stats: Vec<(u32,u32,Table)> = if has_stats {
                         p[8].split('|')
                             .map(|s| {
-                                s.split_once('=')
-                                    .ok_or(AbilityError::Catalog)
-                                    .and_then(|(id, _)| hex(id))
+                                let (key, value)=s.split_once('=').ok_or(AbilityError::Catalog)?;
+                                let (id,operation)=if explicit_stat_operations {
+                                    let (id,operation)=key.split_once('@').ok_or(AbilityError::Catalog)?;
+                                    (hex(id)?,hex(operation)?)
+                                } else {
+                                    let id=hex(key)?;
+                                    (id,if [HEALTH_REGEN,VIGOR_REGEN].contains(&id) {0xa} else {6})
+                                };
+                                Ok((id,operation,Table::parse(value)?))
                             })
                             .collect::<Result<_, _>>()?
                     } else {
                         Vec::new()
                     };
                     let known_stats = has_stats
-                        && stat_ids.iter().all(|id| {
-                            [HEALTH_REGEN, VIGOR_REGEN, NATURAL_ARMOR, ARMOR_LEVEL].contains(id)
-                                || ATTACK_RATING.contains(id)
-                                || DEFENSE_RATING.contains(id)
+                        && stats.iter().all(|(id,operation,values)| {
+                            !values.is_empty() &&
+                            // An integer addition is not interchangeable with a
+                            // multiplier or an override of that same stat. Keep
+                            // unsupported operators explicit instead of granting
+                            // a one-point bonus for a percentage effect.
+                            (([HEALTH_REGEN,VIGOR_REGEN].contains(id) && operation & 0xffff == 0xa)
+                                || (([NATURAL_ARMOR,ARMOR_LEVEL].contains(id)
+                                    || ATTACK_RATING.contains(id) || DEFENSE_RATING.contains(id))
+                                    && matches!(operation & 0xffff,6|0xa6)))
                         });
+                    if effect_fx!=0 {
+                        definition.status_fx.push((side,effect_fx,duration.clone(),known_stats));
+                    }
                     let known_vital = match kind {
                         HEALTH | VIGOR => {
-                            side == Side::Target && !values.is_empty()
+                            !values.is_empty() && (side == Side::Target
+                                || values.0.iter().all(|(_, v)| *v >= 0.0))
                         }
                         HEALTH_OVER_TIME | VIGOR_OVER_TIME => {
                             !values.is_empty()
@@ -582,7 +613,10 @@ impl Runtime {
                     let weapon = kind == WEAPON_ATTACK
                         && !has_stats
                         && (definition.kind == BASIC_ATTACK_KIND || !definition.damage.is_empty());
-                    if !(known_vital
+                    let sand_fiend = skill == 0x109 && effect == 0x7000082c && kind == 0xb1
+                        && side == Side::Own && definition.targets == SELF && !has_stats;
+                    definition.sand_fiend |= sand_fiend;
+                    if !(sand_fiend || known_vital
                         || known_stats
                         || container
                         || weapon
@@ -593,17 +627,20 @@ impl Runtime {
                     }
                     match kind {
                         HEALTH => {
-                            definition.unresolved |= !definition.health.is_empty();
-                            definition.health = values;
+                            let table = if side == Side::Own { &mut definition.own_health } else { &mut definition.health };
+                            definition.unresolved |= !table.is_empty();
+                            *table = values;
                         }
                         VIGOR => {
-                            definition.unresolved |= !definition.vigor_effect.is_empty();
-                            definition.vigor_effect = values
+                            let table = if side == Side::Own { &mut definition.own_vigor } else { &mut definition.vigor_effect };
+                            definition.unresolved |= !table.is_empty();
+                            *table = values;
                         }
                         HEALTH_OVER_TIME | VIGOR_OVER_TIME
                             if !values.is_empty() && !duration.is_empty() && period > 0.0 =>
                         {
                             definition.timed.push(Timed {
+                                effect,
                                 side,
                                 vigor: kind == VIGOR_OVER_TIME,
                                 values,
@@ -621,16 +658,10 @@ impl Runtime {
                         || p[8].contains("40262")
                         || p[8].contains("80000")
                     {
-                        if definition.buff.is_some()
-                            && stat_ids
-                                .iter()
-                                .any(|id| [HEALTH_REGEN, VIGOR_REGEN].contains(id))
-                        {
-                            definition.unresolved = true;
-                        }
                         let mut health = Table::default();
                         let mut vigor = Table::default();
                         let mut rating = RatingSpec {
+                            effect,
                             side,
                             duration: duration.clone(),
                             armor: Vec::new(),
@@ -638,14 +669,16 @@ impl Runtime {
                             defense: [Vec::new(), Vec::new(), Vec::new()],
                         };
                         if p[8] != "-" {
-                            for stat in p[8].split('|') {
-                                let (id, table) =
-                                    stat.split_once('=').ok_or(AbilityError::Catalog)?;
-                                let id = hex(id)?;
-                                let parsed = Table::parse(table)?;
+                            for (id, _, parsed) in stats {
                                 match id {
-                                    HEALTH_REGEN if definition.buff.is_none() => health = parsed,
-                                    VIGOR_REGEN if definition.buff.is_none() => vigor = parsed,
+                                    HEALTH_REGEN => {
+                                        definition.unresolved |= !health.is_empty();
+                                        health = parsed;
+                                    }
+                                    VIGOR_REGEN => {
+                                        definition.unresolved |= !vigor.is_empty();
+                                        vigor = parsed;
+                                    }
                                     NATURAL_ARMOR | ARMOR_LEVEL => rating.armor.push(parsed),
                                     _ => {
                                         if let Some(index) =
@@ -661,16 +694,16 @@ impl Runtime {
                                 }
                             }
                         }
-                        if definition.buff.is_none()
-                            && (!health.is_empty() || !vigor.is_empty())
+                        if (!health.is_empty() || !vigor.is_empty())
                             && !duration.is_empty()
                         {
-                            definition.buff = Some(Buff {
-                                side,
-                                health,
-                                vigor,
-                                duration,
-                            });
+                            // Keep recipient and expiry per component. Duplicate
+                            // multipliers on one stat still need recovered stacking
+                            // categories; do not silently choose or multiply them.
+                            definition.unresolved |= definition.buffs.iter().any(|b|
+                                b.side == side && ((!b.health.is_empty() && !health.is_empty())
+                                    || (!b.vigor.is_empty() && !vigor.is_empty())));
+                            definition.buffs.push(Buff { effect, side, health, vigor, duration });
                         }
                         if rating.useful() {
                             definition.ratings.push(rating);
@@ -678,35 +711,24 @@ impl Runtime {
                     }
                 }
             }
-            // The executor currently carries one effect per vital, a shared
-            // healing period, and one rating expiry per side. Withhold compound
-            // records that would otherwise lose an effect or lengthen its life.
+            // Different recipients still need a separate application policy;
+            // each supported recipient keeps all of its native vital timers.
             for (index, a) in definition.timed.iter().enumerate() {
                 for b in &definition.timed[index + 1..] {
-                    if a.side != b.side
-                        || a.vigor == b.vigor
-                        || a.period_ms != b.period_ms
-                        || a.duration != b.duration
-                    {
+                    if a.side != b.side {
                         definition.unresolved = true;
                     }
                 }
             }
-            for (index, a) in definition.ratings.iter().enumerate() {
-                if definition.ratings[index + 1..]
-                    .iter()
-                    .any(|b| a.side == b.side && a.duration != b.duration)
-                {
-                    definition.unresolved = true;
-                }
-            }
             if definition.harmful()
-                && (definition.buff.is_some()
+                && (!definition.buffs.is_empty()
                     || definition
                         .health
                         .0
                         .iter()
                         .chain(&definition.vigor_effect.0)
+                        .chain(&definition.own_health.0)
+                        .chain(&definition.own_vigor.0)
                         .any(|(_, v)| *v > 0.0)
                     || definition
                         .timed
@@ -747,7 +769,8 @@ impl Runtime {
     pub fn coverage(&self) -> serde_json::Value {
         let mut counts = BTreeMap::<&str, usize>::new();
         let mut playable = 0;
-        let rows: Vec<_> = include_str!("../content/skills.tsv")
+        let rows: Vec<_> = crate::data_profile::table(
+            include_str!("../content/skills.tsv"), include_str!("../content/7230/skills.tsv"))
             .lines()
             .filter(|l| !l.starts_with('#') && l.contains('\t'))
             .map(|line| {
@@ -778,7 +801,8 @@ impl Runtime {
                 serde_json::json!({"skill": f[0], "record": f[1], "race": race, "status": status})
             })
             .collect();
-        serde_json::json!({"scope": "Core single-target effects only. Multi-hit timing, area targeting, combos, stacking categories and specialized statuses are not fully recovered. Training and racial requirements still apply.",
+        serde_json::json!({"data_profile": if crate::data_profile::unconverted_7230() {"7230"} else {"legions"},
+            "scope": "Includes single-target effects, selected-target areas for Explosion, Earthquake and Volley, and Sand Fiend. Other area shapes, multi-hit timing, combos, stacking categories and specialized statuses remain incomplete. Skill training and racial requirements still apply.",
             "counts": counts, "playable_race_core_profiles": playable, "skills": rows})
     }
 
@@ -865,38 +889,31 @@ impl Runtime {
             });
         }
         let cost = definition.vigor.min(state.vigor);
-        let over = |side: Side, vigor: bool, sign: f32| -> Option<Over> {
+        let over = |side: Side, sign: f32| -> Vec<Over> {
             definition
                 .timed
                 .iter()
-                .find(|t| t.side == side && t.vigor == vigor && t.values.at(rank) * sign > 0.0)
+                .filter(|t| t.side == side && t.values.at(rank) * sign > 0.0)
                 .map(|t| {
                     let amount = (t.values.at(rank) * sign).round() as u32;
                     Over {
-                        health: if vigor { 0 } else { amount },
-                        vigor: if vigor { amount } else { 0 },
+                        effect: t.effect,
+                        health: if t.vigor { 0 } else { amount },
+                        vigor: if t.vigor { amount } else { 0 },
                         period_ms: t.period_ms,
                         duration_ms: (t.duration.at(rank).max(0.0) * 1000.0) as u64,
                     }
                 })
+                .filter(|effect| (effect.health > 0 || effect.vigor > 0) && effect.duration_ms > 0)
+                .collect()
         };
-        let combined_over = |side: Side, sign: f32| -> Option<Over> {
-            let health = over(side, false, sign);
-            let vigor = over(side, true, sign);
-            match (health, vigor) {
-                (Some(h), Some(v)) => Some(Over {
-                    vigor: v.vigor,
-                    ..h
-                }),
-                (h, v) => h.or(v),
-            }
-        };
-        let regen_for = |side: Side| -> Option<Regen> {
+        let regen_for = |side: Side| -> Vec<Regen> {
             definition
-                .buff
-                .as_ref()
+                .buffs
+                .iter()
                 .filter(|b| b.side == side)
                 .map(|b| Regen {
+                    effect: b.effect,
                     health: if b.health.is_empty() {
                         1.0
                     } else {
@@ -908,45 +925,45 @@ impl Runtime {
                         b.vigor.at(rank)
                     },
                     duration_ms: (b.duration.at(rank).max(0.0) * 1000.0) as u64,
-                })
+                }).collect()
         };
-        let restore = || {
+        let restore = |side: Side| {
+            let (health, vigor) = if side == Side::Own {
+                (&definition.own_health, &definition.own_vigor)
+            } else { (&definition.health, &definition.vigor_effect) };
             (
-                definition.health.at(rank).max(0.0).round() as u32,
-                definition.vigor_effect.at(rank).max(0.0).round() as u32,
+                health.at(rank).max(0.0).round() as u32,
+                vigor.at(rank).max(0.0).round() as u32,
             )
         };
+        let (own_health, own_vigor) = restore(Side::Own);
         for side in [Side::Own, Side::Target] {
-            if regen_for(side).is_some_and(|r| {
+            if regen_for(side).iter().any(|r| {
                 !(0.0..=100.0).contains(&r.health) || !(0.0..=100.0).contains(&r.vigor)
             }) {
                 return Err(AbilityError::Unsupported);
             }
         }
+        let caster_regen = if matches!(aim, Aim::Player(_, _)) { regen_for(Side::Own) } else { Vec::new() };
         let caster_ratings = {
-            let mut total = definition.ratings_for(Side::Own, rank);
+            let mut effects = definition.ratings_for(Side::Own, rank);
             if matches!(aim, Aim::Own) {
-                if let Some(targeted) = definition.ratings_for(Side::Target, rank) {
-                    total = Some(match total {
-                        Some((mut ratings, duration)) => {
-                            ratings.add(targeted.0);
-                            (ratings, duration.max(targeted.1))
-                        }
-                        None => targeted,
-                    });
-                }
+                effects.extend(definition.ratings_for(Side::Target, rank));
             }
-            total.filter(|(ratings, _)| !ratings.is_empty())
+            effects
         };
         let other_ratings = match aim {
-            Aim::Player(target, _) | Aim::Creature(target) => definition
-                .ratings_for(Side::Target, rank)
-                .filter(|(ratings, _)| !ratings.is_empty())
-                .map(|(ratings, duration)| (target, ratings, duration)),
+            Aim::Player(target, _) | Aim::Creature(target) => {
+                let effects = definition.ratings_for(Side::Target, rank);
+                (!effects.is_empty()).then_some((target, effects))
+            }
             _ => None,
         };
         let outcome = if let Some(travel) = definition.travel.clone() {
             Outcome::Travel(travel)
+        } else if definition.sand_fiend {
+            if aim != Aim::Own { return Err(AbilityError::InvalidTarget); }
+            Outcome::SandFiend { rank: rank.max(1) }
         } else {
             match aim {
                 Aim::Creature(target) if definition.harmful() => {
@@ -962,7 +979,7 @@ impl Runtime {
                         weapon_damage: definition.weapon || !definition.damage.is_empty(),
                         cost,
                         range: definition.range,
-                        burn: combined_over(Side::Target, -1.0),
+                        burn: over(Side::Target, -1.0),
                     }
                 }
                 _ if definition.harmful() => return Err(AbilityError::TargetCreature),
@@ -970,12 +987,12 @@ impl Runtime {
                     if definition.targets & SELF == 0 {
                         return Err(AbilityError::InvalidTarget);
                     }
-                    let (health, vigor) = restore();
+                    let (health, vigor) = restore(Side::Target);
                     Outcome::Restore {
-                        health,
-                        vigor,
-                        mend: combined_over(Side::Target, 1.0).or_else(|| combined_over(Side::Own, 1.0)),
-                        regen: regen_for(Side::Target).or_else(|| regen_for(Side::Own)),
+                        health: health.saturating_add(own_health),
+                        vigor: vigor.saturating_add(own_vigor),
+                        mend: over(Side::Target, 1.0).into_iter().chain(over(Side::Own, 1.0)).collect(),
+                        regen: regen_for(Side::Target).into_iter().chain(regen_for(Side::Own)).collect(),
                     }
                 }
                 Aim::Player(target, distance) => {
@@ -985,12 +1002,12 @@ impl Runtime {
                     if distance > definition.range.max(3.0) {
                         return Err(AbilityError::OutOfRange);
                     }
-                    let (health, vigor) = restore();
+                    let (health, vigor) = restore(Side::Target);
                     Outcome::Support {
                         target,
                         health,
                         vigor,
-                        mend: combined_over(Side::Target, 1.0),
+                        mend: over(Side::Target, 1.0),
                         regen: regen_for(Side::Target),
                     }
                 }
@@ -1000,12 +1017,12 @@ impl Runtime {
         if let Outcome::Support {
             health: 0,
             vigor: 0,
-            mend: None,
-            regen: None,
+            ref mend,
+            ref regen,
             ..
         } = outcome
         {
-            if caster_ratings.is_none() && other_ratings.is_none() {
+            if own_health == 0 && own_vigor == 0 && mend.is_empty() && regen.is_empty() && caster_regen.is_empty() && caster_ratings.is_empty() && other_ratings.is_none() {
                 return Err(AbilityError::Unsupported);
             }
         }
@@ -1041,23 +1058,41 @@ impl Runtime {
                 commands.push(Command::RecoverVigor(vigor));
             }
         }
+        if matches!(outcome, Outcome::Support { .. }) {
+            // Own effects belong to the caster even when the skill is aimed at
+            // another player. Keep them in the same durable batch as its cost.
+            if own_health > 0 { commands.push(Command::Heal(own_health)); }
+            if own_vigor > 0 { commands.push(Command::RecoverVigor(own_vigor)); }
+        }
         let next = commands.iter().try_fold(state.clone(), |value, command| {
             value
                 .apply(command)
                 .map_err(|_| AbilityError::InvalidProgression)
         })?;
         if let Outcome::Restore {
-            mend: None,
-            regen: None,
+            ref mend,
+            ref regen,
             ..
         } = outcome
         {
-            if next.health == state.health
+            if mend.is_empty() && regen.is_empty() && next.health == state.health
                 && next.vigor + cost <= state.vigor
-                && caster_ratings.is_none()
+                && caster_ratings.is_empty()
             {
                 return Err(AbilityError::NothingToRestore);
             }
+        }
+        let mut status_fx=Vec::new();
+        for (side,fx,duration,stat_effect) in &definition.status_fx {
+            let target=match (side,aim) {
+                (Side::Target,Aim::Creature(id)|Aim::Player(id,_))=>id,
+                _=>player,
+            };
+            let seconds=duration.at(rank).max(0.0);
+            // Match the implemented rating lifetime for stat records whose
+            // recovered table does not specify a positive duration.
+            let duration_ms=if *stat_effect && seconds<=0.0 {180_000}else{(seconds*1000.0) as u64};
+            status_fx.push((target,crate::status_fx::Effect{fx:*fx,duration_ms}));
         }
         Ok(PreparedCast {
             runtime: self,
@@ -1078,6 +1113,8 @@ impl Runtime {
             next,
             caster_ratings,
             other_ratings,
+            caster_regen,
+            status_fx,
         })
     }
 }
@@ -1097,8 +1134,10 @@ pub struct PreparedCast<'a> {
     commands: Vec<Command>,
     previous: Progression,
     next: Progression,
-    caster_ratings: Option<(crate::combat::Ratings, u64)>,
-    other_ratings: Option<(u64, crate::combat::Ratings, u64)>,
+    caster_ratings: Vec<crate::encounters::RatingEffect>,
+    other_ratings: Option<(u64, Vec<crate::encounters::RatingEffect>)>,
+    caster_regen: Vec<Regen>,
+    status_fx: Vec<(u64,crate::status_fx::Effect)>,
 }
 impl PreparedCast<'_> {
     pub fn player(&self) -> u64 {
@@ -1123,17 +1162,36 @@ impl PreparedCast<'_> {
     pub fn next(&self) -> &Progression {
         &self.next
     }
-    pub fn caster_ratings(&self) -> Option<(crate::combat::Ratings, u64)> {
-        self.caster_ratings
+    pub fn caster_ratings(&self) -> &[crate::encounters::RatingEffect] {
+        &self.caster_ratings
     }
-    pub fn other_ratings(&self) -> Option<(u64, crate::combat::Ratings, u64)> {
-        self.other_ratings
+    pub fn other_ratings(&self) -> Option<(u64, &[crate::encounters::RatingEffect])> {
+        self.other_ratings.as_ref().map(|(who, effects)| (*who, effects.as_slice()))
+    }
+    pub fn rating_count(&self) -> usize {
+        self.caster_ratings.len() + self.other_ratings.as_ref().map_or(0, |(_, effects)| effects.len())
+    }
+    pub fn caster_regen(&self) -> &[Regen] { &self.caster_regen }
+    pub fn status_fx(&self) -> &[(u64,crate::status_fx::Effect)] { &self.status_fx }
+    pub fn regen_count(&self) -> usize {
+        self.caster_regen.len() + match &self.outcome {
+            Outcome::Restore { regen, .. } | Outcome::Support { regen, .. } => regen.len(),
+            _ => 0,
+        }
+    }
+    /// Number of lasting vital components, including a separate instant heal
+    /// queued for another player. Reserve before any cost is persisted.
+    pub fn vital_count(&self) -> (usize, usize) {
+        match &self.outcome {
+            Outcome::Strike { burn, .. } => (burn.len(), 0),
+            Outcome::Restore { mend, .. } => (0, mend.len()),
+            Outcome::Support { health, vigor, mend, .. } =>
+                (0, mend.len() + usize::from(*health > 0 || *vigor > 0)),
+            Outcome::Travel(_) | Outcome::SandFiend { .. } => (0, 0),
+        }
     }
     pub fn healed(&self) -> u32 {
         self.next.health - self.previous.health
-    }
-    pub fn ready_at(&self) -> u64 {
-        self.until
     }
     /// Call only after the atomic progression batch has been durably saved.
     pub fn commit(self) {
@@ -1158,6 +1216,94 @@ mod tests {
             .apply(crate::skills::Command::Train(0x59), &state, 1)
             .unwrap();
         (state, book)
+    }
+
+    #[test]
+    fn explicit_stat_operators_cannot_be_silently_changed_to_addition() {
+        let row = concat!("pyrealium-skill-effects-v3\n",
+            "59\t70000001\t0\t1\t10\t30\t101\t1\t1\t0\t0\t-\t",
+            "self/70000002/0/0/0/0/1:3/-/40125@6=1:5/-\n");
+        let mut runtime = Runtime::parse(row, "pyrealium-skill-travel-v1\n").unwrap();
+        let (state, book) = caster();
+        let cast = runtime.prepare(1, 0x59, Aim::Own, (Hand::Empty, Hand::Empty), &book, &state, 0).unwrap();
+        assert_eq!(cast.caster_ratings()[0].ratings.armor, 5);
+        drop(cast);
+        for modifier in ["40125@9=1:0", "40125@a=1:0.5", "40125@6=1:5|ffffffff@0=-"] {
+            let text = row.replace("40125@6=1:5", modifier);
+            let mut runtime = Runtime::parse(&text, "pyrealium-skill-travel-v1\n").unwrap();
+            assert!(!runtime.supports(0x59), "must not approximate {modifier}");
+            assert!(runtime.prepare(1, 0x59, Aim::Own, (Hand::Empty, Hand::Empty), &book, &state, 0).is_err());
+        }
+        let regen = row.replace("40125@6=1:5", "30106@a=1:1.5");
+        assert!(Runtime::parse(&regen, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+        let zero_regen = regen.replace("30106@a=1:1.5", "30106@9=1:0");
+        assert!(!Runtime::parse(&zero_regen, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+        let duplicate_regen = regen.replace("30106@a=1:1.5", "30106@a=1:1.5|30106@a=1:2");
+        assert!(!Runtime::parse(&duplicate_regen, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59),
+            "a compound effect must not overwrite an earlier modifier of the same stat");
+    }
+
+    #[test]
+    fn compound_ratings_keep_native_durations_and_both_self_sides() {
+        // Use a learned skill ID with controlled effect records. These distinct
+        // native duration tables used to be rejected or merged to the longest.
+        let text = concat!("pyrealium-skill-effects-v2\n",
+            "59\t70000001\t0\t1\t10\t30\t101\t1\t1\t0\t0\t-\t",
+            "self/70000002/5/0/0/0/1:1/-/40125=1:5/-;",
+            "self/70000003/5/0/0/0/1:3/-/800001=1:7/-;",
+            "target/70000004/5/0/0/0/1:2/-/800002=1:9/-\n");
+        let mut runtime = Runtime::parse(text, "pyrealium-skill-travel-v1\n").unwrap();
+        assert!(runtime.supports(0x59));
+        let (state, book) = caster();
+        let cast = runtime.prepare(1, 0x59, Aim::Own, (Hand::Empty, Hand::Empty), &book, &state, 0).unwrap();
+        let effects = cast.caster_ratings();
+        assert_eq!(effects.len(), 3);
+        assert_eq!((effects[0].ratings.armor, effects[0].duration_ms), (5, 1000));
+        assert_eq!((effects[1].ratings.attack[0], effects[1].duration_ms), (7, 3000));
+        assert_eq!((effects[2].ratings.defense[0], effects[2].duration_ms), (9, 2000));
+        assert!(cast.other_ratings().is_none());
+        drop(cast);
+        let cast = runtime.prepare(1, 0x59, Aim::Player(2, 10.0), (Hand::Empty, Hand::Empty), &book, &state, 0).unwrap();
+        assert_eq!(cast.caster_ratings().len(), 2);
+        let (target, effects) = cast.other_ratings().unwrap();
+        assert_eq!(target, 2);
+        assert_eq!((effects[0].ratings.defense[0], effects[0].duration_ms), (9, 2000));
+        assert_eq!(cast.rating_count(), 3);
+    }
+
+    #[test]
+    fn own_vital_effects_preserve_recipient_cost_and_self_targeting() {
+        // Greater healing/recovery records carry their vitals on the own side.
+        // They previously overwrote the target table and were then rejected.
+        let native = Runtime::load().unwrap();
+        assert!(native.supports(0x570));
+        assert!(native.supports(0x577));
+        assert_eq!(native.definitions[&0x570].own_health.at(1), 500.0);
+        assert_eq!(native.definitions[&0x577].own_vigor.at(10), 1500.0);
+        let text = concat!("pyrealium-skill-effects-v2\n",
+            "59\t70000001\t0\t1\t10\t30\t101\t1\t1\t0\t0\t-\t",
+            "self/70000002/21/0/0/1/-/1:15/-/-;",
+            "self/70000003/22/0/0/1/-/1:7/-/-;",
+            "target/70000004/21/0/0/1/-/1:25/-/-\n");
+        let mut runtime=Runtime::parse(text,"pyrealium-skill-travel-v1\n").unwrap();
+        let (state,book)=caster();
+        let state=state.apply(&Command::Damage(60)).unwrap().apply(&Command::SpendVigor(30)).unwrap();
+        let cast=runtime.prepare(1,0x59,Aim::Player(2,10.0),(Hand::Empty,Hand::Empty),&book,&state,0).unwrap();
+        assert!(matches!(cast.outcome(),Outcome::Support {target:2,health:25,vigor:0,..}));
+        assert!(matches!(cast.commands(),[Command::SpendVigor(10),Command::Heal(15),Command::RecoverVigor(7)]));
+        assert_eq!(cast.next().health,state.health+15);
+        assert_eq!(cast.next().vigor,state.vigor-3);
+        drop(cast); // Aborted persistence cannot spend a cooldown or vitals.
+        let cast=runtime.prepare(1,0x59,Aim::Own,(Hand::Empty,Hand::Empty),&book,&state,0).unwrap();
+        assert!(matches!(cast.outcome(),Outcome::Restore {health:40,vigor:7,..}));
+        assert_eq!(cast.next().health,state.health+40);
+        assert_eq!(cast.next().vigor,state.vigor-3);
+        drop(cast);
+        for unsupported in [text.replace("1:15/", "1:-15/"),text.replace("1:25/", "1:-25/")] {
+            // Damage-to-self and drain/return-on-hit require their own timing
+            // policy. Do not heal the caster on a missed/cancelled attack.
+            assert!(!Runtime::parse(&unsupported,"pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+        }
     }
 
     #[test]
@@ -1208,12 +1354,13 @@ mod tests {
                 weapon_damage: true,
                 cost: 32,
                 range: 60.0,
-                burn: Some(Over {
+                burn: vec![Over {
+                    effect: 0x70000776,
                     health: 1,
                     vigor: 0,
                     period_ms: 1000,
                     duration_ms: 30000
-                })
+                }]
             }
         );
         assert!(
@@ -1290,8 +1437,8 @@ mod tests {
         let hands = (Hand::Implement(0x40000), Hand::Empty);
         let cast = runtime.prepare(1, 0x10f, Aim::Creature(2), hands, &lugian, &state, 0).unwrap();
         assert!(matches!(cast.outcome(), Outcome::Strike {
-            bonus: 7, vigor_damage: 40, weapon_damage: true, cost: 80, burn: None, ..
-        }));
+            bonus: 7, vigor_damage: 40, weapon_damage: true, cost: 80, burn, ..
+        } if burn.is_empty()));
         assert!(cast.commands().is_empty(), "cost is paid once at impact");
         drop(cast);
         assert!(matches!(runtime.prepare(1, 0x10f, Aim::Player(2, 1.), hands, &lugian, &state, 0), Err(AbilityError::TargetCreature)));
@@ -1305,7 +1452,7 @@ mod tests {
         }
         let cast = runtime.prepare(1, 0x2a6, Aim::Creature(2), (Hand::Implement(8), Hand::Empty), &tumerok, &state, 0).unwrap();
         assert!(matches!(cast.outcome(), Outcome::Strike { vigor_damage: 0, cost: 50,
-            burn: Some(Over {health: 0, vigor: 2, period_ms: 1000, duration_ms: 15000}), .. }));
+            burn, .. } if burn == &[Over {effect: 0x700008d5, health: 0, vigor: 2, period_ms: 1000, duration_ms: 15000}]));
         drop(cast);
         for skill in [0xb8, 0xd0, 0x10f, 0x116, 0x127, 0x16d, 0x29d, 0x2a6, 0x2d0, 0x317, 0x31a] {
             assert!(runtime.supports(skill), "native vigor skill {skill:x}");
@@ -1319,6 +1466,90 @@ mod tests {
         for table in ["1:NaN", "NaN:2", "1:2,1:3", "-1:2", "1:100001"] {
             assert!(Table::parse(table).is_err(), "{table}");
         }
+    }
+
+    #[test]
+    fn compound_vitals_preserve_each_period_and_expiry_through_cast_preparation() {
+        let text = concat!("pyrealium-skill-effects-v2\n",
+            "59\t70000001\t0\t1\t10\t30\t101\tffffffff\tffffffff\t0\t0\t-\t",
+            "target/70000002/11/0/41000032/1/1:2/1:5/-/-;",
+            "target/70000003/12/0/41000031/2/1:6/1:7/-/-\n");
+        let mut runtime = Runtime::parse(text, "pyrealium-skill-travel-v1\n").unwrap();
+        let (state, book) = caster();
+        let effects = vec![
+            Over { effect: 0x70000002, health: 5, vigor: 0, period_ms: 1000, duration_ms: 2000 },
+            Over { effect: 0x70000003, health: 0, vigor: 7, period_ms: 2000, duration_ms: 6000 },
+        ];
+        for aim in [Aim::Own, Aim::Player(2, 5.)] {
+            let cast = runtime.prepare(1, 0x59, aim, (Hand::Empty, Hand::Empty), &book, &state, 0).unwrap();
+            match cast.outcome() {
+                Outcome::Restore { mend, .. } | Outcome::Support { mend, .. } => assert_eq!(mend, &effects),
+                _ => panic!("healing must not attack"),
+            }
+            assert_eq!(cast.vital_count(), (0, 2));
+            let recipient=if matches!(aim,Aim::Own){1}else{2};
+            assert_eq!(cast.status_fx(), &[
+                (recipient,crate::status_fx::Effect{fx:0x41000032,duration_ms:2000}),
+                (recipient,crate::status_fx::Effect{fx:0x41000031,duration_ms:6000}),
+            ]);
+            assert!(matches!(cast.commands(), [Command::SpendVigor(10)]));
+        }
+        let harmful = text.replace("\t101\t", "\t80\t").replace("/1:5/", "/1:-5/").replace("/1:7/", "/1:-7/");
+        let mut runtime = Runtime::parse(&harmful, "pyrealium-skill-travel-v1\n").unwrap();
+        let cast = runtime.prepare(1, 0x59, Aim::Creature(2), (Hand::Empty, Hand::Empty), &book, &state, 0).unwrap();
+        assert!(matches!(cast.outcome(), Outcome::Strike { burn, cost: 10, .. } if burn == &effects));
+        assert_eq!(cast.vital_count(), (2, 0));
+        assert!(cast.commands().is_empty(), "strike pays once at impact");
+        drop(cast);
+        let unknown = text.replace("/12/", "/fe/");
+        assert!(!Runtime::parse(&unknown, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+    }
+
+    #[test]
+    fn native_dual_regeneration_keeps_both_components_without_relaxing_unknown_effects() {
+        let runtime = Runtime::load().unwrap();
+        assert!(runtime.supports(0x292));
+        let buffs = &runtime.definitions[&0x292].buffs;
+        assert_eq!(buffs.len(), 2);
+        assert!(buffs.iter().all(|b| b.side == Side::Target && b.duration.at(1) == 300.0));
+        let health = buffs.iter().find(|b| !b.health.is_empty()).unwrap();
+        let vigor = buffs.iter().find(|b| !b.vigor.is_empty()).unwrap();
+        assert_eq!((health.health.at(1), vigor.vigor.at(1)), (1.5, 1.5));
+        assert_eq!((health.health.at(50), vigor.vigor.at(50)), (3.0, 3.0));
+        assert!(!runtime.supports(0x52));
+        let text = concat!("pyrealium-skill-effects-v2\n",
+            "59\t70000001\t0\t1\t10\t30\t101\t1\t1\t0\t0\t-\t",
+            "target/70000002/a/0/0/0/1:1/-/30106=1:1.5/-;",
+            "target/70000003/a/0/0/0/1:1/-/30107=1:2/-\n");
+        assert!(Runtime::parse(text, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+        for invalid in [text.replace("30107", "30106"), text.replace("30107", "deadbeef")]
+        {
+            assert!(!Runtime::parse(&invalid, "pyrealium-skill-travel-v1\n").unwrap().supports(0x59));
+        }
+        assert!(Runtime::parse(&text.replace("target/", "unknown/"), "pyrealium-skill-travel-v1\n").is_err());
+    }
+
+    #[test]
+    fn regeneration_preserves_separate_expiry_and_caster_recipient() {
+        let text = concat!("pyrealium-skill-effects-v2\n",
+            "59\t70000001\t0\t1\t10\t30\t101\t1\t1\t0\t0\t-\t",
+            "target/70000002/a/0/0/0/1:1/-/30106=1:1.5/-;",
+            "target/70000003/a/0/0/0/1:2/-/30107=1:2/-;",
+            "self/70000004/a/0/0/0/1:3/-/30106=1:3/-\n");
+        let mut runtime=Runtime::parse(text,"pyrealium-skill-travel-v1\n").unwrap();
+        let (state,book)=caster();
+        let cast=runtime.prepare(1,0x59,Aim::Player(2,3.0),(Hand::Empty,Hand::Empty),&book,&state,0).unwrap();
+        assert_eq!(cast.regen_count(),3);
+        let Outcome::Support { regen, target, .. }=cast.outcome() else {panic!("support")};
+        assert_eq!(*target,2);
+        assert_eq!(regen,&vec![Regen {effect:0x70000002,health:1.5,vigor:1.0,duration_ms:1000},Regen {effect:0x70000003,health:1.0,vigor:2.0,duration_ms:2000}]);
+        assert_eq!(cast.caster_regen(),&[Regen {effect:0x70000004,health:3.0,vigor:1.0,duration_ms:3000}]);
+        drop(cast);
+        let cast=runtime.prepare(1,0x59,Aim::Own,(Hand::Empty,Hand::Empty),&book,&state,0).unwrap();
+        let Outcome::Restore { regen, .. }=cast.outcome() else {panic!("self")};
+        assert_eq!(regen.len(),3);
+        assert!(cast.caster_regen().is_empty(),"self application must not apply own components twice");
+        assert_eq!(cast.regen_count(),3);
     }
 
     #[test]
@@ -1364,17 +1595,15 @@ mod tests {
         assert_eq!(burn.duration.at(1), 30.0);
         assert!(bolt.harmful() && !ease.harmful());
         let defense = runtime.definitions[&0x6b]
-            .ratings_for(Side::Own, 1)
-            .unwrap();
-        assert_eq!(defense.0.attack(crate::combat::School::Melee), 7);
-        assert_eq!(defense.1, 180_000);
+            .ratings_for(Side::Own, 1)[0];
+        assert_eq!(defense.ratings.attack(crate::combat::School::Melee), 7);
+        assert_eq!(defense.duration_ms, 180_000);
         let aura = runtime.definitions[&0xa1]
-            .ratings_for(Side::Target, 50)
-            .unwrap();
-        assert_eq!(aura.0.defense(crate::combat::School::Magic), 100);
+            .ratings_for(Side::Target, 50)[0];
+        assert_eq!(aura.ratings.defense(crate::combat::School::Magic), 100);
         let calm = &runtime.definitions[&0x67];
         assert_eq!(
-            calm.buff.as_ref().map(|b| (b.vigor.at(1), b.vigor.at(50))),
+            calm.buffs.first().map(|b| (b.vigor.at(1), b.vigor.at(50))),
             Some((1.1, 2.0))
         );
         assert!(runtime.definitions[&0xb0].weapon);

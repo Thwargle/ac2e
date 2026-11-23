@@ -243,7 +243,7 @@ class Bestiary:
             if len(f) == 3:
                 self.items[f[0].lower()] = f[2]
         for f in self._rows(folder / "observed-loot.tsv"):
-            if len(f) == 4:
+            if len(f) in (4, 5):
                 self.native_loot.setdefault(f[0].lower(), []).append((int(f[2]), f[3].split(",")))
 
     @staticmethod

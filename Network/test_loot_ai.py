@@ -26,7 +26,7 @@ def main():
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19510','--account','local','--data',str(run/'world'),
             '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--encounters',str(rules),'--initialize-ui','true',
-            '--training-kit','false','--portals','false','--lifestones','false','--seconds','130'],
+            '--portals','false','--lifestones','false','--seconds','130'],
             env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='5'),stdout=log,stderr=log,creationflags=0x08000000)
         try:
             time.sleep(1);assert server.poll() is None,(run/'server.log').read_text()
@@ -57,12 +57,13 @@ def main():
             until(a,0,'object',lambda e:e['id']==tid)
             am=len(a.events);a.send('target',id=tid);a.send('attack',id=tid)
             until(a,am,'quality',lambda e:e.get('id')==tid and e.get('key')==0x102 and e['value']==15)
-            # Stop and resume with no new target message. The selected monster
-            # must survive stance changes and the previous completed swing.
+            # Changing stance stops the chain. Resume on the selected monster
+            # with one attack input and let the remaining swings repeat.
             a.send('combat',enabled=False);until(a,am,'combat',lambda e:not e['enabled'])
             am=len(a.events);a.send('combat',enabled=True)
-            until(a,am,'quality',lambda e:e.get('id')==tid and e.get('key')==0x102 and e['value']==0,timeout=12)
             until(a,am,'combat',lambda e:e['enabled'])
+            a.send('attack',id=tid)
+            until(a,am,'quality',lambda e:e.get('id')==tid and e.get('key')==0x102 and e['value']==0,timeout=12)
             assert not any(e.get('event')=='combat' and not e['enabled'] for e in a.events[am:])
             results['target_and_stance_retained']=True
             a.send('combat',enabled=False);until(a,am,'combat',lambda e:not e['enabled'])

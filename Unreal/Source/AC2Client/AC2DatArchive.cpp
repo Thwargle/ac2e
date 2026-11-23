@@ -32,7 +32,10 @@ float AC2::F32(const uint8 *B)
 FString AC2::ResolveDatDirectory(const FString &Configured)
 {
     FString Result = Configured;
-    FParse::Value(FCommandLine::Get(), TEXT("AC2DatDir="), Result);
+    // Explicit absolute paths belong to a selected server profile. CLI DATs
+    // override the configured default, not every nested asset loader forever.
+    if(Result.IsEmpty() || FPaths::IsRelative(Result))
+        FParse::Value(FCommandLine::Get(), TEXT("AC2DatDir="), Result);
     if (FPaths::IsRelative(Result))
         Result = FPaths::Combine(FPaths::ProjectDir(), Result);
     return FPaths::ConvertRelativePathToFull(Result);
@@ -68,6 +71,7 @@ bool FAC2DatArchive::Open(const FString &Path, uint32 ExpectedDataSet, FString &
     Error.Reset();
     File.Reset();
     Header = {};
+    Filename = FPaths::ConvertRelativePathToFull(Path);
     File.Reset(FPlatformFileManager::Get().GetPlatformFile().OpenRead(*Path, true));
     if (!File)
         return Fail(Error, TEXT("Cannot open DAT: ") + Path);
@@ -155,6 +159,25 @@ bool FAC2DatArchive::ReadNode(uint32 Offset, FNode &Node, FString &Error)
         }
     }
     return true;
+}
+
+uint32 FAC2DatArchive::ReadPublicEnumId(uint32 Map, uint32 Key, FString &Error)
+{
+    // EnumIDMap::m_EnumToID is the first packed hash table. The high byte
+    // selects the bucket size and the low 24 bits count key/DID pairs.
+    TArray<uint8> Bytes;
+    if ((Map >> 24) != 0x28 || !Read(Map, Bytes, Error) || Bytes.Num() < 8 || AC2::U32(Bytes.GetData()) != Map)
+        return 0;
+    const uint32 Count = AC2::U32(Bytes.GetData() + 4) & 0xffffff;
+    if (Count > uint32(Bytes.Num() - 8) / 8)
+        return 0;
+    for (uint32 I = 0; I < Count; ++I)
+    {
+        const uint8* Pair = Bytes.GetData() + 8 + I * 8;
+        if (AC2::U32(Pair) == Key)
+            return AC2::U32(Pair + 4);
+    }
+    return 0;
 }
 
 bool FAC2DatArchive::Find(uint32 Id, FAC2DatEntry &Entry, FString &Error)

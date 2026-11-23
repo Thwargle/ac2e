@@ -15,6 +15,19 @@ float FAC2Decal::Opacity(float Age,float Life)
     return FMath::Clamp(FMath::Min(Age/FMath::Min(Life*.1f,.25f),1.f)*(Life-Age)/FMath::Min(Life*.2f,1.f),0.f,1.f);
 }
 
+FAC2RepulsorFX FAC2RepulsorFX::Read(FAC2AssetReader& R)
+{
+    FAC2RepulsorFX D;
+    D.Enabled = R.Word() != 0;
+    D.Acceleration = R.Float();
+    D.Range = R.Float();
+    D.Lifetime = R.Float();
+    D.Attractor = R.Word() != 0;
+    D.MinimumVelocity = R.Float();
+    D.Enabled &= R.Good && D.Range > 0;
+    return D;
+}
+
 FAC2Wave FAC2Wave::Read(FAC2AssetReader &R)
 {
     FAC2Wave W;
@@ -30,6 +43,35 @@ FAC2Wave FAC2Wave::Read(FAC2AssetReader &R)
     W.Roughness = R.Float();
     W.RoughnessSpeed = R.Float();
     return W;
+}
+float FAC2Wave::Perlin(double Position)
+{
+    // PerlinNoise::Init uses the MSVC srand(0) sequence once for the shared gradient table.
+    struct FTable
+    {
+        float Gradient[256];
+        int32 Permutation[256];
+        FTable()
+        {
+            uint32 Seed = 0;
+            auto Rand = [&] { Seed = Seed * 214013u + 2531011u; return (Seed >> 16) & 32767; };
+            for (int32 I = 0; I < 256; ++I)
+            {
+                Permutation[I] = I;
+                Gradient[I] = (int32(Rand() & 511) - 256) / 256.f;
+            }
+            for (int32 I = 255; I > 0; --I)
+                Swap(Permutation[I], Permutation[Rand() & 255]);
+        }
+    };
+    static const FTable Table;
+    if (!FMath::IsFinite(Position)) return 0;
+    const double X = FMath::Fmod(Position, 256.0);
+    const int32 Cell = int32(X);
+    const double T = X - Cell;
+    const double Lower = float(T * Table.Gradient[Table.Permutation[Cell & 255]]);
+    const double Upper = (T - 1) * Table.Gradient[Table.Permutation[(Cell + 1) & 255]];
+    return float(Lower + T * T * (3 - 2 * T) * (Upper - Lower));
 }
 float FAC2Wave::Value(float T) const
 {
@@ -52,11 +94,27 @@ float FAC2Wave::Value(float T) const
         V += A * FMath::Abs(S);
         break;
     case 3:
-    case 7:
-    case 8:
-        // Deterministic noise, not Turbine's global dice / Perlin permutation.
-        V += A * FMath::PerlinNoise1D(T * F + P);
+        // WAVEFORM_NOISE rolls new dice at every evaluation, including simultaneous births.
+        V += A * FMath::FRandRange(-1.f, 1.f);
         break;
+    case 7:
+        V += A * Perlin(F * P + T);
+        break;
+    case 8:
+    {
+        // Waveform::GetValueForPhase calls fBm1(position, 1-roughness, 2, 6).
+        double Position = F * P + T;
+        const double Gain = FMath::Exp2(double(Roughness + RoughnessSpeed * T) - 1);
+        double Weight = 1, Sum = 0;
+        for (int32 Octave = 0; Octave < 6; ++Octave)
+        {
+            Sum += Weight * Perlin(Position);
+            Position *= 2;
+            Weight *= Gain;
+        }
+        V += A * float(Sum);
+        break;
+    }
     case 9:
         if (A >= 1 && F >= 1)
             V += int32(FMath::Fmod(FMath::Max(0.f, T) * int32(FMath::Min(F, 10000.f)), int32(FMath::Min(A, 10000.f)))) * P;
@@ -153,6 +211,35 @@ bool FAC2ParticlePreset::Decode(uint32 Id, TConstArrayView<uint8> Bytes)
     }
     Material = R.Word();
     return R.End() && NE > 0 && (Material >> 24) == 0x31;
+}
+float FAC2ParticlePreset::ApproximateLifetime() const
+{
+    // Retail PSDesc::ApproximateLifetime (7148): physics-controlled systems and
+    // an emitter with neither a count nor a duration are loops, not one-second bursts.
+    if(PhysicsDuration>0)return -1;
+    float Lifetime=0;
+    for(const auto& E:Emitters)
+    {
+        if(E.Limit==0 && E.Duration==0)return -1;
+        const float Life=E.Life.Base+(E.Life.Kind==1?0:FMath::Abs(E.Life.Amplitude));
+        const float CountTime=E.Blast?float(E.Limit/E.Blast)*E.BirthInterval:0;
+        Lifetime=FMath::Max(Lifetime,Life+E.Start-FastForward+FMath::Max(CountTime,E.Duration));
+    }
+    return Lifetime;
+}
+float FAC2ParticleEmitter::Opacity(float SystemAge, float FastForward) const
+{
+    // ParticleEmitter::FillVertexBuffer, Legions 7160. FadeOut marks the start of the ramp.
+    const float Age = SystemAge - Start;
+    const float EndIn = FastForward + FadeIn, BeginOut = FastForward + FadeOut;
+    if (Duration > .0002f && BeginOut > .0002f && Age > BeginOut)
+    {
+        const float Span = Duration - BeginOut;
+        return FMath::Abs(Span) < .0002f ? 1.f : FMath::Clamp((Duration - Age) / Span, 0.f, 1.f);
+    }
+    if (EndIn > .0002f && Age > FastForward && Age < EndIn)
+        return FadeIn < .0002f ? 0.f : (Age - FastForward) / FadeIn;
+    return 1.f;
 }
 void FAC2ParticleEmitter::Sample(float Age, float ScaleAtBirth, float &Width, float &Height, FLinearColor &Tint,
                                  float &Mass) const

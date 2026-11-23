@@ -1,4 +1,4 @@
-//! Imported route data for explicit development instant portal travel.
+//! Imported placed portals and their validated world destinations.
 use crate::{
     content::Content,
     dat::{self, Dat},
@@ -101,6 +101,46 @@ mod tests {
         assert_eq!(leave.destination.heading, 64);
     }
     #[test]
+    fn crystal_caves_has_reachable_arrivals_in_both_directions() {
+        let Some(directory) = std::env::var_os("AC2_TEST_GAME_DATA").map(std::path::PathBuf::from) else { return };
+        let content = Content::parse_text(include_str!("../content/crystal-caves-v1.tsv"), &directory).unwrap();
+        let routes = Routes::bundled(&content, &directory).unwrap();
+        assert_eq!(routes.len(), 2);
+        let mut geometry = crate::geometry::Geometry::open(&directory).unwrap();
+        for (id, source, destination, heading) in [
+            (0x8140f707f7000100, 0x5876001a, 0x07f70181, 0),
+            (0x8140f707f7000101, 0x07f70182, 0x5876001b, 101),
+        ] {
+            assert_eq!(content.object(id).unwrap().placement.cell, source);
+            let arrival = routes.get(id).unwrap().destination;
+            assert_eq!((arrival.cell, arrival.heading), (destination, heading));
+            let floor = geometry.ground(arrival, 1., 2.).expect("walkable arrival");
+            assert_eq!(floor.cell, destination);
+            assert!(arrival.distance(floor).unwrap() < 1., "{arrival:?}, {floor:?}");
+            assert!(geometry.contact(floor) && geometry.body_fits(floor, 0.35, 1.8), "{floor:?}");
+        }
+    }
+    #[test]
+    fn golden_age_reliquary_has_reachable_arrivals_in_both_directions() {
+        let Some(directory) = std::env::var_os("AC2_TEST_GAME_DATA").map(std::path::PathBuf::from) else { return };
+        let content = Content::parse_text(include_str!("../content/golden-age-reliquary-v1.tsv"), &directory).unwrap();
+        let routes = Routes::bundled(&content, &directory).unwrap();
+        assert_eq!(routes.len(), 2);
+        let mut geometry = crate::geometry::Geometry::open(&directory).unwrap();
+        for (id, source, destination, heading) in [
+            (0x8140f70afc000100, 0x5f66001c, 0x0afc0144, 128),
+            (0x8140d77a7786a74b, 0x0afc0143, 0x5f660014, 0),
+        ] {
+            assert_eq!(content.object(id).unwrap().placement.cell, source);
+            let arrival = routes.get(id).unwrap().destination;
+            assert_eq!((arrival.cell, arrival.heading), (destination, heading));
+            let floor = geometry.ground(arrival, 1., 2.).expect("walkable arrival");
+            assert_eq!(floor.cell, destination);
+            assert!(arrival.distance(floor).unwrap() < 1., "{arrival:?}, {floor:?}");
+            assert!(geometry.contact(floor) && geometry.body_fits(floor, 0.35, 1.8), "{floor:?}");
+        }
+    }
+    #[test]
     fn no_sidecar_keeps_defaults_and_never_adds_phantom_routes() {
         let fixture = Fixture::new();
         assert!(
@@ -183,8 +223,10 @@ pub struct Route {
 pub struct Routes(BTreeMap<u64, Route>);
 impl Routes {
     pub fn bundled(content: &Content, game_data: &Path) -> io::Result<Self> {
+        let combined = format!("{}\n{}", include_str!("../content/portal-routes.tsv"),
+            include_str!("../content/starter-routes-v1.tsv").lines().skip(1).collect::<Vec<_>>().join("\n"));
         Self::parse(
-            include_str!("../content/portal-routes.tsv"),
+            &combined,
             content,
             game_data,
             false,
@@ -269,7 +311,7 @@ impl Routes {
             let level = f[11].parse::<u16>().map_err(|_| invalid())?;
             if id >> 48 != 0x8140
                 || id == crate::content::NAMESPACE
-                || !matches!(entity, 0x4700084d | 0x47001451 | 0x47001454 | 0x4700369a)
+                || !matches!(entity, crate::shelter::SHARD | 0x4700084d | 0x47001451 | 0x47001454 | 0x4700369a)
                 || !source.valid()
                 || !destination.valid()
                 || !(1..=150).contains(&level)

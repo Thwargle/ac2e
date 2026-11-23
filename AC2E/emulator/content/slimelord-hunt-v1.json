@@ -1,0 +1,9 @@
+{
+  "id": 1073742086,
+  "level": 38,
+  "xp": 27000,
+  "limit_seconds": 7200,
+  "source": "http://ac2hero.e5i5o.com/quest/omishan_killtheslimelord.html",
+  "reset_evidence": "AC2Hero gives the reset as None. Repeat eligibility is unresolved; AC2E retains its inferred 20-hour interval.",
+  "route_evidence": "The guide places Ruruk Burun Guardians around Northern Vesayan Outpost and Keerik inside Toad Keep (entrance 7.0 N, 91.2 E). Both native monster definitions are known. Their encounter positions and the playable dungeon traversal still need verification."
+}

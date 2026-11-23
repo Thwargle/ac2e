@@ -19,7 +19,7 @@ fn audited_capture_objects_load_with_native_services_and_encounter_profiles() {
         }
     }
     assert!(vendors>=10);assert!(doors>=2);
-    let encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let encounters=Encounters::load(Path::new("world"),&content).unwrap();
     assert!(encounters.initial_health().count()>=20);
     assert!(content.objects().any(|o|o.name.as_deref()==Some("Quick Exit to Lost Wish")));
 }
@@ -28,10 +28,10 @@ fn audited_capture_objects_load_with_native_services_and_encounter_profiles() {
 fn town_npcs_are_not_promoted_to_encounters_by_the_old_catalog() {
     let Ok(data)=std::env::var("AC2_TEST_GAME_DATA") else {return};
     // Retain exact source rows; no production store or generated pack required.
-    let sources=[include_str!("../content/world-observed-expanded.tsv"),include_str!("../content/capture-spawns-audited.tsv"),include_str!("../content/training-world.tsv")];
+    let sources=[include_str!("../content/world-observed-expanded.tsv"),include_str!("../content/capture-spawns-audited.tsv"),include_str!("../content/training-world.tsv"),include_str!("../content/starter-world-v1.tsv")];
     let mut text=String::from("pyrealium-world-v3\n");
     for id in ["8140dc346c4fa355","81409bec26cb5af8","8140b739fea6ec9a",
-        "814000000003000a","8140000000030040","8140000000030041","8140000000030042","8140000000030044"] {
+        "814000000003000a","8140000000030040","8140000000030041","8140000000032000","8140000000033000"] {
         let row=sources.iter().flat_map(|s|s.lines()).find(|l|l.starts_with(id)).unwrap();
         let mut fields=row.split('\t').take(12).collect::<Vec<_>>();
         if fields.len()==11{fields.push("-");}
@@ -41,10 +41,10 @@ fn town_npcs_are_not_promoted_to_encounters_by_the_old_catalog() {
     std::fs::write(&path,text).unwrap();
     let loaded=Content::load(&path,Path::new(&data));std::fs::remove_file(&path).unwrap();
     let content=loaded.unwrap();
-    let encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let encounters=Encounters::load(Path::new("world"),&content).unwrap();
     let orven=content.objects().find(|o|o.entity==0x47001c27).expect("Captured Orven");
     assert!(!encounters.is_creature(orven.id),"Orven has no recovered combat profile");
-    for object in content.objects().filter(|o|o.entity==pyrealium::training_dialogue::MENTOR_ENTITY || pyrealium::shelter::supported(o.entity)) {
+    for object in content.objects().filter(|o|o.entity==pyrealium::training_dialogue::MENTOR_ENTITY || pyrealium::shelter::supported(o.entity, o.id)) {
         assert!(!encounters.is_creature(object.id),"A configured quest guide must not become an encounter");
     }
     assert!(encounters.is_creature(0x81409bec26cb5af8));

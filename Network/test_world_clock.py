@@ -14,7 +14,7 @@ def main():
     log = (directory / 'server.log').open('w', encoding='utf-8')
     args = [str(SERVER), 'serve', '--bind', '127.0.0.1:19290', '--account', 'local',
             '--data', str(world), '--game-data', str(DAT_DIRECTORY),
-            '--initialize-ui', 'true', '--training-kit', 'false', '--content', 'none',
+            '--initialize-ui', 'true', '--content', 'none',
             '--encounters', 'none', '--lifestones', 'false', '--portals', 'false', '--seconds', '45']
     peers = []
     server = None

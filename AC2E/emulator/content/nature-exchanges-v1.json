@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "source": {
+    "url": "https://20oz.net/index.php/Nature's_Ally.html",
+    "archived_url": "http://ac2wiki.info/index.php/Nature%27s_Ally",
+    "html_sha256": "e849a2a1f9a7b85918dbdeb3f7d9f085808969aef98784cbf39ba2c98c177fc5",
+    "template_export_sha256": "19341ddd2ce92afdad1f883e35b164bca67cef308aaa24f7e29c41c91e8bb2ef"
+  },
+  "policy": "Four material trades plus the Black Mother Earth blossom/recipe path; no full quest completion, XP or final reward. Guidance is authored, not verbatim retail dialogue. Bush yield (four) and per-character regrowth (five minutes) are reconstructed; the guide specifies eight blossoms total, one offered to learn and seven crafted.",
+  "items": [
+    {
+      "id": 1191191276,
+      "name": "Anthracite Gem",
+      "visual": 520098413,
+      "physical": 1191191403,
+      "quality_hash": "0bb8b54cb8bc6a10",
+      "stack_limit": 10
+    },
+    {
+      "id": 1191191283,
+      "name": "Withered Blossom",
+      "visual": 520098421,
+      "physical": 1191191411,
+      "quality_hash": "d2e3092c188ebf8c",
+      "stack_limit": 10
+    },
+    {
+      "id": 1191191284,
+      "name": "Ancient Monouga Bone",
+      "visual": 520098412,
+      "physical": 1191191402,
+      "quality_hash": "4279b1be271b6138",
+      "stack_limit": 1
+    },
+    {
+      "id": 1191191288,
+      "name": "Rabbit Meat",
+      "visual": 520098422,
+      "physical": 1191191412,
+      "quality_hash": "4c91a10d9a7f3283",
+      "stack_limit": 10
+    },
+    {
+      "id": 1191191289,
+      "name": "Scented Blossom",
+      "visual": 520098425,
+      "physical": 1191191415,
+      "quality_hash": "47271fccd3d1cf7b",
+      "stack_limit": 1
+    },
+    {
+      "id": 1191191292,
+      "name": "Succulent Truffle",
+      "visual": 520098428,
+      "physical": 1191191418,
+      "quality_hash": "1edd48a79f021bdd",
+      "stack_limit": 1
+    },
+    {
+      "id": 1191191293,
+      "name": "Wasp Egg Cluster",
+      "visual": 520098429,
+      "physical": 1191191419,
+      "quality_hash": "e9c48ef955d1dcf2",
+      "stack_limit": 1
+    },
+    {
+      "id": 1191191381,
+      "name": "Garland of Flowers",
+      "visual": 520097564,
+      "physical": 1191182945,
+      "quality_hash": "bb6fe630cf71aa6b",
+      "stack_limit": 1
+    }
+  ],
+  "rules": [
+    {
+      "npc": {
+        "id": 1191191304,
+        "name": "Feral Pet Lasher",
+        "visual": 520094886,
+        "physical": 1191183457,
+        "quality_hash": "3b9658d965257d3a"
+      },
+      "input": 1191191288,
+      "output": 1191191284,
+      "quantity": 1
+    },
+    {
+      "npc": {
+        "id": 1191191305,
+        "name": "Outcast Wasp Queen",
+        "visual": 520093777,
+        "physical": 1191182793,
+        "quality_hash": "fa9efa3acba8d4df"
+      },
+      "input": 1191191289,
+      "output": 1191191293,
+      "quantity": 1
+    },
+    {
+      "npc": {
+        "id": 1191191294,
+        "name": "Digger 'Dillo Mama",
+        "visual": 520094626,
+        "physical": 1191183129,
+        "quality_hash": "f81f27fdbd0d40c2"
+      },
+      "input": 1191191293,
+      "output": 1191191292,
+      "quantity": 1
+    },
+    {
+      "npc": {
+        "id": 1191191301,
+        "name": "Grutt Gourmand",
+        "visual": 520094628,
+        "physical": 1191183131,
+        "quality_hash": "dc6e4dbe2905c60e"
+      },
+      "input": 1191191292,
+      "output": 1191191276,
+      "quantity": 8
+    }
+  ],
+  "gathering": {
+    "bush": {
+      "id": 1191191297,
+      "name": "Flowering Bush",
+      "visual": 520094990,
+      "physical": 1191183688,
+      "quality_hash": "581a53cc958c050b"
+    },
+    "shrine": {
+      "id": 1191191307,
+      "name": "Shrine to Black Mother Earth",
+      "visual": 520095546,
+      "physical": 1191184187,
+      "quality_hash": "aa39e20c9bf1537e"
+    },
+    "recipe": 1862279140,
+    "recipe_sha256": "eb19a14b93426b9df33063e02e21b58a26d39219921e42ee1167f32da00794d1",
+    "yield_quantity": 4,
+    "regrowth_seconds": 300
+  }
+}

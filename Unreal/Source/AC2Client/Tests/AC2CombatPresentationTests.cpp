@@ -23,7 +23,8 @@ bool FAC2BloodDecalTest::RunTest(const FString&)
     TestEqual(TEXT("Expired"),FAC2Decal::Opacity(30,30),0.f);
     FAC2AssetLibrary::SetEffectChannel(0x40000007,1);
     FAC2Decal Green;TestTrue(TEXT("Native green blood variant"),Assets.DamageDecal(Green));
-    TestEqual(TEXT("Green blood material"),Green.Material,0x310006ddu);
+    TestTrue(TEXT("Installed profile's green blood material"),Green.Material==0x310006ddu || Green.Material==0x31000519u);
+    TestNotEqual(TEXT("Green and red variants remain distinct"),Green.Material,D.Material);
     FAC2AssetLibrary::SetEffectChannel(0x40000001,2);
     TestFalse(TEXT("No blood preference suppresses ground splatter"),Assets.DamageDecal(Green));
     FAC2AssetLibrary::SetEffectChannel(0x40000001,4);

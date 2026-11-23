@@ -2,18 +2,46 @@
 
 ## Compatibility status
 
-**The implemented endpoint is a custom TCP/XML adapter service, not a retail GUN
-server.** It is disabled by default. Enable it with `--gun-adapter-bind ADDR`;
-`--gun-bind ADDR` remains an alias, and either accepts `off`. For local adapter
-development, use an explicit address such as `127.0.0.1:12310`. Bind failures are
-reported rather than silently dropping an explicitly requested service.
+The AC2E Unreal client uses the authenticated game connection for Social →
+Friends. The server opens the account's roster even when the optional adapter
+is disabled. It validates character names on add, stores the list in
+`gun-users.json` and sends presence changes to subscribed clients. Open the
+Friends tab to view online and offline friends, add a selected player, remove
+a saved friend or set your availability.
 
-Stock AC2 clients load `GunDll.dll` and pass `-gunserver` / `-gunport` to its
-connection interface. Changing those arguments alone cannot connect the DLL to
-our TCP endpoint. The previously reported external `gun-stub` / AC2_Rusted
-adapters are not included in this checkout or its pinned submodule. The Unreal
-client also has no adapter connection. Persisted social-service tests therefore
-do not demonstrate client integration or retail compatibility.
+For separate TCP/XML adapter clients, `--gun-adapter-bind ADDR` enables a
+listener and `--gun-bind ADDR` remains an alias. Both accept `off`. The adapter
+shares the world server's roster store. A local development address is
+`127.0.0.1:12310`.
+
+The original client uses `-gunserver` and `-gunport` with its own
+`GunDll.dll` DirectPlay 8 session. Stock DLL authentication on AC2E and
+Icefire Friends support remain unimplemented.
+
+## AC2E game connection
+
+The network bridge sends an AC2E private script request (`0x7EAC2001`); the
+server delivers replies and updates as ordered private script events
+(`0x7EAC2002`). The argument bytes contain the original little-endian
+`0xC350` opcode and NUL-terminated GUN XML. The bridge selects this path only
+for AC2E. The shared parser/encoder lives in `Network/GunFriends`.
+
+- `GetFriendsList` returns a complete `GetFriendsListRes` with `Cnt` and
+  `FriendStatus` children. Each entry carries `User`, `Mode` and `Location`.
+- `FriendAdd` and `FriendDelete` use `User`. The result echoes `Cx` and gives
+  an `HR` outcome. The client uses the context to identify the original
+  operation. Both `Cx` and `HR` are hexadecimal.
+- `FStart` replaces the roster. `FriendStat` updates a member's presence and
+  may carry a location. Counts, modes and flag values are decimal.
+- The Friends availability selector uses `Flags`, state word 1. The request
+  uses `Word`; `FlagsRes` returns `WhichFlag`. Available, away and unavailable
+  use state values 1, 2 and 4. In-game presence also carries the game bit.
+
+The server derives the roster owner from the authenticated world session.
+The roster supports 256 entries. Each encoded snapshot must also fit the
+64 KiB world message including its 12-byte script header. Legacy adapter
+locations can be omitted from a large world snapshot to preserve its names
+and availability values.
 
 ## Retail evidence reviewed (2026-10-31)
 
@@ -96,7 +124,9 @@ lengths are rejected. The recovered XML retains `Cx`, `HR`, `User`, `Cnt`,
 
 The full replay reports 2,465 ACK frames, 2,640 data frames, 14 CONNECT frames,
 50 CONNECTED frames, 77 keepalive frames and 303 complete XML messages, including
-339 FriendStatus entries. It does not export entry values. Two four-byte
+339 FriendStatus entries. The replay checks friendship requests, result codes,
+rosters, presence and state flags using the same typed decoder as the server
+and bridge. It does not export entry values. Two four-byte
 end-stream frames in `logout.completely.elog` remain unresolved: their keepalive/
 correlate bit needs the negotiated version, which that capture does not include.
 They are reported as truncated under the replay's explicit default version 1.6;
@@ -133,9 +163,10 @@ must preserve `Cx`/`HR`, `User`, `Cnt`, `FriendStatus`, `Word` (Flags request), 
 child `Val` fields. Finally wire the client callbacks and test a real DLL login,
 friends/ignore changes, presence, tells, packet loss, reconnect and shutdown.
 The captures support this work, but do not by themselves establish the full
-crypto, COM ABI, or reliable-session implementation. The native codec is currently
-used by the offline replay; it does not replace the custom adapter or open a UDP
-listener. Signed connections and authentication remain unimplemented.
+crypto, COM ABI, or reliable-session implementation. The native frame decoder
+is used by the offline replay. The AC2E world gateway uses its application
+messages. Signed DirectPlay connections and native ticket authentication remain
+unimplemented.
 
 ## Custom adapter framing
 

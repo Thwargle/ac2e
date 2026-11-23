@@ -198,7 +198,9 @@ pub fn apply(
         }
         for &id in &change.removed {runtime.live_remove(id);}
         for object in &change.added {
-            if runtime.live_is_creature(object) {runtime.live_add(object,change.motions.get(&object.id).copied(),now)?;}
+            let motion=change.motions.get(&object.id).copied();
+            if runtime.live_is_creature(object) {runtime.live_add(object,motion,now)?;}
+            else {runtime.live_npc(object,motion);}
         }
         runtime.live_rules(change.rules.as_ref().map(|r| &r.affected))?;
     }
@@ -254,13 +256,42 @@ mod tests {
     fn world() -> (Scene, crate::encounters::Encounters, crate::loot::Loot) {
         let home = Placement::HUMAN_START;
         let content = Content::fixture(NAMESPACE + 7, home, None);
-        let mut runtime = crate::encounters::Encounters::load(Path::new("training"), &content).unwrap();
+        let mut runtime = crate::encounters::Encounters::load(Path::new("world"), &content).unwrap();
         let mut scene = Scene::with_content(content);
         runtime.initialize_spawners(&mut scene, 0).unwrap();
         scene.enter(player(1, home)).unwrap();
         (scene, runtime, crate::loot::Loot::default())
     }
 
+    #[test]
+    fn npc_spawn_reservations_follow_atomic_live_add_replace_and_remove() {
+        let (mut scene,mut runtime,mut loot)=world();
+        let npc=NAMESPACE+0x20000;let home=Placement::HUMAN_START;
+        let path=std::env::temp_dir().join(format!("ac2-live-npc-clearance-{}",std::process::id()));
+        let mut store=crate::store::Store::open(&path).unwrap();
+        let plan=|removed,position|{
+            let mut c=change(removed,vec![object(npc,position,Some(Service::Vendor))],None);
+            c.motions.insert(npc,crate::creature_motion::Profile::default());c
+        };
+        let births=|events:Vec<crate::encounters::Event>|events.into_iter().filter_map(|e|match e{
+            crate::encounters::Event::Respawn{actor,..}=>Some(actor),_=>None}).collect::<Vec<_>>();
+        apply(&plan(vec![],home),&mut scene,Some(&mut runtime),&mut loot,0).unwrap();
+        assert!(births(runtime.tick(0,&scene,&mut store,std::iter::empty(),None).unwrap()).is_empty());
+        let away=home.translated([5.,0.,0.]).unwrap();
+        let mut refused=plan(vec![npc],away);
+        refused.rules=change(vec![],vec![],Some(Rules::default())).rules;
+        let rules=Arc::make_mut(&mut refused.rules.as_mut().unwrap().rules);
+        rules.groups.push(crate::world_rules::Group{id:1,capacity:1,regeneration_ms:None,members:vec![NAMESPACE+7,NAMESPACE+7]});
+        assert!(apply(&refused,&mut scene,Some(&mut runtime),&mut loot,100).is_err());
+        assert!(births(runtime.tick(1000,&scene,&mut store,std::iter::empty(),None).unwrap()).is_empty(),"Rejected edits retain the old blocker");
+        apply(&plan(vec![npc],away),&mut scene,Some(&mut runtime),&mut loot,1100).unwrap();
+        // Moving back must replace, rather than accumulate, cached body positions.
+        apply(&plan(vec![npc],home),&mut scene,Some(&mut runtime),&mut loot,1200).unwrap();
+        assert!(births(runtime.tick(2000,&scene,&mut store,std::iter::empty(),None).unwrap()).is_empty());
+        apply(&change(vec![npc],vec![],None),&mut scene,Some(&mut runtime),&mut loot,2100).unwrap();
+        assert_eq!(births(runtime.tick(3000,&scene,&mut store,std::iter::empty(),None).unwrap()),vec![NAMESPACE+7]);
+        drop(store);std::fs::remove_dir_all(path).unwrap();
+    }
     #[test]
     fn refused_runtime_change_does_not_change_rules_spawners_or_placements() {
         let (mut scene, mut runtime, mut loot)=world();

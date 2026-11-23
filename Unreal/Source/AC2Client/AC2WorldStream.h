@@ -20,6 +20,7 @@ class FAC2WorldStream
                         FVector& Center, const AActor* Ignore) const;
     bool ExteriorVisible() const;
     bool InteriorLighting(const FVector& Viewer,FAC2PreviewLighting& Lighting) const;
+    bool InteriorFog(const FVector& Viewer,FAC2SkyKey& Fog) const;
     bool CellVisible(uint32 Cell) const;
     bool LandingPosition(const FVector &Preferred, FVector &Position, float CapsuleRadius, float HalfHeight) const;
     bool SpawnPosition(const FVector &Preferred, uint32 InteriorOwner, FVector &Position, float CapsuleRadius = 34,
@@ -27,6 +28,7 @@ class FAC2WorldStream
     bool FailedAt(const FVector &Position) const;
     bool GroundAt(const FVector &Position, double &Height) const;
     bool WaterAt(const FVector &Position, double &Height) const;
+    const FAC2BlockWater* WaterDataAt(const FVector& Position) const;
     bool InteriorAt(const FVector &Position, uint32 &Block) const;
     bool InteriorCellAt(const FVector& Feet,uint32& Cell) const;
     void SetDrawRadius(int32 Radius);
@@ -35,6 +37,7 @@ class FAC2WorldStream
     int32 InteriorCount() const;
     int32 WaterCount() const;
     TArray<FAC2ParticleSource> ParticleSources(const FVector &Viewer) const;
+    TArray<FAC2ScenerySound> SoundSources() const;
     TArray<FAC2AmbientPoint> AmbientPoints(const FVector& Player) const;
     bool PlayerOutside() const;
     uint32 SoundTerrain(const FVector& Position) const;

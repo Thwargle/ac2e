@@ -2,6 +2,7 @@
 use pyrealium::{content::Content, creature_ai, dat::Dat, encounters::{Encounters, Event},
     geometry::Geometry, loot::{Catalog, Loot}, scene::Scene, store::Store};
 use std::{collections::{BTreeMap, BTreeSet}, path::Path};
+#[path="support/placement_repairs.rs"] mod placement_repairs;
 
 fn outdoors(cell:u32)->bool {(1..=64).contains(&(cell&65535))}
 fn xy(cell:u32,p:[f32;3])->[f64;2] {
@@ -16,7 +17,7 @@ fn wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
     let content=Content::load(&root.join("wilderness-world-v1.tsv"),Path::new(&data)).unwrap();
     let source:serde_json::Value=serde_json::from_str(include_str!("../content/wilderness-content-v1.json")).unwrap();
     let report:serde_json::Value=serde_json::from_str(include_str!("../content/wilderness-world-v1.report.json")).unwrap();
-    let encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let encounters=Encounters::load(Path::new("world"),&content).unwrap();
     let health=encounters.initial_health().collect::<BTreeMap<_,_>>();
     let ai=creature_ai::catalog().unwrap();
     let native=include_str!("../content/wilderness-creature-combat-v1.tsv").lines().filter(|l|l.starts_with("47"))
@@ -28,11 +29,21 @@ fn wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
         .collect::<BTreeMap<_,_>>();
     let mut geometry=Geometry::open(Path::new(&data)).unwrap();
     let installed=root.join("../../data/world/legions-world.tsv");
+    // Preserve the historical 80m authoring baseline. Corrected anchors are
+    // tested against the effective world in placement_clearance instead.
+    let repairs:serde_json::Value=serde_json::from_str(include_str!("../content/placement-clearance-v1.json")).unwrap();
+    let reviewed:serde_json::Value=serde_json::from_str(include_str!("../content/placement-reviewed-v1.json")).unwrap();
+    let originals=repairs["repairs"].as_array().unwrap().iter().chain(reviewed["repairs"].as_array().unwrap())
+        .map(|r|(r["id"].as_str().unwrap(),r)).collect::<BTreeMap<_,_>>();
     let fixed=std::fs::read_to_string(&installed).unwrap_or_default().lines().filter_map(|l| {
+        let l=if let Some(r)=originals.get(l.split('\t').next().unwrap_or_default()) {
+            assert_eq!(l,r["replacement"].as_str().unwrap(),"Installed repair changed without review");
+            r["original"].as_str().unwrap()
+        } else {l};
         let f=l.split('\t').collect::<Vec<_>>();
         // Later guide-anchored camps were not part of this pack's original
         // 80m exclusion baseline; their own test checks their 6m separation.
-        if f.len()!=13 || f[0].starts_with("8140c10000") || f[0].starts_with("8140d30000") {return None;}
+        if f.len()!=13 || ["8140c10000", "8140d30000", "8140ed000001"].iter().any(|prefix|f[0].starts_with(prefix)) {return None;}
         let cell=u32::from_str_radix(f[3],16).ok()?;
         outdoors(cell).then(||xy(cell,[f[4].parse().unwrap(),f[5].parse().unwrap(),f[6].parse().unwrap()]))
     }).collect::<Vec<_>>();
@@ -42,8 +53,9 @@ fn wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
         assert!(encounters.is_creature(object.id),"Missing combat role: {:?}",object.name);
         assert_eq!(health[&object.id],native[&object.entity].0);
         assert!(outdoors(object.placement.cell));
-        assert!(geometry.contact(object.placement),"Not on ground: {:x}",object.id);
-        assert!(geometry.dry_ground(object.placement),"Underwater: {:x}",object.id);
+        let effective=placement_repairs::effective(object.id,object.placement);
+        assert!(geometry.contact(effective),"Not on ground: {:x}",object.id);
+        assert!(geometry.dry_ground(effective),"Underwater: {:x}",object.id);
         assert!(!ai[&object.entity].loot_proof);
         let p=xy(object.placement.cell,object.placement.coordinates);
         assert!(fixed.iter().all(|old|distance(p,*old)>=79.999),"Encroaches on an existing actor: {:x}",object.id);
@@ -65,7 +77,7 @@ fn wilderness_is_grounded_separated_and_uses_real_combat_and_loot() {
     }
     assert_eq!(covered.len(),27);assert!(entities.len()>400);
     let world=Content::load(&installed,Path::new(&data)).unwrap();
-    let world_encounters=Encounters::load(Path::new("training"),&world).unwrap();
+    let world_encounters=Encounters::load(Path::new("world"),&world).unwrap();
     for quest in pyrealium::hunting_quests::profiles() {
         assert!(world.objects().any(|o|quest.targets.contains(&o.entity) && world_encounters.is_creature(o.id)),
             "No world hunt targets for {}",quest.title);
@@ -108,7 +120,7 @@ fn wilderness_groups_fill_once_and_refill_after_the_configured_delay() {
     let root=Path::new(env!("CARGO_MANIFEST_DIR")).join("content");
     let content=Content::load(&root.join("wilderness-world-v1.tsv"),Path::new(&data)).unwrap();
     let report:serde_json::Value=serde_json::from_str(include_str!("../content/wilderness-world-v1.report.json")).unwrap();
-    let mut encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let mut encounters=Encounters::load(Path::new("world"),&content).unwrap();
     assert_eq!(encounters.spawners().group_count(),report["groups"].as_array().unwrap().len());
     let total=content.objects().count();
     let first=content.objects().next().unwrap().id;
@@ -146,7 +158,7 @@ fn hunting_camps_use_native_ground_loot_and_group_respawns() {
     let source:serde_json::Value=serde_json::from_str(include_str!("../content/hunting-content-v2.json")).unwrap();
     let report:serde_json::Value=serde_json::from_str(include_str!("../content/hunting-world-v2.report.json")).unwrap();
     let world=Content::load(&root.join("../../data/world/legions-world.tsv"),Path::new(&data)).unwrap();
-    let mut encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let mut encounters=Encounters::load(Path::new("world"),&content).unwrap();
     let mut geometry=Geometry::open(Path::new(&data)).unwrap();
     assert_eq!(content.objects().count(),8);assert_eq!(encounters.spawners().len(),6);
     assert_eq!(encounters.spawners().group_count(),3);

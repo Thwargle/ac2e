@@ -1,0 +1,36 @@
+#include "/Engine/Private/Common.ush"
+#include "/AC2/Private/AC2Fog.ush"
+
+Texture2D FogSceneColor;
+Texture2D FogSceneDepth;
+Texture2D FogCustomDepth;
+Texture2D<uint2> FogCustomStencil;
+float4 FogRange;
+float3 FogColor;
+
+void MainPS(float4 SvPosition : SV_POSITION, out float4 OutColor : SV_Target0)
+{
+    int2 Pixel = int2(SvPosition.xy);
+    float4 Original = FogSceneColor.Load(int3(Pixel, 0));
+    float DeviceZ = FogSceneDepth.Load(int3(Pixel, 0)).r;
+    OutColor = Original;
+    // Sky artwork lives beyond 100 km and has its separate native FogSky
+    // overlay. Exclude it as well as untouched background depth.
+    if (DeviceZ <= 0) return;
+    // A no-fog mesh behind normal terrain must not exempt that foreground.
+    // Custom stencil alone is insufficient: match its frontmost surface depth.
+    uint Stencil = FogCustomStencil.Load(int3(Pixel, 0)) STENCIL_COMPONENT_SWIZZLE;
+    if ((Stencil & 128u) != 0)
+    {
+        float CustomZ = FogCustomDepth.Load(int3(Pixel, 0)).r;
+        float LinearDepth = ConvertFromDeviceZ(DeviceZ);
+        if (CustomZ > 0 && abs(ConvertFromDeviceZ(CustomZ) - LinearDepth) <= max(.25, LinearDepth * .00001)) return;
+    }
+    float3 Position = SvPositionToTranslatedWorld(float4(SvPosition.xy, DeviceZ, 1));
+    float DistanceCm = length(Position - View.TranslatedWorldCameraOrigin);
+    if (DistanceCm >= 5000000) return;
+    float3 SceneLinear = Original.rgb * View.OneOverPreExposure;
+    OutColor.rgb = AC2FogApply(SceneLinear, DistanceCm, FogRange, FogColor, false) * View.PreExposure;
+    // Preserve coverage: scene captures use alpha for UI/reflection compositing.
+}
+

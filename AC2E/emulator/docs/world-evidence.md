@@ -1,5 +1,60 @@
 # Build 7148 character and world event evidence
 
+## Targeted stop versus combat stance (2026-11-10)
+
+Legions `gmCWInterface::StopAttacking` dispatches IFun `00b40104`; installed
+WLib package `1aa4` resolves it at `2f32c` to `9aac0013` (`b86c8`), then
+`82040026` (`facc8`), which packs a target IID and sends `82040025`.
+The existing server decoder handles that native request, but the handler was
+incorrectly switching the player to peace mode. It now stops the matching attack
+while retaining stance. The guard against a delayed stop for a different target
+remains. `82040010` still explicitly leaves combat.
+
+Selection used to restart basic attacks whenever `peer.combat` was true. It now
+continues only an existing basic repeat chain, never an idle stance, a pending
+special skill or a periodic effect. Queue failure preserves the previous target
+and pending request; successful cancellation still completes the pending request
+once. This supports the client's recovered deletion/unselectability Auto Target
+handlers without making their replacement selection an attack command.
+These are client-behavior and wire-contract corrections, not recovered retail
+server scheduler internals. No persistence format or combat balance changed.
+Server regression tests cover idle-stance selection, pending-skill cancellation
+and existing-repeat retargeting. The two-client UDP fixture verified targeted
+stop retaining combat stance locally and remotely, followed by selection without
+an automatic attack; its existing combat and persistence checks also passed:
+`Saved/AC2NetworkTests/gameplay-e0cb27a5de714cfc94ad3b6a4a046530/result.json`.
+
+## Native harmful-skill target hooks (2026-11-10)
+
+Legions `StoryManager::DoStoryHook` (`00503000`; Admin `00514FF0`) checks the
+explicit story skill through `IsSkillHarmful` for type-1 hooks targeting the
+player. `gmSelectionUI::RecvNotice_E_LastAttacker` (`004235A0`; Admin
+`004237D0`) then remembers the attacker and selects it only with Auto Target on
+and nothing already selected. Health loss is not required. Legions WLib
+`00b400c5` at `88ff4` calls SkillData `022c004a` at `1092cc`; the latter reads
+field 70 bit `0x400`. This is a client-data classification, not an inferred
+damage threshold.
+
+Creature melee `Event::Hit` now retains native skill `6` and sends a target hook
+also on a miss. The victim-owned story adds optional skill bit `0x10` after its
+attacker ID. Nonzero health changes retain hook `0x981`; zero-health misses use
+`0x101` (type plus target only), without an invented health result. Unknown skill
+IDs are never manufactured for falling damage or potion recovery. Known player
+skill hits and self-heals retain their actual skill. Existing vital-quality
+updates remain authoritative; no journal or persistence format changed.
+
+The bridge preserves the story owner's instance independently of its attacker
+and forwards the explicit skill/target through private IPC. Unreal checks native
+skill data, instance freshness and the saved game-options flag `0x20`. Existing
+selection and combat stance are preserved. This does not restore additional
+creature spell AI or retail server scheduling. Serializer/bridge tests cover
+hits, misses, optional fields and stamp identity; native DAT client tests cover
+harmful/helpful classification and auto-selection guards.
+The real two-client UDP fixture also passed with skill `6`, explicit attacker
+and the victim's instance verified at both peers; combat/death, dungeon exit,
+resurrection and journal replay remained functional. Report:
+`Saved/AC2NetworkTests/gameplay-0f76319a643c4039b1da74c3fa9a1bea/result.json`.
+
 ## Durable development item rewards and consumable healing (2026-10-24)
 
 The initialized training profile validates potion definition `47001745`, visual
@@ -301,11 +356,11 @@ zero credits, cap 1, kind `44`, without prerequisites or exclusions. This is
 an authored development entitlement, not proof of original starter grants.
 New `t2` transactions save the hand item, skill and once-per-character marker
 together; `t1` retains its historical item-only replay semantics. A separate
-`k4` transaction upgrades previously granted training characters. Dead players
-and full skill books defer grants without blocking world entry.
+Historical `k4` transactions still replay for existing characters; the removed
+training mode no longer writes grants. New characters use normal racial starter skills.
 
 The bounded native `8204000b` request now routes this learned skill to one
-queued encounter strike. It requires initialized UI, training-kit and encounter
+queued encounter strike. It requires initialized UI and encounter
 profiles, a main-hand item, and an eligible visible creature within the encounter
 range. It shares existing cooldown and transactional vigor/reward handling.
 Repeated requests replace one pending strike instead of accumulating attacks;

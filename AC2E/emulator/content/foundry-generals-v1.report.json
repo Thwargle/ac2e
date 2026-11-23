@@ -1,0 +1,44 @@
+{
+  "existing_outdoor_sha256": "3c480398a58131efdbccc618a0c5b729bdb449f11059379fbb6b0b0b69e6a2b1",
+  "groups": [
+    {
+      "capacity": 1,
+      "id": 9313704613658034176,
+      "members": [
+        9313704613658034176
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 1,
+      "id": 9313704613658034192,
+      "members": [
+        9313704613658034192
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 1,
+      "id": 9313704613658034208,
+      "members": [
+        9313704613658034208
+      ],
+      "regeneration_ms": 120000
+    },
+    {
+      "capacity": 1,
+      "id": 9313704613658034224,
+      "members": [
+        9313704613658034224
+      ],
+      "regeneration_ms": 120000
+    }
+  ],
+  "included": 4,
+  "inferred": true,
+  "manifest_sha256": "a0a12db5903aacf0cb235942d27344a2fceb30661ae60122fb916f9a2b055875",
+  "native_ground_verified": true,
+  "rejected": [],
+  "source_sha256": "12b446994246a2daca101ff63fd3dd68a56d47dc32deb13bda7a1cb81c189672",
+  "version": 1
+}

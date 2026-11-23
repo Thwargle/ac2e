@@ -282,7 +282,7 @@ void AAC2Portrait::Tick(float Delta)
     if (Ready && Model)
     {
         const FVector V = FVector::ZeroVector;
-        Model->Animate(Time, 0, nullptr, &V);
+        Model->Animate(Time, 0, &V);
         Model->UpdateMaterials(Time);
     }
 }
@@ -371,29 +371,26 @@ float AAC2Portrait::AvatarSelectionDuration() const
 }
 int32 AAC2Portrait::PickAvatar(FVector2D Point) const
 {
+    if (!Ready || !Image || Point.X < 0 || Point.X >= 1 || Point.Y < 0 || Point.Y >= 1) return INDEX_NONE;
     Point.X = 1 - Point.X; // From the displayed native scene to the raw UE capture.
-    const FTransform View = Capture->GetRelativeTransform().Inverse();
-    float Tangent = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
+    // Both retail avatar creation and character selection use UIScene's
+    // depth-ordered point selection. A projected whole-body rectangle can steal
+    // a visible rear avatar through empty space around the nearer avatar's pose.
+    // HitModel uses the current posed triangles, including their holding frames
+    // and build/height scales. Carousel indices omit the decorative pedestals.
+    const double TanH = FMath::Tan(FMath::DegreesToRadians(Capture->FOVAngle * .5f));
+    const FVector Ray(1, (Point.X*2-1)*TanH, (1-Point.Y*2)*TanH*Image->SizeY/Image->SizeX);
+    const FVector Start = Capture->GetComponentLocation();
+    const FVector End = Start + Capture->GetComponentTransform().TransformVectorNoScale(Ray.GetSafeNormal())*100000;
+    const int32 Count = SelectionModels.IsEmpty() ? LineupModels.Num() : SelectionModels.Num();
     int32 Best = INDEX_NONE;
-    double Distance = BIG_NUMBER;
-    for (int32 I = 0; I < LineupBounds.Num(); ++I)
+    double Nearest = 1;
+    for (int32 I = 0; I < Count; ++I)
     {
-        const FBox B = Arms.IsValidIndex(I) ? LineupBounds[I].TransformBy(FigureFrames[I] * Arms[I]->GetRelativeTransform()) : LineupBounds[I];
-        FBox2D Box(ForceInit);
-        for (int32 C = 0; C < 8; ++C)
-        {
-            FVector P = View.TransformPosition(
-                FVector(C & 1 ? B.Max.X : B.Min.X, C & 2 ? B.Max.Y : B.Min.Y, C & 4 ? B.Max.Z : B.Min.Z));
-            if (P.X <= 1)
-                continue;
-            Box += FVector2D(.5 + P.Y / (2 * P.X * Tangent), .5 - P.Z / (2 * P.X * Tangent * Image->SizeY / Image->SizeX));
-        }
-        double D = View.TransformPosition(B.GetCenter()).X;
-        if (Box.bIsValid && Box.IsInside(Point) && D < Distance)
-        {
-            Best = I;
-            Distance = D;
-        }
+        const int32 ModelIndex = SelectionModels.IsEmpty() ? I : SelectionModels[I];
+        double Fraction;
+        if (LineupModels[ModelIndex]->HitModel(Start, End, Fraction) && Fraction < Nearest)
+        { Nearest = Fraction; Best = I; }
     }
     return Best;
 }
@@ -452,7 +449,7 @@ bool AAC2Portrait::ShowSelection(const FString &Directory, const TArray<FAC2Sele
         if (!Library->Open(Directory,Error) || !Library->DrawModel(Figure.Physics,this,Root,Figure.Appearance)) return false;
         const FBox Box = Library->ModelBounds();
         if (!Box.IsValid) return false;
-        LineupBounds.Add(Box); LineupModels.Add(MoveTemp(Library));
+        LineupBounds.Add(Box); SelectionModels.Add(LineupModels.Num()); LineupModels.Add(MoveTemp(Library));
     }
     Capture->SetRelativeLocation(Scene.Camera.GetLocation());
     Capture->SetRelativeRotation((Scene.Camera.GetRotation()*FQuat(FVector::UpVector,PI/2)).Rotator());
@@ -486,7 +483,7 @@ void AAC2Portrait::RefreshSceneEffects(const FString& Directory)
     auto Sources=Backdrop->ParticleSources();
     if(!Sources.IsEmpty())
     {
-        SceneEffects=MakeUnique<FAC2Effects>();SceneEffects->Open(GetWorld(),Directory);
+        SceneEffects=MakeUnique<FAC2Effects>();SceneEffects->Open(GetWorld(),Directory,false);
         for(int32 I=0;I<Sources.Num();++I){Sources[I].Key=I+1;Sources[I].Frame=Sources[I].Frame*GetActorTransform();}
         SceneEffects->SyncSources(Sources);Capture->ShowOnlyActors.Add(SceneEffects->RenderActor());
     }

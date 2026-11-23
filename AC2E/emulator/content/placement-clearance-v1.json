@@ -1,0 +1,1989 @@
+{
+  "checked": 9635,
+  "native_ground_verified": true,
+  "repairs": [
+    {
+      "body_height_m": 3.236146926879883,
+      "body_radius_m": 1.2031302452087402,
+      "id": "8140c00000317600",
+      "original": "8140c00000317600\t47002e8d\t1f001265\t3176001e\t69.082092\t101.671394\t83.378189\t-0.8090170\t0\t0\t0.5877853\t-\tSlithis Tendril Shoot",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000317600\t47002e8d\t1f001265\t3176001e\t68.728539\t102.024948\t83.616837\t-0.8090170\t0\t0\t0.5877853\t-\tSlithis Tendril Shoot"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "81408bf8cc1b2007",
+      "original": "81408bf8cc1b2007\t4700357d\t1f001971\t3793003e\t149.595047\t105.216423\t71.6851273\t0.572735131\t0\t0\t-0.819740474\t1.20000005\tFanatic Mage",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81408bf8cc1b2007\t4700357d\t1f001971\t3793003e\t149.786392\t104.754486\t71.712616\t0.572735131\t0\t0\t-0.819740474\t1.20000005\tFanatic Mage"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "8140b8c2ac1c4a78",
+      "original": "8140b8c2ac1c4a78\t4700357d\t1f001971\t39730030\t113.954216\t154.753006\t176.232269\t0.786744893\t0\t0\t-0.617278218\t1.20000005\tFanatic Mage",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140b8c2ac1c4a78\t4700357d\t1f001971\t39730030\t114.307770\t155.106552\t175.872711\t0.786744893\t0\t0\t-0.617278218\t1.20000005\tFanatic Mage"
+    },
+    {
+      "body_height_m": 5.1005449295043945,
+      "body_radius_m": 2.183398485183716,
+      "id": "8140b896d371d7fc",
+      "original": "8140b896d371d7fc\t4700104a\t1f00061a\t3c6e0032\t135.47438\t30.3246689\t97.545845\t0.811466932\t0\t0\t0.584398389\t1.79999995\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140b896d371d7fc\t4700104a\t1f00061a\t3c6e0032\t135.474380\t30.324669\t97.201294\t0.811466932\t0\t0\t0.584398389\t1.79999995\t-"
+    },
+    {
+      "body_height_m": 5.1005449295043945,
+      "body_radius_m": 2.183398485183716,
+      "id": "8140f7f364244127",
+      "original": "8140f7f364244127\t4700104a\t1f00061a\t3c6e0038\t125.63102\t146.879791\t107.285767\t0.792252839\t0\t0\t-0.610192895\t1.79999995\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140f7f364244127\t4700104a\t1f00061a\t3c6e0038\t125.631020\t146.879791\t106.941223\t0.792252839\t0\t0\t-0.610192895\t1.79999995\t-"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "81409584d985b765",
+      "original": "81409584d985b765\t47003579\t1f001976\t3c91003c\t150.421082\t64.020668\t134.912399\t0.976958036\t0\t0\t0.213431418\t1.20000005\tFanatic Clawbearer",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81409584d985b765\t47003579\t1f001976\t3c91003c\t150.067535\t64.374222\t134.658920\t0.976958036\t0\t0\t0.213431418\t1.20000005\tFanatic Clawbearer"
+    },
+    {
+      "body_height_m": 5.1005449295043945,
+      "body_radius_m": 2.183398485183716,
+      "id": "8140be9bfdcb290a",
+      "original": "8140be9bfdcb290a\t4700104a\t1f00061a\t3d6d002f\t118.053192\t124.472\t128.397354\t0.896752536\t0\t0\t-0.442532301\t1.79999995\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140be9bfdcb290a\t4700104a\t1f00061a\t3d6d002f\t118.053192\t124.472000\t128.052795\t0.896752536\t0\t0\t-0.442532301\t1.79999995\t-"
+    },
+    {
+      "body_height_m": 2.547518253326416,
+      "body_radius_m": 0.867195725440979,
+      "id": "8140c100003d9a00",
+      "original": "8140c100003d9a00\t47001f87\t1f00114b\t3d9a000b\t39.151405\t42.374149\t262.949677\t-0.5446390\t0\t0\t0.8386706\t-\tAncient Dark Mu-miyah",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c100003d9a00\t47001f87\t1f00114b\t3d9a000b\t38.960064\t42.836090\t263.134460\t-0.5446390\t0\t0\t0.8386706\t-\tAncient Dark Mu-miyah"
+    },
+    {
+      "body_height_m": 3.0357508659362793,
+      "body_radius_m": 1.1196218729019165,
+      "id": "8140d30000010020",
+      "original": "8140d30000010020\t47001ebb\t1f00112f\t3d9e0017\t52.400002\t138.399994\t149.779999\t1\t0\t0\t0\t-\tOlthoi Worker Nymph",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140d30000010020\t47001ebb\t1f00112f\t3d9e0017\t51.938061\t138.591339\t149.556961\t1\t0\t0\t0\t-\tOlthoi Worker Nymph"
+    },
+    {
+      "body_height_m": 2.1012001037597656,
+      "body_radius_m": 0.8005863428115845,
+      "id": "8140f5b89e433870",
+      "original": "8140f5b89e433870\t4700357f\t1f001975\t4557002c\t118.13903\t72.4861221\t106.821777\t0.99628365\t0\t0\t0.0861327127\t1.20000005\tFanatic Sage",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140f5b89e433870\t4700357f\t1f001975\t4557002c\t117.431923\t73.193230\t106.604538\t0.99628365\t0\t0\t0.0861327127\t1.20000005\tFanatic Sage"
+    },
+    {
+      "body_height_m": 5.290658473968506,
+      "body_radius_m": 1.9047600030899048,
+      "id": "8140c10000459400",
+      "original": "8140c10000459400\t47002910\t1f001132\t4594002f\t119.672958\t130.908386\t156.986893\t-0.7771460\t0\t0\t0.6293204\t-\tFractured Ice Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000459400\t47002910\t1f001132\t4594002f\t119.672958\t131.908386\t157.486893\t-0.7771460\t0\t0\t0.6293204\t-\tFractured Ice Golem"
+    },
+    {
+      "body_height_m": 2.868096113204956,
+      "body_radius_m": 1.0467358827590942,
+      "id": "8140c10000465201",
+      "original": "8140c10000465201\t47001055\t1f0002f7\t46520006\t15.970928\t107.122444\t161.464127\t-0.9455186\t0\t0\t0.3255682\t-\tGurog Shaman",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000465201\t47001055\t1f0002f7\t46520006\t15.970928\t107.622444\t161.714127\t-0.9455186\t0\t0\t0.3255682\t-\tGurog Shaman"
+    },
+    {
+      "body_height_m": 2.6229867935180664,
+      "body_radius_m": 0.9443938136100769,
+      "id": "8140c00000475101",
+      "original": "8140c00000475101\t470007b0\t1f000bf9\t47510017\t59.376720\t120.518631\t266.456757\t0.0174524\t0\t0\t0.9998477\t-\tGurog Captain",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000475101\t470007b0\t1f000bf9\t47510017\t59.023167\t120.872185\t266.739594\t0.0174524\t0\t0\t0.9998477\t-\tGurog Captain"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "8140b9fd5d8948e6",
+      "original": "8140b9fd5d8948e6\t47003577\t1f001977\t4777002a\t118.847115\t33.7801323\t111.999298\t0.932472229\t0\t0\t-0.361241698\t1.20000005\tFanatic Zealot",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140b9fd5d8948e6\t47003577\t1f001977\t4777002a\t119.347115\t33.780132\t111.943298\t0.932472229\t0\t0\t-0.361241698\t1.20000005\tFanatic Zealot"
+    },
+    {
+      "body_height_m": 3.753002643585205,
+      "body_radius_m": 1.5362857580184937,
+      "id": "8140c10000485000",
+      "original": "8140c10000485000\t470012bc\t1f0005cd\t4850002b\t112.578850\t54.342182\t76.626907\t-0.2079117\t0\t0\t0.9781476\t-\tShadow Soldier",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000485000\t470012bc\t1f0005cd\t4850002b\t112.578850\t54.842182\t76.514404\t-0.2079117\t0\t0\t0.9781476\t-\tShadow Soldier"
+    },
+    {
+      "body_height_m": 2.5558109283447266,
+      "body_radius_m": 0.9366774559020996,
+      "id": "8140c00000485201",
+      "original": "8140c00000485201\t4700082a\t1f000461\t48520014\t49.583797\t68.488884\t164.718201\t0.6883546\t0\t0\t0.7253744\t-\tRevenant Prefect",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000485201\t4700082a\t1f000461\t48520014\t50.083797\t68.488884\t164.584946\t0.6883546\t0\t0\t0.7253744\t-\tRevenant Prefect"
+    },
+    {
+      "body_height_m": 8.232210159301758,
+      "body_radius_m": 5.821051597595215,
+      "id": "8140c00000485700",
+      "original": "8140c00000485700\t470018fa\t1f00015e\t48570032\t126.110397\t26.399420\t205.075607\t-0.8290376\t0\t0\t0.5591929\t-\tTyrant Hatchling",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000485700\t470018fa\t1f00015e\t48570032\t126.610397\t26.399420\t205.325607\t-0.8290376\t0\t0\t0.5591929\t-\tTyrant Hatchling"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "81408bcb778432b9",
+      "original": "81408bcb778432b9\t47003577\t1f001977\t4992000e\t20.3774605\t109.956139\t102.505997\t0.998785973\t0\t0\t0.0492597483\t1.20000005\tFanatic Zealot",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81408bcb778432b9\t47003577\t1f001977\t4992000e\t20.568802\t110.418076\t102.500000\t0.998785973\t0\t0\t0.0492597483\t1.20000005\tFanatic Zealot"
+    },
+    {
+      "body_height_m": 2.1012001037597656,
+      "body_radius_m": 0.8005863428115845,
+      "id": "8140da0e294a5926",
+      "original": "8140da0e294a5926\t47003581\t1f001973\t4a590019\t64.8037872\t14.5548449\t126.882088\t0.552365065\t0\t0\t0.833602309\t1.20000005\t-",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140da0e294a5926\t47003581\t1f001973\t4a590019\t65.803787\t14.554845\t127.205269\t0.552365065\t0\t0\t0.833602309\t1.20000005\t-"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "814081357315c07d",
+      "original": "814081357315c07d\t47003577\t1f001977\t4b97001b\t76.9919586\t54.7049866\t78.5116577\t0.996271372\t0\t0\t-0.0862748995\t1.20000005\tFanatic Zealot",
+      "reason": "overlapping living creature bodies",
+      "replacement": "814081357315c07d\t47003577\t1f001977\t4b97001b\t77.915840\t55.087669\t78.094559\t0.996271372\t0\t0\t-0.0862748995\t1.20000005\tFanatic Zealot"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "81408398069660ca",
+      "original": "81408398069660ca\t47003579\t1f001976\t4b97001b\t72.3603516\t58.0108986\t79.0266037\t0.996271372\t0\t0\t-0.0862748995\t1.20000005\tFanatic Clawbearer",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81408398069660ca\t47003579\t1f001976\t4b97001b\t72.860352\t58.010899\t78.845604\t0.996271372\t0\t0\t-0.0862748995\t1.20000005\tFanatic Clawbearer"
+    },
+    {
+      "body_height_m": 5.290658473968506,
+      "body_radius_m": 1.9047600030899048,
+      "id": "8140c000004c5600",
+      "original": "8140c000004c5600\t47001e13\t1f001091\t4c560013\t58.027618\t54.375221\t121.302765\t0.6293204\t0\t0\t0.7771460\t-\tLesser Crystal Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000004c5600\t47001e13\t1f001091\t4c560013\t58.734726\t55.082329\t121.373474\t0.6293204\t0\t0\t0.7771460\t-\tLesser Crystal Golem"
+    },
+    {
+      "body_height_m": 2.7058074474334717,
+      "body_radius_m": 1.0008091926574707,
+      "id": "8140c100004e7800",
+      "original": "8140c100004e7800\t47001064\t1f000629\t4e780012\t47.097809\t20.722897\t212.846222\t0.6225146\t0\t0\t0.7826082\t-\tStorm Flayer",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c100004e7800\t47001064\t1f000629\t4e780012\t47.451363\t21.076450\t213.058350\t0.6225146\t0\t0\t0.7826082\t-\tStorm Flayer"
+    },
+    {
+      "body_height_m": 3.705726146697998,
+      "body_radius_m": 1.3386178016662598,
+      "id": "8140c100004e7900",
+      "original": "8140c100004e7900\t47001c6b\t1f001050\t4e79002a\t110.893318\t39.232899\t232.171860\t-0.9999619\t0\t0\t0.0087265\t-\tInvincible Warath",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c100004e7900\t47001c6b\t1f001050\t4e79002a\t110.510635\t38.309017\t231.899536\t-0.9999619\t0\t0\t0.0087265\t-\tInvincible Warath"
+    },
+    {
+      "body_height_m": 2.5558109283447266,
+      "body_radius_m": 0.9366774559020996,
+      "id": "8140c00000526300",
+      "original": "8140c00000526300\t47001052\t1f0004b1\t52630015\t55.316498\t89.214714\t97.572807\t-0.8141155\t0\t0\t0.5807030\t-\tRevenant Praetor",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000526300\t47001052\t1f0004b1\t52630015\t54.854557\t89.023369\t97.284096\t-0.8141155\t0\t0\t0.5807030\t-\tRevenant Praetor"
+    },
+    {
+      "body_height_m": 2.5558109283447266,
+      "body_radius_m": 0.9366774559020996,
+      "id": "8140c00000566b01",
+      "original": "8140c00000566b01\t47001052\t1f0004b1\t566b0016\t55.940392\t101.232452\t195.500000\t-0.5150381\t0\t0\t0.8571673\t-\tRevenant Praetor",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000566b01\t47001052\t1f0004b1\t566b0016\t55.586838\t100.878899\t195.500000\t-0.5150381\t0\t0\t0.8571673\t-\tRevenant Praetor"
+    },
+    {
+      "body_height_m": 2.7058074474334717,
+      "body_radius_m": 1.0008091926574707,
+      "id": "8140a02d6181f1d1",
+      "original": "8140a02d6181f1d1\t47001065\t1f00062a\t56720036\t137.860260\t115.749428\t216.500000\t1\t0\t0\t0\t-\tTempest Flayer",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a02d6181f1d1\t47001065\t1f00062a\t56720036\t138.360260\t115.749428\t216.500000\t1\t0\t0\t0\t-\tTempest Flayer"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c000005faf00",
+      "original": "8140c000005faf00\t47000f98\t1f000030\t5faf0032\t121.481415\t31.361654\t144.143829\t0.1822355\t0\t0\t0.9832549\t-\tReedshark Runt",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000005faf00\t47000f98\t1f000030\t5faf0032\t121.943352\t31.552996\t143.916138\t0.1822355\t0\t0\t0.9832549\t-\tReedshark Runt"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c000005faf01",
+      "original": "8140c000005faf01\t47000f98\t1f000030\t5faf0032\t135.155228\t37.112419\t140.540695\t0.1908090\t0\t0\t0.9816272\t-\tReedshark Runt",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000005faf01\t47000f98\t1f000030\t5faf0032\t135.346573\t37.574360\t140.752518\t0.1908090\t0\t0\t0.9816272\t-\tReedshark Runt"
+    },
+    {
+      "body_height_m": 1.4636647701263428,
+      "body_radius_m": 1.034967303276062,
+      "id": "8140c0000061b001",
+      "original": "8140c0000061b001\t47001072\t1f0001ea\t61b0001a\t76.083717\t37.223907\t149.815887\t0.7132504\t0\t0\t0.7009093\t-\tBold Vermin Pilferer",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000061b001\t47001072\t1f0001ea\t61b0001a\t76.083717\t37.723907\t149.515884\t0.7132504\t0\t0\t0.7009093\t-\tBold Vermin Pilferer"
+    },
+    {
+      "body_height_m": 1.5199999809265137,
+      "body_radius_m": 1.074802279472351,
+      "id": "8140c0000062ad00",
+      "original": "8140c0000062ad00\t4700088c\t1f000031\t62ad001b\t61.510338\t40.894791\t145.527924\t0.8788171\t0\t0\t0.4771588\t-\tEdge Beetle",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000062ad00\t4700088c\t1f000031\t62ad001b\t61.972279\t41.086132\t145.519989\t0.8788171\t0\t0\t0.4771588\t-\tEdge Beetle"
+    },
+    {
+      "body_height_m": 2.8336360454559326,
+      "body_radius_m": 1.2129992246627808,
+      "id": "8140c0000062b100",
+      "original": "8140c0000062b100\t47000f8c\t1f0001f0\t62b10014\t52.095596\t69.099007\t98.995255\t0.9999619\t0\t0\t0.0087265\t-\tGnawer Shreth",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000062b100\t47000f8c\t1f0001f0\t62b10014\t51.742043\t68.745453\t98.650536\t0.9999619\t0\t0\t0.0087265\t-\tGnawer Shreth"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140c0000063b100",
+      "original": "8140c0000063b100\t47000fc5\t1f0003a2\t63b1002c\t101.349091\t75.037903\t116.983109\t0.9890159\t0\t0\t0.1478094\t-\tSandy Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000063b100\t47000fc5\t1f0003a2\t63b1002c\t102.349091\t75.037903\t116.583107\t0.9890159\t0\t0\t0.1478094\t-\tSandy Armoredillo"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140c00000666600",
+      "original": "8140c00000666600\t47000fc7\t1f0003a7\t66660036\t125.874512\t109.134148\t142.995682\t-0.8949344\t0\t0\t0.4461978\t-\tSteppe Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000666600\t47000fc7\t1f0003a7\t66660036\t126.639877\t107.286392\t143.536865\t-0.8949344\t0\t0\t0.4461978\t-\tSteppe Armoredillo"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "8140ba81feacfadd",
+      "original": "8140ba81feacfadd\t4700357d\t1f001971\t66750016\t45.8612213\t100.242683\t105.726776\t0.432315916\t0\t0\t0.901722193\t1.20000005\tFanatic Mage",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140ba81feacfadd\t4700357d\t1f001971\t66750016\t46.861221\t100.242683\t105.920776\t0.432315916\t0\t0\t0.901722193\t1.20000005\tFanatic Mage"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140c0000066b600",
+      "original": "8140c0000066b600\t47000fc5\t1f0003a2\t66b60027\t87.625343\t123.407127\t196.581116\t-0.6883546\t0\t0\t0.7253744\t-\tSandy Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000066b600\t47000fc5\t1f0003a2\t66b60027\t87.625343\t125.407127\t196.181122\t-0.6883546\t0\t0\t0.7253744\t-\tSandy Armoredillo"
+    },
+    {
+      "body_height_m": 2.5558109283447266,
+      "body_radius_m": 0.9366774559020996,
+      "id": "8140a01b26007e08",
+      "original": "8140a01b26007e08\t4700105b\t1f000461\t6974001c\t70.060936\t60.782921\t103.578293\t1\t0\t0\t0\t-\tRevenant Conscript",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a01b26007e08\t4700105b\t1f000461\t6974001c\t70.560936\t60.782921\t103.578293\t1\t0\t0\t0\t-\tRevenant Conscript"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c0000069b400",
+      "original": "8140c0000069b400\t47000f98\t1f000030\t69b4002e\t109.844284\t101.453018\t143.500000\t0.1391731\t0\t0\t0.9902681\t-\tReedshark Runt",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000069b400\t47000f98\t1f000030\t69b4002e\t109.844284\t101.953018\t143.500000\t0.1391731\t0\t0\t0.9902681\t-\tReedshark Runt"
+    },
+    {
+      "body_height_m": 1.7163339853286743,
+      "body_radius_m": 0.7071067690849304,
+      "id": "81409fe62d68b98d",
+      "original": "81409fe62d68b98d\t47001304\t1f00132f\t6ea7002a\t100.983444\t28.3604412\t78.5282974\t0.903247178\t0\t0\t-0.42912063\t-\t-",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81409fe62d68b98d\t47001304\t1f00132f\t6ea7002a\t100.521507\t28.169100\t78.500000\t0.903247178\t0\t0\t-0.42912063\t-\t-"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c10000709800",
+      "original": "8140c10000709800\t47000f99\t1f000030\t70980017\t41.011215\t126.181557\t436.897797\t-0.3090170\t0\t0\t0.9510565\t-\tStripling Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000709800\t47000f99\t1f000030\t70980017\t41.511215\t126.181557\t437.197784\t-0.3090170\t0\t0\t0.9510565\t-\tStripling Reedshark"
+    },
+    {
+      "body_height_m": 2.2698726654052734,
+      "body_radius_m": 1.6050423383712769,
+      "id": "81409fa10e726c31",
+      "original": "81409fa10e726c31\t47000f97\t1f0004a8\t75950022\t92.5538864\t28.3988972\t137.46347\t0.834096789\t0\t0\t0.551618099\t1.13493633\tVeteran Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81409fa10e726c31\t47000f97\t1f0004a8\t75950022\t91.139671\t26.984684\t137.198471\t0.834096789\t0\t0\t0.551618099\t1.13493633\tVeteran Reedshark"
+    },
+    {
+      "body_height_m": 1.927258849143982,
+      "body_radius_m": 1.362777829170227,
+      "id": "8140bf06643b65c9",
+      "original": "8140bf06643b65c9\t47001276\t1f0003a2\t75a70002\t19.3144417\t30.4909573\t127.696663\t0.670279264\t0\t0\t0.742108941\t0.666723967\tFierce Sandy Armoredillo",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140bf06643b65c9\t47001276\t1f0003a2\t75a70002\t18.390562\t30.873640\t127.895470\t0.670279264\t0\t0\t0.742108941\t0.666723967\tFierce Sandy Armoredillo"
+    },
+    {
+      "body_height_m": 2.840035915374756,
+      "body_radius_m": 2.008208751678467,
+      "id": "8140bac53b4f58c4",
+      "original": "8140bac53b4f58c4\t47001276\t1f0003a2\t76a80014\t42.2010841\t75.6364517\t112.97644\t0.63164717\t0\t0\t0.775255978\t0.982493877\tFierce Sandy Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140bac53b4f58c4\t47001276\t1f0003a2\t76a80014\t42.201084\t76.136452\t113.394699\t0.63164717\t0\t0\t0.775255978\t0.982493877\tFierce Sandy Armoredillo"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000007a9600",
+      "original": "8140c000007a9600\t47001078\t1f000625\t7a960014\t53.519493\t68.757767\t412.111694\t-0.9537170\t0\t0\t0.3007058\t-\tSavage Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000007a9600\t47001078\t1f000625\t7a960014\t54.019493\t68.757767\t412.411713\t-0.9537170\t0\t0\t0.3007058\t-\tSavage Lasher"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140c000007ab800",
+      "original": "8140c000007ab800\t47000fc5\t1f0003a2\t7ab80014\t58.860363\t69.138802\t108.302505\t0.9681476\t0\t0\t0.2503800\t-\tSandy Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000007ab800\t47000fc5\t1f0003a2\t7ab80014\t57.936485\t69.521484\t107.818153\t0.9681476\t0\t0\t0.2503800\t-\tSandy Armoredillo"
+    },
+    {
+      "body_height_m": 2.8336360454559326,
+      "body_radius_m": 1.2129992246627808,
+      "id": "8140c000007bb800",
+      "original": "8140c000007bb800\t47000f8c\t1f0001f0\t7bb8002b\t116.598534\t45.659969\t233.469330\t0.9238795\t0\t0\t0.3826834\t-\tGnawer Shreth",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000007bb800\t47000f8c\t1f0001f0\t7bb8002b\t117.598534\t45.659969\t233.919327\t0.9238795\t0\t0\t0.3826834\t-\tGnawer Shreth"
+    },
+    {
+      "body_height_m": 0.8608036637306213,
+      "body_radius_m": 0.6086801290512085,
+      "id": "8140eb75a5f9f107",
+      "original": "8140eb75a5f9f107\t470012b7\t1f000d34\t81af0034\t125.284508\t66.4703598\t109.385841\t0.850217104\t0\t0\t-0.526432157\t0.890949845\t-",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140eb75a5f9f107\t470012b7\t1f000d34\t81af0034\t125.475853\t66.008423\t109.446739\t0.850217104\t0\t0\t-0.526432157\t0.890949845\t-"
+    },
+    {
+      "body_height_m": 0.9150267243385315,
+      "body_radius_m": 0.6470215916633606,
+      "id": "8140f120171fc510",
+      "original": "8140f120171fc510\t470012b7\t1f000d34\t81af0034\t124.165558\t66.5591202\t109.265076\t0.850217104\t0\t0\t-0.526432157\t0.94707185\t-",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140f120171fc510\t470012b7\t1f000d34\t81af0034\t123.703621\t66.750465\t109.195312\t0.850217104\t0\t0\t-0.526432157\t0.94707185\t-"
+    },
+    {
+      "body_height_m": 2.108557939529419,
+      "body_radius_m": 1.4909754991531372,
+      "id": "814086d2c0eccaea",
+      "original": "814086d2c0eccaea\t47001078\t1f000625\t8288002c\t110.615601\t72.0286026\t125.566933\t0.949437916\t0\t0\t0.31395486\t0.897361755\tSavage Lasher",
+      "reason": "overlapping living creature bodies",
+      "replacement": "814086d2c0eccaea\t47001078\t1f000625\t8288002c\t110.115601\t72.028603\t125.511559\t0.949437916\t0\t0\t0.31395486\t0.897361755\tSavage Lasher"
+    },
+    {
+      "body_height_m": 1.5327646732330322,
+      "body_radius_m": 1.083828330039978,
+      "id": "814092d15ab8a7a6",
+      "original": "814092d15ab8a7a6\t47000f99\t1f000030\t8391001c\t62.6585808\t67.3673248\t103.310364\t0.976286769\t0\t0\t0.216481239\t0.766382337\tStripling Reedshark",
+      "reason": "overlapping living creature bodies",
+      "replacement": "814092d15ab8a7a6\t47000f99\t1f000030\t8391001c\t63.158581\t67.367325\t103.237213\t0.976286769\t0\t0\t0.216481239\t0.766382337\tStripling Reedshark"
+    },
+    {
+      "body_height_m": 2.0553770065307617,
+      "body_radius_m": 1.4533710479736328,
+      "id": "8140cbb7a99fa3ff",
+      "original": "8140cbb7a99fa3ff\t47001078\t1f000625\t848e0013\t51.7556381\t59.6525841\t163.854645\t0.953551829\t0\t0\t0.301229\t0.874729037\tSavage Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140cbb7a99fa3ff\t47001078\t1f000625\t848e0013\t52.217579\t59.843925\t163.799805\t0.953551829\t0\t0\t0.301229\t0.874729037\tSavage Lasher"
+    },
+    {
+      "body_height_m": 2.782048463821411,
+      "body_radius_m": 1.2648777961730957,
+      "id": "81408452a9f4b7bc",
+      "original": "81408452a9f4b7bc\t470019f3\t1f000e78\t86990016\t46\t110\t71.7729874\t1\t0\t0\t0\t1.10000002\tBone Knight",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81408452a9f4b7bc\t470019f3\t1f000e78\t86990016\t45.538059\t109.808655\t71.750000\t1\t0\t0\t0\t1.10000002\tBone Knight"
+    },
+    {
+      "body_height_m": 2.1580257415771484,
+      "body_radius_m": 0.7778174877166748,
+      "id": "81409c87ad9538b7",
+      "original": "81409c87ad9538b7\t470019f8\t1f000d73\t8796002a\t108\t38\t71.7717438\t0.809017122\t0\t0\t0.587785065\t1.10000002\tMoldering Skeleton",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81409c87ad9538b7\t470019f8\t1f000d73\t8796002a\t108.000000\t38.000000\t72.498566\t0.809017122\t0\t0\t0.587785065\t1.10000002\tMoldering Skeleton"
+    },
+    {
+      "body_height_m": 1.5199999809265137,
+      "body_radius_m": 1.074802279472351,
+      "id": "8140c1000087a301",
+      "original": "8140c1000087a301\t47000fc0\t1f0004ae\t87a30005\t11.476324\t99.310875\t198.775650\t0.9563048\t0\t0\t0.2923717\t-\tShear Beetle",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c1000087a301\t47000fc0\t1f0004ae\t87a30005\t11.284983\t98.848938\t198.960434\t0.9563048\t0\t0\t0.2923717\t-\tShear Beetle"
+    },
+    {
+      "body_height_m": 1.4636647701263428,
+      "body_radius_m": 1.034967303276062,
+      "id": "8140c0000088a100",
+      "original": "8140c0000088a100\t47000f80\t1f0004e0\t88a10013\t56.471199\t52.479439\t203.395050\t0.4067366\t0\t0\t0.9135455\t-\tDank Vermin",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000088a100\t47000f80\t1f0004e0\t88a10013\t56.009258\t52.288097\t203.329727\t0.4067366\t0\t0\t0.9135455\t-\tDank Vermin"
+    },
+    {
+      "body_height_m": 2.782048463821411,
+      "body_radius_m": 1.2648777961730957,
+      "id": "8140e5ef82826ec8",
+      "original": "8140e5ef82826ec8\t47001a3e\t1f000e7c\t8b98003b\t140\t45\t72.1479874\t0.650618374\t0\t0\t0.759404838\t1.10000002\tUndead Lord",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e5ef82826ec8\t47001a3e\t1f000e7c\t8b98003b\t140.500000\t45.000000\t72.199997\t0.650618374\t0\t0\t0.759404838\t1.10000002\tUndead Lord"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140a03604002cca",
+      "original": "8140a03604002cca\t47000f96\t1f0004a8\t8baa0013\t57.728298\t52.666134\t91.511337\t1\t0\t0\t0\t-\tElder Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a03604002cca\t47000f96\t1f0004a8\t8baa0013\t57.266357\t52.857475\t91.543518\t1\t0\t0\t0\t-\tElder Reedshark"
+    },
+    {
+      "body_height_m": 2.256117820739746,
+      "body_radius_m": 0.8131727576255798,
+      "id": "8140d5ba98fe7dce",
+      "original": "8140d5ba98fe7dce\t47001a3d\t1f000e64\t8c9b0017\t54\t127\t78.822731\t0.510631263\t0\t0\t0.859799802\t1.14999998\tFestering Skeleton",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140d5ba98fe7dce\t47001a3d\t1f000e64\t8c9b0017\t55.000000\t127.000000\t78.875000\t0.510631263\t0\t0\t0.859799802\t1.14999998\tFestering Skeleton"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000008f8800",
+      "original": "8140c000008f8800\t4700108a\t1f00062f\t8f880014\t42.594032\t61.683681\t186.591034\t-0.9588197\t0\t0\t0.2840153\t-\tOld Scratch Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000008f8800\t4700108a\t1f00062f\t8f880014\t44.594032\t61.683681\t186.791031\t-0.9588197\t0\t0\t0.2840153\t-\tOld Scratch Lasher"
+    },
+    {
+      "body_height_m": 1.5737601518630981,
+      "body_radius_m": 0.5696223378181458,
+      "id": "8140e4b0618d0cfe",
+      "original": "8140e4b0618d0cfe\t47001d49\t1f001084\t91870039\t155.207672\t12.5454388\t127.511879\t0.8799932\t0\t0\t-0.474986315\t0.888373613\tOozing Bloodstone",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140e4b0618d0cfe\t47001d49\t1f001084\t91870039\t155.914780\t13.252545\t127.500000\t0.8799932\t0\t0\t-0.474986315\t0.888373613\tOozing Bloodstone"
+    },
+    {
+      "body_height_m": 2.0533978939056396,
+      "body_radius_m": 0.7381561398506165,
+      "id": "8140e2999c20b142",
+      "original": "8140e2999c20b142\t4700108c\t1f0001eb\t928a0007\t11.3672981\t124.423599\t171.632706\t-0.302919805\t0\t0\t0.953016043\t0.807686269\tGrim Reaper",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140e2999c20b142\t4700108c\t1f0001eb\t928a0007\t11.720852\t124.777153\t171.544556\t-0.302919805\t0\t0\t0.953016043\t0.807686269\tGrim Reaper"
+    },
+    {
+      "body_height_m": 1.9154824018478394,
+      "body_radius_m": 0.7705660462379456,
+      "id": "8140a0f2a9103388",
+      "original": "8140a0f2a9103388\t47001604\t1f000db3\t92a1002b\t100.000000\t46.000000\t102.700005\t1\t0\t0\t0\t-\tGrutt Filthmaster",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0f2a9103388\t47001604\t1f000db3\t92a1002b\t100.500000\t46.000000\t102.750000\t1\t0\t0\t0\t-\tGrutt Filthmaster"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c0000092a300",
+      "original": "8140c0000092a300\t47001627\t1f000dbe\t92a3001b\t76.139481\t48.628933\t320.455780\t0.7132504\t0\t0\t0.7009093\t-\tReedshark Elder Hunter",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000092a300\t47001627\t1f000dbe\t92a3001b\t75.677544\t48.437592\t320.271027\t0.7132504\t0\t0\t0.7009093\t-\tReedshark Elder Hunter"
+    },
+    {
+      "body_height_m": 1.624783992767334,
+      "body_radius_m": 1.1488957405090332,
+      "id": "8140c00000938600",
+      "original": "8140c00000938600\t47000f84\t1f0004e3\t9386002b\t110.334648\t59.139683\t302.267700\t-0.5075384\t0\t0\t0.8616292\t-\tThornling Ringleader",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000938600\t47000f84\t1f0004e3\t9386002b\t109.834648\t59.139683\t301.801575\t-0.5075384\t0\t0\t0.8616292\t-\tThornling Ringleader"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c0000094a001",
+      "original": "8140c0000094a001\t47000f99\t1f000030\t94a00026\t90.924812\t118.151917\t204.424042\t0.7933533\t0\t0\t0.6087614\t-\tStripling Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c0000094a001\t47000f99\t1f000030\t94a00026\t90.217705\t118.859024\t204.070480\t0.7933533\t0\t0\t0.6087614\t-\tStripling Reedshark"
+    },
+    {
+      "body_height_m": 3.033489942550659,
+      "body_radius_m": 1.0751886367797852,
+      "id": "8140a2f95014776c",
+      "original": "8140a2f95014776c\t47000815\t1f0004e6\t9682000e\t33.6781731\t101.169975\t214.506012\t0.993256509\t0\t0\t-0.115937725\t1.52054632\tInferno Gloom Drudge",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a2f95014776c\t47000815\t1f0004e6\t9682000e\t33.678173\t101.669975\t214.500000\t0.993256509\t0\t0\t-0.115937725\t1.52054632\tInferno Gloom Drudge"
+    },
+    {
+      "body_height_m": 1.9950000047683716,
+      "body_radius_m": 0.7071067690849304,
+      "id": "8140c00000979a00",
+      "original": "8140c00000979a00\t470016a0\t1f000dee\t979a002a\t119.689400\t29.360891\t170.085480\t0.9723699\t0\t0\t0.2334454\t-\tDrudge Honor Guard",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000979a00\t470016a0\t1f000dee\t979a002a\t119.227463\t29.169550\t169.924484\t0.9723699\t0\t0\t0.2334454\t-\tDrudge Honor Guard"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c00000988d00",
+      "original": "8140c00000988d00\t47001089\t1f0004a6\t988d000a\t34.665302\t39.374664\t124.009071\t-0.9271839\t0\t0\t0.3746066\t-\tRelentless Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000988d00\t47001089\t1f0004a6\t988d000a\t35.430668\t37.526905\t124.811584\t-0.9271839\t0\t0\t0.3746066\t-\tRelentless Lasher"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c00000989d01",
+      "original": "8140c00000989d01\t4700107f\t1f000625\t989d001c\t70.602478\t68.788109\t129.015244\t0.6883546\t0\t0\t0.7253744\t-\tVengeful Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000989d01\t4700107f\t1f000625\t989d001c\t70.411133\t68.326172\t128.830475\t0.6883546\t0\t0\t0.7253744\t-\tVengeful Lasher"
+    },
+    {
+      "body_height_m": 1.624783992767334,
+      "body_radius_m": 1.1488957405090332,
+      "id": "8140c00000998800",
+      "original": "8140c00000998800\t47000f88\t1f00017f\t9988001c\t61.000763\t70.501617\t174.399933\t0.4067366\t0\t0\t0.9135455\t-\tThornling Harrower",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000998800\t47000f88\t1f00017f\t9988001c\t61.500763\t70.501617\t174.349930\t0.4067366\t0\t0\t0.9135455\t-\tThornling Harrower"
+    },
+    {
+      "body_height_m": 2.2619221210479736,
+      "body_radius_m": 0.8485281467437744,
+      "id": "8140a0bf0b079438",
+      "original": "8140a0bf0b079438\t470016ae\t1f000df0\t99970015\t55.301048\t80.603920\t92.750000\t1\t0\t0\t0\t-\tSneaky Drudge Robber",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0bf0b079438\t470016ae\t1f000df0\t99970015\t55.654602\t80.957474\t92.750000\t1\t0\t0\t0\t-\tSneaky Drudge Robber"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c00000999b00",
+      "original": "8140c00000999b00\t47000f96\t1f0004a8\t999b0026\t81.854462\t111.189835\t125.632919\t-0.9271839\t0\t0\t0.3746066\t-\tElder Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000999b00\t47000f96\t1f0004a8\t999b0026\t82.208015\t111.543388\t125.632919\t-0.9271839\t0\t0\t0.3746066\t-\tElder Reedshark"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000009a9300",
+      "original": "8140c000009a9300\t47001613\t1f000dce\t9a93002c\t113.106583\t70.979477\t204.500000\t0.7372773\t0\t0\t0.6755902\t-\tAlpha Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000009a9300\t47001613\t1f000dce\t9a93002c\t114.106583\t70.979477\t204.500000\t0.7372773\t0\t0\t0.6755902\t-\tAlpha Lasher"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000009a9400",
+      "original": "8140c000009a9400\t4700107e\t1f0004a6\t9a940014\t59.196159\t71.909760\t294.000000\t-0.9862856\t0\t0\t0.1650476\t-\tBrutal Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000009a9400\t4700107e\t1f0004a6\t9a94001c\t60.120037\t72.292442\t294.000000\t-0.9862856\t0\t0\t0.1650476\t-\tBrutal Lasher"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000009b9900",
+      "original": "8140c000009b9900\t47001613\t1f000dce\t9b99001b\t70.702370\t41.042496\t248.605347\t-0.1478094\t0\t0\t0.9890159\t-\tAlpha Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000009b9900\t47001613\t1f000dce\t9b99001b\t71.164307\t41.233837\t248.674637\t-0.1478094\t0\t0\t0.9890159\t-\tAlpha Lasher"
+    },
+    {
+      "body_height_m": 2.145798444747925,
+      "body_radius_m": 0.9756022691726685,
+      "id": "8140be7a31b15015",
+      "original": "8140be7a31b15015\t47001820\t1f000e78\t9cb60012\t59.8617172\t25.732214\t133.518814\t-0.434676349\t0\t0\t0.900586724\t0.848431766\tMounted Skeleton",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140be7a31b15015\t47001820\t1f000e78\t9cb60012\t59.861717\t26.232214\t133.500000\t-0.434676349\t0\t0\t0.900586724\t0.848431766\tMounted Skeleton"
+    },
+    {
+      "body_height_m": 3.0807623863220215,
+      "body_radius_m": 1.1937140226364136,
+      "id": "8140c100009e2300",
+      "original": "8140c100009e2300\t47003acb\t1f001a86\t9e230034\t131.077896\t63.049187\t97.237617\t0.9170601\t0\t0\t0.3987491\t-\tSwarm Eviscerator",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c100009e2300\t47003acb\t1f001a86\t9e230034\t131.577896\t63.049187\t97.550117\t0.9170601\t0\t0\t0.3987491\t-\tSwarm Eviscerator"
+    },
+    {
+      "body_height_m": 2.3497300148010254,
+      "body_radius_m": 1.6615099906921387,
+      "id": "8140c000009e9c00",
+      "original": "8140c000009e9c00\t47001613\t1f000dce\t9e9c0027\t89.413910\t121.428337\t345.765594\t-0.8433914\t0\t0\t0.5372996\t-\tAlpha Lasher",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c000009e9c00\t47001613\t1f000dce\t9e9c0027\t91.413910\t121.428337\t346.565582\t-0.8433914\t0\t0\t0.5372996\t-\tAlpha Lasher"
+    },
+    {
+      "body_height_m": 2.0,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c10000a3a200",
+      "original": "8140c10000a3a200\t47000f97\t1f0004a8\ta3a2002a\t112.139961\t20.937971\t382.855988\t-0.5075384\t0\t0\t0.8616292\t-\tVeteran Reedshark",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000a3a200\t47000f97\t1f0004a8\ta3a2002a\t112.139961\t21.437971\t382.855988\t-0.5075384\t0\t0\t0.8616292\t-\tVeteran Reedshark"
+    },
+    {
+      "body_height_m": 2.5999999046325684,
+      "body_radius_m": 1.8384774923324585,
+      "id": "8140c10000a74b00",
+      "original": "8140c10000a74b00\t47003b68\t1f001b44\ta74b0013\t44.029259\t55.250172\t92.140068\t-0.9990482\t0\t0\t0.0436194\t-\tPlains Matron",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000a74b00\t47003b68\t1f001b44\ta74b0013\t44.029259\t53.250172\t91.690063\t-0.9990482\t0\t0\t0.0436194\t-\tPlains Matron"
+    },
+    {
+      "body_height_m": 2.5999999046325684,
+      "body_radius_m": 1.8384774923324585,
+      "id": "8140c10000a83d00",
+      "original": "8140c10000a83d00\t47003b65\t1f001b45\ta83d0003\t17.219730\t40.942474\t80.111046\t0.9702957\t0\t0\t0.2419219\t-\tPlains Calf",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000a83d00\t47003b65\t1f001b45\ta83d0003\t18.219730\t40.942474\t80.636047\t0.9702957\t0\t0\t0.2419219\t-\tPlains Calf"
+    },
+    {
+      "body_height_m": 1.6694307327270508,
+      "body_radius_m": 1.180465817451477,
+      "id": "8140e5a794642c31",
+      "original": "8140e5a794642c31\t47001696\t1f000e21\ta9880030\t113.601891\t142.217499\t136.281647\t0.34394899\t0\t0\t0.938988328\t1.10541928\tDarkenfowl Stray Scavenger",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140e5a794642c31\t47001696\t1f000e21\ta9880030\t112.894783\t142.924606\t135.780533\t0.34394899\t0\t0\t0.938988328\t1.10541928\tDarkenfowl Stray Scavenger"
+    },
+    {
+      "body_height_m": 2.238706588745117,
+      "body_radius_m": 0.8794333934783936,
+      "id": "8140c814ff795d49",
+      "original": "8140c814ff795d49\t47003b44\t1f001b64\taa370011\t45.6367416\t19.8119278\t103.063583\t0.920149446\t0\t0\t0.391567439\t-\tHorrid Urkhad",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140c814ff795d49\t47003b44\t1f001b64\taa370011\t46.136742\t19.811928\t102.986717\t0.920149446\t0\t0\t0.391567439\t-\tHorrid Urkhad"
+    },
+    {
+      "body_height_m": 1.5102239847183228,
+      "body_radius_m": 1.06788969039917,
+      "id": "8140a0704b267503",
+      "original": "8140a0704b267503\t47001696\t1f000e21\taa8a0026\t95.199997\t115.199997\t88.369995\t1\t0\t0\t0\t-\tDarkenfowl Stray Scavenger",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0704b267503\t47001696\t1f000e21\taa8a0026\t95.699997\t115.199997\t88.369995\t1\t0\t0\t0\t-\tDarkenfowl Stray Scavenger"
+    },
+    {
+      "body_height_m": 3.7081069946289062,
+      "body_radius_m": 1.3788580894470215,
+      "id": "8140c10000ad4d00",
+      "original": "8140c10000ad4d00\t47003b2f\t1f001a74\tad4d000d\t31.992142\t89.490883\t76.802216\t-0.5446390\t0\t0\t0.8386706\t-\tLaes Takeru",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000ad4d00\t47003b2f\t1f001a74\tad4d000d\t31.992142\t89.490883\t77.143333\t-0.5446390\t0\t0\t0.8386706\t-\tLaes Takeru"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c10000ad8900",
+      "original": "8140c10000ad8900\t47001013\t1f0003d1\tad89003c\t150.723190\t65.433159\t131.500000\t0.4539905\t0\t0\t0.8910065\t-\tSurrogate Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000ad8900\t47001013\t1f0003d1\tad89003c\t151.723190\t65.433159\t131.500000\t0.4539905\t0\t0\t0.8910065\t-\tSurrogate Spawn"
+    },
+    {
+      "body_height_m": 1.759385347366333,
+      "body_radius_m": 1.2440733909606934,
+      "id": "8140b917cdc84381",
+      "original": "8140b917cdc84381\t47000828\t1f000032\tad93000e\t28.36059\t107.17598\t71.0256271\t0.897891998\t0\t0\t-0.440215766\t1.16498303\tDarkenfowl Hen",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140b917cdc84381\t47000828\t1f000032\tad93000e\t28.551931\t107.637917\t71.153831\t0.897891998\t0\t0\t-0.440215766\t1.16498303\tDarkenfowl Hen"
+    },
+    {
+      "body_height_m": 3.7081069946289062,
+      "body_radius_m": 1.3788580894470215,
+      "id": "8140c10000b03001",
+      "original": "8140c10000b03001\t47003b2e\t1f001a12\tb030003f\t143.754974\t121.186554\t76.845436\t0.8038569\t0\t0\t0.5948228\t-\tIkaa Takeru",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000b03001\t47003b2e\t1f001a12\tb030003f\t144.108521\t121.540108\t76.633301\t0.8038569\t0\t0\t0.5948228\t-\tIkaa Takeru"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c00000b18c00",
+      "original": "8140c00000b18c00\t4700101d\t1f0003d1\tb18c0013\t55.333485\t43.610893\t84.854286\t0.5591929\t0\t0\t0.8290376\t-\tPuppet Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b18c00\t4700101d\t1f0003d1\tb18c0013\t54.333485\t43.610893\t84.854286\t0.5591929\t0\t0\t0.8290376\t-\tPuppet Spawn"
+    },
+    {
+      "body_height_m": 3.021083116531372,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c00000b28600",
+      "original": "8140c00000b28600\t470007d3\t1f0004aa\tb286001e\t79.287285\t111.535301\t86.766479\t0.9588197\t0\t0\t0.2840153\t-\tAcita Mimbu",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b28600\t470007d3\t1f0004aa\tb286001e\t78.580177\t112.242409\t86.660408\t0.9588197\t0\t0\t0.2840153\t-\tAcita Mimbu"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c00000b28c00",
+      "original": "8140c00000b28c00\t47001013\t1f0003d1\tb28c0025\t89.180016\t86.965836\t108.320496\t0.4305111\t0\t0\t0.9025853\t-\tSurrogate Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b28c00\t47001013\t1f0003d1\tb28c0025\t88.680016\t86.965836\t108.320496\t0.4305111\t0\t0\t0.9025853\t-\tSurrogate Spawn"
+    },
+    {
+      "body_height_m": 3.271071434020996,
+      "body_radius_m": 1.2658460140228271,
+      "id": "8140c10000b33d01",
+      "original": "8140c10000b33d01\t47003a94\t1f001a9c\tb33d0035\t123.942146\t89.184616\t103.942703\t-0.2419219\t0\t0\t0.9702957\t-\tToxic Grievver",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000b33d01\t47003a94\t1f001a9c\tb33d0035\t123.235039\t88.477509\t103.871994\t-0.2419219\t0\t0\t0.9702957\t-\tToxic Grievver"
+    },
+    {
+      "body_height_m": 2.256434440612793,
+      "body_radius_m": 0.8236441612243652,
+      "id": "8140a0340e1aedfa",
+      "original": "8140a0340e1aedfa\t470016ea\t1f000e09\tb3750013\t59.395107\t44.162823\t102.995163\t1\t0\t0\t0\t-\tWretched Parfal Niffis",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0340e1aedfa\t470016ea\t1f000e09\tb3750013\t59.041553\t44.516376\t102.570900\t1\t0\t0\t0\t-\tWretched Parfal Niffis"
+    },
+    {
+      "body_height_m": 2.256434440612793,
+      "body_radius_m": 0.8236441612243652,
+      "id": "8140a0340e1aedfc",
+      "original": "8140a0340e1aedfc\t47001022\t1f0001f3\tb3750021\t95.408127\t4.644356\t181.034637\t1\t0\t0\t0\t-\tParfal Niffis",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0340e1aedfc\t47001022\t1f0001f3\tb3750021\t95.908127\t4.644356\t181.384644\t1\t0\t0\t0\t-\tParfal Niffis"
+    },
+    {
+      "body_height_m": 2.1224610805511475,
+      "body_radius_m": 1.5008066892623901,
+      "id": "8140b5b9a792268d",
+      "original": "8140b5b9a792268d\t47000fa8\t1f000032\tb4770002\t14.8875628\t36.5181999\t168.270752\t0.998103321\t0\t0\t0.0615607873\t1.40539491\tChanticleer",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140b5b9a792268d\t47000fa8\t1f000032\tb4770002\t14.887563\t37.018200\t168.013382\t0.998103321\t0\t0\t0.0615607873\t1.40539491\tChanticleer"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c00000b58600",
+      "original": "8140c00000b58600\t4700101d\t1f0003d1\tb586001d\t75.778198\t97.252472\t174.007126\t0.7547096\t0\t0\t0.6560590\t-\tPuppet Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b58600\t4700101d\t1f0003d1\tb586001d\t75.778198\t97.752472\t174.307114\t0.7547096\t0\t0\t0.6560590\t-\tPuppet Spawn"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c00000b58d00",
+      "original": "8140c00000b58d00\t4700101d\t1f0003d1\tb58d0022\t86.176277\t27.814983\t302.874023\t0.7986355\t0\t0\t0.6018150\t-\tPuppet Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b58d00\t4700101d\t1f0003d1\tb58d0022\t86.676277\t27.814983\t302.874023\t0.7986355\t0\t0\t0.6018150\t-\tPuppet Spawn"
+    },
+    {
+      "body_height_m": 1.5102239847183228,
+      "body_radius_m": 1.06788969039917,
+      "id": "8140c00000b68301",
+      "original": "8140c00000b68301\t47000829\t1f000032\tb683001f\t63.157368\t120.723671\t192.545853\t0.9063078\t0\t0\t0.4226183\t-\tDarkenfowl Chick",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000b68301\t47000829\t1f000032\tb683001f\t63.510921\t121.077225\t192.581192\t0.9063078\t0\t0\t0.4226183\t-\tDarkenfowl Chick"
+    },
+    {
+      "body_height_m": 2.741698980331421,
+      "body_radius_m": 1.2489922046661377,
+      "id": "8140d6438a4de2c4",
+      "original": "8140d6438a4de2c4\t47000f93\t1f000077\tb775001f\t72.0150986\t124.97863\t309.504333\t0.62211293\t0\t0\t0.782927513\t0.883170903\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140d6438a4de2c4\t47000f93\t1f000077\tb775001f\t72.015099\t124.978630\t309.194000\t0.62211293\t0\t0\t0.782927513\t0.883170903\t-"
+    },
+    {
+      "body_height_m": 2.8834640979766846,
+      "body_radius_m": 1.313573956489563,
+      "id": "81408681c83119ea",
+      "original": "81408681c83119ea\t47000f93\t1f000077\tb775003d\t142.143982\t98.3878784\t214.985504\t0.892400563\t0\t0\t-0.451244086\t0.928837061\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81408681c83119ea\t47000f93\t1f000077\tb775003d\t142.143982\t98.387878\t214.675140\t0.892400563\t0\t0\t-0.451244086\t0.928837061\t-"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "8140c355b3034366",
+      "original": "8140c355b3034366\t4700357b\t1f001972\tb7760001\t3.5073483\t18.1472778\t345.258911\t0.707106769\t0\t0\t-0.707106769\t1.20000005\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c355b3034366\t4700357b\t1f001972\tb7760001\t3.507348\t18.147278\t343.855957\t0.707106769\t0\t0\t-0.707106769\t1.20000005\t-"
+    },
+    {
+      "body_height_m": 2.4720001220703125,
+      "body_radius_m": 0.9418662190437317,
+      "id": "8140f89bf834bb86",
+      "original": "8140f89bf834bb86\t4700357b\t1f001972\tb7760001\t2.95892334\t16.0464668\t344.4263\t0.793353319\t0\t0\t-0.60876137\t1.20000005\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140f89bf834bb86\t4700357b\t1f001972\tb7760001\t2.958923\t16.046467\t343.235016\t0.793353319\t0\t0\t-0.60876137\t1.20000005\t-"
+    },
+    {
+      "body_height_m": 3.4941210746765137,
+      "body_radius_m": 1.635649561882019,
+      "id": "814086f40d25ef7a",
+      "original": "814086f40d25ef7a\t47001032\t1f0004ac\tb776000d\t20.2153893\t96.9259872\t263.807312\t0.0554115474\t0\t0\t0.998463571\t1.1565789\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "814086f40d25ef7a\t47001032\t1f0004ac\tb776000d\t20.215389\t96.925987\t263.315765\t0.0554115474\t0\t0\t0.998463571\t1.1565789\t-"
+    },
+    {
+      "body_height_m": 3.134014368057251,
+      "body_radius_m": 1.4670783281326294,
+      "id": "8140a3326846e7dc",
+      "original": "8140a3326846e7dc\t47001032\t1f0004ac\tb7760022\t99.0177689\t21.4567261\t311.467133\t0.401101619\t0\t0\t0.916033566\t1.03738105\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a3326846e7dc\t47001032\t1f0004ac\tb7760022\t99.017769\t21.456726\t310.975586\t0.401101619\t0\t0\t0.916033566\t1.03738105\t-"
+    },
+    {
+      "body_height_m": 2.4875268936157227,
+      "body_radius_m": 1.1332030296325684,
+      "id": "8140f082cd016165",
+      "original": "8140f082cd016165\t470016ed\t1f000e0b\tb776002a\t108.328072\t24.1179409\t308.626312\t0.886773705\t0\t0\t0.462203801\t0.801295578\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140f082cd016165\t470016ed\t1f000e0b\tb776002a\t108.328072\t24.117941\t308.315948\t0.886773705\t0\t0\t0.462203801\t0.801295578\t-"
+    },
+    {
+      "body_height_m": 3.495116710662842,
+      "body_radius_m": 1.6361156702041626,
+      "id": "814092a259be7c0f",
+      "original": "814092a259be7c0f\t47000826\t1f0004ac\tb776003c\t148.720932\t66.9881439\t292.297302\t-0.297276765\t0\t0\t0.954791367\t1.15690851\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "814092a259be7c0f\t47000826\t1f0004ac\tb776003c\t148.720932\t66.988144\t291.716370\t-0.297276765\t0\t0\t0.954791367\t1.15690851\t-"
+    },
+    {
+      "body_height_m": 2.9848344326019287,
+      "body_radius_m": 1.3597536087036133,
+      "id": "81409d9b24070382",
+      "original": "81409d9b24070382\t47000f93\t1f000077\tb8750034\t133.809647\t71.7992706\t141.292007\t0.99628365\t0\t0\t-0.0861329436\t0.961490989\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81409d9b24070382\t47000f93\t1f000077\tb8750034\t133.809647\t71.799271\t140.981644\t0.99628365\t0\t0\t-0.0861329436\t0.961490989\t-"
+    },
+    {
+      "body_height_m": 3.250095844268799,
+      "body_radius_m": 1.5214177370071411,
+      "id": "8140a3ac47e05be8",
+      "original": "8140a3ac47e05be8\t47000826\t1f0004ac\tb875003d\t150.641312\t81.8520737\t148.080933\t-0.237935126\t0\t0\t0.971281052\t1.07580483\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a3ac47e05be8\t47000826\t1f0004ac\tb875003d\t150.641312\t81.852074\t147.500000\t-0.237935126\t0\t0\t0.971281052\t1.07580483\t-"
+    },
+    {
+      "body_height_m": 2.671382427215576,
+      "body_radius_m": 1.2505135536193848,
+      "id": "8140d205989f9e37",
+      "original": "8140d205989f9e37\t47001032\t1f0004ac\tb875003f\t143.291275\t136.89212\t159.960602\t0.892400563\t0\t0\t-0.451244086\t0.884246588\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140d205989f9e37\t47001032\t1f0004ac\tb875003f\t143.291275\t136.892120\t159.469055\t0.892400563\t0\t0\t-0.451244086\t0.884246588\t-"
+    },
+    {
+      "body_height_m": 2.256117820739746,
+      "body_radius_m": 0.8131727576255798,
+      "id": "8140ccacad91094c",
+      "original": "8140ccacad91094c\t47001a3d\t1f000e64\tb9870034\t136\t70\t205.922714\t1\t0\t0\t0\t1.14999998\tFestering Skeleton",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140ccacad91094c\t47001a3d\t1f000e64\tb9870034\t136.461945\t70.191345\t205.834671\t1\t0\t0\t0\t1.14999998\tFestering Skeleton"
+    },
+    {
+      "body_height_m": 2.256117820739746,
+      "body_radius_m": 0.8131727576255798,
+      "id": "81408316c3c32257",
+      "original": "81408316c3c32257\t47001a3d\t1f000e64\tb9870035\t120\t80\t211.52272\t1\t0\t0\t0\t1.14999998\tFestering Skeleton",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81408316c3c32257\t47001a3d\t1f000e64\tb9870034\t120.923882\t79.617317\t211.038055\t1\t0\t0\t0\t1.14999998\tFestering Skeleton"
+    },
+    {
+      "body_height_m": 2.54232120513916,
+      "body_radius_m": 0.9139144420623779,
+      "id": "8140c10000ba4a00",
+      "original": "8140c10000ba4a00\t47003afb\t1f001bb2\tba4a000c\t21.772259\t72.764557\t116.719696\t0.8949344\t0\t0\t0.4461978\t-\tSorrow Thrall",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000ba4a00\t47003afb\t1f001bb2\tba4a000c\t21.772259\t73.264557\t116.919693\t0.8949344\t0\t0\t0.4461978\t-\tSorrow Thrall"
+    },
+    {
+      "body_height_m": 2.365269184112549,
+      "body_radius_m": 1.6724979877471924,
+      "id": "81408221a919c04a",
+      "original": "81408221a919c04a\t47001030\t1f000032\tba870027\t92.8511429\t137.806412\t119.576797\t0.994069695\t0\t0\t-0.108745091\t1.56617117\tWatchen",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81408221a919c04a\t47001030\t1f000032\tba870027\t93.351143\t137.806412\t119.615761\t0.994069695\t0\t0\t-0.108745091\t1.56617117\tWatchen"
+    },
+    {
+      "body_height_m": 3.021083116531372,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140a0274b73a0d8",
+      "original": "8140a0274b73a0d8\t470007d3\t1f0004aa\tbc8f0014\t51.279198\t60.353283\t114.777779\t1\t0\t0\t0\t-\tAcita Mimbu",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0274b73a0d8\t470007d3\t1f0004aa\tbc8f0014\t51.779198\t60.353283\t114.927773\t1\t0\t0\t0\t-\tAcita Mimbu"
+    },
+    {
+      "body_height_m": 3.021083116531372,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140a0274b73a0d9",
+      "original": "8140a0274b73a0d9\t47000825\t1f0004aa\tbc8f0014\t51.328300\t68.266136\t119.356483\t1\t0\t0\t0\t-\tAcita Mimbu",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0274b73a0d9\t47000825\t1f0004aa\tbc8f0014\t51.828300\t68.266136\t119.006477\t1\t0\t0\t0\t-\tAcita Mimbu"
+    },
+    {
+      "body_height_m": 2.8336360454559326,
+      "body_radius_m": 1.2129992246627808,
+      "id": "8140a05613c14347",
+      "original": "8140a05613c14347\t4700162e\t1f000dc0\tc38d0025\t87.701050\t89.403923\t142.849106\t1\t0\t0\t0\t-\tBloodfeast Shreth",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a05613c14347\t4700162e\t1f000dc0\tc38d0025\t87.892395\t89.865860\t142.737579\t1\t0\t0\t0\t-\tBloodfeast Shreth"
+    },
+    {
+      "body_height_m": 2.8336360454559326,
+      "body_radius_m": 1.2129992246627808,
+      "id": "8140a05613c1434b",
+      "original": "8140a05613c1434b\t4700162c\t1f000dbf\tc38d0025\t80.600616\t83.873169\t144.665298\t1\t0\t0\t0\t-\tBonesnapper Shreth",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a05613c1434b\t4700162c\t1f000dbf\tc38d0025\t81.600616\t83.873169\t144.565292\t1\t0\t0\t0\t-\tBonesnapper Shreth"
+    },
+    {
+      "body_height_m": 3.021083116531372,
+      "body_radius_m": 1.4142135381698608,
+      "id": "8140c00000c38e00",
+      "original": "8140c00000c38e00\t47000826\t1f0004ac\tc38e002b\t109.294273\t47.172962\t99.623917\t-0.1822355\t0\t0\t0.9832549\t-\tKachem Mimbu",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000c38e00\t47000826\t1f0004ac\tc38e002b\t108.370392\t47.555645\t99.377777\t-0.1822355\t0\t0\t0.9832549\t-\tKachem Mimbu"
+    },
+    {
+      "body_height_m": 3.601626396179199,
+      "body_radius_m": 1.2967207431793213,
+      "id": "8140c00000c48f01",
+      "original": "8140c00000c48f01\t4700101d\t1f0003d1\tc48f0024\t96.870796\t64.413559\t80.418983\t0.5372996\t0\t0\t0.8433914\t-\tPuppet Spawn",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000c48f01\t4700101d\t1f0003d1\tc48f0024\t97.332733\t64.604904\t80.404625\t0.5372996\t0\t0\t0.8433914\t-\tPuppet Spawn"
+    },
+    {
+      "body_height_m": 2.238706588745117,
+      "body_radius_m": 0.8794333934783936,
+      "id": "8140c10000c53200",
+      "original": "8140c10000c53200\t47003b46\t1f001b63\tc532002f\t102.344086\t133.312424\t97.036827\t-0.2588190\t0\t0\t0.9659258\t-\tRepellent Urkhad",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000c53200\t47003b46\t1f001b63\tc532002f\t102.344086\t133.812424\t96.811821\t-0.2588190\t0\t0\t0.9659258\t-\tRepellent Urkhad"
+    },
+    {
+      "body_height_m": 3.054365396499634,
+      "body_radius_m": 2.1597626209259033,
+      "id": "8140b71b10c04345",
+      "original": "8140b71b10c04345\t47001020\t1f0003a6\tc58c001f\t64.2037048\t130.031372\t83.0527496\t0.978147626\t0\t0\t0.207911447\t1.05663991\tWetland Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140b71b10c04345\t47001020\t1f0003a6\tc58c001f\t65.351753\t132.803009\t82.789772\t0.978147626\t0\t0\t0.207911447\t1.05663991\tWetland Armoredillo"
+    },
+    {
+      "body_height_m": 2.1724393367767334,
+      "body_radius_m": 0.7961758375167847,
+      "id": "81409bf1b51b7e99",
+      "original": "81409bf1b51b7e99\t47003b35\t1f000461\tc7570034\t134.629776\t62.4140816\t138.218811\t0.793353319\t0\t0\t-0.60876137\t0.850000024\tLich",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "81409bf1b51b7e99\t47003b35\t1f000461\tc7570034\t134.167831\t62.222740\t138.139053\t0.793353319\t0\t0\t-0.60876137\t0.850000024\tLich"
+    },
+    {
+      "body_height_m": 2.3641252517700195,
+      "body_radius_m": 0.8664266467094421,
+      "id": "8140b136254161e5",
+      "original": "8140b136254161e5\t47003b36\t1f0004b1\tc85b002a\t119.411758\t20.2902565\t96.032135\t-0.42354849\t0\t0\t0.905873418\t0.925000012\tLich Lord",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140b136254161e5\t47003b36\t1f0004b1\tc85b002a\t119.058205\t20.643810\t95.645203\t-0.42354849\t0\t0\t0.905873418\t0.925000012\tLich Lord"
+    },
+    {
+      "body_height_m": 2.9809343814849854,
+      "body_radius_m": 2.1078391075134277,
+      "id": "8140e30878be98a2",
+      "original": "8140e30878be98a2\t47001020\t1f0003a6\tc88c000b\t34.0198097\t56.0701065\t88.3051071\t0.57273525\t0\t0\t0.819740415\t1.03123689\tWetland Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e30878be98a2\t47001020\t1f0003a6\tc88c000b\t34.019810\t57.070107\t88.250000\t0.57273525\t0\t0\t0.819740415\t1.03123689\tWetland Armoredillo"
+    },
+    {
+      "body_height_m": 3.673308849334717,
+      "body_radius_m": 2.597421646118164,
+      "id": "8140aac19ccc1190",
+      "original": "8140aac19ccc1190\t4700101a\t1f0003a6\tc99b000a\t28.3667641\t31.4017315\t73.4152527\t0.800400198\t0\t0\t-0.599466026\t1.27075982\tMarsh Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140aac19ccc1190\t4700101a\t1f0003a6\tc99b000a\t28.558105\t31.863670\t73.326508\t0.800400198\t0\t0\t-0.599466026\t1.27075982\tMarsh Armoredillo"
+    },
+    {
+      "body_height_m": 2.52913498878479,
+      "body_radius_m": 1.1498888731002808,
+      "id": "8140c10000ca5400",
+      "original": "8140c10000ca5400\t47003b1f\t1f000fb4\tca54000b\t36.146633\t54.750607\t208.500000\t-0.9996573\t0\t0\t0.0261769\t-\tSkeleton Dragoon",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000ca5400\t47003b1f\t1f000fb4\tca54000b\t36.853741\t55.457714\t208.500000\t-0.9996573\t0\t0\t0.0261769\t-\tSkeleton Dragoon"
+    },
+    {
+      "body_height_m": 3.775934934616089,
+      "body_radius_m": 1.5556349754333496,
+      "id": "8140c10000cb5600",
+      "original": "8140c10000cb5600\t47003a82\t1f001a8f\tcb56001e\t60.007553\t104.199814\t153.500000\t0.1305262\t0\t0\t0.9914449\t-\tVapor Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000cb5600\t47003a82\t1f001a8f\tcb56001e\t60.361107\t104.553368\t153.500000\t0.1305262\t0\t0\t0.9914449\t-\tVapor Golem"
+    },
+    {
+      "body_height_m": 3.478057384490967,
+      "body_radius_m": 1.5844433307647705,
+      "id": "8140e7c3616f3641",
+      "original": "8140e7c3616f3641\t47000f94\t1f0003a0\tcb8e0035\t136.076706\t84.831871\t79.2072372\t0.991279304\t0\t0\t0.131777644\t1.12037063\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e7c3616f3641\t47000f94\t1f0003a0\tcb8e0035\t136.076706\t84.831871\t78.862389\t0.991279304\t0\t0\t0.131777644\t1.12037063\t-"
+    },
+    {
+      "body_height_m": 2.059999942779541,
+      "body_radius_m": 0.784888505935669,
+      "id": "8140c00000cba501",
+      "original": "8140c00000cba501\t47002b88\t1f00154f\tcba50015\t40.337364\t89.648827\t103.283623\t0.6427876\t0\t0\t0.7660444\t-\tShadow Servant",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000cba501\t47002b88\t1f00154f\tcba50015\t40.837364\t89.648827\t102.903717\t0.6427876\t0\t0\t0.7660444\t-\tShadow Servant"
+    },
+    {
+      "body_height_m": 3.5670034885406494,
+      "body_radius_m": 1.6249631643295288,
+      "id": "8140cd28e3cb99db",
+      "original": "8140cd28e3cb99db\t47001016\t1f0003d5\tcc8e0008\t18.4447651\t143.857117\t76.591507\t-0.0554114394\t0\t0\t0.998463631\t1.14902246\t-",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140cd28e3cb99db\t47001016\t1f0003d5\tcc8e0008\t18.444765\t143.857117\t76.177689\t-0.0554114394\t0\t0\t0.998463631\t1.14902246\t-"
+    },
+    {
+      "body_height_m": 3.349520683288574,
+      "body_radius_m": 2.368468999862671,
+      "id": "8140eedf598b0a44",
+      "original": "8140eedf598b0a44\t4700101a\t1f0003a6\tce98001c\t70.9415894\t74.5235977\t74.3164139\t0.62039566\t0\t0\t-0.784289002\t1.1587472\tMarsh Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140eedf598b0a44\t4700101a\t1f0003a6\tce98001c\t71.295143\t74.877151\t74.132538\t0.62039566\t0\t0\t-0.784289002\t1.1587472\tMarsh Armoredillo"
+    },
+    {
+      "body_height_m": 2.5934998989105225,
+      "body_radius_m": 0.8485281467437744,
+      "id": "8140c10000cf3b00",
+      "original": "8140c10000cf3b00\t47003c07\t1f001a6e\tcf3b0015\t40.189362\t89.361732\t104.908920\t0.1822355\t0\t0\t0.9832549\t-\tDivinator Novitiate",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000cf3b00\t47003c07\t1f001a6e\tcf3b000d\t39.835808\t89.008179\t105.177849\t0.1822355\t0\t0\t0.9832549\t-\tDivinator Novitiate"
+    },
+    {
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "id": "8140c00000d09a00",
+      "original": "8140c00000d09a00\t47001680\t1f000de2\td09a002e\t116.983910\t100.021767\t71.753265\t-0.5591929\t0\t0\t0.8290376\t-\tBurun Keerik Polluter",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d09a00\t47001680\t1f000de2\td09a002e\t117.483910\t100.021767\t71.753265\t-0.5591929\t0\t0\t0.8290376\t-\tBurun Keerik Polluter"
+    },
+    {
+      "body_height_m": 4.4858317375183105,
+      "body_radius_m": 2.043539047241211,
+      "id": "8140e6fac2c9fbb9",
+      "original": "8140e6fac2c9fbb9\t47001819\t1f000e75\td2760004\t10.991394\t60.7589188\t81.1810608\t-0.426861644\t0\t0\t0.904316962\t1.44500041\tUndead Ulu Lord",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e6fac2c9fbb9\t47001819\t1f000e75\td2760004\t8.219755\t61.906967\t80.750000\t-0.426861644\t0\t0\t0.904316962\t1.44500041\tUndead Ulu Lord"
+    },
+    {
+      "body_height_m": 2.444953680038452,
+      "body_radius_m": 0.9309166073799133,
+      "id": "8140f4313b576c30",
+      "original": "8140f4313b576c30\t47001824\t1f000e97\td2770028\t81.400444\t152.545975\t84.4875259\t0.952942073\t0\t0\t0.303152531\t0.981202662\tEmpowered Kiree Burun",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140f4313b576c30\t47001824\t1f000e97\td2770028\t81.591789\t153.007919\t84.267761\t0.952942073\t0\t0\t0.303152531\t0.981202662\tEmpowered Kiree Burun"
+    },
+    {
+      "body_height_m": 2.256434440612793,
+      "body_radius_m": 0.8236441612243652,
+      "id": "8140c00000d29900",
+      "original": "8140c00000d29900\t47001018\t1f0001f3\td299002b\t116.038757\t52.973831\t105.816765\t0.9762960\t0\t0\t0.2164396\t-\tGlissna Niffis",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d29900\t47001018\t1f0001f3\td299002b\t115.576820\t53.165173\t105.604927\t0.9762960\t0\t0\t0.2164396\t-\tGlissna Niffis"
+    },
+    {
+      "body_height_m": 5.290658473968506,
+      "body_radius_m": 1.9047600030899048,
+      "id": "8140c00000d29a00",
+      "original": "8140c00000d29a00\t47002b81\t1f001565\td29a001a\t70.407402\t37.094452\t73.351852\t-0.7716246\t0\t0\t0.6360782\t-\tCopper Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d29a00\t47002b81\t1f001565\td29a001a\t69.945465\t37.285793\t73.241814\t-0.7716246\t0\t0\t0.6360782\t-\tCopper Golem"
+    },
+    {
+      "body_height_m": 5.290658473968506,
+      "body_radius_m": 1.9047600030899048,
+      "id": "8140c00000d29a01",
+      "original": "8140c00000d29a01\t47002b81\t1f001565\td29a001a\t78.385109\t23.096605\t76.209206\t-0.7660444\t0\t0\t0.6427876\t-\tCopper Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d29a01\t47002b81\t1f001565\td29a001a\t78.031555\t23.450159\t76.076622\t-0.7660444\t0\t0\t0.6427876\t-\tCopper Golem"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140a0548b19f4db",
+      "original": "8140a0548b19f4db\t47001671\t1f000ddb\td48c0001\t10.318870\t8.712468\t105.562569\t1\t0\t0\t0\t-\tMarsh Terror",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a0548b19f4db\t47001671\t1f000ddb\td48c0001\t10.780809\t8.903810\t105.858864\t1\t0\t0\t0\t-\tMarsh Terror"
+    },
+    {
+      "body_height_m": 1.9618415832519531,
+      "body_radius_m": 0.7071067690849304,
+      "id": "8140c00000d49a00",
+      "original": "8140c00000d49a00\t47002b6e\t1f001548\td49a0036\t127.794556\t109.338455\t167.683975\t-0.9205049\t0\t0\t0.3907311\t-\tWeak Energy Cluster",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d49a00\t47002b6e\t1f001548\td49a0036\t127.332619\t109.147110\t167.518326\t-0.9205049\t0\t0\t0.3907311\t-\tWeak Energy Cluster"
+    },
+    {
+      "body_height_m": 5.290658473968506,
+      "body_radius_m": 1.9047600030899048,
+      "id": "8140c00000d49b01",
+      "original": "8140c00000d49b01\t47002b80\t1f001569\td49b0024\t88.845917\t71.883331\t102.718773\t-0.2672384\t0\t0\t0.9636305\t-\tSandstone Golem",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000d49b01\t47002b80\t1f001569\td49b0024\t89.307854\t72.074677\t102.914757\t-0.2672384\t0\t0\t0.9636305\t-\tSandstone Golem"
+    },
+    {
+      "body_height_m": 2.242645025253296,
+      "body_radius_m": 0.9600127339363098,
+      "id": "8140e337f30c372b",
+      "original": "8140e337f30c372b\t4700101e\t1f0001f0\td577001d\t68.6779709\t92.4549637\t70.1719589\t-0.0554114394\t0\t0\t0.998463631\t0.791437209\tBlood Shreth",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e337f30c372b\t4700101e\t1f0001f0\td577001d\t71.677971\t92.454964\t71.117134\t-0.0554114394\t0\t0\t0.998463631\t0.791437209\tBlood Shreth"
+    },
+    {
+      "body_height_m": 2.505000591278076,
+      "body_radius_m": 1.138916015625,
+      "id": "8140adbab59b6fd4",
+      "original": "8140adbab59b6fd4\t4700182d\t1f000e7b\td5780024\t98.9105606\t76.5212936\t77.0209045\t-0.309016883\t0\t0\t0.95105654\t0.990457416\tSkeleton Rider",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140adbab59b6fd4\t4700182d\t1f000e7b\td5780024\t98.719215\t76.059357\t77.000000\t-0.309016883\t0\t0\t0.95105654\t0.990457416\tSkeleton Rider"
+    },
+    {
+      "body_height_m": 3.9499988555908203,
+      "body_radius_m": 1.4220913648605347,
+      "id": "814087e2da0e2f67",
+      "original": "814087e2da0e2f67\t47002b72\t1f001567\td796002b\t106.440674\t59.2117958\t96.4637833\t0.995593846\t0\t0\t0.0937704444\t0.746598721\tIron Golem",
+      "reason": "overlapping living creature bodies",
+      "replacement": "814087e2da0e2f67\t47002b72\t1f001567\td796002b\t105.978737\t59.020454\t96.426529\t0.995593846\t0\t0\t0.0937704444\t0.746598721\tIron Golem"
+    },
+    {
+      "body_height_m": 2.9731366634368896,
+      "body_radius_m": 1.1288732290267944,
+      "id": "8140be33b4e4f1cc",
+      "original": "8140be33b4e4f1cc\t47001027\t1f000622\tdb9f0002\t9.92703819\t39.061821\t96.1453476\t0.897891998\t0\t0\t-0.440215766\t1.13198531\tBlighted Mucor",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140be33b4e4f1cc\t47001027\t1f000622\tdb9f0002\t9.544355\t38.137939\t95.630867\t0.897891998\t0\t0\t-0.440215766\t1.13198531\tBlighted Mucor"
+    },
+    {
+      "body_height_m": 1.9618415832519531,
+      "body_radius_m": 0.7071067690849304,
+      "id": "8140c00000e2a101",
+      "original": "8140c00000e2a101\t47002b7b\t1f001548\te2a10017\t42.581207\t136.431458\t77.356415\t0.0348995\t0\t0\t0.9993908\t-\tShallow Rift",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000e2a101\t47002b7b\t1f001548\te2a10017\t42.081207\t136.431458\t77.711098\t0.0348995\t0\t0\t0.9993908\t-\tShallow Rift"
+    },
+    {
+      "body_height_m": 3.908259153366089,
+      "body_radius_m": 1.4401925802230835,
+      "id": "81409e1a6e582362",
+      "original": "81409e1a6e582362\t470008a8\t1f00062d\te2a20014\t54.9637756\t68.7583466\t72.1317902\t0.2498831\t0\t0\t0.968276024\t1.06037259\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81409e1a6e582362\t470008a8\t1f00062d\te2a20014\t55.346458\t69.682228\t72.099014\t0.2498831\t0\t0\t0.968276024\t1.06037259\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.6406123638153076,
+      "body_radius_m": 1.3415647745132446,
+      "id": "8140c18a7940c2f6",
+      "original": "8140c18a7940c2f6\t470008a8\t1f00062d\te2a20014\t55.5094109\t66.6185837\t72.0908661\t0.2498831\t0\t0\t0.968276024\t0.987755775\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140c18a7940c2f6\t470008a8\t1f00062d\te2a20014\t56.009411\t66.618584\t72.049294\t0.2498831\t0\t0\t0.968276024\t0.987755775\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 2.382887363433838,
+      "body_radius_m": 0.9072848558425903,
+      "id": "8140cd472e169217",
+      "original": "8140cd472e169217\t47000821\t1f0001ec\te2a2001b\t63.0188675\t58.4704666\t71.8153152\t0.2498831\t0\t0\t0.968276024\t0.956294358\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140cd472e169217\t47000821\t1f0001ec\te2a2001b\t63.210209\t58.932407\t71.750000\t0.2498831\t0\t0\t0.968276024\t0.956294358\tRuruk Burun"
+    },
+    {
+      "body_height_m": 3.0898618698120117,
+      "body_radius_m": 1.176465630531311,
+      "id": "81408ee1583d6cd3",
+      "original": "81408ee1583d6cd3\t47000821\t1f0001ec\te2a2001c\t70.349144\t71.0469589\t71.9200287\t0.2498831\t0\t0\t0.968276024\t1.24001563\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81408ee1583d6cd3\t47000821\t1f0001ec\te2a2001c\t72.349144\t71.046959\t72.004707\t0.2498831\t0\t0\t0.968276024\t1.24001563\tRuruk Burun"
+    },
+    {
+      "body_height_m": 6.722170352935791,
+      "body_radius_m": 4.753292083740234,
+      "id": "8140cfe6dfe29a42",
+      "original": "8140cfe6dfe29a42\t470008ab\t1f00062c\te2a2001c\t63.3082504\t70.541893\t71.7688751\t0.2498831\t0\t0\t0.968276024\t1.00228214\tBurun Immortal",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140cfe6dfe29a42\t470008ab\t1f00062c\te2a2001c\t61.894035\t71.956108\t71.750000\t0.2498831\t0\t0\t0.968276024\t1.00228214\tBurun Immortal"
+    },
+    {
+      "body_height_m": 2.6264798641204834,
+      "body_radius_m": 0.9972507953643799,
+      "id": "8140a06a157dc3d0",
+      "original": "8140a06a157dc3d0\t470016db\t1f000e02\te4870003\t15.600000\t44.400002\t92.930000\t1\t0\t0\t0\t-\tPolluted Mucor Broodwarrior",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a06a157dc3d0\t470016db\t1f000e02\te4870003\t16.100000\t44.400002\t93.154999\t1\t0\t0\t0\t-\tPolluted Mucor Broodwarrior"
+    },
+    {
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "id": "8140c10000e58d00",
+      "original": "8140c10000e58d00\t4700081f\t1f00062c\te58d0014\t51.671844\t63.884487\t89.958832\t-0.7313537\t0\t0\t0.6819984\t-\tBurun Rehir",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000e58d00\t4700081f\t1f00062c\te58d0014\t51.480503\t64.346428\t89.985069\t-0.7313537\t0\t0\t0.6819984\t-\tBurun Rehir"
+    },
+    {
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "id": "8140c10000e58d01",
+      "original": "8140c10000e58d01\t4700081f\t1f00062c\te58d0015\t42.002666\t80.293266\t91.660378\t-0.7372773\t0\t0\t0.6755902\t-\tBurun Rehir",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c10000e58d01\t4700081f\t1f00062c\te58d0015\t42.502666\t80.293266\t91.735374\t-0.7372773\t0\t0\t0.6755902\t-\tBurun Rehir"
+    },
+    {
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "id": "8140ff1fb0ced7a2",
+      "original": "8140ff1fb0ced7a2\t470008ab\t1f00062c\te973001a\t78.8647461\t25.6893005\t71.5702057\t0.793353319\t0\t0\t-0.60876137\t-\tBurun Immortal",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140ff1fb0ced7a2\t470008ab\t1f00062c\te973001a\t77.016983\t26.454666\t71.227966\t0.793353319\t0\t0\t-0.60876137\t-\tBurun Immortal"
+    },
+    {
+      "body_height_m": 1.7827142477035522,
+      "body_radius_m": 0.6425438523292542,
+      "id": "8140df666d805110",
+      "original": "8140df666d805110\t47002b79\t1f001547\te99c002e\t103.92054\t101.845314\t71.7737122\t0.940440893\t0\t0\t0.339957237\t0.908694267\tNarrow Rift",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140df666d805110\t47002b79\t1f001547\te99c002e\t103.420540\t101.845314\t71.750000\t0.940440893\t0\t0\t0.339957237\t0.908694267\tNarrow Rift"
+    },
+    {
+      "body_height_m": 2.8940067291259766,
+      "body_radius_m": 1.1676347255706787,
+      "id": "8140c00000e9a400",
+      "original": "8140c00000e9a400\t47001024\t1f0001f1\te9a4001e\t67.842659\t118.512337\t71.962021\t-0.9848078\t0\t0\t0.1736482\t-\tFoul Moarsman",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000e9a400\t47001024\t1f0001f1\te9a4001e\t67.842659\t119.512337\t72.037025\t-0.9848078\t0\t0\t0.1736482\t-\tFoul Moarsman"
+    },
+    {
+      "body_height_m": 9.353021621704102,
+      "body_radius_m": 6.613584995269775,
+      "id": "8140aad69ffd7df8",
+      "original": "8140aad69ffd7df8\t47001825\t1f000e98\teb71002d\t109.263313\t84.5309982\t71.3946075\t0.739307106\t0\t0\t-0.673368394\t1.3945446\tEmpowered Burun Immortal",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140aad69ffd7df8\t47001825\t1f000e98\teb71002d\t109.725250\t84.722343\t71.319412\t0.739307106\t0\t0\t-0.673368394\t1.3945446\tEmpowered Burun Immortal"
+    },
+    {
+      "body_height_m": 3.251265048980713,
+      "body_radius_m": 1.2379199266433716,
+      "id": "8140f6beb880f5a4",
+      "original": "8140f6beb880f5a4\t47000821\t1f0001ec\ted970014\t53.1929321\t76.449501\t72.8316116\t0.999696434\t0\t0\t-0.0246374495\t1.30478954\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140f6beb880f5a4\t47000821\t1f0001ec\ted970014\t51.778717\t77.863716\t72.660217\t0.999696434\t0\t0\t-0.0246374495\t1.30478954\tRuruk Burun"
+    },
+    {
+      "body_height_m": 3.38814115524292,
+      "body_radius_m": 1.2485291957855225,
+      "id": "8140a018893b7725",
+      "original": "8140a018893b7725\t470008a8\t1f00062d\ted97001c\t69.2894058\t74.9557266\t73.6856918\t0.999696434\t0\t0\t-0.0246374495\t0.91925633\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140a018893b7725\t470008a8\t1f00062d\ted97001c\t69.996513\t75.662834\t73.575546\t0.999696434\t0\t0\t-0.0246374495\t0.91925633\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.040332317352295,
+      "body_radius_m": 1.1203618049621582,
+      "id": "8140c1ecc502e301",
+      "original": "8140c1ecc502e301\t470008a8\t1f00062d\ted97001c\t63.6506119\t63.6406174\t74.8439178\t0.999696434\t0\t0\t-0.0246374495\t0.824890316\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140c1ecc502e301\t470008a8\t1f00062d\ted97001c\t64.150612\t63.640617\t74.839844\t0.999696434\t0\t0\t-0.0246374495\t0.824890316\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.3505921363830566,
+      "body_radius_m": 1.2346924543380737,
+      "id": "8140ccd3a833b905",
+      "original": "8140ccd3a833b905\t470008a8\t1f00062d\ted97001c\t60.4074783\t61.7475128\t75.3171997\t0.999696434\t0\t0\t-0.0246374495\t0.909068704\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140ccd3a833b905\t470008a8\t1f00062d\ted970014\t59.407478\t61.747513\t75.313118\t0.999696434\t0\t0\t-0.0246374495\t0.909068704\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.7352426052093506,
+      "body_radius_m": 1.422194480895996,
+      "id": "8140d6f6d0550bec",
+      "original": "8140d6f6d0550bec\t47000821\t1f0001ec\ted97001c\t63.8797722\t75.0370178\t73.9840775\t0.999696434\t0\t0\t-0.0246374495\t1.49901819\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140d6f6d0550bec\t47000821\t1f0001ec\ted97001c\t65.879776\t75.037018\t73.931244\t0.999696434\t0\t0\t-0.0246374495\t1.49901819\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.8548145294189453,
+      "body_radius_m": 1.0869712829589844,
+      "id": "8140e78fabceaa28",
+      "original": "8140e78fabceaa28\t47000821\t1f0001ec\ted97001c\t61.6049767\t63.1096687\t75.0379028\t0.999696434\t0\t0\t-0.0246374495\t1.14568698\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140e78fabceaa28\t47000821\t1f0001ec\ted97001c\t61.604977\t64.109665\t74.722580\t0.999696434\t0\t0\t-0.0246374495\t1.14568698\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.098006010055542,
+      "body_radius_m": 0.7561845183372498,
+      "id": "8140cf9bb907deb6",
+      "original": "8140cf9bb907deb6\t47002b6f\t1f001547\ted9a0024\t98.0454254\t79.9132538\t86.609581\t0.951979518\t0\t0\t-0.306161642\t1.06940639\tFaint Energy Cluster",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140cf9bb907deb6\t47002b6f\t1f001547\ted9a0024\t98.545425\t79.913254\t86.621391\t0.951979518\t0\t0\t-0.306161642\t1.06940639\tFaint Energy Cluster"
+    },
+    {
+      "body_height_m": 2.9072329998016357,
+      "body_radius_m": 1.0478543043136597,
+      "id": "8140aad19b4ff765",
+      "original": "8140aad19b4ff765\t47002b79\t1f001547\ted9a0025\t95.6911469\t81.2035446\t86.6310806\t0.952942014\t0\t0\t-0.30315271\t1.48188972\tNarrow Rift",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140aad19b4ff765\t47002b79\t1f001547\ted9a0025\t94.984039\t81.910652\t86.660393\t0.952942014\t0\t0\t-0.30315271\t1.48188972\tNarrow Rift"
+    },
+    {
+      "body_height_m": 2.6264798641204834,
+      "body_radius_m": 0.9972507953643799,
+      "id": "8140a08e40e2502a",
+      "original": "8140a08e40e2502a\t470016d8\t1f000e02\ted9c0034\t126.000000\t70.800003\t72.349998\t1\t0\t0\t0\t-\tInfectious Devolved Mucor",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140a08e40e2502a\t470016d8\t1f000e02\ted9c0034\t126.500000\t70.800003\t72.274994\t1\t0\t0\t0\t-\tInfectious Devolved Mucor"
+    },
+    {
+      "body_height_m": 2.8906397819519043,
+      "body_radius_m": 2.0439910888671875,
+      "id": "8140c00000eda000",
+      "original": "8140c00000eda000\t4700102c\t1f0003a6\teda00026\t91.754463\t105.574844\t76.712112\t0.6293204\t0\t0\t0.7771460\t-\tBoglurk Armoredillo",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000eda000\t4700102c\t1f0003a6\teda00026\t92.254463\t105.574844\t77.012115\t0.6293204\t0\t0\t0.7771460\t-\tBoglurk Armoredillo"
+    },
+    {
+      "body_height_m": 1.8879674673080444,
+      "body_radius_m": 0.7778174877166748,
+      "id": "8140b1217a68c30c",
+      "original": "8140b1217a68c30c\t47001302\t1f000752\tf0790001\t15.6566877\t17.3430538\t75.0083694\t0.949134946\t0\t0\t0.314869523\t1.10000002\t-",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140b1217a68c30c\t47001302\t1f000752\tf0790001\t17.656689\t17.343054\t74.597809\t0.949134946\t0\t0\t0.314869523\t1.10000002\t-"
+    },
+    {
+      "body_height_m": 3.685741424560547,
+      "body_radius_m": 1.3581948280334473,
+      "id": "814095cf7ad09f61",
+      "original": "814095cf7ad09f61\t470008a8\t1f00062d\tf17a0026\t85.5586014\t116.764999\t74.2489548\t1\t0\t0\t0\t-\tMyrmidon Burun",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "814095cf7ad09f61\t470008a8\t1f00062d\tf17a0026\t86.558601\t116.764999\t74.419876\t1\t0\t0\t0\t-\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.685741424560547,
+      "body_radius_m": 1.3581948280334473,
+      "id": "8140c00000f28600",
+      "original": "8140c00000f28600\t4700221b\t1f00062d\tf2860017\t49.711056\t130.737640\t75.996193\t0.9969173\t0\t0\t0.0784591\t-\tMyrmidon Burun Recruit",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140c00000f28600\t4700221b\t1f00062d\tf2860017\t50.634933\t131.120331\t75.724747\t0.9969173\t0\t0\t0.0784591\t-\tMyrmidon Burun Recruit"
+    },
+    {
+      "body_height_m": 3.773975372314453,
+      "body_radius_m": 1.5226725339889526,
+      "id": "8140e5e499577936",
+      "original": "8140e5e499577936\t47001025\t1f000624\tf2950025\t92.4638596\t87.4410019\t78.5561752\t0.650618374\t0\t0\t0.759404838\t1.30406582\tPutrid Moarsman",
+      "reason": "unsupported ground or body intersects native geometry",
+      "replacement": "8140e5e499577936\t47001025\t1f000624\tf2950025\t92.081177\t86.517120\t78.689735\t0.650618374\t0\t0\t0.759404838\t1.30406582\tPutrid Moarsman"
+    },
+    {
+      "body_height_m": 2.8968818187713623,
+      "body_radius_m": 1.0675002336502075,
+      "id": "81408b0d60cac2fb",
+      "original": "81408b0d60cac2fb\t470008a8\t1f00062d\tf3a7002b\t101.059319\t53.9672546\t73.3295364\t1\t0\t0\t0\t0.785969913\tMyrmidon Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "81408b0d60cac2fb\t470008a8\t1f00062d\tf3a7002b\t100.597382\t53.775913\t73.388809\t1\t0\t0\t0\t0.785969913\tMyrmidon Burun"
+    },
+    {
+      "body_height_m": 3.1659631729125977,
+      "body_radius_m": 1.2054412364959717,
+      "id": "8140aa95fe72ff7c",
+      "original": "8140aa95fe72ff7c\t47000821\t1f0001ec\tf3a7002b\t110.890953\t56.7786407\t73.1400833\t0.582790673\t0\t0\t0.812622309\t1.27055645\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140aa95fe72ff7c\t47000821\t1f0001ec\tf3a7002b\t111.656319\t58.626400\t73.141319\t0.582790673\t0\t0\t0.812622309\t1.27055645\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.929856777191162,
+      "body_radius_m": 1.1155436038970947,
+      "id": "8140aeebc578bef9",
+      "original": "8140aeebc578bef9\t47000821\t1f0001ec\tf3a7002b\t103.054695\t54.0786743\t73.2244186\t1\t0\t0\t0\t1.17580283\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140aeebc578bef9\t47000821\t1f0001ec\tf3a7002b\t102.672012\t55.002552\t73.049210\t1\t0\t0\t0\t1.17580283\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.34364652633667,
+      "body_radius_m": 0.8923439383506775,
+      "id": "8140dabf71a4076f",
+      "original": "8140dabf71a4076f\t47000821\t1f0001ec\tf3a7002b\t109.594193\t57.651001\t72.7414856\t0.500000119\t0\t0\t0.866025329\t0.940546334\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140dabf71a4076f\t47000821\t1f0001ec\tf3a7002b\t109.594193\t59.651001\t72.526176\t0.500000119\t0\t0\t0.866025329\t0.940546334\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.600257635116577,
+      "body_radius_m": 0.9900487065315247,
+      "id": "8140f5ba4f129060",
+      "original": "8140f5ba4f129060\t47000821\t1f0001ec\tf3a7002b\t112.720879\t52.9767075\t73.9763489\t1\t0\t0\t0\t1.04352891\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140f5ba4f129060\t47000821\t1f0001ec\tf3a7002b\t113.720879\t52.976707\t74.161613\t1\t0\t0\t0\t1.04352891\tRuruk Burun"
+    },
+    {
+      "body_height_m": 2.735208034515381,
+      "body_radius_m": 1.0414310693740845,
+      "id": "8140f8469f600898",
+      "original": "8140f8469f600898\t47000821\t1f0001ec\tf3a7002b\t112.809776\t55.9091644\t73.7853088\t0.969796956\t0\t0\t-0.24391374\t1.09768689\tRuruk Burun",
+      "reason": "overlapping living creature bodies",
+      "replacement": "8140f8469f600898\t47000821\t1f0001ec\tf3a7002b\t113.309776\t55.909164\t73.882484\t0.969796956\t0\t0\t-0.24391374\t1.09768689\tRuruk Burun"
+    },
+    {
+      "body_height_m": 0.5801833271980286,
+      "body_radius_m": 0.41025152802467346,
+      "id": "8140c10000983001",
+      "original": "8140c10000983001\t47003acf\t1f001049\t9830001b\t62.836349\t46.488823\t115.996651\t0.9483237\t0\t0\t0.3173047\t-\tSwarm Eviscerator Grub",
+      "reason": "Near-ground penetration rejected after correcting zero-distance native contact hits; vertical-only floor correction",
+      "replacement": "8140c10000983001\t47003acf\t1f001049\t9830001b\t62.836349\t46.488823\t116.160004\t0.9483237\t0\t0\t0.3173047\t-\tSwarm Eviscerator Grub"
+    },
+    {
+      "body_height_m": 3.061560869216919,
+      "body_radius_m": 1.3947066068649292,
+      "id": "8140ba4b80dea09f",
+      "original": "8140ba4b80dea09f\t47000f94\t1f0003a0\tcb8e0027\t91.5739746\t123.195221\t76.7128906\t0.908465326\t0\t0\t0.417960197\t0.986206532\t-",
+      "reason": "Near-ground penetration rejected after correcting zero-distance native contact hits; vertical-only floor correction",
+      "replacement": "8140ba4b80dea09f\t47000f94\t1f0003a0\tcb8e0027\t91.573975\t123.195221\t76.969650\t0.908465326\t0\t0\t0.417960197\t0.986206532\t-"
+    },
+    {
+      "body_height_m": 2.6264798641204834,
+      "body_radius_m": 0.9972507953643799,
+      "id": "8140a0bec4d317be",
+      "original": "8140a0bec4d317be\t470016db\t1f000e02\te08a003c\t145.600006\t74.400002\t139.050003\t1\t0\t0\t0\t-\tPolluted Mucor Broodwarrior",
+      "reason": "Near-ground penetration rejected after correcting zero-distance native contact hits; vertical-only floor correction",
+      "replacement": "8140a0bec4d317be\t470016db\t1f000e02\te08a003c\t145.600006\t74.400002\t139.199448\t1\t0\t0\t0\t-\tPolluted Mucor Broodwarrior"
+    },
+    {
+      "id": "8140b05f1adb25fe",
+      "original": "8140b05f1adb25fe\t47001bd8\t1f0004ac\tb37f002b\t103.599998\t59.599998\t76.110001\t1\t0\t0\t0\t-\tMimbu Shaman",
+      "replacement": "8140b05f1adb25fe\t47001bd8\t1f0004ac\tb37f002b\t103.599998\t59.599998\t76.356224\t1\t0\t0\t0\t-\tMimbu Shaman",
+      "native_floor_route": true,
+      "distance_m": 0.24622344970703125,
+      "body_radius_m": 1.4142135381698608,
+      "body_height_m": 3.021083116531372,
+      "reason": "Mimbu Shaman quest NPC: vertical-only native floor correction after rejecting zero-distance contact hits; noncombat role retained"
+    }
+  ],
+  "schema": 1,
+  "scope": "Outdoor terrestrial combat actors only; <=3.5m corrections. Native body footprint, ceiling, wall, dry floor and living-body separation checked. Captures, identity, orientation, scale and spawner membership are preserved. Unresolved anchors retained for review; no guessing across dungeon floors. Explicit follow-up also covers the Mimbu Shaman noncombat NPC, without changing its role.",
+  "unresolved": [
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 8.232210159301758,
+      "body_radius_m": 5.821051597595215,
+      "cell": "376d0006",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140c00000376d00",
+      "nearby_floor": [
+        18.090778350830078,
+        110.3134765625,
+        278.7637023925781
+      ],
+      "position": [
+        18.090778350830078,
+        110.3134765625,
+        278.7637023925781
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 2.1012001037597656,
+      "body_radius_m": 0.8005863428115845,
+      "cell": "3d960028",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140ddfdda9adb49",
+      "nearby_floor": null,
+      "position": [
+        85.12039947509766,
+        150.2880859375,
+        163.50509643554688
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 157.4499969482422
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 4.503603458404541,
+      "body_radius_m": 1.8435429334640503,
+      "cell": "3d9b0003",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140f2a2948f2c0d",
+      "nearby_floor": null,
+      "position": [
+        13.361903190612793,
+        52.66196060180664,
+        282.05609130859375
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 6.650139808654785,
+      "body_radius_m": 4.702358722686768,
+      "cell": "4c78001b",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140c000004c7800",
+      "nearby_floor": [
+        79.2926254272461,
+        47.19150161743164,
+        149.39730834960938
+      ],
+      "position": [
+        79.2926254272461,
+        47.19150161743164,
+        149.39730834960938
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 7.511837959289551,
+      "body_radius_m": 3.564406156539917,
+      "cell": "4da2001d",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140db030fc1c77d",
+      "nearby_floor": [
+        78.0,
+        82.59999084472656,
+        169.42501831054688
+      ],
+      "position": [
+        78.0,
+        82.59999084472656,
+        169.4534149169922
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 11.267757415771484,
+      "body_radius_m": 5.346609115600586,
+      "cell": "4da20025",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "814090d50125d967",
+      "nearby_floor": [
+        80.80000305175781,
+        80.10005950927734,
+        139.03997802734375
+      ],
+      "position": [
+        80.80000305175781,
+        80.10005950927734,
+        139.08258056640625
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 7.511837959289551,
+      "body_radius_m": 3.564406156539917,
+      "cell": "4da20027",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "814095bffa0c90b2",
+      "nearby_floor": [
+        81.0,
+        123.99996185302734,
+        139.41502380371094
+      ],
+      "position": [
+        81.0,
+        123.99996185302734,
+        139.44342041015625
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 7.511837959289551,
+      "body_radius_m": 3.564406156539917,
+      "cell": "4da2002b",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140e8e67d64bd68",
+      "nearby_floor": [
+        119.80000305175781,
+        47.19999694824219,
+        125.89997863769531
+      ],
+      "position": [
+        119.80000305175781,
+        47.19999694824219,
+        125.92837524414062
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 7.511837959289551,
+      "body_radius_m": 3.564406156539917,
+      "cell": "4da20035",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140f5817d7c1aa4",
+      "nearby_floor": [
+        121.59999084472656,
+        96.89998626708984,
+        135.4250030517578
+      ],
+      "position": [
+        121.59999084472656,
+        96.89998626708984,
+        135.45339965820312
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 1.6245770454406738,
+      "body_radius_m": 1.1487494707107544,
+      "cell": "63a1000e",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140ed810419a24d",
+      "nearby_floor": null,
+      "position": [
+        31.893774032592773,
+        111.2105941772461,
+        85.36136627197266
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 0.8448083996772766,
+      "body_radius_m": 0.5973697304725647,
+      "cell": "76ae0021",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140df45f7a56fd2",
+      "nearby_floor": null,
+      "position": [
+        95.49894714355469,
+        13.384397506713867,
+        101.25203704833984
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 1.4636647701263428,
+      "body_radius_m": 1.034967303276062,
+      "cell": "77b9000d",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140c0000077b901",
+      "nearby_floor": [
+        32.1778678894043,
+        90.79570770263672,
+        146.49806213378906
+      ],
+      "position": [
+        32.1778678894043,
+        90.79570770263672,
+        146.49806213378906
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": true,
+      "body_height_m": 1.983545184135437,
+      "body_radius_m": 0.8490994572639465,
+      "cell": "78a5001e",
+      "dry_ground": false,
+      "floor_contact": true,
+      "id": "814091e47f518fee",
+      "nearby_floor": [
+        74.36961364746094,
+        109.8855972290039,
+        95.75
+      ],
+      "position": [
+        74.36961364746094,
+        109.8855972290039,
+        95.88398742675781
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 96.69999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 1.983545184135437,
+      "body_radius_m": 0.8490994572639465,
+      "cell": "79b8000a",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140d687539b3be6",
+      "nearby_floor": null,
+      "position": [
+        22.374130249023438,
+        24.56368637084961,
+        146.00900268554688
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 2.056131601333618,
+      "body_radius_m": 1.4539045095443726,
+      "cell": "818c0015",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140995489d609a6",
+      "nearby_floor": null,
+      "position": [
+        50.63942337036133,
+        91.9926528930664,
+        154.10684204101562
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 5.014559268951416,
+      "body_radius_m": 3.5458290576934814,
+      "cell": "889d0039",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "81408a94a48fd30b",
+      "nearby_floor": null,
+      "position": [
+        150.64599609375,
+        13.322330474853516,
+        79.32514953613281
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 78.69999694824219
+    },
+    {
+      "body_clear_at_floor": true,
+      "body_height_m": 2.782048463821411,
+      "body_radius_m": 1.2648777961730957,
+      "cell": "8c9b0016",
+      "dry_ground": false,
+      "floor_contact": true,
+      "id": "8140c0167f0c1e97",
+      "nearby_floor": [
+        50.0,
+        112.0,
+        78.5
+      ],
+      "position": [
+        50.0,
+        112.0,
+        78.52298736572266
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 78.69999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 2.317605972290039,
+      "body_radius_m": 1.6387947797775269,
+      "cell": "9a8a0039",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140e68521846951",
+      "nearby_floor": null,
+      "position": [
+        141.94383239746094,
+        15.345946311950684,
+        215.26414489746094
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 3.0357508659362793,
+      "body_radius_m": 1.1196218729019165,
+      "cell": "b03d0022",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "81408f807e192856",
+      "nearby_floor": null,
+      "position": [
+        88.10579681396484,
+        24.924779891967773,
+        77.0506820678711
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 1.8484500646591187,
+      "body_radius_m": 0.6747215986251831,
+      "cell": "b27f000f",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140d65f88fbdf48",
+      "nearby_floor": null,
+      "position": [
+        34.009971618652344,
+        123.22896575927734,
+        87.9347152709961
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 3.2996573448181152,
+      "body_radius_m": 1.5446182489395142,
+      "cell": "b6770004",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140cdb559b0fcbd",
+      "nearby_floor": null,
+      "position": [
+        14.095765113830566,
+        78.532958984375,
+        127.08094024658203
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": null
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "cell": "cd98001e",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140c00000cd9800",
+      "nearby_floor": [
+        75.61588287353516,
+        107.3021469116211,
+        74.88163757324219
+      ],
+      "position": [
+        75.61588287353516,
+        107.3021469116211,
+        74.88163757324219
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": false,
+      "body_height_m": 6.706864356994629,
+      "body_radius_m": 4.742469310760498,
+      "cell": "ed9f000a",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140c00000ed9f01",
+      "nearby_floor": [
+        34.09610366821289,
+        33.544761657714844,
+        82.11532592773438
+      ],
+      "position": [
+        34.09610366821289,
+        33.544761657714844,
+        82.11532592773438
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 2.4412801265716553,
+      "body_radius_m": 0.98497474193573,
+      "cell": "f0920020",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140dadae72d5f34",
+      "nearby_floor": null,
+      "position": [
+        67.4205093383789,
+        154.5919952392578,
+        86.87481689453125
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": true,
+      "body_height_m": 3.2094736099243164,
+      "body_radius_m": 1.2186082601547241,
+      "cell": "f69d0020",
+      "dry_ground": false,
+      "floor_contact": true,
+      "id": "8140e6edf4bdc94c",
+      "nearby_floor": [
+        71.42886352539062,
+        143.20645141601562,
+        70.56112670898438
+      ],
+      "position": [
+        71.42886352539062,
+        143.20645141601562,
+        70.58565521240234
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    },
+    {
+      "body_clear_at_floor": null,
+      "body_height_m": 3.658158779144287,
+      "body_radius_m": 1.348030686378479,
+      "cell": "f8820026",
+      "dry_ground": true,
+      "floor_contact": true,
+      "id": "8140d0c3363c30da",
+      "nearby_floor": null,
+      "position": [
+        96.35609436035156,
+        119.35877990722656,
+        73.25407409667969
+      ],
+      "reason": "unsupported ground or body intersects native geometry",
+      "separate": true,
+      "water_height": 70.94999694824219
+    }
+  ],
+  "contact_followup": "Four vertical-only corrections (0.149-0.257m) found after rejecting zero-distance contact hits: three creatures and the Mimbu Shaman quest NPC. Initial 26 flagged anchors are reviewed separately in placement-reviewed-v1.json."
+}

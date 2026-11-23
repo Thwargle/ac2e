@@ -1,0 +1,10 @@
+AC2:Unreal is an independent community client for Asheron's Call 2.
+Unreal Engine is a trademark or registered trademark of Epic Games, Inc. in the United States of America and elsewhere.
+Unreal Engine, Copyright 1998–2026, Epic Games, Inc. All rights reserved.
+Original game assets and trademarks belong to their respective owners. Supply your own game data.
+
+AC2 network bridge and AC2 audio player: AGPL-3.0-only. See AGPL-3.0.txt, Network.md, Audio.md and AC2_Rusted.md.
+For the corresponding source, open https://github.com/Thwargle/ac2e/releases and select the source for your installed version.
+Clone that release with submodules to obtain the pinned dependency sources. Build-AC2Network.ps1 and Build-AC2Audio.ps1 apply the matching source patches.
+The Rust dependency notices for these standalone programs are included in Rust/.
+

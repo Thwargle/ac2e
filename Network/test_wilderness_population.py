@@ -41,7 +41,7 @@ def main():
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19534','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--encounters',str(rules),
+            '--initialize-ui','true','--encounters',str(rules),
             '--lifestones','false','--portals','false','--test-map-travel','true','--seconds','180'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
         try:

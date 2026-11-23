@@ -1,0 +1,294 @@
+{
+  "version": 1,
+  "policy": "Reconstructed server transitions. Native item identities, map destination and journal text; guide timers and overview XP. The windmill guide transcript says 150 XP but its overview says 200; use 200. Referral sources disagree on 0 vs 30 XP; use Find the Miller of Kehan overview (30). Renewed Focus grants maximum vigor for 10800 seconds. The Legions 6f00022a and 7230 6f001b1f WStates add 40 (stat 0x40108, field 36 magnitude). The guides give +10. The repaired windmill animation remains unfinished.",
+  "sources": [
+    {
+      "title": "Kehan Windmill Quest",
+      "url": "http://ac2wiki.info/index.php/Kehan_Windmill_Quest",
+      "html_sha256": "8e1ca194b6f1c2133c473845735c0fff694c1bce79699f63ac5fffa1c82b860b"
+    },
+    {
+      "title": "Find the Miller of Kehan",
+      "url": "http://ac2wiki.info/index.php/Find_the_Miller_of_Kehan",
+      "html_sha256": "ffb29103dcdf0efdfebc6bb0df4d4a6adca91c1aca261983a19c8f23b7708c27"
+    },
+    {
+      "title": "Find the Esper Reaches Warder",
+      "url": "http://ac2wiki.info/index.php/Find_the_Esper_Reaches_Warder",
+      "html_sha256": "05f5138bc7e8e9baad6a4cd16e9412192c81889bdcec483a432da12c6da5094f"
+    }
+  ],
+  "native_fields": [
+    {
+      "quest": "400000c2",
+      "package": "QuestFindMillerLostWish",
+      "field": "name",
+      "table": "25001699",
+      "key": "a8607cec",
+      "text_raw": "Find the Miller of Kehan[E]",
+      "records": [
+        {
+          "table": "25001699",
+          "sha256": "75182b5e678e800ccc91f18ce721aae63afe452523528d78c5d90019f0538552",
+          "installed_record_identical": true
+        },
+        {
+          "table": "25021699",
+          "sha256": "7d22db88da01f5709cc61746705ff46564b371ae399c1f333d95c2c7fe199b05",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c2",
+      "package": "QuestFindMillerLostWish",
+      "field": "summary",
+      "table": "25001699",
+      "key": "6c459364",
+      "text_raw": "\n\nThe Arwic Mines Overseer has a friend in Lost Wish who needs your help!\n\n",
+      "records": [
+        {
+          "table": "25001699",
+          "sha256": "75182b5e678e800ccc91f18ce721aae63afe452523528d78c5d90019f0538552",
+          "installed_record_identical": true
+        },
+        {
+          "table": "25041699",
+          "sha256": "9045ac31186bf51668a40ef628fa46eb1ec239645f761e17f222981bb6ac8b07",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c2",
+      "package": "QuestFindMillerLostWish",
+      "field": "phases/1/journal",
+      "table": "25001699",
+      "key": "2e5c1e52",
+      "text_raw": "The Arwic Mines Overseer would like you to help his friend, the Miller of Kehan at 42.5 N, 11.2 E.\n\nThe Arwic Mines Overseer told you, \\qBravo - perhaps I will use this to give those Drudges a good smiting! You've been such a help -- take this, with my thanks! Incidentally, perhaps you could help a friend of mine in Lost Wish? She's been battling the Drudge scourge over in her neck of the wood as well!\\q",
+      "records": [
+        {
+          "table": "25001699",
+          "sha256": "75182b5e678e800ccc91f18ce721aae63afe452523528d78c5d90019f0538552",
+          "installed_record_identical": true
+        },
+        {
+          "table": "25061699",
+          "sha256": "14e7f0ae12bfffe06727b5930e5c1c6124b5ecea07f882730463d90ba982b59c",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "name",
+      "table": "250016ad",
+      "key": "a8607cec",
+      "text_raw": "Kehan Windmill Quest[E]",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250216ad",
+          "sha256": "9a40f6e9eec3664b63e36f7c9dacb7d479d73b60d373f76e13b3fa3fc02d132e",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "summary",
+      "table": "250016ad",
+      "key": "6c459364",
+      "text_raw": "\n\nThe Miller of Kehan desperately needs your help in repairing the family windmill to the north of Kehan.\n\n",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250416ad",
+          "sha256": "5e7ee8b622711b606e625a8e109f51166df0d883e49d2b7f287914baab06e816",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "phases/1/journal",
+      "table": "250016ad",
+      "key": "2e5c1e52",
+      "text_raw": "Obtain a pile of Stone for the Miller.\n\nThe Miller of Kehan told you, \\qA roving band of Drudge Outcasts destroyed my Windmill! Could you help me repair it? I need a pile of Stone. Here, follow this map to find a Stone Quarry, then harvest some Stone and bring it to me. (If you need a Rock Hammer, you can make one yourself -- look under 'Starter Tools' in your Toolmaking panel.)\\q",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250616ad",
+          "sha256": "ab4b8124fddc7b556086c058e85a90f36f9d7a120398626375b4859276cf9435",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "phases/2/journal",
+      "table": "250016ad",
+      "key": "2e5f1e52",
+      "text_raw": "Harvest some Stone with a Rock Hammer, then give it to the Miller of Kehan.",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250816ad",
+          "sha256": "2a104eb7aaf24b5893c945f31e8aff97adbb7ef1386285282116e143baf91c90",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "phases/3/journal",
+      "table": "250016ad",
+      "key": "2e5e1e52",
+      "text_raw": "Place the gear in the Windmill to the north of Kehan.\n\nThe Miller of Kehan told you, \\qI will now create a Windmill gear - the Drudges destroyed the old one. Please place it inside the Windmill to repair it!\\q",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250a16ad",
+          "sha256": "fdded4f56129ea956c4a865253471ba5b8cf89e9f61864ecb75f06538c2c193e",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000c7",
+      "package": "QuestDrudgeWindmill",
+      "field": "phases/4/journal",
+      "table": "250016ad",
+      "key": "2e591e52",
+      "text_raw": "Now that you have repaired the Miller of Kehan's family Windmill, she will surely reward you.",
+      "records": [
+        {
+          "table": "250016ad",
+          "sha256": "306872153d9cc33ed60fd8ddf622fb6bbd8938ced5ecf1bcfba993b3a884a05e",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250c16ad",
+          "sha256": "67bc335129f2f6efc2410b584691f3e32136551a2aeeace1244dfe6b4d7270cf",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000cb",
+      "package": "QuestFindWarderEsper",
+      "field": "name",
+      "table": "250016a0",
+      "key": "a8607cec",
+      "text_raw": "Find the Esper Reaches Warder[E]",
+      "records": [
+        {
+          "table": "250016a0",
+          "sha256": "c5f52fa12375e5d0b4327172578a9b9c5ef16d950440710daabbc19fbcaa9aea",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250216a0",
+          "sha256": "05d851f75232eb259e9b06f9e266c1f45de19ba0749db6e0010754610bade2ff",
+          "installed_record_identical": false
+        }
+      ]
+    },
+    {
+      "quest": "400000cb",
+      "package": "QuestFindWarderEsper",
+      "field": "phases/1/journal",
+      "table": "250016a0",
+      "key": "2e5c1e52",
+      "text_raw": "The Miller of Kehan believes the Esper Reaches Warder in Millstone at 37.5 N, 19.9 W has news that would interest you.\n\nThe Miller of Kehan told you, \\qThank you for restoring my Windmill. I've heard that these glyphs are the key to unlock the secrets of this region - take this, with my thanks! And now, you should speak with my associate in the Esper Reaches. He's sent word that he might know who's behind all this Drudge activity we've been seeing lately.\\q",
+      "records": [
+        {
+          "table": "250016a0",
+          "sha256": "c5f52fa12375e5d0b4327172578a9b9c5ef16d950440710daabbc19fbcaa9aea",
+          "installed_record_identical": true
+        },
+        {
+          "table": "250616a0",
+          "sha256": "0707ee7f2b43237eebc6ff6f58df63fc814c497d3c160710b15caefc689a8b16",
+          "installed_record_identical": false
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": 1191194536,
+      "name": "The Miller's Map",
+      "visual": 520099116,
+      "physical": 1191193766,
+      "quality_hash": "ece3ddc47967bdc2"
+    },
+    {
+      "id": 1191187888,
+      "name": "Massive Gear",
+      "visual": 520097181,
+      "physical": 1191187936,
+      "quality_hash": "75465bd53ee0f9e1"
+    },
+    {
+      "id": 1191186592,
+      "name": "Lost Wish Glyph",
+      "visual": 520094159,
+      "physical": 1191182954,
+      "quality_hash": "eee9c8550b282c0d"
+    }
+  ],
+  "map_location": [
+    2394095657,
+    108.9000015258789,
+    0.4000000059604645,
+    105.5999984741211
+  ],
+  "map_radius": 70.0,
+  "npcs": [
+    {
+      "id": 9313678226570089934,
+      "entity": 1191187918,
+      "land": [
+        1137.3,
+        1499.4
+      ],
+      "evidence": "Guide windmill coordinate 47.0N 11.5E; interactable gear receiver (GearWindmillKehan), within 32m ground search. Placement reconstructed, not a capture."
+    }
+  ],
+  "camps": [],
+  "templates": {
+    "1191187918": {
+      "id": 1191187918,
+      "name": "Windmill",
+      "visual": 520097173,
+      "physical": 1191187919,
+      "quality_hash": "9546b8159736ceca"
+    }
+  }
+}

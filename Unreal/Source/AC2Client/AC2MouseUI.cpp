@@ -28,8 +28,8 @@ FReply SAC2GameUI::CameraButtonDown(const FPointerEvent& E)
     }
     if(Button==EKeys::LeftMouseButton)CameraLeft=true;else CameraRight=true;
     CameraDragging|=CameraRight;
-    PC->CameraSteersPlayer=CameraRight;
     PC->MouseForward=CameraRight && CameraLeft;
+    PC->CameraSteersPlayer=CameraRight && (CameraMoved || PC->MouseForward);
     PC->FreeOrbit=CameraDragging && !CameraRight;
     CameraMoved|=PC->MouseForward;
     if(CameraDragging && !CameraPrecision)
@@ -50,13 +50,13 @@ FReply SAC2GameUI::CameraMouseMove(const FPointerEvent& E)
     const FVector2D Delta=E.GetCursorDelta();
     CameraTravel+=FMath::Abs(Delta.X)+FMath::Abs(Delta.Y);
     CameraMoved|=CameraTravel>4;
+    PC->CameraSteersPlayer=CameraRight && CameraMoved;
     if(!CameraDragging && CameraMoved)
     {
         CameraDragging=true;PC->bShowMouseCursor=false;PC->FreeOrbit=!CameraRight;
     }
     if(CameraDragging)
     {
-        // AC1's held RMB steers, LMB drag orbits, and the two-button chord walks.
         // Apply Slate's relative delta once; the ignored pawn mouse axes must not add it again.
         auto Rotation=PC->GetControlRotation();
         const float Sensitivity=.2f*P->MouseSensitivity;
@@ -78,7 +78,7 @@ FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
     if(E.GetEffectingButton()==EKeys::LeftMouseButton)CameraLeft=false;
     if(E.GetEffectingButton()==EKeys::RightMouseButton)CameraRight=false;
     auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController());
-    if(PC){PC->CameraSteersPlayer=CameraRight;PC->MouseForward=CameraLeft && CameraRight;PC->FreeOrbit=CameraDragging && CameraLeft && !CameraRight;}
+    if(PC){PC->CameraSteersPlayer=CameraRight && CameraMoved;PC->MouseForward=CameraLeft && CameraRight;PC->FreeOrbit=CameraDragging && CameraLeft && !CameraRight;}
     if(CameraLeft || CameraRight)return FReply::Handled();
     const FVector2D Point=CameraScreenPress;
     CameraDragging=CameraPrecision=false;CameraTravel=0;
@@ -91,9 +91,11 @@ FReply SAC2GameUI::CameraButtonUp(const FPointerEvent& E)
 
 bool SAC2GameUI::OwnsPointer(FVector2D Point) const
 {
-    if(Frontend || MapUI.OwnsPointer(Point) || CraftOwnsPointer(Point))return true;
+    if(WindowAt(Point))return true;
+    if(ShowFps && FpsBounds().ContainsPoint(Point))return true;
+    if(Frontend || OptionConfirmationOpen() || OpenOptionChoice!=INDEX_NONE || MapUI.OwnsPointer(Point) || CraftOwnsPointer(Point))return true;
     for(const TCHAR* Panel:{TEXT("ToolbarField"),TEXT("ShortcutField"),TEXT("ChatWindow1"),
-        TEXT("StatusbarField"),TEXT("LeftSidePanel"),TEXT("RightSidePanel"),TEXT("Shop"),TEXT("ExternalContainerField")})
+        LeftPanelRoot(),RightPanelRoot(),TEXT("Shop"),TEXT("ExternalContainerField")})
         if(Native.Bounds(Panel).Contains(FIntPoint(Point.X,Point.Y)))return true;
     return false;
 }
@@ -105,10 +107,17 @@ FAC2CursorIcon SAC2GameUI::CursorAt(FVector2D ScreenPoint) const
     else if(OwnsPointer(Point))
     {
         Native.CursorAt(Point,Spec.Image,Spec.Hotspot);
-        // Moving is supported; resizing is not yet implemented.
-        if(Spec.Image>=0x41005998 && Spec.Image<=0x4100599b)Spec={};
+        uint32 Root=0;uint8 Edges=0;
+        const bool Resize=ResizeWindow || WindowResizeAt(Point,Root,Edges);
+        if(Resize){
+            if(ResizeWindow)Edges=ResizeEdges;
+            const bool Horizontal=(Edges&3)!=0,Vertical=(Edges&12)!=0;
+            Spec.Image=Horizontal&&Vertical?(((Edges&1)!=0)==((Edges&4)!=0)?0x41005998:0x41005999):Horizontal?0x4100599a:0x4100599b;
+            Spec.Hotspot=FIntPoint(11,11);
+        }else if(Spec.Image>=0x41005998 && Spec.Image<=0x4100599b)Spec={};
     }
-    else if(!HoverObject.IsEmpty() || HoverMob.IsValid()) {Spec.Image=0x4100751e;Spec.Hotspot=FIntPoint(11,11);}
+    // gmSelectionUI performs world selection with the default pointer. The
+    // special targeting cursor belongs to UI actions that explicitly request it.
     return Spec;
 }
 void SAC2GameUI::UpdateHover(const FGeometry& G,double Time)
@@ -139,8 +148,8 @@ void SAC2GameUI::InspectTarget(const FString& Id)
 {
     if(!Mode.IsValid() || !Mode->Network || Id.IsEmpty())return;
     EndChat();
-    InspectedObject=Id;SelectedItem=INDEX_NONE;ExamineScroll=0;
-    ShowStats=true;ShowOptions=false;Mode->bMap=false;MapUI.Close();
+    InspectedObject=Id;SelectedItem=INDEX_NONE;ExamineScroll=0;ExaminedSkill=ExaminedRecipe=0;
+    ShowStats=true;RaiseWindow(FAC2UILayout::Token(TEXT("ExaminationField")));
     Mode->Network->Examine(Id);
     if(auto* PC=Cast<AAC2PlayerController>(Mode->GetWorld()->GetFirstPlayerController()))PC->SetCursor(true);
     Rebuild();
@@ -176,10 +185,10 @@ bool SAC2GameUI::WorldClick(FKey Button,bool DoubleClick)
     if(Mode->GetWorld()->LineTraceSingleByChannel(Hit,Origin,Origin+Direction*15000,ECC_Visibility))
         if(auto* Mob=Cast<AAC2Mob>(Hit.GetActor()))
         {
-            Mode->Target=Mob;Mode->Notice=TEXT("Target: ")+Mob->DisplayName;
+            Mode->Target=Mob;
             if(Button==EKeys::RightMouseButton)
             {
-                InspectedMob=Mob;SelectedItem=INDEX_NONE;ExamineScroll=0;ShowStats=true;ShowOptions=false;
+                InspectedMob=Mob;SelectedItem=INDEX_NONE;ExamineScroll=0;ShowStats=true;RaiseWindow(FAC2UILayout::Token(TEXT("ExaminationField")));
                 if(auto* Controller=Cast<AAC2PlayerController>(PC))Controller->SetCursor(true);
                 Rebuild();
             }
@@ -212,7 +221,7 @@ void SAC2GameUI::BuildWorldText()
     const int32 Attempts=FMath::Clamp(Tuning(TEXT("MaxNamePlacementAttempts"),50),1,100);
     const int32 Travel=FMath::Clamp(Tuning(TEXT("FloatyTextTravel"),3),0,20);
     TArray<FIntRect> Occupied;
-    auto Place=[&](const TCHAR* Template,const FString& Text,FVector2D Center,float Opacity)->bool
+    auto Place=[&](const TCHAR* Template,const FString& Text,FVector2D Center,float Opacity,TOptional<FLinearColor> Color={})->bool
     {
         const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(Template,0x4200000c));
         if(!Font)return false;
@@ -226,7 +235,7 @@ void SAC2GameUI::BuildWorldText()
         const int32 First=Native.Nodes.Num();Native.Template(0x22000005,Template,Rect,View);
         for(int32 I=First;I<Native.Nodes.Num();++I)if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text")))
         {
-            auto& N=Native.Nodes[I];N.Text=Text;N.Opacity=Opacity;N.Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);
+            auto& N=Native.Nodes[I];N.Text=Text;N.Opacity=Opacity;if(Color.IsSet())N.SetTextColor(*Color);N.Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);
         }
         return true;
     };
@@ -264,7 +273,7 @@ void SAC2GameUI::BuildWorldText()
         if(Contact.Id==Net->TargetId || Contact.Name.IsEmpty())continue;
         if(++Count>64)break;
         FBox2D Bounds;if(!Net->ObjectScreenBounds(Contact.Id,Bounds))continue;
-        if(Place(TEXT("NameTextTemplate"),Contact.Name,FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-12),1)){
+        if(Place(TEXT("NameTextTemplate"),Contact.Name,FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-12),1,AC2Radar::Resolve(MapUI.RadarData.Look(Contact.Entity),Contact.Health,Contact.Shape,Contact.Selectable,Contact.Color).Color)){
             const auto& R=Occupied.Last();WorldNameRects.Add(Contact.Id,FSlateRect(R.Min.X,R.Min.Y,R.Max.X,R.Max.Y));
         }
     }
@@ -288,7 +297,7 @@ void SAC2GameUI::BuildPointerFeedback()
     const auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     // gmCameraUI::UpdateCamera: the authored, centered crosshair is visible in mouse look.
     if(PC && !PC->bShowMouseCursor)Native.Root(0x22000005,TEXT("MouseLookCursorField"));
-    auto Label=[&](const FString& Text,FVector2D Point,bool Center=false)
+    auto Label=[&](const FString& Text,FVector2D Point,bool Center=false,TOptional<FLinearColor> Color={})
     {
         if(Text.IsEmpty())return;
         const TCHAR* Template=Center?TEXT("SelectionName"):TEXT("NameTextTemplate");
@@ -302,7 +311,7 @@ void SAC2GameUI::BuildPointerFeedback()
         Native.Template(0x22000005,Template,
             FIntRect(Point.X,Point.Y,Point.X+Width,Point.Y+Height),FIntRect(0,0,Size.X,Size.Y));
         for(int32 I=Start;I<Native.Nodes.Num();++I)
-            if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text"))){Native.Nodes[I].Text=Text;Native.Nodes[I].Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);}
+            if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text"))){Native.Nodes[I].Text=Text;if(Color.IsSet())Native.Nodes[I].SetTextColor(*Color);Native.Nodes[I].Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);}
     };
     auto BuildHint=[&](const FString& Text,FVector2D Point)
     {
@@ -347,6 +356,11 @@ void SAC2GameUI::BuildPointerFeedback()
     }
     if(auto* Net=Mode->Network.Get())
     {
+        auto NameColor=[&](const FString& Id){
+            const auto Contacts=Net->RadarContacts();
+            const auto* C=Contacts.FindByPredicate([&](const auto& V){return V.Id==Id;});
+            return C?AC2Radar::Resolve(MapUI.RadarData.Look(C->Entity),C->Health,C->Shape,C->Selectable,C->Color).Color:FLinearColor::White;
+        };
         FBox2D Bounds;
         if(Net->ObjectScreenBounds(Net->TargetId,Bounds) && Bounds.Max.X>=0 && Bounds.Min.X<Size.X && Bounds.Max.Y>=0 && Bounds.Min.Y<Size.Y)
         {
@@ -365,12 +379,20 @@ void SAC2GameUI::BuildPointerFeedback()
                 const float Turns[]={2,1,3,0};
                 for(int32 N=Start;N<Native.Nodes.Num();++N)Native.Nodes[N].Rotation=Turns[I]*HALF_PI;
             }
-            Label(Net->ObjectName(Net->TargetId),FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-Corner.Y-30),true);
+            Label(Net->ObjectName(Net->TargetId),FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-Corner.Y-30),true,NameColor(Net->TargetId));
         }
-        if(!HoverObject.IsEmpty() && HoverObject!=Net->TargetId)Label(Net->ObjectName(HoverObject),Mouse+FVector2D(18,22));
+        if(!HoverObject.IsEmpty() && HoverObject!=Net->TargetId)Label(Net->ObjectName(HoverObject),Mouse+FVector2D(18,22),false,NameColor(HoverObject));
     }
-    if(!Mode->Network && HoverMob.IsValid())Label(HoverMob->DisplayName,Mouse+FVector2D(18,22));
+    if(!Mode->Network && HoverMob.IsValid())Label(HoverMob->DisplayName,Mouse+FVector2D(18,22),false,AC2Radar::DefaultLook(AC2Radar::Monsters).Color);
     if(OwnsPointer(Mouse))for(const auto& Hint:Hints)
-        if(const auto* R=Buttons.Find(Hint.Key);R && AllowsPanelButton(Hint.Key,Mouse) && Mouse.X>=R->Left && Mouse.X<R->Right && Mouse.Y>=R->Top && Mouse.Y<R->Bottom)
+    {
+        // Disabled native controls have no action hitbox, but still explain why
+        // they are disabled. Keep that tooltip separate from click eligibility.
+        FSlateRect Rect;
+        if(const auto* Hit=Buttons.Find(Hint.Key))Rect=*Hit;
+        else if(const auto* N=Native.Find(*Hint.Key.ToString()))Rect=FSlateRect(N->Clip.Min.X,N->Clip.Min.Y,N->Clip.Max.X,N->Clip.Max.Y);
+        else continue;
+        if(AllowsPanelButton(Hint.Key,Mouse) && Mouse.X>=Rect.Left && Mouse.X<Rect.Right && Mouse.Y>=Rect.Top && Mouse.Y<Rect.Bottom)
         {BuildHint(Hint.Value,Mouse+FVector2D(18,22));break;}
+    }
 }

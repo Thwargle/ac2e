@@ -3,7 +3,7 @@
   "EngineAssociation": "5.8",
   "Category": "Games",
   "Description": "Asheron's Call 2 native Unreal client with offline exploration and AC2E/Pyrealium networking.",
-  "Modules": [{ "Name": "AC2Client", "Type": "Runtime", "LoadingPhase": "Default" }],
+  "Modules": [{ "Name": "AC2Client", "Type": "Runtime", "LoadingPhase": "PostConfigInit" }],
   "Plugins": [
     { "Name": "ProceduralMeshComponent", "Enabled": true },
     { "Name": "AndroidFileServer", "Enabled": false },

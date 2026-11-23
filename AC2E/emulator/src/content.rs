@@ -107,6 +107,7 @@ mod motion_tests {
 }
 
 pub const NAMESPACE: u64 = 0x8140000000000000;
+pub const SUMMON_NAMESPACE: u64 = 0x81a0000000000000;
 const MAX_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_OBJECTS: usize = 16384;
 const MAX_CELL_OBJECTS: usize = 64;
@@ -141,6 +142,23 @@ impl Object {
         let spawn=world::create_stationary_object(&StationaryObject{character_id:id,parent_visual_did:visual,entity_did:entity,cell_id:p.cell,position:p.coordinates,orientation:p.orientation(),instance_stamp:1,visual_ordering_stamp:0,timestamps:[0;4]}).map_err(io::Error::other)?;
         Ok(Self{id,entity,visual,scale:1.,name:None,corpse_name:None,service:None,door_open:false,door_mode:None,placement:p,home:p,home_orientation:p.orientation(),spawn:spawn.into(),destroy:world::destroy_inventory_item(id,1).into(),active:true,instance:1,visual_stamp:0,position_stamp:0,stats:BTreeMap::new()})
     }
+    pub(crate) fn summon(id: u64, owner: u64, entity: u32, visual: u32, point: Placement, name: &str) -> io::Result<Self> {
+        let mut object = Self::resource(id, entity, visual, point)?;
+        object.name = Some(name.to_owned());
+        object.spawn = world::create_summoned_object(&StationaryObject {
+            character_id: id,
+            parent_visual_did: visual,
+            entity_did: entity,
+            cell_id: point.cell,
+            position: point.coordinates,
+            orientation: point.orientation(),
+            instance_stamp: 1,
+            visual_ordering_stamp: 0,
+            timestamps: [0; 4],
+        }, owner, name).map_err(io::Error::other)?.into();
+        Ok(object)
+    }
+
     pub fn instance_stamp(&self)->u16{self.instance}
     /// Packet capability, not an AI classification. A mode/scale slider is
     /// optional in captured PhysicsDesc records and must not gate pursuit.
@@ -236,7 +254,7 @@ impl Content {
     /// Bounded creature pursuit. Retain the new pose in CreateObject
     /// too, so late observers receive the same location as existing observers.
     pub fn move_creature(&mut self, id: u64, placement: Placement, now: u64) -> io::Result<Arc<[u8]>> {
-        let object = self.objects.get_mut(&id).filter(|o| o.active && o.stat(0x107).is_some() && o.service.is_none())
+        let object = self.objects.get_mut(&id).filter(|o| o.active && (o.stat(0x107).is_some() || id & 0xffff000000000000 == SUMMON_NAMESPACE) && o.service.is_none())
             .ok_or_else(|| invalid("unsupported moving creature"))?;
         if object.placement.distance(placement).is_none_or(|d|d>crate::creature_motion::MAX_UPDATE_DISTANCE) {
             return Err(invalid("creature movement exceeds bounded validated update"));
@@ -305,9 +323,9 @@ impl Content {
             game_data,
         )
     }
-    pub fn training(game_data: &Path) -> io::Result<Self> {
+    pub fn world(game_data: &Path) -> io::Result<Self> {
         let mut combined = String::from("pyrealium-world-v3\n");
-        // Keep the retained actor snapshot when enabling the training preset;
+        // Keep the retained actor snapshot alongside the starter-area content;
         // replacing it with the portal/lifestone-only base leaves known actors
         // absent even though the server reports that world content is enabled.
         for line in include_str!("../content/world-observed-expanded.tsv")
@@ -317,9 +335,8 @@ impl Content {
             combined.push_str(line);
             combined.push('\n');
         }
-        for line in include_str!("../content/training-world.tsv")
-            .lines()
-            .skip(1)
+        for line in include_str!("../content/training-world.tsv").lines().skip(1)
+            .chain(include_str!("../content/starter-world-v1.tsv").lines().skip(1))
         {
             combined.push_str(line);
             combined.push('\n');
@@ -392,7 +409,7 @@ impl Content {
             .ok_or_else(|| invalid("inactive creature presentation"))?;
         // Mode/behavior identifiers are shared; each client resolves its body's
         // own motion and behavior graphs. Only live encounter actors qualify.
-        if object.stat(0x107).is_none() || object.service.is_some() {
+        if (object.stat(0x107).is_none() && id & 0xffff000000000000 != SUMMON_NAMESPACE) || object.service.is_some() {
             return Ok(Vec::new());
         }
         Self::ensure_mode(object)?;
@@ -411,6 +428,7 @@ impl Content {
         victim: u64,
         attacker: u64,
         health_change: i32,
+        skill: Option<u32>,
     ) -> io::Result<Arc<[u8]>> {
         let object = self
             .objects
@@ -421,12 +439,13 @@ impl Content {
             .visual_stamp
             .checked_add(1)
             .ok_or_else(|| invalid("creature visual stamp exhausted"))?;
-        let wire = crate::combat_visual::damage_story(
+        let wire = crate::combat_visual::damage_story_for_skill(
             victim,
             object.instance,
             stamp,
             attacker,
             health_change,
+            skill,
         )
         .map_err(|error| invalid(format!("creature damage story: {error}")))?;
         if object.spawn.len() >= 28 {
@@ -436,9 +455,12 @@ impl Content {
         Ok(wire.into())
     }
     pub fn effect(&mut self,id:u64,fx:u32) -> io::Result<Arc<[u8]>> {
+        self.effect_action(id,fx,false)
+    }
+    pub fn effect_action(&mut self,id:u64,fx:u32,stop:bool) -> io::Result<Arc<[u8]>> {
         let object=self.objects.get_mut(&id).filter(|o|o.active).ok_or_else(||invalid("inactive effect owner"))?;
         let stamp=object.visual_stamp.checked_add(1).ok_or_else(||invalid("effect stamp exhausted"))?;
-        let wire=crate::combat_visual::effect(id,object.instance,stamp,fx).map_err(|e|invalid(e.to_string()))?;
+        let wire=(if stop {crate::combat_visual::stop_effect}else{crate::combat_visual::effect})(id,object.instance,stamp,fx).map_err(|e|invalid(e.to_string()))?;
         Arc::make_mut(&mut object.spawn)[26..28].copy_from_slice(&stamp.to_le_bytes());object.visual_stamp=stamp;Ok(wire.into())
     }
     pub fn respawn(&mut self, id: u64) -> io::Result<()> {
@@ -723,11 +745,11 @@ impl Content {
             if captured_name.is_some_and(|n|n.is_empty()||n.len()>256||n.chars().any(char::is_control)) {
                 return Err(invalid("invalid captured object name"));
             }
-            let name = captured_name.or(match id {
+            let name = captured_name.or(crate::starters::portal_name(id)).or(match id {
                 0x8140000000030002 | 0x8140000000030004 | 0x8140000000030049 => Some("Arwic Outland Portal"),
                 0x8140000000030005 | 0x8140000000030022 | 0x8140000000030025 => Some("Human Shelter Portal"),
-                0x8140000000030030 => Some("Lugian Shelter Portal"),
-                0x8140000000030031 => Some("Tumerok Shelter Portal"),
+                0x8140000000030030 => Some("Tumerok Shelter Portal"),
+                0x8140000000030031 => Some("Lugian Shelter Portal"),
                 0x8140000000030047 => Some("Menhir Vault Portal"),
                 _ if entity == 0x4700084d => Some("Portal"),
                 _ => None,

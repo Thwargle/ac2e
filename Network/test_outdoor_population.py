@@ -12,7 +12,7 @@ from test_gameplay import until
 from prepare_content import prepare
 
 
-def main(render=False):
+def main(render=False, combat_render=True):
     run=ROOT/'Saved/AC2NetworkTests'/('outdoor-'+uuid.uuid4().hex)
     run.mkdir(parents=True)
     content=run/'world.tsv';prepare(DAT_DIRECTORY,content)
@@ -32,13 +32,16 @@ def main(render=False):
     # and captured PhysicsDesc scale. Neither is the old uniform 2m/s step.
     visual_speeds={0x1f000031:6.5,0x1f0004e0:6.5*1.15}
     assert all(target in rows for target in targets)
-    env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1')
+    # This smoke requires an item to exercise the rendered pickup controls.
+    # Use the existing isolated loot RNG seed; empty rolls remain valid in the
+    # production table, whose items, weights and spawn placements are unchanged.
+    env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1',AC2_TEST_LOOT_SEED='17')
     peers=[];report=[]
     with (run/'server.log').open('w') as log:
         server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19486','--account','local',
             '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-            '--initialize-ui','true','--training-kit','false','--encounters','training',
-            '--lifestones','false','--portals','false','--test-map-travel','true','--seconds','240'],
+            '--initialize-ui','true','--encounters','world',
+            '--lifestones','false','--portals','false','--test-map-travel','true','--seconds','300'],
             env=env,stdout=log,stderr=log,creationflags=0x08000000)
         try:
             time.sleep(1);assert server.poll() is None,(run/'server.log').read_text()
@@ -129,7 +132,7 @@ def main(render=False):
                 departed=len(a.events);returned_mark=len(b.events)
                 a.send('logout',id=a.id);until(a,departed,'selection')
                 returned=until(b,returned_mark,'position',lambda e:e['id']==str(target)
-                    and abs(e['position'][0]-point[0])<.04,timeout=20)
+                    and all(abs(x-y)<.03 for x,y in zip(e['position'],point)),timeout=20)
                 assert all(abs(x-y)<.03 for x,y in zip(returned['position'],point)),returned
                 steps=[e for e in b.events[returned_mark:] if e.get('event')=='position' and e['id']==str(target)]
                 assert len(steps)>5,'Returning home must walk, not teleport'
@@ -138,13 +141,26 @@ def main(render=False):
                     dt=current['time']-previous['time']
                     assert dt>0
                     distance=math.hypot(*(current['position'][axis]-previous['position'][axis] for axis in [0,1]))
-                    assert distance<=speed*min(dt,.25)+.015,'Native speed limit must bound each update'
+                    assert distance<=speed*min(dt,.25)+.015,(
+                        f'Native speed limit must bound each update: {target:x}, '
+                        f'{distance:.6f}m in {dt:.6f}s at {speed:.6f}m/s')
                     measured.append(distance/dt)
                 assert max(measured)>speed*.9,'Creature must reach its native pace, not the old 2m/s fallback'
                 a.send('enter',id=a.id);until(a,departed,'player');a.send('ready');until(a,departed,'status',lambda e:e['phase']=='world')
                 report.append({'id':f[0],'entity':f[1],'cell':f[3],'position':point,'hit':hit,
                     'pursuit':moved['position'],'late_observer':snapshot['placement'],'return_steps':len(steps),
                     'native_speed_mps':speed,'measured_peak_mps':max(measured)})
+            if render:
+                # The UDP chase checks deliberately take damage. Recover in
+                # the safe starter room through normal server regeneration so
+                # render/setup delays do not inherit a nearly dead fixture.
+                a=peers[0]
+                start=next(e['placement'] for e in a.events if e.get('event')=='object' and e['id']==a.id)
+                mark=len(a.events)
+                a.send('move',cell=start['cell'],position=start['position'],heading=0,motion=[0,0,0])
+                health=next((e['value'] for e in reversed(a.events) if e.get('event')=='quality' and e.get('id') is None and e.get('key')==0x102),0)
+                if health<100:
+                    until(a,mark,'quality',lambda e:e.get('id') is None and e.get('key')==0x102 and e['value']==100,timeout=60)
             # Persist an observer near the first unmodified capture for a real
             # rendered-client check, away from any prior target's retaliation.
             f=rows[targets[0]];point=list(map(float,f[4:7]));point[0]+=12
@@ -156,7 +172,7 @@ def main(render=False):
             if render:
                 for p in peers:p.close()
                 env['AC2_POPULATION_SMOKE']=str(targets[0])
-                env['AC2_POPULATION_COMBAT_SMOKE']='1'
+                env['AC2_POPULATION_COMBAT_SMOKE']='1' if combat_render else '0'
                 result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(ROOT/'Launch-AC2.ps1'),
                     '-SkipBuild','-NetworkSmoke','-Server','127.0.0.1','-Port','19486','-Account','local'],
                     env=env,cwd=ROOT,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,errors='replace',timeout=160,creationflags=0x08000000)
@@ -176,4 +192,5 @@ def main(render=False):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--render',action='store_true')
-    main(parser.parse_args().render)
+    parser.add_argument('--render-placement',action='store_true',help='Render and verify floor contact after the UDP pursuit/return test, without the extended combat/loot UI sequence')
+    args=parser.parse_args();main(args.render or args.render_placement,not args.render_placement)

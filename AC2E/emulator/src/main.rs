@@ -8,29 +8,23 @@ fn usage() {
     println!("  serve --local-accounts PATH --bind 127.0.0.1:19070 --account local\n    Loopback password accounts plus the existing configured developer profile. Mutually exclusive with --auth-data.");
     println!("  inventory-starter --account NAME --character-id N --data PATH --game-data PATH\n    Offline once-only racial starter gear; retains existing possessions and equipment.");
     println!(
-        "  account-web --auth-data PATH --data GAME_STORE --web-bind 127.0.0.1:19400 --public-origin https://accounts.example.com --public-host game.example.com --public-port 19370\n    Account registration and HTTPS-proxied launcher login backend.\n  account-create --auth-data PATH --account NAME\n    Offline owner account provisioning with hidden password prompts. Stop the account backend first.\n  serve-training --auth-data PATH --bind 0.0.0.0:19370 --game-data PATH\n    Public native-ticket mode; rejects developer/no-ticket authentication."
+        "  account-web --auth-data PATH --data GAME_STORE --web-bind 127.0.0.1:19400 --public-origin https://accounts.example.com --public-host game.example.com --public-port 19370\n    Account registration and HTTPS-proxied launcher login backend.\n  account-create --auth-data PATH --account NAME\n    Offline owner account provisioning with hidden password prompts. Stop the account backend first.\n  serve --auth-data PATH --bind 0.0.0.0:19370 --game-data PATH\n    Public native-ticket mode; rejects developer/no-ticket authentication."
     );
     println!(
         "{}\n  license / --license: display the complete AGPL-3.0 license.\n",
         pyrealium::licensing::notice()
     );
     println!(
-        "  serve --gun-adapter-bind ADDR|off\n    Opt-in custom TCP/XML social service; disabled by default. Requires a compatible adapter (not included). Stock GunDll.dll uses a different UDP protocol: -gunserver/-gunport alone cannot connect to this service. --gun-bind remains an alias. Developer tickets require loopback; account:token tickets require a separate single-use account ticket. See docs/gun-protocol.md."
+        "  serve --gun-adapter-bind ADDR|off\n    Unreal Friends uses the authenticated game connection automatically. This option also exposes the same roster to TCP/XML adapter clients. The adapter defaults to off. Developer tickets require loopback. Ticketed adapter clients need a separate single-use ticket. See docs/gun-protocol.md."
     );
     println!(
-        "  serve --initialize-ui true --portals true --game-data PATH\n    Explicit development instant portal routes; enabled by serve-training."
+        "  serve --initialize-ui true --portals true --game-data PATH\n    Portal routes; enabled by default with --game-data."
     );
     println!(
         "  compact-data --data PATH\n    Offline checked journal compaction; retains the preceding journal backup. Server must be stopped."
     );
     println!(
-        "  serve --initialize-ui true --lifestones true --game-data PATH\n    Development lifestone binding, @recall, and bound resurrection. Enabled by serve-training."
-    );
-    println!(
-        "  serve-training --game-data PATH [--account local --data PATH --bind 127.0.0.1:9000]\n    Development preset: initialized HUD, bundled training encounter, and once-per-character hand item."
-    );
-    println!(
-        "  serve --initialize-ui true --training-kit true --game-data PATH\n    Explicit development kit: grants one DAT-backed hand item once per human character. Disabled by default."
+        "  serve --initialize-ui true --lifestones true --game-data PATH\n    Lifestone binding, @recall, and bound resurrection. Enabled by default with --game-data."
     );
     println!(
         "  skill-state --character-id N [--event t,SKILL_HEX|g,SKILL_HEX|u,SKILL_HEX|r,SKILL_HEX] --data PATH\n    Offline skill inspection, training, explicit free grant, untraining, or table-backed advancement."
@@ -39,7 +33,7 @@ fn usage() {
         "  player-state --character-id N [--event COMMAND] --data PATH\n    Offline progression inspection/edit: x,XP a,SPEND_XP g,GOLD s,GOLD d,DAMAGE h,HEAL v,COST r,RECOVERY z(resurrect)."
     );
     println!(
-        "  serve --game-data PATH [--content PATH|observed|training|none] [--encounters PATH] [--content-overlay PATH] [--world-rules PATH] [--admin-bind 127.0.0.1:PORT]\n    Encounters use explicit development rules. training selects the authored starter encounter.\n    --content-overlay adds world-builder placements; its NAME.rules.tsv (or --world-rules) sets custom creature stats, AI, loot, patrols and spawn groups.\n    --admin-bind enables local live world editing from the content editor (token in DATA/admin.token)."
+        "  serve --game-data PATH [--content PATH|observed|world|none] [--encounters PATH] [--content-overlay PATH] [--world-rules PATH] [--admin-bind 127.0.0.1:PORT]\n    Encounters use explicit development rules. world selects the bundled world and starter encounters.\n    --content-overlay adds world-builder placements; its NAME.rules.tsv (or --world-rules) sets custom creature stats, AI, loot, patrols and spawn groups.\n    --admin-bind enables local live world editing from the content editor (token in DATA/admin.token)."
     );
     println!(
         "  inventory-reorder --character-id N --request PATH\n    Offline import of one reassembled native inventory sorting message (296 bytes)."
@@ -92,7 +86,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut record_id = None;
     let mut character_id = None;
     let mut initialize_ui = None;
-    let mut training_kit = None;
     let mut lifestones = None;
     let mut portals = None;
     let mut map_travel = false;
@@ -136,7 +129,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             "--id" => record_id = Some(u32::from_str_radix(value.trim_start_matches("0x"), 16)?),
             "--character-id" => character_id = Some(value.parse::<u64>()?),
             "--initialize-ui" => initialize_ui = Some(value.parse::<bool>()?),
-            "--training-kit" => training_kit = Some(value.parse::<bool>()?),
             "--lifestones" => lifestones = Some(value.parse::<bool>()?),
             "--portals" => portals = Some(value.parse::<bool>()?),
             "--test-map-travel" => map_travel = value.parse::<bool>()?,
@@ -392,42 +384,20 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             accounts.create(&account.to_ascii_lowercase(), &password)?;
             println!("Account created. No password was written to command-line arguments or logs.");
         }
-        "serve" | "serve-training" => {
+        "serve" => {
             // Game data means the normal world: HUD, equipment, travel, and combat.
             // A bare serve without game data remains character selection only.
-            let world = game_data.is_some() || command == "serve-training";
-            if command == "serve-training" && game_data.is_none() {
-                return Err("--game-data is required".into());
-            }
+            let world = game_data.is_some();
             if world {
-                content.get_or_insert_with(|| PathBuf::from("training"));
-                encounters.get_or_insert_with(|| PathBuf::from("training"));
+                content.get_or_insert_with(|| PathBuf::from("world"));
+                encounters.get_or_insert_with(|| PathBuf::from("world"));
             }
             let initialize_ui = initialize_ui.unwrap_or(world);
-            let training_kit = training_kit.unwrap_or(world);
             let lifestones = lifestones.unwrap_or(world);
             let portals = portals.unwrap_or(world);
             if auth_data.is_some() && local_accounts.is_some() {
                 return Err("--auth-data and --local-accounts are mutually exclusive".into());
             }
-            // Explicit custom transport only. No native GunDll adapter is bundled.
-            let gun_service = match gun_bind {
-                Some(gun_addr) => {
-                    let gun_auth = match auth_data.as_ref().or(local_accounts.as_ref()) {
-                        Some(root) => pyrealium::gun::GunAuth::Tickets(root.clone()),
-                        None => pyrealium::gun::GunAuth::Developer,
-                    };
-                    std::fs::create_dir_all(&data)?;
-                    let service = pyrealium::gun::start(pyrealium::gun::GunConfig {
-                        bind: gun_addr,
-                        data: data.clone(),
-                        auth: gun_auth,
-                    })?;
-                    println!("GUN adapter listening on TCP {} (custom XML; incompatible with stock GunDll.dll).", service.addr);
-                    Some(service)
-                }
-                None => None,
-            };
             let config = Config {
                     bind,
                     account,
@@ -436,7 +406,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     visual_did: visual,
                     game_data,
                     initialize_ui,
-                    training_kit,
                     lifestones,
                     portals,
                     map_travel,
@@ -446,12 +415,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     world_rules,
                     admin_bind,
                 };
-            if let Some(root) = local_accounts {
-                server::run_local_accounts(config, root)?;
-            } else {
-                server::run_with_auth(config, auth_data)?;
-            }
-            drop(gun_service);
+            let local_mode = local_accounts.is_some();
+            server::run_with_services(config, auth_data.or(local_accounts), local_mode, gun_bind)?;
         }
         "stop" => {
             if !data.join("server.lock").is_file() {

@@ -1,0 +1,7 @@
+pyrealium-creature-combat-v3
+# Inherited Foundry general properties from portal.dat.
+# entity health damage interval_ms armor xp level variance attack defense perception homesick damage_type max_vigor
+4700390b	37500	640	0	242	1408000	56	0.1	1209	1041	30.0	60.0	2	37500
+47003bca	44500	705	0	283	2361000	58	0.175	1247	1120	30.0	60.0	2	44500
+47003b72	47500	705	0	290	3033000	60	0.175	1285	1199	30.0	60.0	2	47500
+47003b73	52500	738	0	308	3961000	62	0.175	1323	1279	30.0	60.0	2	52500

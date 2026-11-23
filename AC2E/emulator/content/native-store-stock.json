@@ -1,0 +1,3141 @@
+{
+  "schema": 1,
+  "source": "Legions portal.dat StoreTemplate",
+  "stores": [
+    {
+      "store": 1862284195,
+      "vendors": [
+        1191195427
+      ],
+      "sha256": "d06b06b553bc533297e85780225c4326698ff81df1cb69fcd3d7daf4d7fe8abb",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191195454,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 2,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191195453,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 4,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191195452,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 1,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191199133,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 16,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191195424,
+          "unit_price": 600.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284656,
+      "vendors": [
+        1191194510
+      ],
+      "sha256": "0dfde7ea6596b28a1a289e556006d07addb4688c907430a428e2151c46267c23",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191186682,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284657,
+      "vendors": [
+        1191194511
+      ],
+      "sha256": "262cf97ba45b7b09047630c37a8501d8c0ce2644327d889883ed0512081473cc",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191193300,
+          "unit_price": 0.5,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284658,
+      "vendors": [
+        1191194512
+      ],
+      "sha256": "a3928074c618160f1af566f80d46e5639bfa1d13b907af622939011e0e03c948",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191192482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284659,
+      "vendors": [
+        1191194513
+      ],
+      "sha256": "354cc1948f191037589847caa9f4ec96a93423caf0228aa23ef61b6fdd49ffec",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191193300,
+          "unit_price": 0.5,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284660,
+      "vendors": [
+        1191194514
+      ],
+      "sha256": "de38205d93a2e368c3b67495bc7375fc1d97620beb95352ad8ed5d9dc59d0266",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191193300,
+          "unit_price": 0.5,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284661,
+      "vendors": [
+        1191194515
+      ],
+      "sha256": "2cbc461eee6d1b6e9659f0a702de8cb3145c7df57afea417d37d175688a4673d",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191186687,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191194482,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191194486,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191194481,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191194484,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191194485,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191194483,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284873,
+      "vendors": [
+        1191196020
+      ],
+      "sha256": "267febe9abf9c586259bd1749e0670c1ea6577ab1dda51a08d622c3576299136",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191195323,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191195324,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191195329,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191195330,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191195331,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191195332,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191195333,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191195334,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191195335,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191195336,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191195325,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191195326,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191195327,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191195328,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191195337,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191195338,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191195343,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191195344,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191195345,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191195346,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191195347,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191195348,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191195349,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191195350,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 24,
+          "item": 1191195339,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 55,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 25,
+          "item": 1191195340,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 57,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 26,
+          "item": 1191195341,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 59,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 27,
+          "item": 1191195342,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 61,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 28,
+          "item": 1191195351,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 63,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 29,
+          "item": 1191195352,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 65,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 30,
+          "item": 1191195357,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 67,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 31,
+          "item": 1191195358,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 69,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 32,
+          "item": 1191195359,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 71,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 33,
+          "item": 1191195360,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 73,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 34,
+          "item": 1191195361,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 75,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 35,
+          "item": 1191195362,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 77,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 36,
+          "item": 1191195363,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 79,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 37,
+          "item": 1191195364,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 81,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 38,
+          "item": 1191195353,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 83,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 39,
+          "item": 1191195354,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 85,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 40,
+          "item": 1191195355,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 87,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 41,
+          "item": 1191195356,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 89,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 42,
+          "item": 1191195365,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 91,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 43,
+          "item": 1191195366,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 93,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 44,
+          "item": 1191195371,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 95,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 45,
+          "item": 1191195372,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 97,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 46,
+          "item": 1191195373,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 99,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 47,
+          "item": 1191195374,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 101,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 48,
+          "item": 1191195375,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 103,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 49,
+          "item": 1191195376,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 105,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 50,
+          "item": 1191195377,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 107,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 51,
+          "item": 1191195378,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 109,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 52,
+          "item": 1191195367,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 111,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 53,
+          "item": 1191195368,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 113,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 54,
+          "item": 1191195369,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 115,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 55,
+          "item": 1191195370,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 117,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862284875,
+      "vendors": [
+        1191196021
+      ],
+      "sha256": "5cf3d6d359c082bfa361cd109edbf1d1d858134c5d5036c7cce8e33e40b8eef6",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191195323,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191195324,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191195329,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191195330,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191195331,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191195332,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191195333,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191195334,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191195335,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191195336,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191195325,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191195326,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191195327,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191195328,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191195337,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191195338,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191195343,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191195344,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191195345,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191195346,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191195347,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191195348,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191195349,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191195350,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 24,
+          "item": 1191195339,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 55,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 25,
+          "item": 1191195340,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 57,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 26,
+          "item": 1191195341,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 59,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 27,
+          "item": 1191195342,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 61,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 28,
+          "item": 1191195351,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 63,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 29,
+          "item": 1191195352,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 65,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 30,
+          "item": 1191195357,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 67,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 31,
+          "item": 1191195358,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 69,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 32,
+          "item": 1191195359,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 71,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 33,
+          "item": 1191195360,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 73,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 34,
+          "item": 1191195361,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 75,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 35,
+          "item": 1191195362,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 77,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 36,
+          "item": 1191195363,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 79,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 37,
+          "item": 1191195364,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 81,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 38,
+          "item": 1191195353,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 83,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 39,
+          "item": 1191195354,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 85,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 40,
+          "item": 1191195355,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 87,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 41,
+          "item": 1191195356,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 89,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 42,
+          "item": 1191195365,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 91,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 43,
+          "item": 1191195366,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 93,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 44,
+          "item": 1191195371,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 95,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 45,
+          "item": 1191195372,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 97,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 46,
+          "item": 1191195373,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 99,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 47,
+          "item": 1191195374,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 101,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 48,
+          "item": 1191195375,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 103,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 49,
+          "item": 1191195376,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 105,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 50,
+          "item": 1191195377,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 107,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 51,
+          "item": 1191195378,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 109,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 52,
+          "item": 1191195367,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 111,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 53,
+          "item": 1191195368,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 113,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 54,
+          "item": 1191195369,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 115,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 55,
+          "item": 1191195370,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 117,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862285032,
+      "vendors": [
+        1191196302
+      ],
+      "sha256": "2dafc34f5c9bf4931ed9be3e045acf13fda1474e36b93464c98874f2fc89ae84",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196045,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196044,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196055,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196053,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196048,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196047,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196043,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196052,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196046,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196054,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196051,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196272,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196273,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196050,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196274,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196275,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196267,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196268,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196269,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191196270,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191196271,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862285033,
+      "vendors": [
+        1191196306,
+        1191196307,
+        1191196308,
+        1191196309
+      ],
+      "sha256": "4eaf5414aed8c625aade62b530371b59fac91ee319814d7fdebdb721e9432de9",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196056,
+          "unit_price": 75.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196088,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196089,
+          "unit_price": 300.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196090,
+          "unit_price": 600.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196091,
+          "unit_price": 1000.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196092,
+          "unit_price": 2500.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196093,
+          "unit_price": 5000.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196094,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196095,
+          "unit_price": 15000.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 15
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196096,
+          "unit_price": 30000.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 20
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196097,
+          "unit_price": 50000.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 25
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196098,
+          "unit_price": 100000.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 35
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196099,
+          "unit_price": 150000.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 40
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196100,
+          "unit_price": 200000.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 45
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196101,
+          "unit_price": 350000.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 50
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196102,
+          "unit_price": 500000.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 55
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196103,
+          "unit_price": 750000.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 60
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196104,
+          "unit_price": 1000000.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 65
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196105,
+          "unit_price": 1500000.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 70
+        }
+      ]
+    },
+    {
+      "store": 1862286040,
+      "vendors": [
+        1191196522
+      ],
+      "sha256": "790d00542410b4806abc70adb107704faa24015d23c7a63e9bc3168dc1d05615",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196524,
+          "unit_price": 1000.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196525,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196526,
+          "unit_price": 50000.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196527,
+          "unit_price": 100000.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862286182,
+      "vendors": [
+        1191196857
+      ],
+      "sha256": "658a83a5e6f9e85e95ffd1cb987c54cafc0c794420144b6035901323258450ef",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196818,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196816,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196769,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196815,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196817,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196814,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196821,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196820,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196770,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196819,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196830,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196834,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196833,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196832,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196835,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196831,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196827,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196826,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196825,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191196824,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191196771,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191196823,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191196836,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191196840,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 24,
+          "item": 1191196839,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 55,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 25,
+          "item": 1191196838,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 57,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 26,
+          "item": 1191196781,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 59,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 27,
+          "item": 1191196837,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 61,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 28,
+          "item": 1191196849,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 63,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 29,
+          "item": 1191196828,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 65,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 30,
+          "item": 1191196822,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 67,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 31,
+          "item": 1191196772,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 69,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862286184,
+      "vendors": [
+        1191196859
+      ],
+      "sha256": "19308a73af684ea0727e12fea6041fc9b2e0c1dc5925587b4d51e3b2476f369e",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196773,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196800,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196801,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196799,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196798,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196805,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196804,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196803,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196774,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196802,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196808,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196807,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196809,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196775,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196806,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196812,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196811,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196776,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196813,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191196810,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191196830,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191196834,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191196833,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191196832,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 24,
+          "item": 1191196835,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 55,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 25,
+          "item": 1191196831,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 57,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 26,
+          "item": 1191196836,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 59,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 27,
+          "item": 1191196840,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 61,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 28,
+          "item": 1191196839,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 63,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 29,
+          "item": 1191196838,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 65,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 30,
+          "item": 1191196781,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 67,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 31,
+          "item": 1191196837,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 69,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 32,
+          "item": 1191196844,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 71,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 33,
+          "item": 1191196843,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 73,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 34,
+          "item": 1191196841,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 75,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 35,
+          "item": 1191196842,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 77,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862286185,
+      "vendors": [
+        1191196861
+      ],
+      "sha256": "07e3f6b038aea688a480f300d32f4415ce718716f823f1a3e3a075b20980da20",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196784,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196777,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196785,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196783,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196782,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196788,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196778,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196787,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196789,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196786,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196792,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196779,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196793,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196791,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196790,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196796,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196780,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196795,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196797,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191196794,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191196830,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191196834,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191196833,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191196832,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 24,
+          "item": 1191196835,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 55,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 25,
+          "item": 1191196831,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 57,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 26,
+          "item": 1191196836,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 59,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 27,
+          "item": 1191196840,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 61,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 28,
+          "item": 1191196839,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 63,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 29,
+          "item": 1191196838,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 65,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 30,
+          "item": 1191196781,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 67,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 31,
+          "item": 1191196837,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 69,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862286186,
+      "vendors": [
+        1191196863
+      ],
+      "sha256": "fc2e72120b34e8933660d57c6f29df6a27943932d65a4582052d515cf5473b43",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191196865,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191196869,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191196868,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191196867,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 4,
+          "item": 1191196870,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 15,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 5,
+          "item": 1191196866,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 17,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 6,
+          "item": 1191196871,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 19,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 7,
+          "item": 1191196875,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 21,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 8,
+          "item": 1191196874,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 23,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 9,
+          "item": 1191196873,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 25,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 10,
+          "item": 1191196876,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 27,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 11,
+          "item": 1191196872,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 29,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 12,
+          "item": 1191196830,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 31,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 13,
+          "item": 1191196834,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 33,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 14,
+          "item": 1191196833,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 35,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 15,
+          "item": 1191196832,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 37,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 16,
+          "item": 1191196835,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 39,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 17,
+          "item": 1191196831,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 41,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 18,
+          "item": 1191196836,
+          "unit_price": 10.0,
+          "currency": 1191186696,
+          "attribute_node": 43,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 19,
+          "item": 1191196840,
+          "unit_price": 50.0,
+          "currency": 1191186696,
+          "attribute_node": 45,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 20,
+          "item": 1191196839,
+          "unit_price": 100.0,
+          "currency": 1191186696,
+          "attribute_node": 47,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 21,
+          "item": 1191196838,
+          "unit_price": 150.0,
+          "currency": 1191186696,
+          "attribute_node": 49,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 22,
+          "item": 1191196781,
+          "unit_price": 250.0,
+          "currency": 1191186696,
+          "attribute_node": 51,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 23,
+          "item": 1191196837,
+          "unit_price": 500.0,
+          "currency": 1191186696,
+          "attribute_node": 53,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    },
+    {
+      "store": 1862287138,
+      "vendors": [
+        1191197812
+      ],
+      "sha256": "a01c4a4181ee234da51537779eef9366cef9b459a7f7fa2106b5b6e2930e1679",
+      "offers": [
+        {
+          "ordinal": 0,
+          "item": 1191197758,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 7,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 1,
+          "item": 1191197756,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 9,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 2,
+          "item": 1191197757,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 11,
+          "qualifier": 0,
+          "final_field": 0
+        },
+        {
+          "ordinal": 3,
+          "item": 1191197760,
+          "unit_price": 10000.0,
+          "currency": 1191186696,
+          "attribute_node": 13,
+          "qualifier": 0,
+          "final_field": 0
+        }
+      ]
+    }
+  ]
+}

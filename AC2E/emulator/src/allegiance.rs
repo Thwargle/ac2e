@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Copyright (C) 2026 Vanquish
-//! Native allegiance profile queries and a constructor-default unaffiliated reply.
-//!
-//! This is not an allegiance hierarchy, swearing, patronage or XP system. The
-//! caller must resolve the self sentinel, authorize the requested player, and
-//! establish that the target has no allegiance before sending this reply.
+//! Native allegiance profiles. `membership` adds consent-based persistent
+//! patron links, hierarchy profiles and private chat; XP pass-up is not inferred.
 //! Matching build-7148 WLib 56000005: QueryAllegianceProfile b400b3 at 41ba4
 //! calls sender 82030036 at fe084. Reply 8203002e reaches 1aa40129 -> 81b6004c
 //! -> 01b50002 -> native UpdateAllegianceProfile (0046a3f0).
 use crate::{script, world::WorldError};
+pub mod membership;
 
 pub const QUERY: u32 = 0x82030005;
 pub const PROFILE: u32 = 0x8203002e;
 /// Verify this interpreted field count against the active matching WLib.
-pub const LAYOUTS: [(usize, u32); 1] = [(0x1b5, 13)];
+pub const LAYOUTS: [(usize, u32); 2] = [(0x1b5, 13),(0x1b1,14)];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Query {

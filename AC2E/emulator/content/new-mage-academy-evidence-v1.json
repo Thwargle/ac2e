@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "quest": "40000111",
+  "sources": {
+    "guides": [
+      "http://ac2hero.e5i5o.com/quest/linvak_killthegurogconjurer.html",
+      "http://ac2hero.e5i5o.com/quest/linvak_rytheransbanedarkfoe.html"
+    ],
+    "wiki": {
+      "url": "http://ac2wiki.info/index.php/Rytheran%27s_Bane",
+      "html_sha256": "cd560c370dd65f6520cdc60ecabcddf14592418702f2906d58ed9ef5b47fe364"
+    },
+    "capture": {
+      "archive_sha256": "137967623130c7beef4571c6a01bf7628ba2439f99e7f26a61d0b27b64b0676a",
+      "path": "c8b7c13acd22a822/pkt_2017-1-21_1485042774_log.pcap"
+    },
+    "sql": {
+      "filename": "Pyreal_DB_Insert_Telepad.sql",
+      "sha256": "c1caa67d0cf0f9ccad017b80f688a5a974bd7adc06c74ee9b2bfd6473543adcd"
+    }
+  },
+  "portal_creates": [
+    {
+      "role": "Academy entrance",
+      "create_iid": "40404c0000000001",
+      "message_sha256": "e43d3b7e14ec2becfa43140d22259228c49e3c5f24fae94c2654e8f8f9f082ed",
+      "entity_2017": "47001154",
+      "entity_installed": "47001451",
+      "visual": "1f00031e",
+      "name_table_2017": "25001b44",
+      "name_key": "d5f43641",
+      "cell": "404c0012",
+      "position": [
+        44.2202262878418,
+        22.567291259765625,
+        294.5118713378906
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pyreal_destination": {
+        "telepad": 1042,
+        "alias": "dng_lug_13a_newmage:",
+        "cell": "07fa01de",
+        "position": [
+          134.0,
+          -136.0,
+          25.6428
+        ],
+        "rotation": [
+          0.707107,
+          0.0,
+          0.0,
+          0.707107
+        ]
+      }
+    },
+    {
+      "role": "Academy surface exit",
+      "create_iid": "4007fa0000000011",
+      "message_sha256": "9a987e59691ba5413a97a342ccb60c72da62249a7710ffcacf1bbf2231e105db",
+      "entity_2017": "47001154",
+      "entity_installed": "47001451",
+      "visual": "1f00031e",
+      "name_table_2017": "25001b44",
+      "name_key": "1becab4f",
+      "cell": "07fa01e0",
+      "position": [
+        140.83485412597656,
+        -136.0,
+        25.799999237060547
+      ],
+      "rotation": [
+        0.7071067690849304,
+        0.0,
+        0.0,
+        -0.7071067690849304
+      ],
+      "pyreal_destination": {
+        "telepad": 1043,
+        "alias": "dng_lug_13a_newmage_exit:",
+        "cell": "404c002a",
+        "position": [
+          106.39,
+          25.56,
+          314.2
+        ],
+        "rotation": [
+          0.92388,
+          0.0,
+          0.0,
+          -0.382683
+        ]
+      }
+    },
+    {
+      "role": "Sanctum entrance",
+      "create_iid": "4007fa0000000012",
+      "message_sha256": "b927c44f6e06526f80d45935dca0e97498339e8b5f8d70f71389fd94ef6e3d2e",
+      "entity_2017": "47001154",
+      "entity_installed": "47001451",
+      "visual": "1f00031e",
+      "name_table_2017": "25001b42",
+      "name_key": "f2591277",
+      "cell": "07fa0136",
+      "position": [
+        45.998992919921875,
+        -6.096346378326416,
+        -4.199999809265137
+      ],
+      "rotation": [
+        0.7071067690849304,
+        0.0,
+        0.0,
+        -0.7071067690849304
+      ],
+      "pyreal_destination": {
+        "telepad": 1044,
+        "alias": "dng_lug_13a_rytheran:",
+        "cell": "07f40173",
+        "position": [
+          -40.0931,
+          -75.8619,
+          2.31261
+        ],
+        "rotation": [
+          0.99999,
+          0.0,
+          0.0,
+          -0.004364
+        ]
+      }
+    },
+    {
+      "role": "Sanctum exit",
+      "create_iid": "4007f4000000000e",
+      "message_sha256": "9b395754452fdede6695e017e0d5ad2151df14559d5bb31cba0dfe32d8f9d615",
+      "entity_2017": "47001154",
+      "entity_installed": "47001451",
+      "visual": "1f00031e",
+      "name_table_2017": "25001b44",
+      "name_key": "300591ce",
+      "cell": "07f4017b",
+      "position": [
+        -60.14529037475586,
+        3.3693084716796875,
+        2.636258363723755
+      ],
+      "rotation": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ],
+  "seal_drop": {
+    "corpse": {
+      "create_iid": "81300000890c4881",
+      "message_sha256": "5b1e90c74cdfb5ef77e428df8681267d4a60921a2a953c21fca2b25d1e3d4836",
+      "visual": "1f000eb3",
+      "name": "Revenant Lictor",
+      "name_table_2017": "250027db",
+      "name_key": "a8607cec",
+      "cell": "07fa010f"
+    },
+    "item": {
+      "name": "Seal of the Academy",
+      "create_iid": "81300000890c48e0",
+      "message_sha256": "8d06281344356a69890b9f4fc181a1a36c53e824596aecf0aa45b8d9bb932580",
+      "container_iid": "81300000890c4881",
+      "entity_2017": "4700187e",
+      "entity_installed": "47001098",
+      "visual": "1f0001cf",
+      "quantity": 1
+    }
+  },
+  "native_effect_quest_ids": {
+    "RytheransBane": "4000007a",
+    "RytheransBaneRhetor": "4000007c",
+    "RytheransBaneSeal": "4000007b",
+    "RytheransReward": "4000007d"
+  },
+  "evidence": [
+    "The 2017 capture places the New Mage Academy entrance in 404c0012 and the surface exit in 07fa01e0. Pyreal telepads 1042 and 1043 identify their destinations. The Sanctum entrance is visible in 07fa0136; telepad 1044 leads into block 07f4.",
+    "A Seal of the Academy is directly contained in a Revenant Lictor corpse in the 2017 capture. This single drop establishes a source, but provides no retail drop percentage.",
+    "The walkthrough credits the seal bearer and current fellows in range when the seal is used. Late arrivals need their own seal. Six Revenant Rhetor kills unlock the separate Sanctum."
+  ],
+  "remaining_steps": [
+    "Enable the Revenant Lictor seal drop with a supported loot rule, and implement the seal-use event that advances eligible nearby fellowship members. No numeric range, loot rate, or native grant script has been recovered.",
+    "Implement the Rytheran's Bane prerequisite and its seal and Rhetor journal progression. Native bestowal effect IDs survive, but their full journal definitions are absent from the recovered catalog."
+  ]
+}

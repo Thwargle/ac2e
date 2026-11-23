@@ -73,7 +73,7 @@ bool FAC2BehaviorData::Decode(uint32 Id,TConstArrayView<uint8> Bytes)
     N=HashCount(R,12);R.Take(int64(N)*12); // mode priorities
     N=HashCount(R,12);
     for(int32 I=0;I<N&&R.Good;++I){uint32 B=R.Word();float Ramp=R.Float();R.Word();Ramps.Add(B,FMath::Clamp(Ramp,0.f,10.f));}
-    N=R.Count(4,4096);R.Take(int64(N)*4);InitialMode=R.Word();
+    N=R.Count(4,4096);for(int32 I=0;I<N&&R.Good;++I)InitialBehaviors.Add(R.Word());InitialMode=R.Word();
     for(const auto& C:Combos)if(C.Layer>=uint32(LayerOrder.Num()))return false;
     return R.End()&&!Combos.IsEmpty();
 }

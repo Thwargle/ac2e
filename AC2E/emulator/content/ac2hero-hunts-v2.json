@@ -1,0 +1,2445 @@
+{
+  "version": 2,
+  "quests": [
+    {
+      "id": 1073742096,
+      "title": "Kill Fang, the Varmint",
+      "text": "Descend into the depths of The Frozen Ravine and kill Fang, the Varmint.",
+      "goal": 1,
+      "targets": [
+        1191188380
+      ],
+      "kill_starters": [
+        1191188384
+      ],
+      "use_starters": [],
+      "level": 48,
+      "xp": 2850000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killfangthevarmit.html",
+          "sha256": "34aa3dc3e849b9ea9238020954b41c221e38c795fba8632f99010eddc60f169c"
+        }
+      ]
+    },
+    {
+      "id": 1073742098,
+      "title": "Kill Malik, the Sadist",
+      "text": "Descend into the depths of the Banderling Delve and kill Malik, the Sadist.",
+      "goal": 1,
+      "targets": [
+        1191188370
+      ],
+      "kill_starters": [
+        1191188369
+      ],
+      "use_starters": [],
+      "level": 43,
+      "xp": 124000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killmalikthesadist.html",
+          "sha256": "f7941b4f008d71cda67988ff8bb3a111fc84a68a2aa0723aef5e659eab2f84a7"
+        }
+      ]
+    },
+    {
+      "id": 1073742100,
+      "title": "Kill Ossein, Digger of Graves",
+      "text": "Descend into the depths of The Ossuary and kill Ossein, Digger of Graves.",
+      "goal": 1,
+      "targets": [
+        1191188382
+      ],
+      "kill_starters": [
+        1191188383
+      ],
+      "use_starters": [],
+      "level": 42,
+      "xp": 103000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killossein.html",
+          "sha256": "64b029154a74affdbca2b831acb859fcccd07bc25a49bed331df86d0de0c3dc8"
+        }
+      ]
+    },
+    {
+      "id": 1073742095,
+      "title": "Kill the Eli Watcher",
+      "text": "Descend into the depths of the Steam Caverns and kill the Eli Watcher.",
+      "goal": 1,
+      "targets": [
+        1191188371
+      ],
+      "kill_starters": [
+        1191188372
+      ],
+      "use_starters": [],
+      "level": 38,
+      "xp": 48000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killtheeliwatcher.html",
+          "sha256": "524b1864fd94aef28c5eeb165ae25815a620a3867877fffb5672002efe4cb172"
+        }
+      ]
+    },
+    {
+      "id": 1073742097,
+      "title": "Kill the Gurog Conjurer",
+      "text": "Descend into the depths of the New Mage Academy and kill the Gurog Conjurer.",
+      "goal": 1,
+      "targets": [
+        1191188378
+      ],
+      "kill_starters": [
+        1191188425
+      ],
+      "use_starters": [],
+      "level": 46,
+      "xp": 610000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killthegurogconjurer.html",
+          "sha256": "11a7a35ba77c2f86120ed5e32cd0a5935c7a18657dfe044a13d319b46df52865"
+        }
+      ]
+    },
+    {
+      "id": 1073742099,
+      "title": "Kill the Gurog Henchman",
+      "text": "Descend into the depths of the Golden Age Reliquary and kill the Master Gurog Henchman.",
+      "goal": 1,
+      "targets": [
+        1191188375
+      ],
+      "kill_starters": [
+        1191188376
+      ],
+      "use_starters": [],
+      "level": 40,
+      "xp": 238000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killthemasterguroghenchman.html",
+          "sha256": "e767722bead7c998d1d4e8309f2aff537639071c0845c9de44b95419d7390538"
+        }
+      ]
+    },
+    {
+      "id": 1073742067,
+      "title": "Kill Chief Benamu",
+      "text": "Descend into the depths of the Water Temple dungeon and kill Chief Benamu.",
+      "goal": 1,
+      "targets": [
+        1191188159
+      ],
+      "kill_starters": [
+        1191188162
+      ],
+      "use_starters": [],
+      "level": 18,
+      "xp": 2000,
+      "limit_seconds": 3600,
+      "repeat_seconds": 300,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/omishan_killchiefbenamu.html",
+          "sha256": "e85a14aa9f08bbc0979241eb46e35f068b183151778c7209d4ac9540e1bc8aa0"
+        }
+      ]
+    },
+    {
+      "id": 1073742094,
+      "title": "Kill Cloudburst",
+      "text": "Descend into the depths of the Crystal Caves and kill Cloudburst.",
+      "goal": 1,
+      "targets": [
+        1191188373
+      ],
+      "kill_starters": [
+        1191188374
+      ],
+      "use_starters": [],
+      "level": 43,
+      "xp": 1500000,
+      "limit_seconds": 604800,
+      "repeat_seconds": 604800,
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/linvak_killcloudburst.html",
+          "sha256": "7dc653f4ae634377c1022f7b86bf003b49c0fabcd6f104da6edea81f6f01a571"
+        }
+      ],
+      "policy": "Guide explicitly marks its XP figure as unverified."
+    },
+    {
+      "id": 1073742064,
+      "title": "Kill Sneer",
+      "text": "Descend into the depths of the Fiery Crypt dungeon and kill Sneer, Drudge Captain.",
+      "goal": 1,
+      "targets": [
+        1191188132
+      ],
+      "kill_starters": [
+        1191188134
+      ],
+      "use_starters": [],
+      "level": 21,
+      "xp": 24000,
+      "limit_seconds": 7200,
+      "repeat_seconds": 7200,
+      "evidence": [
+        {
+          "url": "http://ac2wiki.info/index.php/Kill_Captain_Sneer",
+          "sha256": "994cb4cd438feae32bf7d718c824f518f50afe7928516b32d6e8ca4fb951a4b6"
+        },
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/osteth_killcaptainsneer.html",
+          "sha256": "b3ef5b117320c48a11edc186726de343192341e8c2670b1fa609ffc28419c488"
+        }
+      ],
+      "policy": "Use the individual AC2Wiki timers, reward and eligibility where the two guides disagree."
+    },
+    {
+      "id": 1073742368,
+      "title": "Thornling Harasser Raid",
+      "text": "Kill 10 Thornling Harassers.",
+      "goal": 10,
+      "targets": [
+        1191190424
+      ],
+      "kill_starters": [
+        1191190538
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 638855,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillThornlingHarasser",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742370,
+      "title": "Thornling Punisher Raid",
+      "text": "Kill Thornling Punishers.",
+      "goal": 10,
+      "targets": [
+        1191190426
+      ],
+      "kill_starters": [
+        1191190525
+      ],
+      "use_starters": [],
+      "level": 46,
+      "xp": 666590,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillThornlingPunisher",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        },
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_thornlingpunisherraid.html",
+          "sha256": "81de9d83d0434ceeacaf91ca3c35714e1db59091fb027355217440a0898475f8"
+        }
+      ]
+    },
+    {
+      "id": 1073742356,
+      "title": "Olthoi Worker Nymph Raid",
+      "text": "Kill 10 Olthoi Nymph Workers.",
+      "goal": 10,
+      "targets": [
+        1191190203
+      ],
+      "kill_starters": [
+        1191190511
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 0,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillOlthoiNymphWorker",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        },
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_olthoiworkernymphraid.html",
+          "sha256": "eb6ee89025715242e31ea5186a66a9e472f630f40d28cbc8e5c3377d3e4446ef"
+        }
+      ],
+      "xp_basis_points": 300
+    },
+    {
+      "id": 1073742349,
+      "title": "Outcast Mu-miyah Raid",
+      "text": "Kill 10 Outcast Mu-miyah.",
+      "goal": 10,
+      "targets": [
+        1191190411,
+        1191190551
+      ],
+      "kill_starters": [
+        1191190504
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 0,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillMumiyahOutcast",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_outcastmumiyahraid.html",
+          "sha256": "98136cb2b24baccf43845c52f59db635ffe63305b39e484914dfc7f2c8625d3a"
+        }
+      ],
+      "xp_basis_points": 50
+    },
+    {
+      "id": 1073742365,
+      "title": "Monad Spawn Raid",
+      "text": "Kill 10 Monad Spawn.",
+      "goal": 10,
+      "targets": [
+        1191190422
+      ],
+      "kill_starters": [
+        1191190521
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 3300300,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillSpawnMonad",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742346,
+      "title": "Ancient Dark Mu-miyah Raid",
+      "text": "Kill 10 Ancient Dark Mu-miyah.",
+      "goal": 10,
+      "targets": [
+        1191190407
+      ],
+      "kill_starters": [
+        1191190501
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 834154,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillMumiyahDarkAncient",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742341,
+      "title": "Rime Golem Raid",
+      "text": "Kill 10 Rime Golems.",
+      "goal": 10,
+      "targets": [
+        1191190401,
+        1191190545
+      ],
+      "kill_starters": [
+        1191190481
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 717973,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillGolemRime",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742336,
+      "title": "Bone Golem Raid",
+      "text": "Kill 10 Bone Golems.",
+      "goal": 10,
+      "targets": [
+        1191190397,
+        1191190541,
+        1191191116,
+        1191191117,
+        1191191118,
+        1191191120,
+        1191191121,
+        1191198986
+      ],
+      "kill_starters": [
+        1191190477
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 3332952,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillGolemBone",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742355,
+      "title": "Olthoi Harvester Raid",
+      "text": "Kill 10 Olthoi Harvesters.",
+      "goal": 10,
+      "targets": [
+        1191190348
+      ],
+      "kill_starters": [
+        1191190509
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 568212,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillOlthoiHarvester",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742342,
+      "title": "Lumna Niffis Raid",
+      "text": "Kill 10 Lumna Niffis.",
+      "goal": 10,
+      "targets": [
+        1191190412
+      ],
+      "kill_starters": [
+        1191190505
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 3332952,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillNiffisLumna",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742350,
+      "title": "Shock Reaper Raid",
+      "text": "Kill 10 Shock Reapers.",
+      "goal": 10,
+      "targets": [
+        1191190414,
+        1191190555
+      ],
+      "kill_starters": [
+        1191190512
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 660177,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillReaperShock",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742351,
+      "title": "Veinu Niffis Raid",
+      "text": "Kill 10 Veinu Niffis.",
+      "goal": 10,
+      "targets": [
+        1191190413
+      ],
+      "kill_starters": [
+        1191190506
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 4024114,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillNiffisVeinu",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742371,
+      "title": "Thornling Torturer Raid",
+      "text": "Kill 10 Thornling Torturers.",
+      "goal": 10,
+      "targets": [
+        1191190427
+      ],
+      "kill_starters": [
+        1191190526
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 568212,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillThornlingTorturer",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742353,
+      "title": "Olthoi Gardener Raid",
+      "text": "Kill 10 Olthoi Gardeners.",
+      "goal": 10,
+      "targets": [
+        1191190346,
+        1191191964
+      ],
+      "kill_starters": [
+        1191190508
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 660177,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillOlthoiGardener",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742366,
+      "title": "Spawn Simulacre Raid",
+      "text": "Kill 10 Spawn Simulacre.",
+      "goal": 10,
+      "targets": [
+        1191190423
+      ],
+      "kill_starters": [
+        1191190522
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 717973,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillSpawnSimulacre",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742374,
+      "title": "Acid Spurt Raid",
+      "text": "Kill 10 Acid Spurts.",
+      "goal": 10,
+      "targets": [
+        1191190430,
+        1191196596
+      ],
+      "kill_starters": [
+        1191190529
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 0,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillWispAcidSpurt",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_acidspurtraid.html",
+          "sha256": "a23612549c6b48974178582889e1ebb5848956d667ad1ef1929052234acc2576"
+        }
+      ],
+      "xp_basis_points": 200
+    },
+    {
+      "id": 1073742403,
+      "title": "Swamp Gas Raid",
+      "text": "Kill 10 Swamp Gasses.",
+      "goal": 10,
+      "targets": [
+        1191190436
+      ],
+      "kill_starters": [
+        1191190535
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 660177,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillWispSwampGas",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742332,
+      "title": "Dune Armoredillo Raid",
+      "text": "Kill 10 Dune Armoredillos.",
+      "goal": 10,
+      "targets": [
+        1191190395
+      ],
+      "kill_starters": [
+        1191190475
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 3589867,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillArmoredilloDune",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742343,
+      "title": "Deranged Lasher Raid",
+      "text": "Kill 10 Deranged Lashers.",
+      "goal": 10,
+      "targets": [
+        1191190404,
+        1191190547
+      ],
+      "kill_starters": [
+        1191190498
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 607021,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillLasherDeranged",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742364,
+      "title": "Effigy Spawn Raid",
+      "text": "Kill 10 Effigy Spawn.",
+      "goal": 10,
+      "targets": [
+        1191190420,
+        1191192627,
+        1191192628
+      ],
+      "kill_starters": [
+        1191190519
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 666590,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillSpawnEffigy",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_effigyspawnraid.html",
+          "sha256": "f60970e4f40221db5f4e957a29afa40593bb7bfa97627306c90be7d0da66acc9"
+        }
+      ]
+    },
+    {
+      "id": 1073742333,
+      "title": "Bloodfeast Lasher Raid",
+      "text": "Kill 10 Bloodfeast Lashers.",
+      "goal": 10,
+      "targets": [
+        1191190403
+      ],
+      "kill_starters": [
+        1191190483
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 660177,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillLasherBloodfeast",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742378,
+      "title": "Frost Wisp Raid",
+      "text": "Kill 10 Frost Wisps.",
+      "goal": 10,
+      "targets": [
+        1191190434
+      ],
+      "kill_starters": [
+        1191190533
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 764968,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillWispFrost",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742347,
+      "title": "Dread Dark Mu-miyah Raid",
+      "text": "Kill 10 Dread Dark Mu-miyah.",
+      "goal": 10,
+      "targets": [
+        1191190409
+      ],
+      "kill_starters": [
+        1191190502
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 717973,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillMumiyahDarkDread",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742376,
+      "title": "Dust Devil Raid",
+      "text": "Kill 10 Dust Devils.",
+      "goal": 10,
+      "targets": [
+        1191190432
+      ],
+      "kill_starters": [
+        1191190531
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 768964,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillWispDustDevil",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742352,
+      "title": "Olthoi Drone Raid",
+      "text": "Kill 10 Olthoi Drones.",
+      "goal": 10,
+      "targets": [
+        1191190345
+      ],
+      "kill_starters": [
+        1191190507
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 0,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillOlthoiDrone",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        },
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_olthoidroneraid.html",
+          "sha256": "38d59072f70b43b940036478c5180c005389d47c28e7e83b1ef7a358d7e5b465"
+        }
+      ],
+      "xp_basis_points": 300
+    },
+    {
+      "id": 1073742334,
+      "title": "Anguish Crone Raid",
+      "text": "Kill 10 Anguish Crones.",
+      "goal": 10,
+      "targets": [
+        1191190396
+      ],
+      "kill_starters": [
+        1191190476
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 607021,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillCroneAnguish",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_incursion.html",
+          "sha256": "7c89b2151ce7a51a8fcb0d555c4838228ef5c08dbe4c214ad030a9d5019baee8"
+        }
+      ],
+      "policy": "The island raid guides support a two-hour reset and commonly require level 50. The index lists monster levels; this quest's player level and reset are inferred."
+    },
+    {
+      "id": 1073742344,
+      "title": "Frothing Mosswart Raid",
+      "text": "Kill 10 Frothing Mosswarts.",
+      "goal": 10,
+      "targets": [
+        1191190405,
+        1191190572
+      ],
+      "kill_starters": [
+        1191190499
+      ],
+      "use_starters": [],
+      "level": 50,
+      "xp": 666590,
+      "limit_seconds": 10800,
+      "repeat_seconds": 7200,
+      "package": "QuestKillMosswartFrothing",
+      "evidence": [
+        {
+          "url": "http://ac2hero.e5i5o.com/quest/arramora_frothingmosswartraid.html",
+          "sha256": "feb20951ed61153e987bd9157f4363a6a6a070ceedb62f25c6459a5a2c858cd7"
+        }
+      ]
+    }
+  ],
+  "camps": [
+    {
+      "id": 9313684822448807936,
+      "region": "Arramora",
+      "land": [
+        502.06827443950453,
+        1151.8945102225991
+      ],
+      "roster": [
+        1191190538
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190424,
+      "anchor_land": [
+        504.315914,
+        1157.45761335
+      ]
+    },
+    {
+      "id": 9313684822448808448,
+      "region": "Arramora",
+      "land": [
+        502.127613990046,
+        1128.2811573252845
+      ],
+      "roster": [
+        1191190525
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190426,
+      "anchor_land": [
+        504.17973485,
+        1133.91931305
+      ]
+    },
+    {
+      "id": 9313684822448804864,
+      "region": "Arramora",
+      "land": [
+        517.4282608772934,
+        1258.1316345
+      ],
+      "roster": [
+        1191190511
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190203,
+      "anchor_land": [
+        522.6244133,
+        1255.1316345
+      ]
+    },
+    {
+      "id": 9313684822448803072,
+      "region": "Arramora",
+      "land": [
+        540.6548594722096,
+        1148.527739179606
+      ],
+      "roster": [
+        1191190504
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190411,
+      "anchor_land": [
+        534.6877281,
+        1147.9005684
+      ]
+    },
+    {
+      "id": 9313684822448807168,
+      "region": "Arramora",
+      "land": [
+        502.32597122955576,
+        1165.85700722778
+      ],
+      "roster": [
+        1191190521
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190422,
+      "anchor_land": [
+        504.8616808,
+        1171.29485395
+      ]
+    },
+    {
+      "id": 9313684822448802304,
+      "region": "Arramora",
+      "land": [
+        545.950430127246,
+        1217.546521847968
+      ],
+      "roster": [
+        1191190501
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190407,
+      "anchor_land": [
+        550.11838035,
+        1221.86256065
+      ]
+    },
+    {
+      "id": 9313684822448801024,
+      "region": "Arramora",
+      "land": [
+        529.4681605186634,
+        1235.222892676057
+      ],
+      "roster": [
+        1191190481
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190401,
+      "anchor_land": [
+        533.996418,
+        1239.15924685
+      ]
+    },
+    {
+      "id": 9313684822448799744,
+      "region": "Arramora",
+      "land": [
+        511.0016353337503,
+        1191.859986236245
+      ],
+      "roster": [
+        1191190477
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190397,
+      "anchor_land": [
+        515.8557373,
+        1195.38669775
+      ]
+    },
+    {
+      "id": 9313684822448804608,
+      "region": "Arramora",
+      "land": [
+        494.17480898189376,
+        1147.3412629842662
+      ],
+      "roster": [
+        1191190509
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190348,
+      "anchor_land": [
+        497.6162676,
+        1152.25617525
+      ]
+    },
+    {
+      "id": 9313684822448801280,
+      "region": "Arramora",
+      "land": [
+        559.8982416471357,
+        1233.6543283618469
+      ],
+      "roster": [
+        1191190505
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190412,
+      "anchor_land": [
+        564.3571106,
+        1237.669112
+      ]
+    },
+    {
+      "id": 9313684822448803328,
+      "region": "Arramora",
+      "land": [
+        556.5465691418808,
+        1157.676460741286
+      ],
+      "roster": [
+        1191190512
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190414,
+      "anchor_land": [
+        560.4032948,
+        1162.2727274
+      ]
+    },
+    {
+      "id": 9313684822448803584,
+      "region": "Arramora",
+      "land": [
+        568.703835703701,
+        1216.8400054812582
+      ],
+      "roster": [
+        1191190506
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190413,
+      "anchor_land": [
+        572.47975805,
+        1221.50288125
+      ]
+    },
+    {
+      "id": 9313684822448808704,
+      "region": "Arramora",
+      "land": [
+        477.6747548922656,
+        1163.880826770615
+      ],
+      "roster": [
+        1191190526
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190427,
+      "anchor_land": [
+        483.47030985,
+        1162.3279125
+      ]
+    },
+    {
+      "id": 9313684822448804096,
+      "region": "Arramora",
+      "land": [
+        485.43556971108774,
+        1247.6545629897162
+      ],
+      "roster": [
+        1191190508
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190346,
+      "anchor_land": [
+        489.04645985,
+        1252.44637605
+      ]
+    },
+    {
+      "id": 9313684822448807424,
+      "region": "Arramora",
+      "land": [
+        552.4742524707146,
+        1150.6071347209356
+      ],
+      "roster": [
+        1191190522
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190423,
+      "anchor_land": [
+        546.95122335,
+        1148.26274795
+      ]
+    },
+    {
+      "id": 9313684822448809472,
+      "region": "Arramora",
+      "land": [
+        480.86962454559716,
+        1230.8581627449066
+      ],
+      "roster": [
+        1191190529
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190430,
+      "anchor_land": [
+        486.73851015,
+        1229.6106926
+      ]
+    },
+    {
+      "id": 9313684822448816896,
+      "region": "Arramora",
+      "land": [
+        543.1698750260631,
+        1163.7350377112887
+      ],
+      "roster": [
+        1191190535
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190436,
+      "anchor_land": [
+        541.8201687,
+        1169.5812581
+      ]
+    },
+    {
+      "id": 9313684822448798720,
+      "region": "Arramora",
+      "land": [
+        574.5651141230614,
+        1179.6229677646008
+      ],
+      "roster": [
+        1191190475
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190395,
+      "anchor_land": [
+        579.6534027,
+        1182.80248335
+      ]
+    },
+    {
+      "id": 9313684822448801536,
+      "region": "Arramora",
+      "land": [
+        582.74784255,
+        1211.52170675
+      ],
+      "roster": [
+        1191190498
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190404,
+      "anchor_land": [
+        576.74784255,
+        1211.52170675
+      ]
+    },
+    {
+      "id": 9313684822448806912,
+      "region": "Arramora",
+      "land": [
+        498.2736697725993,
+        1211.9086308604954
+      ],
+      "roster": [
+        1191190519
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190420,
+      "anchor_land": [
+        503.8367729,
+        1209.6609913
+      ]
+    },
+    {
+      "id": 9313684822448798976,
+      "region": "Arramora",
+      "land": [
+        520.3885343923274,
+        1177.99839388991
+      ],
+      "roster": [
+        1191190483
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190403,
+      "anchor_land": [
+        525.4205578,
+        1181.2662281
+      ]
+    },
+    {
+      "id": 9313684822448810496,
+      "region": "Arramora",
+      "land": [
+        550.998675565734,
+        1201.5219453181062
+      ],
+      "roster": [
+        1191190533
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190434,
+      "anchor_land": [
+        546.0837633,
+        1198.0804867
+      ]
+    },
+    {
+      "id": 9313684822448802560,
+      "region": "Arramora",
+      "land": [
+        550.955698139625,
+        1194.313392240285
+      ],
+      "roster": [
+        1191190502
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190409,
+      "anchor_land": [
+        555.0476883,
+        1198.70151445
+      ]
+    },
+    {
+      "id": 9313684822448809984,
+      "region": "Arramora",
+      "land": [
+        496.1895395076726,
+        1205.60311596009
+      ],
+      "roster": [
+        1191190531
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190432,
+      "anchor_land": [
+        491.1575161,
+        1202.33528175
+      ]
+    },
+    {
+      "id": 9313684822448803840,
+      "region": "Arramora",
+      "land": [
+        551.825677598046,
+        1245.5906475283596
+      ],
+      "roster": [
+        1191190507
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190345,
+      "anchor_land": [
+        555.51964645,
+        1250.31871205
+      ]
+    },
+    {
+      "id": 9313684822448799232,
+      "region": "Arramora",
+      "land": [
+        495.36943721466974,
+        1159.4535582291755
+      ],
+      "roster": [
+        1191190476
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190396,
+      "anchor_land": [
+        500.34366265,
+        1162.80871565
+      ]
+    },
+    {
+      "id": 9313684822448801792,
+      "region": "Arramora",
+      "land": [
+        479.94324512093834,
+        1176.7793876386236
+      ],
+      "roster": [
+        1191190499
+      ],
+      "capacity": 1,
+      "polygon": [
+        [
+          459.0,
+          1183.2
+        ],
+        [
+          489.6,
+          1122.0
+        ],
+        [
+          581.4000000000001,
+          1162.8
+        ],
+        [
+          584.46,
+          1225.02
+        ],
+        [
+          566.1,
+          1254.6
+        ],
+        [
+          490.62,
+          1270.92
+        ]
+      ],
+      "regeneration_ms": 180000,
+      "anchor_entity": 1191190405,
+      "anchor_land": [
+        473.94415895,
+        1176.6746732
+      ]
+    }
+  ],
+  "namespace": 9313684822448668672,
+  "town_exclusions": [
+    {
+      "name": "Arwic",
+      "land": [
+        957.78,
+        1467.78
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Cavendo",
+      "land": [
+        1310.7,
+        1185.24
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Cragstone",
+      "land": [
+        892.5,
+        1347.42
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Kehan",
+      "land": [
+        1138.32,
+        1458.6
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Millstone",
+      "land": [
+        817.02,
+        1403.52
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Molwirth",
+      "land": [
+        1029.18,
+        1166.88
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Rithwic",
+      "land": [
+        1058.76,
+        1270.92
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Shoushi",
+      "land": [
+        1233.18,
+        1126.08
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Ankoro",
+      "land": [
+        1753.38,
+        1315.8
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Hakata",
+      "land": [
+        1789.08,
+        1106.7
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Ikeras",
+      "land": [
+        1658.52,
+        1125.06
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Mayou",
+      "land": [
+        1480.02,
+        967.98
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Rakani",
+      "land": [
+        1588.1399999999999,
+        1306.62
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Shinoko",
+      "land": [
+        1727.88,
+        974.1
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Zu",
+      "land": [
+        1770.7199999999998,
+        1185.24
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Archovas",
+      "land": [
+        563.0400000000001,
+        971.04
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Gurokora",
+      "land": [
+        622.2,
+        732.36
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Keidelur",
+      "land": [
+        873.12,
+        835.38
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Linvak Tukal",
+      "land": [
+        699.72,
+        914.94
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Ondekodo",
+      "land": [
+        700.74,
+        819.0600000000001
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Palisade",
+      "land": [
+        379.44000000000005,
+        980.22
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Whitebay",
+      "land": [
+        973.08,
+        803.76
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Skyport approach",
+      "land": [
+        1375.98,
+        703.8
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Jethric Outpost",
+      "land": [
+        1550.4,
+        693.6
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Greenstone",
+      "land": [
+        1535.1,
+        513.06
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Aerie",
+      "land": [
+        1483.08,
+        625.26
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Fort Strathelar",
+      "land": [
+        1418.82,
+        492.65999999999997
+      ],
+      "radius_m": 220
+    },
+    {
+      "name": "Arramora landing",
+      "land": [
+        519.1800000000001,
+        1141.38
+      ],
+      "radius_m": 220
+    }
+  ],
+  "templates": {
+    "1191190475": {
+      "name": "Plated Dune Armoredillo",
+      "visual": 520098160
+    },
+    "1191190476": {
+      "name": "Wanton Anguish Crone",
+      "visual": 520098162
+    },
+    "1191190477": {
+      "name": "Indomitable Bone Golem",
+      "visual": 520098224
+    },
+    "1191190481": {
+      "name": "Heimal Rime Golem",
+      "visual": 520098168
+    },
+    "1191190483": {
+      "name": "Ravenous Bloodfeast Lasher",
+      "visual": 520098172
+    },
+    "1191190498": {
+      "name": "Predatory Deranged Lasher",
+      "visual": 520098173
+    },
+    "1191190499": {
+      "name": "Wildly Frothing Mosswart",
+      "visual": 520098178
+    },
+    "1191190501": {
+      "name": "Hallesin the Pilgrim",
+      "visual": 520098183
+    },
+    "1191190502": {
+      "name": "Tattered Mu-miyah Wayfarer",
+      "visual": 520098230
+    },
+    "1191190504": {
+      "name": "Essorin the Wandering Nomad",
+      "visual": 520098185
+    },
+    "1191190505": {
+      "name": "Iridescent Lumna Niffis",
+      "visual": 520098187
+    },
+    "1191190506": {
+      "name": "Lustrous Veinu Niffis",
+      "visual": 520098188
+    },
+    "1191190507": {
+      "name": "Untiring Olthoi Drone",
+      "visual": 520098190
+    },
+    "1191190508": {
+      "name": "Milling Olthoi Gardener",
+      "visual": 520098191
+    },
+    "1191190509": {
+      "name": "Industrious Olthoi Harvester",
+      "visual": 520098192
+    },
+    "1191190511": {
+      "name": "Droning Olthoi Worker Nymph",
+      "visual": 520098195
+    },
+    "1191190512": {
+      "name": "Jolted Shock Reaper",
+      "visual": 520098199
+    },
+    "1191190519": {
+      "name": "Probing Effigy Spawn",
+      "visual": 520098211
+    },
+    "1191190521": {
+      "name": "Glowering Monad Spawn",
+      "visual": 520098213
+    },
+    "1191190522": {
+      "name": "Monitor Spawn Simulacre",
+      "visual": 520098214
+    },
+    "1191190525": {
+      "name": "Diabolical Thornling Punisher",
+      "visual": 520098216
+    },
+    "1191190526": {
+      "name": "Merciless Thornling Torturer",
+      "visual": 520098217
+    },
+    "1191190529": {
+      "name": "Noxious Acid Spurt",
+      "visual": 520098126
+    },
+    "1191190531": {
+      "name": "Twister",
+      "visual": 520098124
+    },
+    "1191190533": {
+      "name": "Snow Brume",
+      "visual": 520098128
+    },
+    "1191190535": {
+      "name": "Pestilent Swamp Gas",
+      "visual": 520098127
+    },
+    "1191190538": {
+      "name": "Demonic Thornling Harasser",
+      "visual": 520098235
+    }
+  }
+}

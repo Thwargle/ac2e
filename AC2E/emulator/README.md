@@ -176,7 +176,7 @@ the AC2_Rusted Rust client, `ac2 --version 7230`). It includes the version-6
 GameplayOptionsProfile table, which the original 7148 executable cannot parse.
 
 ```sh
-ac2e serve --game-data <7230 DATs> --initialize-ui true --training-kit false \
+ac2e serve --game-data <7230 DATs> --initialize-ui true \
     --content <prepared world> ...
 ```
 
@@ -259,28 +259,24 @@ Exact addresses, identities, policies, test boundaries and open work:
 - [Checksum generation and reliability](docs/crypto-evidence.md)
 - [World entry, movement, persistence and native observations](docs/world-evidence.md)
 
-## Development gameplay profile
+## Gameplay profile
 
-`serve-training --game-data PATH` selects the bundled starter encounter, initialized
-HUD, once-per-character development hand item and an authored nearby lifestone.
-The preset enables development binding, native Recall skill use, `@recall` and
-bound resurrection, plus an authored gateway to a retained human bootcamp exit
-telepad. The training pack includes the base world placements. Binding grants the locked development Recall skill for use
-from the skill list or hotbar. Add the normal account, bind
-and data options as needed. The rules and placement are embedded, so this preset
-does not depend on launching from the emulator directory. It is an authored
-development slice; full original progression and native acceptance remain open.
+The development training mode has been removed. `serve --game-data PATH`
+starts normal gameplay; `serve-training` and `--training-kit` are no longer accepted.
+Login grants only the racial starter equipment and basic skills, without the
+extra supply pack, training-only attack grant, or automatic practice-quest enrollment.
+Shelter Drudges give needed quest tools/glyphs and otherwise use normal corpse
+loot, rather than automatic equipment/potion gifts. Crafting, vendors, travel,
+and optional NPC quests remain available. Historical training grant records
+still replay so existing characters retain their earned and already-granted items.
 
-When its target encounters are present, this preset also accepts Training Grounds
-into the native quest journal. Three qualifying kills unlock `@quest claim` for
-a once-only 120 XP / 10 gold reward. `@quest` reports status. Training encounters
-can grant unstacked health potions; use restores up to 25 health and consumes the
-item atomically. The learned human Ease Suffering skill (`55`) provides the
-separate 30-health / 10-vigor development heal with an eight-second cooldown.
-Original quest/loot definitions and the full native skill-effect system are not
-implemented by these authored profiles.
+`--content world` loads bundled placements and `--encounters world` loads the
+bundled encounter rules. The launcher prepares content against the configured
+DAT folder and passes the resulting manifest explicitly. The real Shelter Hold
+quest starts through its Guard; optional practice lessons start through the
+mentor. Neither is a server mode.
 
-An explicit development encounter loop is available with `--content training
+An explicit development encounter loop is available with `--content world
 --initialize-ui true --encounters content/development-encounters.tsv` alongside
 the normal game-data/account/bind/data options. It connects native attack targets
 to server health/vigor changes, stationary retaliation, XP/gold rewards, levels,
@@ -394,7 +390,7 @@ and capture limits are recorded in [world evidence](docs/world-evidence.md).
 
 ## Training merchants, crafting and groups
 
-`serve-training` (and `serve --game-data`) loads 15,127 placed objects: the 247
+`serve --game-data` loads 15,127 placed objects: the 247
 base placements, 525 actors from the older captures, 14,340 objects from the
 2012–2017 retail captures and 15 authored training objects. There are exits in the start and corridor rooms,
 an outdoor return gateway, quartermasters, clickable training mentors and four
@@ -411,9 +407,11 @@ a fresh nearby shop context. Tallow is sold as a 100-unit bundle. Consignment
 listing/escrow remains unfinished and is explicitly rejected without charging a fee.
 
 The native crafting panel now receives the training skill and two potion recipes.
-Crafting consumes one Mucor Mushroom and a complete 100-unit Tallow bundle, matching
-the actual ingredient requirements, and grants one potion atomically. The
-`@craft health` / `@craft vigor` fallback uses those same rules. Unrestricted training
+Potion crafting consumes one Mucor Mushroom and 100 Tallow. The selected
+Tallow stack is used first, then other compatible stacks in the backpack. The
+potion and any leftover Tallow are committed together, including when the craft
+credits Potion Practice. The `@craft health` and `@craft vigor` fallbacks use
+the same rules. Unrestricted training
 entitlement, guaranteed success, prices and lack of crafting XP remain authored
 policy. Full original crafting rules and native client acceptance remain incomplete. Health/vigor potions restore up to 25 of their vital and share
 a five-second use cooldown.
@@ -523,12 +521,10 @@ when reopening a store that has accepted the follow-up quest.
 
 ### Training conversations and racial round trips
 
-Use a training mentor normally to progress the two authored lessons. Nearby
-players may ask `@mentor help`, `gear`, `combat`, `healing`, `supplies`,
-`crafting`, `travel` or `quests` for native NPC speech. Topic requests require
-a visible mentor in the same cell within four metres and a living player out
-of combat. This uses the supported native speech/use-completion presentation;
-a branching dialogue-choice window is not implemented.
+Use a training mentor normally to accept and progress the optional authored
+lessons. These use native NPC speech and use-completion presentation; a branching
+dialogue-choice window is not implemented. The training-mode `@mentor` shortcut
+has been removed.
 
 Human, Lugian and Tumerok starting hubs now each have three simultaneous Idol
 Spawn practice targets, a mentor, a quartermaster and a lifestone. The Lugian

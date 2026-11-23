@@ -7,8 +7,10 @@ UCLASS()
 class UAC2CharacterMovement : public UCharacterMovementComponent
 {
     GENERATED_BODY()
+    friend class FAC2AnimationContinuityTest;
 public:
     FAC2MotionValues Native;
+    FAC2MotionValues GroundNative;
     double WaterLevel=0;
     float WaterDepthOffset=0;
     float Pace=1;

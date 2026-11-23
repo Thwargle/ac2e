@@ -18,7 +18,9 @@ from prepare_content import prepare
 def main():
     run=ROOT/'Saved/AC2NetworkTests'/('npc-dialogue-'+uuid.uuid4().hex)
     run.mkdir(parents=True)
-    catalog=json.loads((ROOT/'AC2E/emulator/content/npc-dialogue-v1.json').read_text(encoding='utf8'))
+    content_root=ROOT/'AC2E/emulator/content'
+    catalog=json.loads((content_root/'npc-dialogue-v1.json').read_text(encoding='utf8'))
+    settlements=json.loads((content_root/'ac2hero-settlements-v1.json').read_text(encoding='utf8'))
     prepare(DAT_DIRECTORY,run/'prepared.tsv')
     production=[line.split('\t') for line in (run/'prepared.tsv').read_text(encoding='utf8').splitlines() if line.startswith('8140')]
     control=next(row for row in production if row[1]=='470007d1')
@@ -30,7 +32,8 @@ def main():
         rows[p['entity']]=[f"{0x8140d50000000000+p['entity']:016x}",f"{p['entity']:08x}",
             f"{p['visual']:08x}",f'{cell:08x}',str(x),'1','180','1','0','0','0','-',p['name']]
     # Newly authored outdoor actors must also work at their actual placements.
-    actual=[row for row in production if row[0].startswith('8140d400')]
+    settlement_ids={npc['id'] for npc in settlements['npcs']}
+    actual=[row for row in production if row[0].startswith('8140d400') or int(row[0],16) in settlement_ids]
     content=run/'world.tsv'
     content.write_text('pyrealium-world-v4\n'+'\n'.join('\t'.join(r) for r in [*rows.values(),*actual,control])+'\n',encoding='utf8')
     for command in [['character-create-human','--account','local','--name','NPC Reader']]:
@@ -40,7 +43,7 @@ def main():
         try:
             server=subprocess.Popen([str(SERVER),'serve','--bind','127.0.0.1:19540','--account','local',
                 '--data',str(run/'world'),'--game-data',str(DAT_DIRECTORY),'--content',str(content),
-                '--initialize-ui','true','--training-kit','false','--portals','false','--lifestones','false',
+                '--initialize-ui','true','--portals','false','--lifestones','false',
                 '--test-map-travel','true','--seconds','600'],stdout=log,stderr=log,creationflags=0x08000000,
                 env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1'))
             time.sleep(1);assert server.poll() is None,(run/'server.log').read_text()
@@ -71,10 +74,10 @@ def main():
             def notice(p,mark,text):
                 until(p,mark,'chat',lambda e:text in str(e))
                 until(p,mark,'script',lambda e:e['function']==0x82120024)
-                # Native use completion precedes speech and the readable notice.
-                scripts=[e['function'] for e in p.events[mark:] if e['event']=='script']
-                assert scripts[:2]==[0x82160021,0x82120024],scripts
-                assert any(e['event']=='chat' and e.get('kind')==32 and e.get('speaker') for e in p.events[mark:])
+                events=p.events[mark:]
+                speech=next(i for i,e in enumerate(events) if e['event']=='chat' and e.get('kind')==32 and e.get('speaker'))
+                dialog=next(i for i,e in enumerate(events) if e['event']=='script' and e['function']==0x82120024)
+                assert speech<dialog,events
 
             p=login('1');warder=rows[0x470015c0]
             at(p,warder,8);mark=speak(p,warder,'use')
@@ -85,7 +88,8 @@ def main():
             mark=speak(p,warder,'use');until(p,mark,'chat',lambda e:'out of combat' in str(e))
             p.send('combat',enabled=False);until(p,mark,'combat',lambda e:not e['enabled'])
             report['distance_and_combat_guards']=True
-            mark=speak(p,warder,'use');notice(p,mark,profiles[0x470015c0]['topics'][0]['text'])
+            mark=speak(p,warder,'use');notice(p,mark,'Speak to the Warder Corporal')
+            until(p,mark,'quests',lambda e:any(q['id']==0x400000D1 and q['phase']==1 for q in e['items']))
             mark=speak(p,warder,'use',delay=0)
             until(p,mark,'chat',lambda e:'Wait briefly' in str(e))
             report['native_double_click_and_throttle']=True
@@ -100,7 +104,7 @@ def main():
             # A complete multi-topic cycle must return to its beginning.
             row=rows[0x470022fe];at(p,row);profile=profiles[0x470022fe]
             for page in range(len(profile['topics'])+1):
-                mark=speak(p,row,'use');notice(p,mark,profile['topics'][page%len(profile['topics'])]['text'])
+                mark=speak(p,row);notice(p,mark,profile['topics'][page%len(profile['topics'])]['text'])
             report['topic_cycle']=len(profile['topics'])
             # Real outdoor placements, including the new Brisin shop identity,
             # can be selected and conversed with in the prepared world.

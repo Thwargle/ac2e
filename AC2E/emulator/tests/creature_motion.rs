@@ -8,7 +8,7 @@ fn installed_population_resolves_native_locomotion_without_uniform_fallbacks() {
     let Ok(data)=std::env::var("AC2_TEST_GAME_DATA") else {return};
     let root=Path::new(env!("CARGO_MANIFEST_DIR"));
     let content=Content::load(&root.join("../data/world/legions-world.tsv"),Path::new(&data)).unwrap();
-    let mut encounters=Encounters::load(Path::new("training"),&content).unwrap();
+    let mut encounters=Encounters::load(Path::new("world"),&content).unwrap();
     encounters.load_motion(&content,Path::new(&data)).unwrap();
     let mut speeds=BTreeMap::<u32,usize>::new();let mut count=0;
     for object in content.objects() {

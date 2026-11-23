@@ -1,6 +1,7 @@
 #pragma once
 #include "AC2MapData.h"
 #include "AC2NativeUI.h"
+#include "AC2RadarData.h"
 class AAC2GameMode;
 
 class FAC2MapUI
@@ -31,9 +32,19 @@ class FAC2MapUI
     bool SmokeHeading(float Yaw,FString& Error) const;
     bool SmokeNetworkTarget(const FString &Id, FString &Error);
     static FIntRect RadarPlacement(const FAC2UILayout &Layout, FIntPoint Display);
+    void SetRadarOptions(uint32 Mask,bool Coordinates) { RadarMask=Mask&63;Coords=Coordinates;Tooltip.Reset(); }
+    uint32 GetRadarMask() const { return RadarMask; }
+    bool ShowCoordinates() const { return Coords; }
+    TFunction<void(bool)> OnCoordinatesChanged;
 
   private:
+    friend class SAC2GameUI;
+#if WITH_DEV_AUTOMATION_TESTS
+    friend class FAC2OptionsTest;
+#endif
     FAC2MapData Data;
+    FAC2RadarData RadarData;
+    uint32 RadarMask=AC2Radar::DefaultMask;
     FAC2NativeUI Native;
     FAC2DatArchive Local;
     TMap<uint32, FString> ButtonTips;
@@ -52,6 +63,7 @@ class FAC2MapUI
     TOptional<FVector2D> OverviewOrigin;
     FVector2D OverviewDragOrigin;
     uint32 Overview = 0, Pressed = 0;
+    uint32 HeadingImage = 0;
     float Heading = 0;
     FVector2D RadarCenter=FVector2D(71,69);
     float RadarRadius=60;
@@ -72,6 +84,7 @@ class FAC2MapUI
         FString Id, Name;
         TWeakObjectPtr<AActor> Actor;
         bool Selected;
+        AC2Radar::FLook Look;
     };
     TArray<FPicture> Pictures;
     TArray<FMarker> Markers;

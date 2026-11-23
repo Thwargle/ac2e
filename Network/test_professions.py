@@ -7,7 +7,7 @@ import time
 import uuid
 import test_crafting as craft
 from test_network import ROOT, SERVER, DAT_DIRECTORY
-from test_gameplay import until
+from test_gameplay import panel_text, until
 VERMIN=str(0x8140000000030B10)
 
 
@@ -40,14 +40,15 @@ def main():
     encounters.write_text(encounters.read_text().replace('300000\t40\t2','300000\t40\t500'))
     with encounters.open('a') as f:f.write('npc\t47000f7e\t20\t1\t1500\t3\t300000\t11\t2\n')
     with content.open('a') as f:
-        f.write(f'{int(VERMIN):016x}\t47000f7e\t1f0004e0\t02990109\t60\t242\t-44.606205\t1\t0\t0\t0\t-\n')
+        # Keep the butchery target clear of the practice spawns and their corpses.
+        f.write(f'{int(VERMIN):016x}\t47000f7e\t1f0004e0\t02990109\t70\t242\t-44.606205\t1\t0\t0\t0\t-\n')
         for n,entity,visual in [(0,0x4700082c,0x1f00065a),(1,0x4700082d,0x1f00056a)]:
             f.write(f'{0x8140000000030B00+n:016x}\t{entity:08x}\t{visual:08x}\t02990109\t60\t240\t-44.606205\t1\t0\t0\t0\t-\n')
     peers=[];server=None
     def start(log):
         s=subprocess.Popen([str(SERVER),'serve','--bind',f'127.0.0.1:{craft.PORT}','--account','local','--data',str(run/'world'),
             '--game-data',str(DAT_DIRECTORY),'--content',str(content),'--encounters',str(encounters),'--initialize-ui','true',
-            '--training-kit','false','--portals','false','--lifestones','false','--test-map-travel','true','--seconds','360'],env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1'),stdout=log,stderr=log,creationflags=0x08000000)
+            '--portals','false','--lifestones','false','--test-map-travel','true','--seconds','360'],env=dict(os.environ,PYREALIUM_UNREAL_LEGIONS_DATA='1'),stdout=log,stderr=log,creationflags=0x08000000)
         time.sleep(1);assert s.poll() is None;return s
     def stop():
         if server and server.poll() is None:(run/'world/stop.request').write_text('stop\n');server.wait(timeout=12)
@@ -80,7 +81,7 @@ def main():
             raised=until(p,mark,'craft_skills')['progress'][0];assert raised['level']==2 and raised['available']==2,raised
             jacket=owned(p,0x47002aed)[-1]
             mark=len(p.events);p.send('examine',id=jacket['id'])
-            panel=until(p,mark,'examination');assert 'Armor: 10' in str(panel) and 'Crafted level: 1' in str(panel),panel
+            panel=until(p,mark,'examination');assert 'Armor: 10' in panel_text(panel) and 'Crafted level: 1' in panel_text(panel),panel
             # A 200-unit refining job consumes the merged supplier materials.
             mark,reply=execute(p,0x6f003315,1,{1:owned(p,0x470010f3)[0]['id'],2:owned(p,0x470010f5)[0]['id']})
             assert reply['error']==0,reply
@@ -110,6 +111,8 @@ def main():
                 if reply['error']==0:break
             assert reply['error']==0
             knife=owned(p,0x47002de8)[-1]['id']
+            craft.at(p,70,243.5)
+            until(p,0,'object',lambda e:e['id']==VERMIN)
             time.sleep(1.6);mark=len(p.events);p.send('use',item=knife,target=VERMIN)
             until(p,mark,'chat',lambda e:'recent corpse' in str(e))
             mark=len(p.events);p.send('attack',id=VERMIN)
@@ -136,7 +139,7 @@ def main():
             until(p,mark,'chat',lambda e:'cannot be dropped' in str(e))
             assert not any(e.get('event')=='inventory_remove' and e.get('id')==survey['id'] for e in p.events[mark:])
             mark=len(p.events);p.send('examine',id=survey['id']);panel=until(p,mark,'examination');assert 'Survey site:' in str(panel)
-            coords=re.search(r'Survey site: ([0-9.]+)([NS]), ([0-9.]+)([EW])',str(panel));assert coords,panel
+            coords=re.search(r'Survey site: ([0-9.]+)([NS]), ([0-9.]+)([EW])',panel_text(panel));assert coords,panel
             north=float(coords[1])*(-1 if coords[2]=='S' else 1);east=float(coords[3])*(-1 if coords[4]=='W' else 1)
             time.sleep(2);mark=len(p.events);p.send('chat',text=f'@maptravel {1020+east*10.2} {1020+north*10.2}',channel='say')
             until(p,mark,'position',lambda e:e['id']==p.id)

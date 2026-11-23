@@ -89,3 +89,8 @@ data/
 .cursor/
 Thumbs.db
 .DS_Store
+
+# Local generated artwork, retail map rasters and terrain tiles
+/output/
+/Docs/Atlas/tiles/
+/Docs/Atlas/terrain.png

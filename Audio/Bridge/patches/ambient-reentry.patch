@@ -1,0 +1,49 @@
+diff --git a/crates/ac2-audio/src/ambient.rs b/crates/ac2-audio/src/ambient.rs
+index 34f92c7..4bc219b 100644
+--- a/crates/ac2-audio/src/ambient.rs
++++ b/crates/ac2-audio/src/ambient.rs
+@@ -335,6 +335,15 @@ impl AmbientSound {
+             while index < self.types.len() {
+                 let desc = &self.types[index];
+                 if !desc.active && desc.timeout_time <= now {
++                    // Correct the stale index in AmbientSound::UseTime (7160):
++                    // its swap-removal can otherwise lose the dominant music
++                    // owner when returning to a previously visited environment.
++                    let last = self.types.len() - 1;
++                    self.current = match self.current {
++                        Some(i) if i == index => None,
++                        Some(i) if i == last => Some(index),
++                        current => current,
++                    };
+                     let mut desc = self.types.swap_remove(index);
+                     desc.destroy(manager);
+                 } else {
+diff --git a/crates/ac2-audio/src/ambient_tests.rs b/crates/ac2-audio/src/ambient_tests.rs
+index 1ac8393..f2a43e0 100644
+--- a/crates/ac2-audio/src/ambient_tests.rs
++++ b/crates/ac2-audio/src/ambient_tests.rs
+@@ -193,6 +193,24 @@ fn the_region_sound_desc_decodes() {
+     }
+ }
+ 
++#[test]
++fn retiring_an_environment_preserves_the_surviving_music_owner() {
++    let sink = RecordingSink::new();
++    let mut manager = SoundManager::new(Box::new(sink.clone()), Arc::new(Musics));
++    let mut ambient = AmbientSound::default();
++    ambient.set_data(Some(data()));
++    update(&mut ambient, &mut manager, 1.0, &[(FOREST, [1.0, 0.0, 0.0])]);
++    update(&mut ambient, &mut manager, 2.0, &[(TOWN, [1.0, 0.0, 0.0])]);
++    ambient.use_time(3.0, &mut manager); // Removes forest; town moves into slot zero.
++    let before = started(&sink).len();
++    update(&mut ambient, &mut manager, 4.0, &[(TOWN, [1.0, 0.0, 0.0])]);
++    assert_eq!(started(&sink).len(), before, "stable environment must not restart its music");
++    update(&mut ambient, &mut manager, 5.0, &[(FOREST, [1.0, 0.0, 0.0])]);
++    assert_eq!(ambient.environment(), Some(0x2900_0001));
++    assert_eq!(ambient.sound_types()[0], FOREST, "returning environment becomes dominant again");
++    assert!(started(&sink).len() > before, "returning forest music starts");
++}
++
+ const CHIMES: u32 = 0x2C00_0004;
+ 
+ /// A quarter-second sound for the intermittent chimes. Retail's `IsPlaying` holds a fire back

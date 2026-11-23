@@ -23,9 +23,10 @@ public:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     bool Requested() const;
     bool Active() const {return Phase!=0 || Requested();}
-    // Never blend an incompletely streamed destination through the entry fade.
-    float CoverOpacity() const {return Requested() || (Phase>0 && Phase<4) ? 1.f : 0.f;}
-    float Opacity() const {return Phase==1?FMath::Min(Age,1.f):Phase==4?0:1;}
+    bool HoldDeparture();
+    float WorldFOVScale() const;
+    float CoverOpacity() const {return DepartureScene ? 0.f : Requested() || (Phase>0 && Phase<4) ? 1.f : 0.f;}
+    float Opacity() const {return !Phase || Phase==4?0.f:Phase==1?FMath::Min(Age,1.f):1.f;}
     float Flash() const {return Phase==3?FMath::Min(Age,1.f):Phase==4?FMath::Max(0.f,1-Age):0;}
     UPROPERTY() TObjectPtr<class UTextureRenderTarget2D> Image;
     UPROPERTY() TObjectPtr<class UMaterialInstanceDynamic> Composite;
@@ -43,6 +44,7 @@ private:
     TUniquePtr<FAC2AssetLibrary> Assets;
     TUniquePtr<FAC2Effects> Effects;
     int32 First=0,Phase=0;
+    bool DepartureScene=false;
     float Position=3,Seed=0,Age=0,Time=0;
     FAC2PortalSounds Sounds;
     TArray<uint32> SoundContexts;

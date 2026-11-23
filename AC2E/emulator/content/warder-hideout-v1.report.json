@@ -1,0 +1,57 @@
+{
+  "existing_outdoor_sha256": "3d26b840e0c6378558fad40228b23de2737ea27f049e47c9dd822794ba0207e3",
+  "groups": [
+    {
+      "capacity": 1,
+      "id": 9313683104461750272,
+      "members": [
+        9313683104461750272
+      ]
+    },
+    {
+      "capacity": 2,
+      "id": 9313683104461750274,
+      "members": [
+        9313683104461750274,
+        9313683104461750275
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313683104461750277,
+      "members": [
+        9313683104461750277
+      ]
+    },
+    {
+      "capacity": 1,
+      "id": 9313683104461750278,
+      "members": [
+        9313683104461750278
+      ]
+    }
+  ],
+  "included": 8,
+  "inferred": false,
+  "manifest_sha256": "1db0aa52709135746bf9922c90e4e8e950bd4bb4cd260f1237f3b4beeb8f2e4f",
+  "native_ground_verified": true,
+  "rejected": [
+    {
+      "entity": 1191186558,
+      "id": 9313683104461750273,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186569,
+      "id": 9313683104461750276,
+      "reason": "captured interior anchor has no clear native walking patch"
+    },
+    {
+      "entity": 1191186569,
+      "id": 9313683104461750279,
+      "reason": "captured interior anchor has no clear native walking patch"
+    }
+  ],
+  "source_sha256": "20f084e8ad55fadc713218b3dee03cd368258f9962640658a8c41b0ec4212889",
+  "version": 1
+}
