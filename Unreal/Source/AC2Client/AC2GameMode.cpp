@@ -845,6 +845,8 @@ void AAC2GameMode::SmokeTick(float Delta)
         FinishSmoke(false, TEXT("Streaming smoke exceeded 150 seconds"));
         return;
     }
+    // Portal arrival holds the pawn until render resources have settled. Start movement checks after release.
+    if (bRevealing || WaitingForExitAnimation) { StageTime = 0; return; }
     if (SmokeStage == 0 && Stream->AllReady() && !bWaiting && StageTime > 2)
     {
         double Z;
@@ -852,7 +854,7 @@ void AAC2GameMode::SmokeTick(float Delta)
             Sky->ObjectCount() == 0 || Stream->SceneryCount() == 0 || Stream->GrassBatchCount() == 0 ||
             !P->HasModel() || Mobs.IsEmpty() || !Stream->GrassDepthReady())
         {
-            FinishSmoke(false, TEXT("Initial walking floor, scenery/grass or native sky missing"));
+            FinishSmoke(false, FString::Printf(TEXT("Initial scene: floor=%d grounded=%d sky=%d scenery=%d grass=%d avatar=%d mobs=%d grassDepth=%d"), Stream->GroundAt(P->GetActorLocation(), Z), P->GetCharacterMovement()->IsMovingOnGround(), Sky->ObjectCount(), Stream->SceneryCount(), Stream->GrassBatchCount(), P->HasModel(), Mobs.Num(), Stream->GrassDepthReady()));
             return;
         }
         UE_LOG(LogTemp, Display, TEXT("AC2 world smoke: walking floor, uploaded grass and native sky PASS"));
