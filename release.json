@@ -1,0 +1,7 @@
+{
+  "product": "ac2-unreal-windows-x64",
+  "version": "0.11.0",
+  "installer": "https://github.com/Thwargle/ac2e/releases/download/v0.11.0/AC2-Unreal-Setup-0.11.0.exe",
+  "bytes": 277339970,
+  "sha256": "76210721f189636431247fc3d481d8d955cd952a1faeec244a0332fd618a9e12"
+}
