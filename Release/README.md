@@ -2,7 +2,7 @@
 
 The public client is the Windows x64 Shipping target. The launcher and game can be installed per user. The launcher stores its DAT folder and update preference in HKCU and launches the game with user-local saves.
 
-Run `Build-Windows.ps1` from PowerShell on a Windows machine with Unreal Engine 5.8, the Visual C++ toolchain, rustup, Python 3, .NET Framework 4.8 and Inno Setup 6. Initialize the submodule first. The script builds the standalone bridges, generates the engine materials, cooks and archives the game, exercises the update verifier, then creates an installer and the matching public page and manifest in `Saved/PublicRelease/<version>/`. The game directory must be dedicated to that build. Supply your data directory when testing the installed game.
+Run `Build-Windows.ps1` from PowerShell on a Windows machine with Unreal Engine 5.8, the Visual C++ toolchain, rustup, Python 3.11 or later, .NET Framework 4.8 and Inno Setup 6. Initialize the submodule first. The script builds the standalone bridges, generates the engine materials, cooks and archives the game, exercises the update verifier, then creates an installer and the matching public page and manifest in `Saved/PublicRelease/<version>/`. The game directory must be dedicated to that build. Supply your data directory when testing the installed game.
 
 Publish the exact installer and checksum under the GitHub release tag `v<version>` in Thwargle/ac2e, then deploy the generated `site` directory to the root of GitHub Pages. The feed uses a version-specific installer URL and is published only after that installer is available. Never replace an existing version with different bytes. Publishing a higher version is what triggers updates for existing players.
 

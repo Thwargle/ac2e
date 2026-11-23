@@ -13,7 +13,7 @@ AC2:Unreal is a Windows client for Asheron’s Call 2 built with Unreal Engine 5
 
 ## What works today
 
-AC2E supports accounts, persistent characters, combat and skills, inventory and corpse loot, crafting, travel, chat, social groups, and playable quest routes. Coverage varies by creature, skill and quest. The atlas distinguishes guide evidence from implemented routes. AC2E and Icefire run different server implementations, so support on one can differ from the other. This is a community preview.
+AC2E supports accounts, persistent characters, combat and skills, inventory and corpse loot, crafting, travel, chat, social groups, and playable quest routes. Coverage varies by creature, skill and quest. The atlas distinguishes guide evidence from implemented routes. AC2E and Icefire run different server implementations, so support on one can differ from the other. This is a community preview. The 0.11.0 installed build passed launcher and update testing. Two extended offline gameplay checks remain open: rain emission at block 5667 and a scripted attack at C654. [Release notes and installer checksum](https://github.com/Thwargle/ac2e/releases/tag/v0.11.0)
 
 - [Client behavior, renderer and controls](Unreal/README.md)
 - [Server setup, gameplay coverage and hosting](AC2E/AC2E-README.md)
