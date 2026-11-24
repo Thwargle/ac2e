@@ -230,7 +230,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let user=0x2000000000000456u64;
         let item=0x8000000000000123u64;
         let mut ctx=Context::new(0,None);
-        ctx.push(u32::MAX,tag::REF).map_err(|_|"Usage target list")?;
+        let target = if std::env::args().nth(3).as_deref() == Some("targeted") { 0x8000000000000789u64 } else { 0 };
+        let targets = if target == 0 { u32::MAX } else {
+            use ac2_script::native::{ntype, NativeObject, ScriptList};
+            vm.refs.create_native(ntype::L_LIST, NativeObject::List(ScriptList { wide: true, items: vec![target] }))
+        };
+        ctx.push(targets,tag::REF).map_err(|_|"Usage target list")?;
         ctx.push64(item,0x84).map_err(|_|"Usage item")?;
         ctx.push64(user,0x84).map_err(|_|"Usage user")?;
         ctx.push(instance,tag::REF).map_err(|_|"Usage instance")?;
@@ -242,7 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e|format!("Cannot pack native UsageDesc: {e:?}"))?;
         println!("{}",serde_json::to_string_pretty(&json!({
             "source":"Installed DAT UsageDesc::37 with class-default WState; no server connection",
-            "user":user.to_string(),"item":item.to_string(),"target":"0",
+            "user":user.to_string(),"item":item.to_string(),"target":target.to_string(),
             "reference":reference.to_bytes()
         }))?);
         return Ok(());

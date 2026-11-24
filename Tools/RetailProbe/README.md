@@ -40,7 +40,7 @@ updating the pinned reference VM.
 `--usage` executes the installed DAT's `UsageDesc::37` constructor with its
 class-default WState, following `CUsageSystem::09` / `WM_Usage::22`. It uses
 synthetic player/object IDs and no target list, as when double-clicking an NPC
-or training stone. It never connects to a server or changes a character.
+or training stone. Append `targeted` after `--usage` to execute the same constructor with one 64-bit target in the native list, as when using a Menhir Glyph on a portal. The same comparison test accepts both outputs. The probe runs offline.
 An interpreter failure returns an error instead of producing a valid oracle.
 
 ```powershell

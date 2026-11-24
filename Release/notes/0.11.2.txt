@@ -1,0 +1,11 @@
+AC2:Unreal 0.11.2 for Windows x64
+
+Human tutorial on Icefire
+
+Drag the Imbued Digging Tool from your backpack onto the Shelter Scout or her name to give it to her. The selected Scout's name now accepts the drop.
+
+Double-click the Menhir Glyph in your backpack, then click the Menhir Portal. The client waits for that click even if you had an enemy selected. Escape or a right-click in the world cancels targeting. Inside the shard room, speak to the Advance Shelter Scout and double-click the Menhir Shard to leave.
+
+The hand-in and glyph requests were tested against Icefire and stock game data. Completion with a fresh character on live Icefire is still unverified.
+
+To update from 0.11.1, open the launcher and choose Check for updates. Players on 0.11.0 can run this installer directly.

@@ -1,4 +1,4 @@
-# AC2:Unreal — DAT client, controller and account frontend (0.11.1)
+# AC2:Unreal — DAT client, controller and account frontend (0.11.2)
 
 [Download the Windows installer and see the update guide](https://thwargle.com/ac2-unreal/).
 

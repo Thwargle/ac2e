@@ -173,12 +173,15 @@ class SAC2GameUI : public SCompoundWidget
     FReply CameraButtonUp(const FPointerEvent& E);
     FReply CameraMouseMove(const FPointerEvent& E);
     void UpdateHover(const FGeometry&,double Time);
+    void DrawWorldLabel(const FString& Text,FVector2D Point,bool Center=false,TOptional<FLinearColor> Color={});
     void BuildPointerFeedback();
     void BuildWorldText();
     TMap<FString,FSlateRect> WorldNameRects;
     bool DamageNumbers=true,ThirdPartyDamage=false,ShowObjectNames=true;
     float ThirdPartyDamageRange=1;
+    FString WorldNameAt(FVector2D Point) const;
     bool WorldClick(FKey Button,bool DoubleClick);
+    FString AppliedItemTarget;
     int32 Filter = 0, Scroll = 0;
     mutable int32 MaxScroll = 0;
     FIntRect ChatBar,ChatThumb,PackBar,PackThumb;
@@ -377,7 +380,7 @@ class SAC2GameUI : public SCompoundWidget
     int32 SelectedOffer=INDEX_NONE,ShopPage=0;
     FString LastShopVendor;
     void UpdatePortrait();
-    void EquipSelected();
+    void EquipSelected(bool PickWorldTarget=false);
     void SelectItem(int32 Index);
     void Bind(const TCHAR *Control, FName Action);
     bool Editing = false, PreviousCursor = false, HealthNumbers = true, VigorNumbers = true, FocusNumbers = true;

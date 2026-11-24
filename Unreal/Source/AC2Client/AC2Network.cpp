@@ -136,6 +136,8 @@ void FAC2Network::SyncInventoryItems()
         // server's bag order assigns cells; equipment does not count as bag space.
         Item->Cell=BagSlots.Contains(Id)?BagSlots[Id]:INDEX_NONE;
     }
+    if (AwaitingItemTarget() && (!BagSlots.Contains(PendingTargetItem) || WornSlots.Contains(PendingTargetItem)))
+        CancelItemTarget();
     for(auto& Item:Profile->Items)
     {
         Item.Equipped=WornSlots.FindRef(Item.NetworkId);
@@ -356,6 +358,7 @@ uint32 FAC2Network::ItemIcon(const FString& Id) const
 }
 void FAC2Network::ClearWorld()
 {
+    CancelItemTarget();
     ServerArrivalEffectStrength = 0;
     RevealingArrivalEffect = false;
     ActiveStoryScene = 0;
@@ -1235,6 +1238,11 @@ void FAC2Network::LaunchStoryMissiles()
 }
 void FAC2Network::UseTarget()
 {
+    if (AwaitingItemTarget())
+    {
+        UseItemOnWorldTarget(TargetId);
+        return;
+    }
     if (IsWorld() && !TargetId.IsEmpty())
     {
         PendingShardUse = TargetId;
@@ -1281,8 +1289,28 @@ void FAC2Network::ActivateShard(const FString& Id, const FString& Recipient)
         }, Model.BehaviorDuration(ShardCameraBehavior));
     }
 }
-void FAC2Network::UseItem(int32 Index, uint32 EquipSlot)
+void FAC2Network::UseItemOnWorldTarget(const FString& Target)
 {
+    if (!AwaitingItemTarget()) return;
+    const auto* Profile = Mode->Characters.Active();
+    const auto* Item = Profile ? Profile->Items.FindByPredicate([&](const auto& I){ return I.NetworkId == PendingTargetItem; }) : nullptr;
+    if (!IsWorld() || Dead || !OwnsInventoryItem(PendingTargetItem) || !Item || Item->Equipped || Item->Cell < 0)
+    {
+        CancelItemTarget();
+        return;
+    }
+    const auto* Object = Objects.Find(Target);
+    if (!Object || !Targetable(Target, **Object)) return;
+
+    auto J = Command(TEXT("use"));
+    J->SetStringField(TEXT("item"), PendingTargetItem);
+    J->SetStringField(TEXT("target"), Target);
+    CancelItemTarget();
+    Send(J);
+}
+void FAC2Network::UseItem(int32 Index, uint32 EquipSlot, bool PickWorldTarget)
+{
+    CancelItemTarget();
     auto P = Mode->Characters.Active();
     if (!IsWorld() || !P || !P->Items.IsValidIndex(Index))
         return;
@@ -1290,6 +1318,14 @@ void FAC2Network::UseItem(int32 Index, uint32 EquipSlot)
     auto D = Mode->CharacterCatalog.Items.Find(I.Definition);
     if (!D)
         return;
+    const auto* ItemObject = Objects.Find(I.NetworkId);
+    const int32 Targets = ItemObject ? (*ItemObject)->UseTargets.Get(D->UseTargets) : D->UseTargets;
+    if (!I.Equipped && !EquipSlot && Targets == 1 &&
+        (PickWorldTarget || TargetId.IsEmpty() || TargetId == TEXT("0") || TargetId == I.NetworkId))
+    {
+        if (!Dead) PendingTargetItem = I.NetworkId;
+        return;
+    }
     // Material hand-ins use the existing targeted-use request. The server owns
     // the recipient, range, quantity and reward checks. Some quest conversations
     // also offer a hand-in when the required item is already in the backpack.
@@ -1346,11 +1382,7 @@ void FAC2Network::UseItem(int32 Index, uint32 EquipSlot)
     else
     {
         auto J = Command(TEXT("use"));
-        const auto* Object=Objects.Find(I.NetworkId);
-        const int32 Targets=Object?(*Object)->UseTargets.Get(D->UseTargets):D->UseTargets;
         if(Targets>1){Mode->Notice=TEXT("This item requires multiple targets.");return;}
-        if(Targets==1 && (TargetId.IsEmpty() || TargetId==TEXT("0") || TargetId==I.NetworkId))
-        {Mode->Notice=TEXT("Select the object to use this item on, then use the item from your backpack.");return;}
         J->SetStringField(TEXT("item"), I.NetworkId);
         J->SetStringField(TEXT("target"), Targets==1 ? TargetId : TEXT("0"));
         Send(J);
@@ -1518,10 +1550,11 @@ void FAC2Network::GiveItem(int32 Index,const FString& Recipient)
     if(I.Equipped){Mode->Notice=TEXT("Move equipped items to your backpack before giving them.");return;}
     if(I.NetworkId.IsEmpty() || I.Quantity<=0 || I.Cell<0)return;
     const auto* Found=Objects.Find(Recipient);
+    const uint32 Category=Found?SelectionLook((*Found)->Entity).Category:0;
     if(Recipient==PlayerId || Recipient==I.NetworkId || !Found || !(*Found)->Placed ||
         !(*Found)->Parent.IsEmpty() || !(*Found)->Actor.IsValid() || (*Found)->Actor->IsHidden() ||
-        (*Found)->Dead || (*Found)->Health==0 ||
-        !(SelectionLook((*Found)->Entity).Category&(AC2Radar::Monsters|AC2Radar::NPCs|AC2Radar::Players)))
+        (*Found)->Dead || ((*Found)->Health==0 && (Category!=AC2Radar::NPCs || (*Found)->MaxHealth>0)) ||
+        !(Category&(AC2Radar::Monsters|AC2Radar::NPCs|AC2Radar::Players)))
     {Mode->Notice=TEXT("That object cannot receive items.");return;}
     auto J=Command(TEXT("give_item"));J->SetStringField(TEXT("id"),I.NetworkId);
     J->SetStringField(TEXT("target"),Recipient);J->SetNumberField(TEXT("from"),I.Cell);
@@ -1597,6 +1630,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
         bool Enter;
         if (J->TryGetBoolField(TEXT("active"), Enter))
         {
+            if (Enter) CancelItemTarget();
             if (Enter && IsWorld() && !Mode->WantsPortalSpace())
                 if (auto* H = HUD(Mode); H && H->PortalEffect) H->PortalEffect->HoldDeparture();
             // Exit precedes the stamped destination. Keep the tunnel up across packet boundaries.
@@ -2245,6 +2279,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     if (Event == TEXT("death"))
     {
         Dead = N(J, TEXT("dead")) != 0;
+        if (Dead) CancelItemTarget();
         if (auto P = Pawn(Mode))
             P->SetDead(Dead);
         if (Dead)
@@ -2385,6 +2420,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     {
         InvalidateExamination(Id);InvalidateExamination(PlayerId);
         AcquisitionSounds.Remove(Id);
+        if (PendingTargetItem == Id) CancelItemTarget();
         InventoryOwnership.Remove(Id);
         RemoveBagSlot(Id);
         WornSlots.Remove(Id);
@@ -2647,6 +2683,7 @@ void FAC2Network::Handle(const TSharedPtr<FJsonObject> &J)
     {
         InvalidateExamination(Id);
         Obj.Placed=false;
+        if (NewInstance) Obj.UseTargets.Reset();
         Obj.Health=-1;Obj.MaxHealth=0;Obj.DamageFX=-1;
         Obj.RadarShape.Reset();Obj.RadarSelectable.Reset();Obj.RadarColor.Reset();
         // Behavior/mode stamps are instance stamps. Retain the create stamp so

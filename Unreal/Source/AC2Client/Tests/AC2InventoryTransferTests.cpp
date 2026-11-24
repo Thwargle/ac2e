@@ -2,6 +2,8 @@
 #include "AC2GameUI.h"
 #include "AC2Network.h"
 #include "AC2WorldGrid.h"
+#include "AC2Explorer.h"
+#include "AC2WorldStream.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -34,8 +36,16 @@ bool FAC2InventoryTransferTest::RunTest(const FString&)
     auto Bag=Event(TEXT("inventory"),Net.PlayerId);Bag->SetArrayField(TEXT("items"),{MakeShared<FJsonValueString>(Item)});
     Bag->SetArrayField(TEXT("equipment"),{});Net.Handle(Bag);
     auto Create=Event(TEXT("object"),Item);Create->SetStringField(TEXT("container"),Net.PlayerId);
-    Create->SetNumberField(TEXT("entity"),0x47001745);Create->SetNumberField(TEXT("quantity"),3);Net.Handle(Create);
-    auto NPC=MakeUnique<FAC2Network::FObject>();NPC->Entity=1191194117; // installed Shelter Sentry
+    Mode->CharacterCatalog.LoadNetworkItem(Mode->DatDirectory,0x47001aed);
+    const auto* IcefireGlyph=Mode->CharacterCatalog.Items.Find(0x47001aed);
+    const bool Icefire=IcefireGlyph && IcefireGlyph->UseTargets==1;
+    const uint32 Tool=Icefire?0x47001af1u:0x47001587u;
+    Create->SetNumberField(TEXT("entity"),Tool);Create->SetNumberField(TEXT("quantity"),3);Net.Handle(Create);
+    const auto* ToolDefinition=Mode->CharacterCatalog.Items.Find(Tool);
+    TestTrue(TEXT("The hand-in uses the active DAT's Imbued Digging Tool"),ToolDefinition && ToolDefinition->Name==TEXT("Imbued Digging Tool"));
+    const uint32 Scout=Icefire?0x47002e03u:0x47001580u;
+    TestEqual(TEXT("Shelter Scout is an NPC in the active DAT"),Net.SelectionLook(Scout).Category,uint32(AC2Radar::NPCs));
+    auto NPC=MakeUnique<FAC2Network::FObject>();NPC->Entity=Scout;NPC->Health=0;
     NPC->Actor=World->SpawnActor<AActor>();NPC->Placed=true;NPC->Cell=Net.Cell;Net.Objects.Add(Recipient,MoveTemp(NPC));
     void* Commands=nullptr;
     if(TestTrue(TEXT("Capture bridge IPC"),FPlatformProcess::CreatePipe(Commands,Net.Write,true)))
@@ -61,12 +71,17 @@ bool FAC2InventoryTransferTest::RunTest(const FString&)
                 UI->OnMouseButtonDown(G,FPointerEvent(0,A,A,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState()));
                 UI->OnMouseMove(G,FPointerEvent(0,B,A,{EKeys::LeftMouseButton},EKeys::Invalid,0,FModifierKeysState()));
                 UI->OnMouseButtonUp(G,FPointerEvent(0,B,B,{},EKeys::LeftMouseButton,0,FModifierKeysState()));};
-            UI->WorldNameRects.Add(Recipient,FSlateRect(780,130,820,170));
+            Net.TargetId=Recipient;
+            UI->DrawWorldLabel(TEXT("Shelter Scout"),FVector2D(800,145),true);
+            UI->WorldNameRects.Add(TEXT("overlapping-name"),FSlateRect(780,130,820,170));
+            TestEqual(TEXT("The visible selected label wins an overlap"),UI->WorldNameAt(End),Recipient);
             UI->HoverObject=TEXT("stale-hover");Drag(End);Check(TEXT("give_item"));
             TestTrue(TEXT("Sending a gift does not remove inventory"),Net.OwnsInventoryItem(Item));
             Net.Objects[Recipient]->Dead=true;Drag(End);
             TestTrue(TEXT("Dead recipient never falls back to a ground drop"),Read().IsEmpty());
-            Net.Objects[Recipient]->Dead=false;Net.Objects[Recipient]->Entity=0x47001745;Drag(End);
+            Net.Objects[Recipient]->Dead=false;Net.Objects[Recipient]->MaxHealth=100;Drag(End);
+            TestTrue(TEXT("Known depleted combat vitals prevent a gift"),Read().IsEmpty());
+            Net.Objects[Recipient]->Entity=0x47001745;Drag(End);
             TestTrue(TEXT("Scenery/item recipient never becomes ground drop"),Read().IsEmpty());
             Net.Objects.Remove(Recipient);Drag(End);
             TestTrue(TEXT("Stale nameplate cannot give or accidentally drop"),Read().IsEmpty());
@@ -88,6 +103,7 @@ bool FAC2InventoryTransferTest::RunTest(const FString&)
         TestTrue(TEXT("Transfer never echoes another request"),Read().IsEmpty());
         // Native drops may consist only of Position after the cached bag
         // CreateObject. Exercise both orders of physics and inventory notices.
+        Create->SetNumberField(TEXT("entity"),0x47001745);
         auto Visual=MakeShared<FJsonObject>();Visual->SetNumberField(TEXT("did"),0x1f0002ae);
         Create->SetObjectField(TEXT("visual"),Visual);Create->SetNumberField(TEXT("entity"),0x470007ed);
         Create->SetNumberField(TEXT("instance"),0);Create->SetNumberField(TEXT("position_stamp"),10);
@@ -129,6 +145,55 @@ bool FAC2InventoryTransferTest::RunTest(const FString&)
         Contain->SetNumberField(TEXT("position_stamp"),0xffff);Net.Objects[Item]->PositionStamp=0xfffe;Net.Handle(Contain);
         Position->SetNumberField(TEXT("position_stamp"),0);Net.Handle(Position);CheckGround();
         TestTrue(TEXT("World lifecycle does not send speculative requests"),Read().IsEmpty());
+        // Follow the journal instructions through the real inventory double-click
+        // and world click handlers, including a stale selection from combat.
+        FString CatalogError;
+        TestTrue(TEXT("Load active DAT catalogue"),Mode->CharacterCatalog.Open(Mode->DatDirectory,CatalogError));
+        const uint32 Glyph=Icefire?0x47001aedu:0x47001582u;
+        const FString PortalId=TEXT("9223372036854775951"),GlyphId=TEXT("9223372036854775952");
+        Bag->SetArrayField(TEXT("items"),{MakeShared<FJsonValueString>(GlyphId)});Net.Handle(Bag);
+        auto GlyphCreate=Event(TEXT("object"),GlyphId);GlyphCreate->SetStringField(TEXT("container"),Net.PlayerId);
+        GlyphCreate->SetNumberField(TEXT("entity"),Glyph);Net.Handle(GlyphCreate);
+        auto* Pawn=World->SpawnActor<AAC2Explorer>();PC->Possess(Pawn);
+        Mode->Stream=MakeUnique<FAC2WorldStream>();Mode->Stream->Radius=0;
+        TestTrue(TEXT("Open world visibility"),Mode->Stream->Open(World,Mode->DatDirectory,CatalogError));
+        Net.Cell=0x77b80001;
+        const FVector Focus=AC2::BlockOrigin(Net.Cell>>16)+FVector(8000,8000,200000);
+        Pawn->SetActorLocation(Focus);
+        const double Deadline=FPlatformTime::Seconds()+20;
+        while(!Mode->CellVisible(Net.Cell) && FPlatformTime::Seconds()<Deadline){Mode->Stream->Tick(Focus);FPlatformProcess::Sleep(.001f);}
+        auto Portal=MakeUnique<FAC2Network::FObject>();Portal->Actor=World->SpawnActor<AActor>();
+        auto* Root=NewObject<USceneComponent>(Portal->Actor.Get());Portal->Actor->SetRootComponent(Root);Root->RegisterComponent();
+        Portal->Actor->SetActorLocation(Focus+FVector(100,0,0));Portal->Placed=true;Portal->Cell=Net.Cell;
+        Net.Objects.Add(PortalId,MoveTemp(Portal));
+        Net.TargetId=TEXT("stale-drudge");
+        UI->Tick(G,FPlatformTime::Seconds(),.016f);
+        if(const auto* GlyphCell=UI->Buttons.Find(TEXT("Cell0"))){
+            const FVector2D Start((GlyphCell->Left+GlyphCell->Right)*.5,(GlyphCell->Top+GlyphCell->Bottom)*.5);
+            const FVector2D ScreenPoint=G.LocalToAbsolute(Start*UI->Scale);
+            const FPointerEvent Double(0,ScreenPoint,ScreenPoint,{EKeys::LeftMouseButton},EKeys::LeftMouseButton,0,FModifierKeysState());
+            Read();UI->OnMouseButtonDoubleClick(G,Double);
+            TestTrue(TEXT("Backpack double click waits for a world target"),Net.AwaitingItemTarget());
+            TestFalse(TEXT("Old selection did not receive glyph use"),Read().Contains(TEXT("\"command\":\"use\"")));
+            UI->Mouse=FVector2D(800,160);UI->WorldNameRects.Reset();
+            UI->WorldClick(EKeys::LeftMouseButton,false);
+            TestTrue(TEXT("Empty ground keeps targeting and sends nothing"),Net.AwaitingItemTarget() && Read().IsEmpty());
+            UI->WorldNameRects.Add(PortalId,FSlateRect(780,140,820,180));
+            UI->WorldClick(EKeys::LeftMouseButton,false);
+            TSharedPtr<FJsonObject> Applied;
+            if(TestTrue(TEXT("Exactly one targeted use"),FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Read()),Applied))){
+                TestEqual(TEXT("Use glyph"),Applied->GetStringField(TEXT("item")),GlyphId);
+                TestEqual(TEXT("On the clicked portal"),Applied->GetStringField(TEXT("target")),PortalId);
+            }
+            TestFalse(TEXT("Targeting consumed"),Net.AwaitingItemTarget());
+            UI->WorldClick(EKeys::LeftMouseButton,true);
+            TestTrue(TEXT("Double click does not activate portal a second time"),Read().IsEmpty());
+            UI->OnMouseButtonDoubleClick(G,Double);UI->Mouse=FVector2D(800,160);UI->WorldClick(EKeys::RightMouseButton,false);
+            TestFalse(TEXT("Right-click cancels"),Net.AwaitingItemTarget());
+            UI->OnMouseButtonDoubleClick(G,Double);Net.Handle(Event(TEXT("inventory_remove"),GlyphId));
+            TestFalse(TEXT("A lost glyph cannot be applied"),Net.AwaitingItemTarget());
+        }else AddError(TEXT("Glyph missing from backpack grid"));
+        PC->UnPossess();Mode->Stream.Reset();
         FPlatformProcess::ClosePipe(Commands,Net.Write);Net.Write=nullptr;
     }
     Mode->Network.Reset();World->DestroyWorld(false);GEngine->DestroyWorldContext(World);return true;

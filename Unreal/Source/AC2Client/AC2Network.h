@@ -127,7 +127,10 @@ class FAC2Network
     TOptional<uint64> ServerLevelXpFloor,ServerLevelXpCeiling;
     void StarterSkill(int32 Category);
     void UseTarget();
-    void UseItem(int32 Index, uint32 EquipSlot=0);
+    void UseItem(int32 Index, uint32 EquipSlot=0, bool PickWorldTarget=false);
+    bool AwaitingItemTarget() const { return !PendingTargetItem.IsEmpty(); }
+    void CancelItemTarget() { PendingTargetItem.Reset(); }
+    void UseItemOnWorldTarget(const FString& Target);
     // A complete native inventory snapshot may arrive before its item creates.
     bool InventoryKnown=false;
     bool OwnsInventoryItem(const FString& Id) const {return InventoryOwnership.Contains(Id);}
@@ -288,7 +291,7 @@ class FAC2Network
     float ServerArrivalEffectStrength = 0;
     bool RevealingArrivalEffect = false;
     uint32 ActiveStoryScene = 0;
-    FString PendingShardUse;
+    FString PendingTargetItem, PendingShardUse;
     double ShardUseTime = 0;
     void ActivateShard(const FString& Id, const FString& Recipient);
     void PlayStoryScenes(const TSharedPtr<FJsonObject>& Message);

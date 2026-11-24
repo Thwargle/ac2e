@@ -1222,8 +1222,7 @@ FReply SAC2GameUI::OnMouseButtonUp(const FGeometry &G, const FPointerEvent &E)
                 {
                     // gm3DItemsUI::FinishFind3DTarget resolves the release
                     // position, not the selected object or a throttled hover.
-                    FString Recipient;
-                    for(const auto& Name:WorldNameRects)if(Inside(Name.Value,Mouse)){Recipient=Name.Key;break;}
+                    FString Recipient = WorldNameAt(Mouse);
                     auto* PC=Controller(Mode);FVector Origin,Direction;
                     const bool RayValid=PC && PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction);
                     if(Recipient.IsEmpty() && RayValid)Recipient=Mode->Network->WorldTargetAtRay(Origin,Direction);
@@ -1287,7 +1286,7 @@ FReply SAC2GameUI::OnMouseButtonDoubleClick(const FGeometry &G, const FPointerEv
                 const FString Key=B.Key.ToString();
                 const int32 Index=Key.StartsWith(TEXT("Item"))?FCString::Atoi(*Key.Mid(4)):
                     P?P->Items.IndexOfByPredicate([&](const auto& I){return !I.Equipped && I.Cell==FCString::Atoi(*Key.Mid(4));}):INDEX_NONE;
-                if(P && P->Items.IsValidIndex(Index)){SelectItem(Index);EquipSelected();}
+                if(P && P->Items.IsValidIndex(Index)){SelectItem(Index);EquipSelected(true);}
                 return FReply::Handled();
             }
     if(E.GetEffectingButton()==EKeys::LeftMouseButton && WorldClick(E.GetEffectingButton(),true))
@@ -1485,6 +1484,11 @@ void SAC2GameUI::ToggleStats()
 }
 bool SAC2GameUI::ClosePanels()
 {
+    if (Mode.IsValid() && Mode->Network && Mode->Network->AwaitingItemTarget())
+    {
+        Mode->Network->CancelItemTarget();
+        return true;
+    }
     if(OpenOptionChoice!=INDEX_NONE){CloseOptionChoice();Rebuild();return true;}
     if(OptionConfirmationOpen()){AnswerOptionConfirmation(false);return true;}
     if(ShowOptions){CloseOptions();return true;}
@@ -1547,9 +1551,9 @@ void SAC2GameUI::UpdatePortrait()
         PortraitBrush.ImageSize = FVector2D(153, 200);
     }
 }
-void SAC2GameUI::EquipSelected()
+void SAC2GameUI::EquipSelected(bool PickWorldTarget)
 {
-    if(Mode.IsValid() && Mode->Network) {Mode->Network->UseItem(SelectedItem);return;}
+    if(Mode.IsValid() && Mode->Network) {Mode->Network->UseItem(SelectedItem,0,PickWorldTarget);return;}
     auto Previous = Mode->Characters;
     FString Error;
     if (auto *P = Mode->Characters.Active())

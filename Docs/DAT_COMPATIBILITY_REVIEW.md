@@ -325,8 +325,13 @@ The work still needed before calling this a fully functional game includes:
   Item parsing and instance updates now retain that quality, and one-target
   items send the selected object's ID. A glyph without a selected target sends
   no request. Multiple-target collection still needs its native UI workflow.
-  Select the portal, then use the glyph; a portal self-use success alone does
-  not prove teleportation occurred.
+  The tutorial journal instructs players to double-click the glyph, then click
+  the Menhir Portal. The backpack now waits for that click and uses its exact
+  target. Escape or a short right-click in the world cancels targeting. The
+  native usage constructor with a one-element target list also runs in the
+  offline probe. The tool hand-in uses a backpack drag onto the Shelter Scout
+  or her visible name, including her selected name during a drag. These checks
+  exercise client input and outgoing requests. Icefire owns quest advancement.
 - Ordinary world hover keeps the native selection cursor. Local target and
   stance notices are removed, and generic UsageDone string `25000014/4E1AEC40`
   is quiet. Custom reply text, dialogue and errors are retained.

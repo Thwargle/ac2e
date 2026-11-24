@@ -120,6 +120,16 @@ FAC2CursorIcon SAC2GameUI::CursorAt(FVector2D ScreenPoint) const
     // special targeting cursor belongs to UI actions that explicitly request it.
     return Spec;
 }
+FString SAC2GameUI::WorldNameAt(FVector2D Point) const
+{
+    // The selected name is drawn over other names, including when ordinary names are hidden.
+    if (Mode.IsValid() && Mode->Network)
+        if (const auto* Selected = WorldNameRects.Find(Mode->Network->TargetId); Selected && Selected->ContainsPoint(Point))
+            return Mode->Network->TargetId;
+    for (const auto& Name : WorldNameRects)
+        if (Name.Value.ContainsPoint(Point)) return Name.Key;
+    return {};
+}
 void SAC2GameUI::UpdateHover(const FGeometry& G,double Time)
 {
     auto* PC=Mode.IsValid()?Mode->GetWorld()->GetFirstPlayerController():nullptr;
@@ -130,8 +140,8 @@ void SAC2GameUI::UpdateHover(const FGeometry& G,double Time)
     {HoverObject.Reset();HoverMob.Reset();return;}
     if(Time<NextHover)return;
     NextHover=Time+.075;
-    for(const auto& Name:WorldNameRects)if(Mouse.X>=Name.Value.Left && Mouse.X<Name.Value.Right && Mouse.Y>=Name.Value.Top && Mouse.Y<Name.Value.Bottom)
-    {HoverObject=Name.Key;HoverMob.Reset();return;}
+    HoverObject = WorldNameAt(Mouse);
+    if (!HoverObject.IsEmpty()) { HoverMob.Reset(); return; }
     FVector Origin,Direction;
     HoverObject.Reset();
     HoverMob.Reset();
@@ -159,28 +169,48 @@ bool SAC2GameUI::WorldClick(FKey Button,bool DoubleClick)
     if(!Mode.IsValid() || OwnsPointer(Mouse))return false;
     auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     FVector Origin,Direction;
-    if(!PC || !PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction))return false;
+    const bool HasRay = PC && PC->DeprojectScreenPositionToWorld(Mouse.X,Mouse.Y,Origin,Direction);
     // gmSelectionUI::Finish3DSelection (Legions): left selects, double-left uses,
     // a short right-click selects and examines after the camera gesture releases.
     if(Mode->Network)
     {
         // Self is deliberately excluded from combat target cycling. A short
         // right-click on the local capsule must still be able to inspect it.
-        if(Button==EKeys::RightMouseButton)if(auto* Pawn=Cast<AAC2Explorer>(PC->GetPawn())){
+        if (Button==EKeys::RightMouseButton && Mode->Network->AwaitingItemTarget())
+        {
+            Mode->Network->CancelItemTarget();
+            return true;
+        }
+        if(HasRay && Button==EKeys::RightMouseButton)if(auto* Pawn=Cast<AAC2Explorer>(PC->GetPawn())){
             FHitResult SelfHit;
             if(Pawn->GetCapsuleComponent()->LineTraceComponent(SelfHit,Origin,Origin+Direction*15000,FCollisionQueryParams())){
                 InspectTarget(Mode->Network->PlayerId);return true;
             }
         }
-        FString Id;
-        for(const auto& Name:WorldNameRects)if(Mouse.X>=Name.Value.Left && Mouse.X<Name.Value.Right && Mouse.Y>=Name.Value.Top && Mouse.Y<Name.Value.Bottom){Id=Name.Key;break;}
-        if(Id.IsEmpty())Id=Mode->Network->WorldTargetAtRay(Origin,Direction);
+        FString Id = WorldNameAt(Mouse);
+        if(Id.IsEmpty() && HasRay)Id=Mode->Network->WorldTargetAtRay(Origin,Direction);
+        if (Button==EKeys::LeftMouseButton)
+        {
+            // A Slate double-click follows the first click. Do not also activate
+            // the portal itself when that click already applied a glyph to it.
+            const bool Followup = DoubleClick && !AppliedItemTarget.IsEmpty() && AppliedItemTarget==Id;
+            AppliedItemTarget.Reset();
+            if (Mode->Network->AwaitingItemTarget())
+            {
+                Mode->Network->UseItemOnWorldTarget(Id);
+                if (!Mode->Network->AwaitingItemTarget()) AppliedItemTarget=Id;
+                return true;
+            }
+            if (Followup) return true;
+        }
+        if(Id.IsEmpty() && !HasRay)return false;
         if(Id.IsEmpty()){Mode->Network->ClearTarget();return true;}
         Mode->Network->SelectTarget(Id);
         if(Button==EKeys::RightMouseButton)InspectTarget(Id);
         else if(DoubleClick)Mode->Network->UseTarget();
         return true;
     }
+    if(!HasRay)return false;
     FHitResult Hit;
     if(Mode->GetWorld()->LineTraceSingleByChannel(Hit,Origin,Origin+Direction*15000,ECC_Visibility))
         if(auto* Mob=Cast<AAC2Mob>(Hit.GetActor()))
@@ -291,28 +321,30 @@ bool SAC2GameUI::SmokeDamageText(FString& Error)
     if(!Hidden || !Visible){Error=FString::Printf(TEXT("Damage number toggle: hidden=%d visible=%d"),Hidden,Visible);return false;}
     return true;
 }
+void SAC2GameUI::DrawWorldLabel(const FString& Text,FVector2D Point,bool Center,TOptional<FLinearColor> Color)
+{
+    if(Text.IsEmpty())return;
+    const TCHAR* Template=Center?TEXT("SelectionName"):TEXT("NameTextTemplate");
+    const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(Template,0x4200000c));
+    const int32 Width=FMath::Min(int32(Size.X),FMath::Max(80,FMath::CeilToInt((Font?Font:BodyFont)->Width(Text))+12));
+    const int32 Height=(Font?Font:BodyFont)->Height*FMath::Max(1,(Font?Font:BodyFont)->Lines(Text,0).Num())+4;
+    if(Center)Point.X-=Width*.5;
+    Point.X=FMath::Clamp(Point.X,0.,FMath::Max(0.,Size.X-Width));
+    Point.Y=FMath::Clamp(Point.Y,0.,FMath::Max(0.,Size.Y-Height));
+    const int32 Start=Native.Nodes.Num();
+    const FIntRect Rect(Point.X,Point.Y,Point.X+Width,Point.Y+Height);
+    if (!Native.Template(0x22000005,Template,Rect,FIntRect(0,0,Size.X,Size.Y))) return;
+    if (Center && Mode->Network)
+        WorldNameRects.Add(Mode->Network->TargetId,FSlateRect(Rect.Min.X,Rect.Min.Y,Rect.Max.X,Rect.Max.Y));
+    for(int32 I=Start;I<Native.Nodes.Num();++I)
+        if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text"))){Native.Nodes[I].Text=Text;if(Color.IsSet())Native.Nodes[I].SetTextColor(*Color);Native.Nodes[I].Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);}
+}
 void SAC2GameUI::BuildPointerFeedback()
 {
     if(Frontend || !Mode.IsValid())return;
     const auto* PC=Mode->GetWorld()->GetFirstPlayerController();
     // gmCameraUI::UpdateCamera: the authored, centered crosshair is visible in mouse look.
     if(PC && !PC->bShowMouseCursor)Native.Root(0x22000005,TEXT("MouseLookCursorField"));
-    auto Label=[&](const FString& Text,FVector2D Point,bool Center=false,TOptional<FLinearColor> Color={})
-    {
-        if(Text.IsEmpty())return;
-        const TCHAR* Template=Center?TEXT("SelectionName"):TEXT("NameTextTemplate");
-        const auto Font=Fonts.Get(Native.Layouts[0x22000005].Font(Template,0x4200000c));
-        const int32 Width=FMath::Min(int32(Size.X),FMath::Max(80,FMath::CeilToInt((Font?Font:BodyFont)->Width(Text))+12));
-        const int32 Height=(Font?Font:BodyFont)->Height*FMath::Max(1,(Font?Font:BodyFont)->Lines(Text,0).Num())+4;
-        if(Center)Point.X-=Width*.5;
-        Point.X=FMath::Clamp(Point.X,0.,FMath::Max(0.,Size.X-Width));
-        Point.Y=FMath::Clamp(Point.Y,0.,FMath::Max(0.,Size.Y-Height));
-        const int32 Start=Native.Nodes.Num();
-        Native.Template(0x22000005,Template,
-            FIntRect(Point.X,Point.Y,Point.X+Width,Point.Y+Height),FIntRect(0,0,Size.X,Size.Y));
-        for(int32 I=Start;I<Native.Nodes.Num();++I)
-            if(Native.Nodes[I].Kind==FAC2UILayout::Token(TEXT("text"))){Native.Nodes[I].Text=Text;if(Color.IsSet())Native.Nodes[I].SetTextColor(*Color);Native.Nodes[I].Attributes.Add(FAC2UILayout::Token(TEXT("one_line")),1);}
-    };
     auto BuildHint=[&](const FString& Text,FVector2D Point)
     {
         if(Text.IsEmpty())return;
@@ -346,14 +378,7 @@ void SAC2GameUI::BuildPointerFeedback()
             N.Rect.Min+=FIntPoint(4,4);N.Rect.Max-=FIntPoint(4,4);N.Clip=N.Rect;
         }
     };
-    if(!DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6)
-    {
-        if(const auto* Profile=Mode->Characters.Active())
-            if(const auto* Item=Profile->Items.FindByPredicate([&](const auto& I){return I.NetworkId==DragItem;}))
-                if(const auto* Definition=Mode->CharacterCatalog.Items.Find(Item->Definition))
-                    Label(Definition->Name,Mouse+FVector2D(20,22));
-        return;
-    }
+    const bool DraggingItem=!DragItem.IsEmpty() && FVector2D::Distance(Mouse,ItemPressPoint)>6;
     if(auto* Net=Mode->Network.Get())
     {
         auto NameColor=[&](const FString& Id){
@@ -379,11 +404,21 @@ void SAC2GameUI::BuildPointerFeedback()
                 const float Turns[]={2,1,3,0};
                 for(int32 N=Start;N<Native.Nodes.Num();++N)Native.Nodes[N].Rotation=Turns[I]*HALF_PI;
             }
-            Label(Net->ObjectName(Net->TargetId),FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-Corner.Y-30),true,NameColor(Net->TargetId));
+            DrawWorldLabel(Net->ObjectName(Net->TargetId),FVector2D(Bounds.GetCenter().X,Bounds.Min.Y-Corner.Y-30),true,NameColor(Net->TargetId));
         }
-        if(!HoverObject.IsEmpty() && HoverObject!=Net->TargetId)Label(Net->ObjectName(HoverObject),Mouse+FVector2D(18,22),false,NameColor(HoverObject));
+        if(!DraggingItem && Net->AwaitingItemTarget() && !OwnsPointer(Mouse))
+            BuildHint(TEXT("Click the target for this item. Right-click to cancel."),Mouse+FVector2D(18,22));
+        else if(!DraggingItem && !HoverObject.IsEmpty() && HoverObject!=Net->TargetId)DrawWorldLabel(Net->ObjectName(HoverObject),Mouse+FVector2D(18,22),false,NameColor(HoverObject));
     }
-    if(!Mode->Network && HoverMob.IsValid())Label(HoverMob->DisplayName,Mouse+FVector2D(18,22),false,AC2Radar::DefaultLook(AC2Radar::Monsters).Color);
+    if (DraggingItem)
+    {
+        if(const auto* Profile=Mode->Characters.Active())
+            if(const auto* Item=Profile->Items.FindByPredicate([&](const auto& I){return I.NetworkId==DragItem;}))
+                if(const auto* Definition=Mode->CharacterCatalog.Items.Find(Item->Definition))
+                    DrawWorldLabel(Definition->Name,Mouse+FVector2D(20,22));
+        return;
+    }
+    if(!Mode->Network && HoverMob.IsValid())DrawWorldLabel(HoverMob->DisplayName,Mouse+FVector2D(18,22),false,AC2Radar::DefaultLook(AC2Radar::Monsters).Color);
     if(OwnsPointer(Mouse))for(const auto& Hint:Hints)
     {
         // Disabled native controls have no action hitbox, but still explain why
